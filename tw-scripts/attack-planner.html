@@ -1,0 +1,3367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TW Attack Planner</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #111008;
+      color: #d4b483;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(180deg, #2d1f0e 0%, #1e1408 100%);
+      border-bottom: 2px solid #7a5c10;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .header h1 { color: #f0c040; font-size: 19px; letter-spacing: 0.5px; white-space: nowrap; }
+    .header-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .setting-group { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+    .setting-group label { color: #a08050; white-space: nowrap; }
+    .setting-group input[type="text"],
+    .setting-group input[type="number"] {
+      background: #111008;
+      border: 1px solid #4a3010;
+      color: #d4b483;
+      padding: 5px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+      width: auto;
+      transition: border-color .15s;
+    }
+    .setting-group input:focus { outline: none; border-color: #c0900a; }
+    .setting-group input[type="number"] { width: 64px; }
+    .setting-group input[type="text"] { width: 200px; }
+
+    /* ── File status bar ── */
+    .file-bar {
+      background: #160f04;
+      border-bottom: 1px solid #3a2808;
+      padding: 6px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+    .file-status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-ok   { background: #40c860; box-shadow: 0 0 5px #40c860; }
+    .dot-off  { background: #806030; }
+    #file-status-text { color: #907050; }
+    #file-status-text.connected { color: #70c080; }
+    .file-bar-actions { display: flex; gap: 8px; margin-left: auto; }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      background: #1a1008;
+      border-bottom: 2px solid #4a3010;
+      padding: 0 20px;
+    }
+    .tab {
+      padding: 11px 22px;
+      cursor: pointer;
+      color: #8a6a40;
+      border-bottom: 3px solid transparent;
+      font-weight: 500;
+      font-size: 13px;
+      transition: color .15s;
+      user-select: none;
+      margin-bottom: -2px;
+    }
+    .tab:hover { color: #c8a060; }
+    .tab.active { color: #f0c040; border-bottom-color: #f0c040; }
+
+    /* ── Tab content ── */
+    .tab-content { display: none; padding: 22px 24px; }
+    .tab-content.active { display: block; }
+
+    /* ── Section header ── */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .section-header h2 { color: #f0c040; font-size: 15px; font-weight: 600; }
+    .section-header-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #1e1408;
+      border: 1px solid #4a3010;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    th {
+      background: #2e1e08;
+      color: #e0a820;
+      padding: 9px 12px;
+      text-align: left;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #2e1e08;
+      color: #d0a870;
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #261808; }
+    .empty-row td { text-align: center; color: #5a3a18; padding: 36px; }
+
+    /* ── Attack table row states ── */
+    .row-sent       td { opacity: 0.35; }
+    .row-unassigned td { background: rgba(180,40,40,0.13); }
+    .row-urgent td { background: rgba(100, 50, 0, 0.18) !important; }
+    .row-now td { background: rgba(120, 20, 20, 0.22) !important; }
+
+    /* ── Forms ── */
+    .form-panel {
+      background: #1e1408;
+      border: 1px solid #4a3010;
+      border-radius: 6px;
+      padding: 18px 20px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .form-panel.open { display: block; }
+    .form-panel h3 {
+      color: #e0a820;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 14px;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .form-grid.wide { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-group label { font-size: 11px; color: #906838; text-transform: uppercase; letter-spacing: 0.5px; }
+    input[type="text"], input[type="number"], input[type="datetime-local"], select {
+      background: #111008;
+      border: 1px solid #4a3010;
+      color: #d4b483;
+      padding: 7px 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      width: 100%;
+      transition: border-color .15s;
+    }
+    input:focus, select:focus { outline: none; border-color: #c0900a; }
+    input[type="datetime-local"]::-webkit-calendar-picker-indicator { filter: invert(0.7); }
+    .form-actions { display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 7px 15px; border-radius: 4px; cursor: pointer;
+      font-size: 13px; font-weight: 500; border: 1px solid transparent;
+      transition: all .15s; white-space: nowrap; text-decoration: none;
+    }
+    .btn-primary { background: #5a3d08; color: #f0c040; border-color: #c0900a; }
+    .btn-primary:hover { background: #6e4c0a; }
+    .btn-ghost { background: transparent; color: #908060; border-color: #4a3010; }
+    .btn-ghost:hover { background: #2e1e08; color: #c0a060; }
+    .btn-edit { background: #0e2a40; color: #60a8e0; border-color: #2060a0; }
+    .btn-edit:hover { background: #123450; }
+    .btn-danger { background: #3a0e0e; color: #e06060; border-color: #801818; }
+    .btn-danger:hover { background: #4a1212; }
+    .btn-file { background: #0e3020; color: #50d890; border-color: #208050; }
+    .btn-file:hover { background: #123828; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn-attack { background: #3a1008; color: #e08060; border-color: #901830; }
+    .btn-attack:hover { background: #4a1410; }
+    .btn-copy { background: #1a0e38; color: #9080e0; border-color: #4030a0; }
+    .btn-copy:hover { background: #221448; }
+    .btn-sent { background: #0e3018; color: #50d890; border-color: #208050; }
+    .btn-sent:hover { background: #123828; }
+
+    /* ── Badges ── */
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+    .badge-off      { background: #380c0c; color: #e06060; }
+    .badge-snob     { background: #0c1838; color: #6090e0; }
+    .badge-complete { background: #1a3a10; color: #60d840; }
+    .badge-tq       { background: #2a2a10; color: #d0c040; }
+    .badge-half     { background: #2a1a08; color: #d08040; }
+    .badge-low      { background: #1e1408; color: #806838; }
+    .ttype-off  { background: #3a0808; color: #e05050; }
+    .ttype-fake { background: #0a1828; color: #5080c0; }
+    .req-badge { display:inline-block; padding:1px 6px; border-radius:8px; font-size:10px; font-weight:700; margin:1px 2px 1px 0; }
+    .req-ram   { background:#2a1008; color:#c07040; }
+    .req-axe   { background:#1a1208; color:#a09050; }
+    .req-snob  { background:#0c1838; color:#6090e0; }
+
+    /* ── Countdown cells ── */
+    .cd-ok     { color: #50d870; font-weight: 600; font-family: monospace; }
+    .cd-soon   { color: #d0c030; font-weight: 600; font-family: monospace; }
+    .cd-urgent { color: #e08030; font-weight: 600; font-family: monospace; }
+    .cd-now    { color: #e04040; font-weight: 700; font-family: monospace; }
+    .cd-late   { color: #803030; font-family: monospace; }
+    .cd-sent   { color: #5a4a2a; font-family: monospace; }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .cd-now { animation: blink 0.8s ease-in-out infinite; }
+
+    /* ── Coords ── */
+    .coords { font-family: monospace; font-size: 12px; color: #a08850; }
+
+    /* ── In-table links ── */
+    .tw-link { color: inherit; text-decoration: none; }
+    .tw-link:hover { text-decoration: underline; opacity: 0.85; }
+
+    /* ── Attack table sort & filter ── */
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { background: #3a2808; }
+    .sort-icon { font-size: 10px; margin-left: 3px; }
+    .col-filter {
+      width: 100%; padding: 3px 6px; font-size: 11px;
+      background: #111008; border: 1px solid #3a2008;
+      color: #d4b483; border-radius: 3px; margin-top: 3px;
+    }
+    .col-filter:focus { outline: none; border-color: #c0900a; }
+    .filter-row th { padding: 4px 8px; background: #261808; }
+
+    /* ── Modal ── */
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.75); z-index: 200;
+      align-items: center; justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: #1e1408; border: 1px solid #7a5c10; border-radius: 8px;
+      padding: 22px 24px; width: 95%; max-width: 620px; max-height: 90vh; overflow-y: auto;
+    }
+    .modal h3 { color: #f0c040; margin-bottom: 16px; font-size: 15px; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+
+    /* ── DB section ── */
+    .db-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    #db-search { flex: 1; min-width: 200px; max-width: 420px; }
+    #db-status { font-size: 12px; color: #806838; font-style: italic; }
+
+    /* ── Misc ── */
+    .note { font-size: 12px; color: #806838; font-style: italic; }
+    .text-dim { color: #5a3a18; }
+    select option { background: #1e1408; color: #d4b483; }
+    .hidden { display: none !important; }
+
+    /* ── Footer ── */
+    .footer {
+      background: #160f04;
+      border-top: 1px solid #3a2808;
+      padding: 10px 20px;
+      text-align: center;
+      font-size: 11px;
+      color: #5a3a18;
+      letter-spacing: 0.3px;
+    }
+    .footer span { color: #7a5a28; }
+
+    /* ── Bookmarklet panel ── */
+    .bookmarklet-panel {
+      background: #1a1408; border: 1px solid #4a3810;
+      border-radius: 6px; padding: 14px 18px; margin-bottom: 14px;
+    }
+    .bookmarklet-panel h4 {
+      color: #e0a820; font-size: 12px; text-transform: uppercase;
+      letter-spacing: 0.6px; margin-bottom: 10px;
+    }
+    .bookmarklet-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+    .bookmarklet-note { font-size: 12px; color: #806838; font-style: italic; }
+    .btn-bookmarklet { background: #3a2e06; color: #f0d040; border-color: #a08010; }
+    .btn-bookmarklet:hover { background: #4a3a08; }
+    .lang-btn { padding: 4px 8px; font-size: 12px; }
+    .lang-active { border-color: #c0900a !important; color: #f0c040 !important; }
+
+    /* ── FAQ / Guide tab ── */
+    .faq-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; }
+    @media (max-width: 800px) { .faq-columns { grid-template-columns: 1fr; } }
+    .faq-col h2 { color: #f0c040; font-size: 15px; font-weight: 600; margin-bottom: 18px; padding-bottom: 8px; border-bottom: 1px solid #4a3010; }
+    .faq-step { margin-bottom: 20px; padding: 14px 16px; background: #1e1408; border: 1px solid #3a2808; border-radius: 6px; }
+    .faq-step h3 { color: #c8a060; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .faq-step p { color: #9a7848; font-size: 13px; line-height: 1.65; }
+    .faq-step p + p { margin-top: 6px; }
+    .faq-step strong { color: #c8a060; font-weight: 600; }
+    .faq-step code { background: #2a1c08; border: 1px solid #4a3010; border-radius: 3px; padding: 1px 5px; font-family: monospace; font-size: 12px; color: #f0d080; }
+    .faq-step-num { display: inline-block; background: #7a5c10; color: #f0c040; border-radius: 50%; width: 20px; height: 20px; text-align: center; line-height: 20px; font-size: 11px; font-weight: 700; margin-right: 6px; }
+    .lang-en-only, .lang-es-only { display: none; }
+    [data-lang='en'] .lang-en-only { display: block; }
+    [data-lang='es'] .lang-es-only { display: block; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════ HEADER ══════════════════ -->
+<div class="header">
+  <h1>⚔ Tribalwars — Attack Planner</h1>
+  <div class="header-right">
+    <div class="setting-group">
+      <label data-i18n="lang_label">Lang</label>
+      <div style="display:flex;gap:3px">
+        <button id="lang-btn-en" class="btn btn-sm lang-btn lang-active" onclick="changeLang('en')"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 40'%3E%3Crect width='60' height='40' fill='%23012169'/%3E%3Cpath d='M0,0 L60,40 M60,0 L0,40' stroke='%23fff' stroke-width='8'/%3E%3Cpath d='M0,0 L60,40 M60,0 L0,40' stroke='%23C8102E' stroke-width='4'/%3E%3Cpath d='M30,0 V40 M0,20 H60' stroke='%23fff' stroke-width='12'/%3E%3Cpath d='M30,0 V40 M0,20 H60' stroke='%23C8102E' stroke-width='8'/%3E%3C/svg%3E" width="20" height="14" alt="" style="border-radius:2px"> EN</button>
+        <button id="lang-btn-es" class="btn btn-sm lang-btn" onclick="changeLang('es')"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 40'%3E%3Crect width='60' height='40' fill='%23C60B1E'/%3E%3Crect y='10' width='60' height='20' fill='%23FFC400'/%3E%3C/svg%3E" width="20" height="14" alt="" style="border-radius:2px"> ES</button>
+      </div>
+    </div>
+    <div class="setting-group">
+      <label data-i18n="lbl_server">Server</label>
+      <input type="text" id="cfg-server" value="es100.guerrastribales.es" placeholder="es100.guerrastribales.es">
+    </div>
+    <div class="setting-group">
+      <label data-i18n="lbl_world_speed">World Speed</label>
+      <input type="number" id="cfg-ws" value="2" min="0.1" max="10" step="0.1">
+    </div>
+    <div class="setting-group">
+      <label data-i18n="lbl_unit_speed">Unit Speed</label>
+      <input type="number" id="cfg-us" value="0.5" min="0.1" max="2" step="0.1">
+    </div>
+    <div class="setting-group">
+      <label data-i18n="lbl_my_player">My Player</label>
+      <input type="text" id="cfg-player" placeholder="Vanquished" style="width:130px">
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ FILE BAR ══════════════════ -->
+<div class="file-bar">
+  <div class="file-status-dot dot-off" id="file-dot"></div>
+  <span id="file-status-text" data-i18n="file_not_connected">No file connected</span>
+  <div class="file-bar-actions">
+    <button class="btn btn-file btn-sm" onclick="connectFile()" data-i18n="btn_connect_file">⟁ Connect File</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportJson()" data-i18n="btn_export">↓ Export</button>
+    <button class="btn btn-ghost btn-sm" onclick="importJson()" data-i18n="btn_import">↑ Import</button>
+    <input type="file" id="import-input" accept=".json" style="display:none" onchange="handleImport(event)">
+  </div>
+</div>
+
+<!-- ══════════════════ TABS ══════════════════ -->
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('plan')" data-i18n="tab_attack_plan">⚔ Attack Plan</div>
+  <div class="tab" onclick="switchTab('villages')" data-i18n="tab_my_villages">🏰 My Villages</div>
+  <div class="tab" onclick="switchTab('targets')" data-i18n="tab_targets">🎯 Targets</div>
+  <div class="tab" onclick="switchTab('db')" data-i18n="tab_village_db">🗃 Village DB</div>
+  <div class="tab" onclick="switchTab('guide')" data-i18n="tab_guide">📖 Guide</div>
+</div>
+
+<!-- ══════════════════ TAB: ATTACK PLAN ══════════════════ -->
+<div class="tab-content active" id="tab-plan">
+  <div class="section-header">
+    <h2 data-i18n="tab_attack_plan">Attack Plan</h2>
+    <div class="section-header-actions">
+      <button class="btn btn-ghost btn-sm" onclick="exportToNotepad()" data-i18n="btn_export_notepad">📋 Export BB Code</button>
+      <button class="btn btn-danger btn-sm" onclick="clearAllAttacks()" data-i18n="btn_clear_all">🗑 Clear All</button>
+      <button class="btn btn-danger btn-sm" onclick="clearSent()" data-i18n="btn_clear_sent">🗑 Clear Sent</button>
+      <button class="btn btn-ghost btn-sm" onclick="openAutoGenerate()" data-i18n="btn_auto_generate">⚡ Auto-Generate</button>
+      <button class="btn btn-primary" onclick="togglePanel('add-attack-panel')" data-i18n="btn_add_attack">+ Add Attack</button>
+    </div>
+  </div>
+
+  <div class="form-panel" id="add-attack-panel">
+    <h3 data-i18n="sec_new_attack">New Attack</h3>
+    <div class="form-grid wide">
+      <div class="form-group">
+        <label data-i18n="lbl_from_village">From Village</label>
+        <select id="aa-from"></select>
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_target">Target</label>
+        <select id="aa-target"></select>
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_type">Type</label>
+        <select id="aa-type" onchange="onAttackTypeChange('aa-noble-row')">
+          <option value="off" data-i18n="opt_off">Off (Rams)</option>
+          <option value="fake" data-i18n="opt_fake">Fake (1 spy/1 ram)</option>
+          <option value="snob" data-i18n="opt_snob">Snob (Nobleman)</option>
+        </select>
+      </div>
+      <div class="form-group hidden" id="aa-noble-row">
+        <label data-i18n="lbl_noble_count">Noble Count</label>
+        <input type="number" id="aa-nobles" value="1" min="1" max="4">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_landing_time">Landing Time</label>
+        <input type="datetime-local" id="aa-landing" step="1">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addAttack()" data-i18n="btn_add_attack">Add Attack</button>
+      <button class="btn btn-ghost" onclick="togglePanel('add-attack-panel')" data-i18n="btn_cancel">Cancel</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table id="attack-table">
+      <thead>
+        <tr>
+          <th class="sortable" onclick="setAttackSort('from')" data-i18n="lbl_from">From <span class="sort-icon" id="si-from"></span></th>
+          <th class="sortable" onclick="setAttackSort('target')" data-i18n="lbl_target">Target <span class="sort-icon" id="si-target"></span></th>
+          <th class="sortable" onclick="setAttackSort('villageName')" data-i18n="lbl_village_name">Village Name <span class="sort-icon" id="si-villageName"></span></th>
+          <th class="sortable" onclick="setAttackSort('playerName')" data-i18n="lbl_player">Player <span class="sort-icon" id="si-playerName"></span></th>
+          <th class="sortable" onclick="setAttackSort('type')" data-i18n="lbl_type">Type <span class="sort-icon" id="si-type"></span></th>
+          <th class="sortable" onclick="setAttackSort('offPow')" data-i18n="lbl_off_power">Off Power <span class="sort-icon" id="si-offPow"></span></th>
+          <th class="sortable" onclick="setAttackSort('dist')" data-i18n="lbl_dist">Dist <span class="sort-icon" id="si-dist"></span></th>
+          <th class="sortable" onclick="setAttackSort('travel')" data-i18n="lbl_travel">Travel <span class="sort-icon" id="si-travel"></span></th>
+          <th class="sortable" onclick="setAttackSort('landing')" data-i18n="lbl_landing">Landing <span class="sort-icon" id="si-landing"></span></th>
+          <th class="sortable" onclick="setAttackSort('sendAt')" data-i18n="lbl_send_at">Send At <span class="sort-icon" id="si-sendAt"></span></th>
+          <th data-i18n="lbl_countdown">Countdown</th>
+          <th data-i18n="lbl_attack">Attack</th>
+          <th data-i18n="lbl_actions">Actions</th>
+        </tr>
+        <tr class="filter-row">
+          <th><input class="col-filter" id="af-from" oninput="renderAttacks()" data-i18n-placeholder="ph_filter" placeholder="Filter…"></th>
+          <th><input class="col-filter" id="af-target" oninput="renderAttacks()" data-i18n-placeholder="ph_filter" placeholder="Filter…"></th>
+          <th><input class="col-filter" id="af-villageName" oninput="renderAttacks()" data-i18n-placeholder="ph_filter" placeholder="Filter…"></th>
+          <th><input class="col-filter" id="af-playerName" oninput="renderAttacks()" data-i18n-placeholder="ph_filter" placeholder="Filter…"></th>
+          <th><input class="col-filter" id="af-type" oninput="renderAttacks()" data-i18n-placeholder="ph_filter" placeholder="Filter…"></th>
+          <th colspan="8"></th>
+        </tr>
+      </thead>
+      <tbody id="attack-tbody">
+        <tr class="empty-row"><td colspan="13" data-i18n="empty_attacks">No attacks planned yet. Click "+ Add Attack" to begin.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════ TAB: MY VILLAGES ══════════════════ -->
+<div class="tab-content" id="tab-villages">
+  <div class="section-header">
+    <h2 data-i18n="tab_my_villages">My Villages</h2>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-file btn-sm" onclick="pasteVillages()" data-i18n="btn_paste_villages">📋 Paste Villages</button>
+      <button class="btn btn-danger btn-sm" onclick="clearVillages()" data-i18n="btn_clear_villages">🗑 Clear Villages</button>
+      <button class="btn btn-primary" onclick="togglePanel('add-village-panel')" data-i18n="btn_add_village">+ Add Village</button>
+    </div>
+  </div>
+
+  <div class="bookmarklet-panel">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div>
+        <h4 data-i18n="bm_opt1_title">⚡ Option 1 — Script (automatic)</h4>
+        <div class="bookmarklet-row">
+          <a id="bm-link" class="btn btn-bookmarklet btn-sm" href="#" data-i18n="bm_drag" data-i18n-title="bm_drag_title" title="Drag this to your bookmarks bar">🔖 Drag to bookmarks bar</a>
+          <button class="btn btn-ghost btn-sm" onclick="copyBookmarklet()" data-i18n="btn_copy">Copy</button>
+        </div>
+        <p class="bookmarklet-note" data-i18n="bm_note">1. Drag the gold button to your bookmarks bar. 2. Open TW → Overview Villages → Recruit tab. 3. Click the bookmark — your troops are copied to clipboard. 4. Come back here and click "📋 Paste Villages".</p>
+      </div>
+      <div>
+        <h4 data-i18n="bm_opt2_title">📄 Option 2 — Save HTML manually</h4>
+        <div class="bookmarklet-row">
+          <button class="btn btn-file btn-sm" onclick="document.getElementById('html-import-input').click()" data-i18n="btn_select_html">📄 Select HTML File</button>
+          <input type="file" id="html-import-input" accept=".html,.htm" style="display:none" onchange="importFromRecruitHTML(event)">
+        </div>
+        <p class="bookmarklet-note" data-i18n="bm_opt2_note">1. Open TW → Recruit → Mass Recruit tab. 2. Press Ctrl+S → Save As → save the page as HTML Only. 3. Click "Select HTML File" and pick the saved file — villages are imported automatically.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-panel" id="add-village-panel">
+    <h3 data-i18n="sec_add_village">Add Village</h3>
+    <div class="form-grid">
+      <div class="form-group">
+        <label data-i18n="lbl_x">X</label>
+        <input type="number" id="av-x" placeholder="500" oninput="dbAutoFillVillage()">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_y">Y</label>
+        <input type="number" id="av-y" placeholder="500" oninput="dbAutoFillVillage()">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_name">Name</label>
+        <input type="text" id="av-name" placeholder="My Village">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_village_id">Village ID</label>
+        <input type="number" id="av-vid" placeholder="12345">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_axes">Axes</label>
+        <input type="number" id="av-axes" value="0" min="0">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_lc">LC</label>
+        <input type="number" id="av-lc" value="0" min="0">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_rams">Rams</label>
+        <input type="number" id="av-rams" value="0" min="0">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_catapults">Catapults</label>
+        <input type="number" id="av-cats" value="0" min="0">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_nobles">Nobles</label>
+        <input type="number" id="av-nobles" value="0" min="0">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addVillage()" data-i18n="btn_add_village">Add Village</button>
+      <button class="btn btn-ghost" onclick="togglePanel('add-village-panel')" data-i18n="btn_cancel">Cancel</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th data-i18n="lbl_name">Name</th>
+          <th data-i18n="lbl_id">ID</th>
+          <th data-i18n="lbl_coords">Coords</th>
+          <th data-i18n="lbl_axes">Axes</th>
+          <th data-i18n="lbl_lc">LC</th>
+          <th data-i18n="lbl_rams">Rams</th>
+          <th data-i18n="lbl_cats">Cats</th>
+          <th data-i18n="lbl_nobles">Nobles</th>
+          <th data-i18n="lbl_off_power">⚔ Off Power</th>
+          <th data-i18n="lbl_actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="villages-tbody">
+        <tr class="empty-row"><td colspan="11" data-i18n="empty_villages">No villages added yet.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════ TAB: TARGETS ══════════════════ -->
+<div class="tab-content" id="tab-targets">
+  <div class="section-header">
+    <h2 data-i18n="tab_targets">Targets</h2>
+    <div class="section-header-actions">
+      <button class="btn btn-ghost btn-sm" onclick="enrichTargets()" data-i18n="btn_enrich" data-i18n-title="btn_enrich_title" title="Fill missing data from Village DB">✦ Enrich from DB</button>
+      <button class="btn btn-ghost btn-sm" onclick="closePanel('import-off-panel');togglePanel('import-fake-panel')" data-i18n="btn_fake_targets">💨 Fake Targets</button>
+      <button class="btn btn-ghost btn-sm" onclick="closePanel('import-fake-panel');togglePanel('import-off-panel')" data-i18n="btn_off_targets">⚔ Off Targets</button>
+      <button class="btn btn-danger btn-sm" onclick="clearTargets()" data-i18n="btn_clear_targets">🗑 Clear Targets</button>
+      <button class="btn btn-primary" onclick="togglePanel('add-target-panel')" data-i18n="btn_add_target">+ Add Target</button>
+    </div>
+  </div>
+
+  <div class="form-panel" id="add-target-panel">
+    <h3 data-i18n="sec_add_target">Add Target</h3>
+    <div class="form-grid">
+      <div class="form-group">
+        <label data-i18n="lbl_x">X</label>
+        <input type="number" id="at-x" placeholder="500" oninput="dbAutoFillTarget()">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_y">Y</label>
+        <input type="number" id="at-y" placeholder="500" oninput="dbAutoFillTarget()">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_name">Name</label>
+        <input type="text" id="at-name" placeholder="Village name">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_village_id">Village ID</label>
+        <input type="number" id="at-vid" placeholder="12345">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_player">Player</label>
+        <input type="text" id="at-player" placeholder="Player name">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_type">Type</label>
+        <select id="at-type" onchange="document.getElementById('at-reqs-row').style.display=this.value==='off'?'':'none'">
+          <option value="off" data-i18n="opt_target_off">Off</option>
+          <option value="fake" data-i18n="opt_target_fake">Fake</option>
+        </select>
+      </div>
+    </div>
+    <div id="at-reqs-row" style="margin-top:8px">
+      <label style="display:block;color:#a08050;font-size:13px;margin-bottom:4px" data-i18n="lbl_requirements">Requirements</label>
+      <p class="note" style="margin-bottom:6px">One per line: <code>off HH:MM-HH:MM</code> &nbsp;|&nbsp; <code>1/2 HH:MM-HH:MM</code> &nbsp;|&nbsp; <code>snob HH:MM-HH:MM</code> &nbsp;(time optional)</p>
+      <textarea id="at-reqs" rows="4" style="width:100%;background:#111008;border:1px solid #4a3010;color:#d4b483;padding:8px;border-radius:4px;font-family:monospace;font-size:12px;resize:vertical" placeholder="off 02:00-03:00&#10;snob 02:00-03:00&#10;1/2 02:00-03:00"></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addTarget()" data-i18n="btn_add_target">Add Target</button>
+      <button class="btn btn-ghost" onclick="togglePanel('add-target-panel')" data-i18n="btn_cancel">Cancel</button>
+    </div>
+  </div>
+
+  <div class="form-panel" id="import-off-panel">
+    <h3 data-i18n="sec_import_off">⚔ Import Off Targets</h3>
+    <p class="note" style="margin-bottom:10px">Paste the BB-code off plan from your tribe forum.<br>
+      Lines starting with <code>[unit]ram[/unit]</code> = Complete off (or 3/4); <code>[unit]axe[/unit]</code> = 1/2 off; <code>[unit]snob[/unit]</code> = Noble attack.
+    </p>
+    <textarea id="import-off-text" rows="12" style="width:100%;background:#111008;border:1px solid #4a3010;color:#d4b483;padding:8px;border-radius:4px;font-family:monospace;font-size:12px;resize:vertical" data-i18n-placeholder="ph_off_paste" placeholder="Paste BB-code here...&#10;&#10;0. 557|555 - The Architect.&#10;[unit]ram[/unit] [player]Vanquished[/player] [b]02:00/03:00[/b]&#10;[unit]snob[/unit] [player]BigJoKeR13[/player] [b]02:00/03:00[/b]"></textarea>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="importOffTargets()" data-i18n="btn_import_off">Import Off Targets</button>
+      <button class="btn btn-ghost" onclick="closePanel('import-off-panel')" data-i18n="btn_cancel">Cancel</button>
+    </div>
+  </div>
+
+  <div class="form-panel" id="import-fake-panel">
+    <h3 data-i18n="sec_import_fake">💨 Import Fake Targets</h3>
+    <p class="note" style="margin-bottom:10px">Paste coordinates one per line (e.g. <code>557|555</code>). Each will be added as a fake target (1 spy / 1 ram).</p>
+    <textarea id="import-fake-text" rows="8" style="width:100%;background:#111008;border:1px solid #4a3010;color:#d4b483;padding:8px;border-radius:4px;font-family:monospace;font-size:12px;resize:vertical" placeholder="557|555&#10;566|567&#10;564|569"></textarea>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="importFakeTargets()" data-i18n="btn_import_fake">Import Fake Targets</button>
+      <button class="btn btn-ghost" onclick="closePanel('import-fake-panel')" data-i18n="btn_cancel">Cancel</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th data-i18n="lbl_name">Name</th>
+          <th data-i18n="lbl_id">ID</th>
+          <th data-i18n="lbl_coords">Coords</th>
+          <th data-i18n="lbl_player">Player</th>
+          <th data-i18n="lbl_type">Type</th>
+          <th data-i18n="lbl_requirements">Requirements</th>
+          <th data-i18n="lbl_actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="targets-tbody">
+        <tr class="empty-row"><td colspan="7" data-i18n="empty_targets">No targets added yet.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════ TAB: VILLAGE DB ══════════════════ -->
+<div class="tab-content" id="tab-db">
+  <div class="section-header">
+    <h2 data-i18n="tab_village_db">Village Database</h2>
+  </div>
+
+  <div class="db-controls">
+    <button class="btn btn-file" onclick="connectDbFolder()" data-i18n="btn_connect_db">⟁ Connect DB Folder</button>
+    <span id="db-status" data-i18n="db_not_connected">No folder connected</span>
+  </div>
+
+  <div class="db-controls">
+    <input type="text" id="db-search" data-i18n-placeholder="ph_db_search" placeholder="Search by name, ID, or player..." oninput="scheduleDbSearch()">
+    <span id="db-count" class="note"></span>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th data-i18n="lbl_id">ID</th>
+          <th data-i18n="lbl_name">Name</th>
+          <th data-i18n="lbl_coords">Coords</th>
+          <th data-i18n="lbl_player">Player</th>
+          <th data-i18n="lbl_points">Points</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="db-tbody">
+        <tr class="empty-row"><td colspan="6" data-i18n="empty_db">Connect a DB folder to load village data.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════ TAB: GUIDE ══════════════════ -->
+<div class="tab-content" id="tab-guide">
+  <div class="faq-columns">
+
+    <!-- ── First Setup ── -->
+    <div class="faq-col">
+      <div class="lang-en-only">
+        <h2>🚀 First Setup</h2>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">1</span> Download the Village Database</h3>
+          <p>You will need the basic <code>village.txt</code> and <code>player.txt</code> files. These can be downloaded from the game's public information files. For ES100 as an example:</p>
+          <p>Open <a href="https://es100.guerrastribales.es/map/village.txt" target="_blank" rel="noopener" style="color:#c8a060">es100.guerrastribales.es/map/village.txt</a> in your browser, then <strong>right-click → Save As</strong> and save it as <code>village.txt</code> in the same folder as this HTML file.</p>
+          <p>Do the same for <a href="https://es100.guerrastribales.es/map/player.txt" target="_blank" rel="noopener" style="color:#c8a060">es100.guerrastribales.es/map/player.txt</a> → <strong>right-click → Save As</strong> → save as <code>player.txt</code> in the same folder. These files give you village names, IDs and player data.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">2</span> Connect the Village Database</h3>
+          <p>Go to the <strong>Village DB</strong> tab → click <strong>Connect DB Folder</strong> → select the folder containing <code>village.txt</code> and <code>player.txt</code>. The folder is remembered for future sessions.</p>
+          <p>If you download updated map files later, click the button again to reconnect, or re-select the folder if needed.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">3</span> Configure world settings</h3>
+          <p>In the top bar, set <strong>World Speed</strong> and <strong>Unit Speed</strong> to match your server. For es100: World Speed <code>2×</code>, Unit Speed <code>0.5×</code>. Set <strong>My Player</strong> to your in-game name — this filters auto-generation to only your assigned requirements.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">4</span> Import your villages</h3>
+          <p><strong>Option 1 — Script (automatic):</strong> Drag the gold bookmarklet button to your browser's bookmarks bar. Open TW → Recruit → Mass Recruit tab, click the bookmark — your troops are copied to clipboard. Come back here and click <strong>📋 Paste Villages</strong>. This script only reads troop data already visible on the page — it does not interact with the game or send anything to the server.</p>
+          <p><strong>Option 2 — Save HTML manually:</strong> Open TW → Recruit → Mass Recruit tab, press <strong>Ctrl+S → Save As → HTML Only</strong>. Back here, click <strong>📄 Select HTML File</strong> and pick the saved file — villages are imported automatically. This is the safest option: no script runs on TW at all — you are simply feeding the saved HTML to the planner so it can read your units.</p>
+          <p>Use <strong>🗑 Clear Villages</strong> to remove all villages and start fresh.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">5</span> Add your villages (manual)</h3>
+          <p>In <strong>My Villages</strong>, click <strong>+ Add Village</strong> and fill in the coords, village ID, and troop counts (Axes, LC, Rams, Catapults, Nobles) manually.</p>
+        </div>
+      </div>
+      <div class="lang-es-only">
+        <h2>🚀 Configuración Inicial</h2>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">1</span> Descargar la Base de Datos</h3>
+          <p>Necesitarás los archivos básicos <code>village.txt</code> y <code>player.txt</code>. Estos se pueden descargar desde los archivos de información pública del juego. Para ES100 como ejemplo:</p>
+          <p>Abre <a href="https://es100.guerrastribales.es/map/village.txt" target="_blank" rel="noopener" style="color:#c8a060">es100.guerrastribales.es/map/village.txt</a> en tu navegador, luego <strong>clic derecho → Guardar como</strong> y guárdalo como <code>village.txt</code> en la misma carpeta que este HTML.</p>
+          <p>Haz lo mismo con <a href="https://es100.guerrastribales.es/map/player.txt" target="_blank" rel="noopener" style="color:#c8a060">es100.guerrastribales.es/map/player.txt</a> → <strong>clic derecho → Guardar como</strong> → guárdalo como <code>player.txt</code> en la misma carpeta. Estos archivos proporcionan nombres de pueblos, IDs y datos de jugadores.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">2</span> Conectar la Base de Datos</h3>
+          <p>Ve a la pestaña <strong>Base de Datos</strong> → haz clic en <strong>Conectar Carpeta BD</strong> → selecciona la carpeta con <code>village.txt</code> y <code>player.txt</code>. La carpeta se recuerda para futuras sesiones.</p>
+          <p>Si descargas archivos de mapa actualizados más adelante, vuelve a hacer clic en el botón para reconectar.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">3</span> Configurar el mundo</h3>
+          <p>En la barra superior, ajusta <strong>Velocidad Mundo</strong> y <strong>Vel. Unidades</strong> según tu servidor. Para es100: Velocidad <code>2×</code>, Vel. Unidades <code>0.5×</code>. Escribe tu nombre en <strong>Mi Jugador</strong> — esto filtra la generación automática a solo tus requisitos asignados.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">4</span> Importar pueblos</h3>
+          <p><strong>Opción 1 — Script (automático):</strong> Arrastra el botón dorado a la barra de marcadores. Abre GT → Reclutar → Reclutamiento Masivo, haz clic en el marcador — las tropas se copian al portapapeles. Vuelve aquí y haz clic en <strong>📋 Pegar Pueblos</strong>. Este script solo lee los datos de tropas ya visibles en la página — no interactúa con el juego ni envía nada al servidor.</p>
+          <p><strong>Opción 2 — Guardar HTML manualmente:</strong> Abre GT → Reclutar → Reclutamiento Masivo, pulsa <strong>Ctrl+S → Guardar como → Sólo HTML</strong>. De vuelta aquí, haz clic en <strong>📄 Seleccionar archivo HTML</strong> y elige el archivo guardado — los pueblos se importan automáticamente. Esta es la opción más segura: no se ejecuta ningún script en GT — simplemente le estás dando al planificador el HTML guardado para que lea tus unidades.</p>
+          <p>Usa <strong>🗑 Borrar Pueblos</strong> para eliminar todos los pueblos y empezar de cero.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">5</span> Añadir pueblos (manual)</h3>
+          <p>En <strong>Mis Pueblos</strong>, haz clic en <strong>+ Añadir Pueblo</strong> e introduce las coordenadas, ID del pueblo y tropas (Hachas, Lijas, Arietes, Catapultas, Nobles) manualmente.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Planning an Op ── -->
+    <div class="faq-col">
+      <div class="lang-en-only">
+        <h2>⚔ Planning an Op</h2>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">1</span> Import targets</h3>
+          <p>Go to <strong>Targets</strong> → click <strong>⚔ Off Targets</strong> and paste the BB-code op plan from your tribe forum. Lines with <code>[unit]ram[/unit]</code> = complete off, <code>[unit]axe[/unit]</code> = 1/2 off, <code>[unit]snob[/unit]</code> = noble train.</p>
+          <p>The easiest way: open the message or forum post where you received the op instructions, click <strong>Quote</strong>, and paste the whole quoted text. Everything — off sizes, times, coords, targets, players — is auto-imported.</p>
+          <p>For fake-only targets, use <strong>💨 Fake Targets</strong> and paste one coordinate per line (e.g. <code>557|555</code>). You can also add a target manually with <strong>+ Add Target</strong> — set the type (Off / Fake) and requirements directly.</p>
+          <p>Use <strong>🗑 Clear Targets</strong> to remove all targets and start a new op.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">2</span> Auto-generate attacks</h3>
+          <p>Go to <strong>Attack Plan</strong> → click <strong>⚡ Auto-Generate</strong>. Pick a landing date, configure criteria (Power, Distance, Send Window) and options, then click <strong>Generate</strong>.</p>
+          <p>Attacks appear in the table sorted by send time. Any unassigned requirements (ran out of nobles or off villages) appear as red rows — review them and assign manually if needed.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">3</span> Send your attacks</h3>
+          <p>Click <strong>⚔ Enviar</strong> on each row to open the TW rally point pre-filled with the correct troops and target. After sending, click <strong>✓ Sent</strong> to mark it — the row moves to the bottom and greys out.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">4</span> Add attacks manually</h3>
+          <p>Click <strong>+ Add Attack</strong> in the Attack Plan section header to add an individual attack. Select the source village, target, type (Off / Fake / Snob) and landing time.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">5</span> Save &amp; backup</h3>
+          <p>Data auto-saves to browser storage. Connect a local file via <strong>⟁ Connect File</strong> for persistent storage. Use <strong>↓ Export</strong> / <strong>↑ Import</strong> in the top bar for manual backups.</p>
+          <p>Use <strong>📋 Export BB Code</strong> to copy the full attack plan as a BB-code table you can post directly in your tribe forum.</p>
+        </div>
+      </div>
+      <div class="lang-es-only">
+        <h2>⚔ Planificar una Op</h2>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">1</span> Importar objetivos</h3>
+          <p>Ve a <strong>Objetivos</strong> → haz clic en <strong>⚔ Obj. Off</strong> y pega el plan BB-code del foro de tu tribu. Líneas con <code>[unit]ram[/unit]</code> = off completo, <code>[unit]axe[/unit]</code> = 1/2 off, <code>[unit]snob[/unit]</code> = tren de nobles.</p>
+          <p>La forma más fácil: abre el mensaje o post del foro donde recibiste las instrucciones de la op, haz clic en <strong>Citar</strong>, y pega todo el texto citado. Tallas de off, horarios, coordenadas, objetivos y jugadores se importan automáticamente.</p>
+          <p>Para objetivos solo de fake, usa <strong>💨 Obj. Fake</strong> y pega una coordenada por línea (ej. <code>557|555</code>). También puedes añadir un objetivo manualmente con <strong>+ Añadir Objetivo</strong> — establece el tipo (Off / Fake) y los requisitos directamente.</p>
+          <p>Usa <strong>🗑 Borrar Objetivos</strong> para eliminar todos los objetivos y empezar una nueva op.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">2</span> Auto-generar ataques</h3>
+          <p>Ve a <strong>Plan de Ataque</strong> → haz clic en <strong>⚡ Auto-Generar</strong>. Elige una fecha de llegada, configura los criterios (Poder, Distancia, Ventana de Envío) y opciones, y haz clic en <strong>Generar</strong>.</p>
+          <p>Los ataques aparecen en la tabla ordenados por hora de envío. Los requisitos sin asignar (sin nobles ni pueblos off disponibles) aparecen como filas rojas — revísalos y asígnalos manualmente si es necesario.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">3</span> Enviar los ataques</h3>
+          <p>Haz clic en <strong>⚔ Enviar</strong> en cada fila para abrir la plaza de reuniones pre-rellenada con las tropas y el objetivo correctos. Tras enviar, haz clic en <strong>✓ Enviado</strong> — la fila baja al fondo y se oscurece.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">4</span> Añadir ataques manualmente</h3>
+          <p>Haz clic en <strong>+ Añadir Ataque</strong> en la cabecera del Plan de Ataque para añadir un ataque individual. Selecciona el pueblo de origen, objetivo, tipo (Off / Fake / Noble) y hora de llegada.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">5</span> Guardar y hacer copia de seguridad</h3>
+          <p>Los datos se guardan automáticamente en el navegador. Conecta un archivo local con <strong>⟁ Conectar Archivo</strong> para almacenamiento persistente. Usa <strong>↓ Exportar</strong> / <strong>↑ Importar</strong> en la barra superior para copias manuales.</p>
+          <p>Usa <strong>📋 Exportar BB Code</strong> para copiar el plan de ataque completo como tabla BB-code y pegarlo directamente en el foro de tu tribu.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════ MODAL: EDIT VILLAGE ══════════════════ -->
+<div class="modal-backdrop" id="modal-village">
+  <div class="modal">
+    <h3 data-i18n="modal_edit_village">Edit Village</h3>
+    <input type="hidden" id="mv-id">
+    <div class="form-grid">
+      <div class="form-group">
+        <label data-i18n="lbl_name">Name</label>
+        <input type="text" id="mv-name">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_village_id">Village ID</label>
+        <input type="number" id="mv-vid">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_x">X</label>
+        <input type="number" id="mv-x">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_y">Y</label>
+        <input type="number" id="mv-y">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_axes">Axes</label>
+        <input type="number" id="mv-axes" min="0">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_lc">LC</label>
+        <input type="number" id="mv-lc" min="0">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_rams">Rams</label>
+        <input type="number" id="mv-rams" min="0">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_catapults">Catapults</label>
+        <input type="number" id="mv-cats" min="0">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_nobles">Nobles</label>
+        <input type="number" id="mv-nobles" min="0">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="saveVillage()" data-i18n="btn_save">Save</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-village')" data-i18n="btn_cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ MODAL: EDIT TARGET ══════════════════ -->
+<div class="modal-backdrop" id="modal-target">
+  <div class="modal">
+    <h3 data-i18n="modal_edit_target">Edit Target</h3>
+    <input type="hidden" id="mt-id">
+    <div class="form-grid">
+      <div class="form-group">
+        <label data-i18n="lbl_x">X</label>
+        <input type="number" id="mt-x" oninput="dbAutoFillModal()">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_y">Y</label>
+        <input type="number" id="mt-y" oninput="dbAutoFillModal()">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_name">Name</label>
+        <input type="text" id="mt-name">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_village_id">Village ID</label>
+        <input type="number" id="mt-vid">
+      </div>
+      <div class="form-group" style="grid-column: span 2">
+        <label data-i18n="lbl_player">Player</label>
+        <input type="text" id="mt-player">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="saveTarget()" data-i18n="btn_save">Save</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-target')" data-i18n="btn_cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ MODAL: AUTO-GENERATE ══════════════════ -->
+<div class="modal-backdrop" id="modal-autogen">
+  <div class="modal">
+    <h3 data-i18n="modal_autogen">⚡ Auto-Generate Attacks</h3>
+    <div class="form-grid">
+      <div class="form-group" style="grid-column:span 2">
+        <label data-i18n="lbl_landing_date">Landing Date</label>
+        <input type="date" id="ag-date">
+      </div>
+      <div class="form-group" style="grid-column:span 2">
+        <label><span data-i18n="ag_criteria_label">Off Assignment Criteria</span> <small style="color:#806838;font-weight:normal" data-i18n="ag_criteria_hint">(priority order: Power → Distance → Window)</small></label>
+        <div style="display:flex;flex-direction:column;gap:7px;margin-top:5px">
+          <label style="font-weight:normal;cursor:pointer;color:#d4b483">
+            <input type="checkbox" id="ag-crit-power" checked onchange="updateAutoGenPreview()">
+            &nbsp;<span data-i18n="ag_crit_power">Power — strongest for complete offs, weakest qualifying for 1/2 offs</span>
+          </label>
+          <label style="font-weight:normal;cursor:pointer;color:#d4b483">
+            <input type="checkbox" id="ag-crit-distance" checked onchange="updateAutoGenPreview()">
+            &nbsp;<span data-i18n="ag_crit_distance">Distance — prefer closest available village</span>
+          </label>
+          <label style="font-weight:normal;cursor:pointer;color:#d4b483">
+            <input type="checkbox" id="ag-crit-window" onchange="updateAutoGenPreview()">
+            &nbsp;<span data-i18n="ag_crit_window">Send window — prefer send times closest to the target arrival window</span>
+          </label>
+        </div>
+      </div>
+      <div class="form-group" style="grid-column:span 2">
+        <label data-i18n="lbl_options">Options</label>
+        <label style="font-weight:normal;cursor:pointer;color:#d4b483;margin-top:5px">
+          <input type="checkbox" id="ag-include-fakes" onchange="updateAutoGenPreview()">
+          &nbsp;<span data-i18n="ag_include_fakes">Include fakes</span>
+        </label>
+        <div style="margin-top:5px">
+          <label style="font-weight:normal;cursor:pointer;color:#d4b483">
+            <input type="checkbox" id="ag-divided-off-all" onchange="toggleAllDividedOff(this.checked)">
+            &nbsp;<span data-i18n-html="ag_divided_off_label"><strong>Divided Off</strong> — for selected villages: split troops evenly with nobles, exclude from separate off plan</span>
+          </label>
+          <div id="ag-divided-off-villages" style="margin-top:6px;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:#5a3a18">
+            <!-- populated on open -->
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note" data-i18n-html="ag_note" style="margin-top:10px;line-height:1.6">
+      Landing times are taken from each target's requirements (e.g. 02:00).<br>
+      • <strong>Off villages</strong> (≥1/2 power): 1 real off per assigned target.<br>
+      • <strong>Fakes</strong> (when enabled): up to 10 per village with rams, to fake &amp; off targets.<br>
+      • <strong>Snobs</strong>: trains of 4 from the village with most nobles.
+    </p>
+    <div id="ag-preview" style="margin-top:12px;padding:10px;background:#160f04;border-radius:4px;font-size:12px;color:#a08850;min-height:40px"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="runAutoGenerate()" data-i18n="btn_generate">Generate</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-autogen')" data-i18n="btn_cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ MODAL: EXPORT ══════════════════ -->
+<div class="modal-backdrop" id="modal-export">
+  <div class="modal" style="max-width:860px">
+    <h3 data-i18n="modal_export">📋 Export to Notepad</h3>
+    <textarea id="export-text" readonly style="width:100%;height:320px;background:#111008;border:1px solid #4a3010;color:#d4b483;padding:8px;border-radius:4px;font-family:monospace;font-size:11px;resize:vertical"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="copyExportText()" data-i18n="btn_copy_all">Copy All</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-export')" data-i18n="btn_close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ MODAL: EDIT ATTACK ══════════════════ -->
+<div class="modal-backdrop" id="modal-attack">
+  <div class="modal">
+    <h3 data-i18n="modal_edit_attack">Edit Attack</h3>
+    <input type="hidden" id="ma-id">
+    <div class="form-grid wide">
+      <div class="form-group">
+        <label data-i18n="lbl_from_village">From Village</label>
+        <select id="ma-from"></select>
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_target">Target</label>
+        <select id="ma-target"></select>
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_type">Type</label>
+        <select id="ma-type" onchange="onAttackTypeChange('ma-noble-row')">
+          <option value="off" data-i18n="opt_off">Off (Rams)</option>
+          <option value="fake" data-i18n="opt_fake">Fake (1 spy/1 ram)</option>
+          <option value="snob" data-i18n="opt_snob">Snob (Nobleman)</option>
+        </select>
+      </div>
+      <div class="form-group hidden" id="ma-noble-row">
+        <label data-i18n="lbl_noble_count">Noble Count</label>
+        <input type="number" id="ma-nobles" value="1" min="1" max="4">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_landing_time">Landing Time</label>
+        <input type="datetime-local" id="ma-landing" step="1">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="saveAttack()" data-i18n="btn_save">Save</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-attack')" data-i18n="btn_cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════
+// i18n
+// ══════════════════════════════════════════════
+
+const LANG = {
+  en: {
+    // Header
+    lang_label: 'Lang',
+    lbl_server: 'Server',
+    lbl_world_speed: 'World Speed',
+    lbl_unit_speed: 'Unit Speed',
+    lbl_my_player: 'My Player',
+
+    // File bar
+    file_not_connected: 'No file connected',
+    file_connected: 'Connected',
+    btn_connect_file: '⟁ Connect File',
+    btn_export: '↓ Export',
+    btn_import: '↑ Import',
+
+    // Tabs
+    tab_attack_plan: '⚔ Attack Plan',
+    tab_my_villages: '🏰 My Villages',
+    tab_targets: '🎯 Targets',
+    tab_village_db: '🗃 Village DB',
+    tab_guide: '📖 Guide',
+
+    // Section / modal titles
+    sec_new_attack: 'New Attack',
+    sec_add_village: 'Add Village',
+    sec_add_target: 'Add Target',
+    sec_import_off: '⚔ Import Off Targets',
+    sec_import_fake: '💨 Import Fake Targets',
+    modal_edit_village: 'Edit Village',
+    modal_edit_target: 'Edit Target',
+    modal_autogen: '⚡ Auto-Generate Attacks',
+    modal_export: '📋 Export to Notepad',
+    modal_edit_attack: 'Edit Attack',
+
+    // Buttons
+    btn_export_notepad: '📋 Export BB Code',
+    btn_clear_all: '🗑 Clear All',
+    btn_clear_sent: '🗑 Clear Sent',
+    btn_auto_generate: '⚡ Auto-Generate',
+    btn_add_attack: '+ Add Attack',
+    btn_add_village: '+ Add Village',
+    btn_clear_villages: '🗑 Clear Villages',
+    btn_add_target: '+ Add Target',
+    btn_clear_targets: '🗑 Clear Targets',
+    btn_paste_villages: '📋 Paste Villages',
+    btn_import_off: 'Import Off Targets',
+    btn_import_fake: 'Import Fake Targets',
+    btn_enrich: '✦ Enrich from DB',
+    btn_enrich_title: 'Fill missing data from Village DB',
+    btn_fake_targets: '💨 Fake Targets',
+    btn_off_targets: '⚔ Off Targets',
+    btn_connect_db: '⟁ Connect DB Folder',
+    btn_generate: 'Generate',
+    btn_copy_all: 'Copy All',
+    btn_close: 'Close',
+    btn_save: 'Save',
+    btn_cancel: 'Cancel',
+    btn_copy: 'Copy',
+    btn_copied: '✓ Copied!',
+    btn_send: '⚔ Send',
+    btn_copy_url: '⎘ Copy',
+    btn_mark_sent: '✓ Sent',
+    btn_unmark_sent: '↩ Unmark',
+
+    // Bookmarklet
+    bm_title: '📥 Import bookmarklet — run on your TW Mass Recruit page',
+    bm_drag: '🔖 Drag to bookmarks bar',
+    bm_drag_title: 'Drag this to your bookmarks bar',
+    bm_note: '1. Drag the gold button to your bookmarks bar. 2. Open TW → Recruit → Mass Recruit tab. 3. Click the bookmark — your troops are copied to clipboard. 4. Come back here and click "📋 Paste Villages". This script only reads troop data already visible on the page — it does not interact with the game or send anything to the server.',
+    bm_opt1_title: '⚡ Option 1 — Script (automatic)',
+    bm_opt2_title: '📄 Option 2 — Save HTML manually',
+    btn_select_html: '📄 Select HTML File',
+    bm_opt2_note: '1. Open TW → Recruit → Mass Recruit tab. 2. Press Ctrl+S → Save As → save the page as HTML Only. 3. Click "Select HTML File" and pick the saved file — villages are imported automatically. This is the safest option: no script runs on TW at all — you are simply feeding the saved HTML to the planner so it can read your units.',
+
+    // Form labels
+    lbl_from_village: 'From Village',
+    lbl_target: 'Target',
+    lbl_type: 'Type',
+    lbl_noble_count: 'Noble Count',
+    lbl_landing_time: 'Landing Time',
+    lbl_landing_date: 'Landing Date',
+    lbl_criteria: 'Off Assignment Criteria',
+    lbl_options: 'Options',
+    ag_criteria_label: 'Off Assignment Criteria',
+    ag_criteria_hint: '(priority order: Power → Distance → Window)',
+    ag_crit_power: 'Power — strongest for complete offs, weakest qualifying for 1/2 offs',
+    ag_crit_distance: 'Distance — prefer closest available village',
+    ag_crit_window: 'Send window — prefer send times closest to the target arrival window',
+    ag_include_fakes: 'Include fakes',
+    ag_divided_off_label: '<strong>Divided Off</strong> — for selected villages: split troops evenly with nobles, exclude from separate off plan',
+    ag_note: 'Landing times are taken from each target\'s requirements (e.g. 02:00).<br>• <strong>Off villages</strong> (≥1/2 power): 1 real off per assigned target.<br>• <strong>Fakes</strong> (when enabled): up to 10 per village with rams, to fake &amp; off targets.<br>• <strong>Snobs</strong>: trains of 4 from the village with most nobles.',
+    ag_no_nobles: 'No villages with nobles',
+    lbl_name: 'Name',
+    lbl_village_id: 'Village ID',
+    lbl_player: 'Player',
+    lbl_axes: 'Axes',
+    lbl_lc: 'LC',
+    lbl_rams: 'Rams',
+    lbl_catapults: 'Catapults',
+    lbl_nobles: 'Nobles',
+    lbl_escort_axes: 'Escort Axes/Noble',
+    lbl_escort_lc: 'Escort LC/Noble',
+    lbl_x: 'X',
+    lbl_y: 'Y',
+
+    // Table headers
+    lbl_from: 'From',
+    lbl_village_name: 'Village Name',
+    lbl_off_power: 'Off Power',
+    lbl_dist: 'Dist',
+    lbl_travel: 'Travel',
+    lbl_landing: 'Landing',
+    lbl_send_at: 'Send At',
+    lbl_countdown: 'Countdown',
+    lbl_attack: 'Attack',
+    lbl_actions: 'Actions',
+    lbl_id: 'ID',
+    lbl_coords: 'Coords',
+    lbl_cats: 'Cats',
+    lbl_escort_axe_lc: 'Escort Axe/LC',
+    lbl_requirements: 'Requirements',
+    lbl_points: 'Points',
+
+    // Select options
+    opt_off: 'Off (Rams)',
+    opt_fake: 'Fake (1 spy/1 ram)',
+    opt_snob: 'Snob (Nobleman)',
+    opt_target_off: 'Off',
+    opt_target_fake: 'Fake',
+
+    // Placeholders
+    ph_filter: 'Filter\u2026',
+    ph_db_search: 'Search by name, ID, or player\u2026',
+    ph_off_paste: 'Paste BB-code here\u2026',
+
+    // Empty states
+    empty_attacks: 'No attacks planned yet. Click \u201c+ Add Attack\u201d to begin.',
+    empty_attacks_filtered: 'No attacks match the current filters.',
+    empty_villages: 'No villages added yet.',
+    empty_targets: 'No targets added yet.',
+    empty_db: 'Connect a DB folder to load village data.',
+    db_not_connected: 'No folder connected',
+
+    // DB
+    db_showing: 'Showing 200 of {total}',
+    db_error_loading: 'Error loading files',
+    db_no_data: 'No data loaded.',
+    empty_no_results: 'No results.',
+
+    // Countdown statuses
+    status_sent: 'SENT',
+    status_send_now: 'SEND NOW!',
+    status_late: 'LATE',
+
+    // Alerts & confirms
+    alert_invalid_json: 'Invalid JSON file.',
+    alert_already_target: 'This village is already in your targets list.',
+    alert_no_db: 'No village DB loaded. Connect a DB folder first (Village DB tab).',
+    alert_enriched: 'Enriched {n} target(s).',
+    alert_village_name_required: 'Village name is required.',
+    alert_coords_required: 'Coordinates are required.',
+    alert_delete_village: 'Delete this village?',
+    alert_delete_target: 'Delete this target?',
+    alert_delete_attack: 'Delete this attack?',
+    alert_delete_all: 'DELETE ALL attacks? This cannot be undone.',
+    alert_clear_sent: 'Remove all sent attacks?',
+    alert_clear_villages: 'DELETE ALL villages? This cannot be undone.',
+    alert_clear_targets: 'DELETE ALL targets? This cannot be undone.',
+    alert_no_targets_found: 'No targets found. Check the format.',
+    alert_off_imported: 'Off targets: {added} added, {updated} updated.',
+    alert_fake_imported: 'Fake targets: {added} added, {skipped} skipped.',
+    alert_no_targets: 'No targets added. Import targets first.',
+    alert_no_villages: 'No villages added. Add your villages first.',
+    alert_pick_date: 'Pick a landing date.',
+    alert_no_attacks_generated: 'No attacks could be generated.\nCheck that villages have troops and targets have requirements.',
+    alert_generated: 'Generated {total} attacks:\n\u2022 {offs} off(s)\n\u2022 {snobs} snob train(s)\n\u2022 {fakes} fake(s)',
+    alert_generated_unassigned: '\n\n\u26a0 {n} requirement(s) unassigned \u2014 shown as red rows in My Attacks.',
+    alert_select_from: 'Select a From Village.',
+    alert_select_target: 'Select a Target.',
+    alert_set_landing: 'Set a Landing Time.',
+    alert_no_attacks_export: 'No attacks to export.',
+    alert_bm_copied: 'Bookmarklet code copied to clipboard!',
+    alert_invalid_format: 'Invalid format \u2014 expected {villages: [...]}',
+    alert_import_villages_ok: 'Import complete: {added} added, {updated} updated.',
+    alert_parse_error: 'Could not parse JSON: ',
+  },
+
+  es: {
+    // Header
+    lang_label: 'Idioma',
+    lbl_server: 'Servidor',
+    lbl_world_speed: 'Velocidad Mundo',
+    lbl_unit_speed: 'Vel. Unidades',
+    lbl_my_player: 'Mi Jugador',
+
+    // File bar
+    file_not_connected: 'Sin archivo conectado',
+    file_connected: 'Conectado',
+    btn_connect_file: '⟁ Conectar Archivo',
+    btn_export: '↓ Exportar',
+    btn_import: '↑ Importar',
+
+    // Tabs
+    tab_attack_plan: '⚔ Plan de Ataque',
+    tab_my_villages: '🏰 Mis Pueblos',
+    tab_targets: '🎯 Objetivos',
+    tab_village_db: '🗃 Base de Datos',
+    tab_guide: '📖 Guía',
+
+    // Section / modal titles
+    sec_new_attack: 'Nuevo Ataque',
+    sec_add_village: 'Añadir Pueblo',
+    sec_add_target: 'Añadir Objetivo',
+    sec_import_off: '⚔ Importar Objetivos Off',
+    sec_import_fake: '💨 Importar Objetivos Fake',
+    modal_edit_village: 'Editar Pueblo',
+    modal_edit_target: 'Editar Objetivo',
+    modal_autogen: '⚡ Generar Ataques',
+    modal_export: '📋 Exportar al Bloc',
+    modal_edit_attack: 'Editar Ataque',
+
+    // Buttons
+    btn_export_notepad: '📋 Exportar BB Code',
+    btn_clear_all: '🗑 Borrar Todo',
+    btn_clear_sent: '🗑 Borrar Enviados',
+    btn_auto_generate: '⚡ Auto-Generar',
+    btn_add_attack: '+ Añadir Ataque',
+    btn_add_village: '+ Añadir Pueblo',
+    btn_clear_villages: '🗑 Borrar Pueblos',
+    btn_add_target: '+ Añadir Objetivo',
+    btn_clear_targets: '🗑 Borrar Objetivos',
+    btn_paste_villages: '📋 Pegar Pueblos',
+    btn_import_off: 'Importar Obj. Off',
+    btn_import_fake: 'Importar Obj. Fake',
+    btn_enrich: '✦ Completar desde BD',
+    btn_enrich_title: 'Rellenar datos faltantes desde la Base de Datos',
+    btn_fake_targets: '💨 Obj. Fake',
+    btn_off_targets: '⚔ Obj. Off',
+    btn_connect_db: '⟁ Conectar Carpeta BD',
+    btn_generate: 'Generar',
+    btn_copy_all: 'Copiar Todo',
+    btn_close: 'Cerrar',
+    btn_save: 'Guardar',
+    btn_cancel: 'Cancelar',
+    btn_copy: 'Copiar',
+    btn_copied: '✓ Copiado!',
+    btn_send: '⚔ Enviar',
+    btn_copy_url: '⎘ Copiar',
+    btn_mark_sent: '✓ Enviado',
+    btn_unmark_sent: '↩ Deshacer',
+
+    // Bookmarklet
+    bm_title: '📥 Script de importación — ejecútalo en la página de Reclutamiento Masivo',
+    bm_drag: '🔖 Arrastra a marcadores',
+    bm_drag_title: 'Arrastra este botón a la barra de marcadores',
+    bm_note: '1. Arrastra el botón dorado a la barra de marcadores. 2. Abre GT → Reclutar → Reclutamiento Masivo. 3. Haz clic en el marcador — las tropas se copian al portapapeles. 4. Vuelve aquí y haz clic en "📋 Pegar Pueblos". Este script solo lee los datos de tropas ya visibles en la página — no interactúa con el juego ni envía nada al servidor.',
+    bm_opt1_title: '⚡ Opción 1 — Script (automático)',
+    bm_opt2_title: '📄 Opción 2 — Guardar HTML manualmente',
+    btn_select_html: '📄 Seleccionar archivo HTML',
+    bm_opt2_note: '1. Abre GT → Reclutar → Reclutamiento Masivo. 2. Pulsa Ctrl+S → Guardar como → guarda la página como "Sólo HTML". 3. Haz clic en "Seleccionar archivo HTML" y elige el archivo guardado — los pueblos se importan automáticamente. Esta es la opción más segura: no se ejecuta ningún script en GT — simplemente le estás dando al planificador el HTML guardado para que lea tus unidades.',
+
+    // Form labels
+    lbl_from_village: 'Desde Pueblo',
+    lbl_target: 'Objetivo',
+    lbl_type: 'Tipo',
+    lbl_noble_count: 'Nº Nobles',
+    lbl_landing_time: 'Hora de Llegada',
+    lbl_landing_date: 'Fecha de Llegada',
+    lbl_criteria: 'Criterios de Asignación Off',
+    lbl_options: 'Opciones',
+    ag_criteria_label: 'Criterios de Asignación Off',
+    ag_criteria_hint: '(orden de prioridad: Poder → Distancia → Ventana)',
+    ag_crit_power: 'Poder — el más fuerte para offs completos, el más débil para offs 1/2',
+    ag_crit_distance: 'Distancia — preferir el pueblo disponible más cercano',
+    ag_crit_window: 'Ventana de envío — preferir horarios de envío cercanos a la ventana de llegada',
+    ag_include_fakes: 'Incluir fakes',
+    ag_divided_off_label: '<strong>Off Dividido</strong> — para los pueblos seleccionados: dividir tropas con nobles, excluir del plan off separado',
+    ag_note: 'Los horarios de llegada se toman de los requisitos de cada objetivo (ej. 02:00).<br>• <strong>Pueblos off</strong> (≥1/2 poder): 1 off real por objetivo asignado.<br>• <strong>Fakes</strong> (si están activados): hasta 10 por pueblo con arietes, a objetivos fake y off.<br>• <strong>Nobles</strong>: trenes de 4 desde el pueblo con más nobles.',
+    ag_no_nobles: 'Sin pueblos con nobles',
+    lbl_name: 'Nombre',
+    lbl_village_id: 'ID de Pueblo',
+    lbl_player: 'Jugador',
+    lbl_axes: 'Hachas',
+    lbl_lc: 'Lijas',
+    lbl_rams: 'Arietes',
+    lbl_catapults: 'Catapultas',
+    lbl_nobles: 'Nobles',
+    lbl_escort_axes: 'Hacha Escolta/Noble',
+    lbl_escort_lc: 'Lija Escolta/Noble',
+    lbl_x: 'X',
+    lbl_y: 'Y',
+
+    // Table headers
+    lbl_from: 'Desde',
+    lbl_village_name: 'Nombre',
+    lbl_off_power: 'Poder Off',
+    lbl_dist: 'Dist.',
+    lbl_travel: 'Viaje',
+    lbl_landing: 'Llegada',
+    lbl_send_at: 'Enviar a',
+    lbl_countdown: 'Cuenta Atrás',
+    lbl_attack: 'Atacar',
+    lbl_actions: 'Acciones',
+    lbl_id: 'ID',
+    lbl_coords: 'Coords',
+    lbl_cats: 'Catas',
+    lbl_escort_axe_lc: 'Hacha/Lija Escolta',
+    lbl_requirements: 'Requisitos',
+    lbl_points: 'Puntos',
+
+    // Select options
+    opt_off: 'Off (Arietes)',
+    opt_fake: 'Fake (1 esp/1 ariete)',
+    opt_snob: 'Noble (Tren de nobles)',
+    opt_target_off: 'Off',
+    opt_target_fake: 'Fake',
+
+    // Placeholders
+    ph_filter: 'Filtrar\u2026',
+    ph_db_search: 'Buscar por nombre, ID o jugador\u2026',
+    ph_off_paste: 'Pega el BB-code aquí\u2026',
+
+    // Empty states
+    empty_attacks: 'No hay ataques planificados. Haz clic en \u201c+ Añadir Ataque\u201d para comenzar.',
+    empty_attacks_filtered: 'Ningún ataque coincide con los filtros.',
+    empty_villages: 'No hay pueblos añadidos.',
+    empty_targets: 'No hay objetivos añadidos.',
+    empty_db: 'Conecta una carpeta BD para cargar los datos.',
+    db_not_connected: 'Sin carpeta conectada',
+
+    // DB
+    db_showing: 'Mostrando 200 de {total}',
+    db_error_loading: 'Error al cargar archivos',
+    db_no_data: 'Sin datos cargados.',
+    empty_no_results: 'Sin resultados.',
+
+    // Countdown statuses
+    status_sent: 'ENVIADO',
+    status_send_now: '¡ENVIAR AHORA!',
+    status_late: 'TARDE',
+
+    // Alerts & confirms
+    alert_invalid_json: 'Archivo JSON inválido.',
+    alert_already_target: 'Este pueblo ya está en tu lista de objetivos.',
+    alert_no_db: 'No hay BD cargada. Conecta una carpeta en la pestaña Base de Datos.',
+    alert_enriched: '{n} objetivo(s) completado(s).',
+    alert_village_name_required: 'El nombre del pueblo es obligatorio.',
+    alert_coords_required: 'Las coordenadas son obligatorias.',
+    alert_delete_village: '¿Eliminar este pueblo?',
+    alert_delete_target: '¿Eliminar este objetivo?',
+    alert_delete_attack: '¿Eliminar este ataque?',
+    alert_delete_all: '¿ELIMINAR TODOS los ataques? Esta acción no se puede deshacer.',
+    alert_clear_sent: '¿Eliminar todos los ataques enviados?',
+    alert_clear_villages: '¿ELIMINAR TODOS los pueblos? Esta acción no se puede deshacer.',
+    alert_clear_targets: '¿ELIMINAR TODOS los objetivos? Esta acción no se puede deshacer.',
+    alert_no_targets_found: 'No se encontraron objetivos. Comprueba el formato.',
+    alert_off_imported: 'Obj. off: {added} añadidos, {updated} actualizados.',
+    alert_fake_imported: 'Obj. fake: {added} añadidos, {skipped} omitidos.',
+    alert_no_targets: 'No hay objetivos. Importa primero los objetivos.',
+    alert_no_villages: 'No hay pueblos. Añade primero tus pueblos.',
+    alert_pick_date: 'Selecciona una fecha de llegada.',
+    alert_no_attacks_generated: 'No se pudieron generar ataques.\nComprueba que los pueblos tienen tropas y los objetivos tienen requisitos.',
+    alert_generated: 'Generados {total} ataques:\n\u2022 {offs} off(s)\n\u2022 {snobs} tren(es) de nobles\n\u2022 {fakes} fake(s)',
+    alert_generated_unassigned: '\n\n\u26a0 {n} requisito(s) sin asignar \u2014 mostrados como filas rojas en Mi Plan.',
+    alert_select_from: 'Selecciona un pueblo de origen.',
+    alert_select_target: 'Selecciona un objetivo.',
+    alert_set_landing: 'Establece una hora de llegada.',
+    alert_no_attacks_export: 'No hay ataques para exportar.',
+    alert_bm_copied: '¡Código del script copiado al portapapeles!',
+    alert_invalid_format: 'Formato inválido \u2014 se esperaba {villages: [...]}',
+    alert_import_villages_ok: 'Importación completa: {added} añadidos, {updated} actualizados.',
+    alert_parse_error: 'No se pudo parsear el JSON: ',
+  }
+};
+
+let currentLang = 'en';
+
+function t(key) {
+  return (LANG[currentLang] && LANG[currentLang][key] !== undefined)
+    ? LANG[currentLang][key]
+    : (LANG.en[key] !== undefined ? LANG.en[key] : key);
+}
+
+function applyTranslations() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
+  document.querySelectorAll('[data-i18n-html]').forEach(el => {
+    el.innerHTML = t(el.getAttribute('data-i18n-html'));
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    el.title = t(el.getAttribute('data-i18n-title'));
+  });
+  document.body.dataset.lang = currentLang;
+  updateLangButtons();
+}
+
+function updateLangButtons() {
+  ['en', 'es'].forEach(l => {
+    const btn = document.getElementById('lang-btn-' + l);
+    if (btn) btn.classList.toggle('lang-active', l === currentLang);
+  });
+}
+
+function changeLang(lang) {
+  currentLang = lang;
+  DATA.settings.lang = lang;
+  saveData();
+  applyTranslations();
+  renderAll();
+}
+
+// ══════════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════════
+
+let DATA = {
+  settings: { worldSpeed: 2, unitSpeed: 0.5, serverUrl: 'es100.guerrastribales.es', playerName: '', lang: 'en' },
+  villages: [],
+  targets:  [],
+  attacks:  []
+};
+
+let villageDb   = [];   // { id, name, x, y, playerId, points }
+let playerMap   = {};   // playerId → playerName
+let fileHandle  = null;
+let dbDirHandle = null;
+let dbSearchTimer = null;
+let attackSortCol = 'sendAt';
+let attackSortDir = 1;
+
+const LS_KEY    = 'tw_attack_planner';
+const IDB_FILE  = 'apFileHandle';
+const IDB_DB    = 'apDbDir';
+
+// ══════════════════════════════════════════════
+// MATH / FORMULAS
+// ══════════════════════════════════════════════
+
+const BASE_MIN = { off: 30, fake: 30, snob: 35 };
+
+// Off power weights (standard TW attack values)
+const ATT = { axe: 40, lc: 130, rams: 2, cats: 100, nobles: 30 };
+// Tier thresholds
+const TIER = { complete: 500000, tq: 350000, half: 250000 };
+
+function calcOffPow(v) {
+  return (v.axes||0)*ATT.axe + (v.lc||0)*ATT.lc + (v.rams||0)*ATT.rams + (v.cats||0)*ATT.cats + (v.nobles||0)*ATT.nobles;
+}
+
+function offTierBadge(pow) {
+  if (pow >= TIER.complete) return `<span class="badge badge-complete">Complete</span>`;
+  if (pow >= TIER.tq)       return `<span class="badge badge-tq">3/4</span>`;
+  if (pow >= TIER.half)     return `<span class="badge badge-half">1/2</span>`;
+  if (pow > 0)              return `<span class="badge badge-low">Low</span>`;
+  return `<span class="badge badge-low">—</span>`;
+}
+
+function dist(a, b) {
+  return Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+}
+
+function travelMs(d, type, ws, us) {
+  return d * BASE_MIN[type] / (ws * us) * 60000;
+}
+
+function computeAttackRow(atk) {
+  const village = DATA.villages.find(v => v.id === atk.fromId);
+  const target  = DATA.targets.find(t => t.id === atk.targetId);
+  const ws = DATA.settings.worldSpeed;
+  const us = DATA.settings.unitSpeed;
+
+  if (!village || !target) return null;
+
+  const d      = dist(village, target);
+  const tMs    = travelMs(d, atk.type, ws, us);
+  const landMs = new Date(atk.landingTime).getTime();
+  const sendMs = landMs - tMs;
+  const url    = buildAttackUrl(
+    DATA.settings.serverUrl,
+    village.villageId,
+    target.villageId,
+    atk.type,
+    village,
+    atk.nobleCount,
+    atk.dividedOff
+  );
+  return { d, tMs, sendMs, landMs, url };
+}
+
+function buildAttackUrl(server, fromVillageId, targetVillageId, type, village, nobleCount, dividedOff = false) {
+  const base = `https://${server}/game.php?village=${fromVillageId}&screen=place&target=${targetVillageId}&attack=true`;
+  if (type === 'fake') {
+    return `${base}&spy=1&ram=1`;
+  }
+  if (type === 'off') {
+    return `${base}&axe=${village.axes||0}&light=${village.lc||0}&ram=${village.rams||0}&catapult=${village.cats||0}`;
+  }
+  // snob — always send 1 noble per URL; escort = troops divided by noble count
+  const nc = Math.max(1, nobleCount || 1);
+  return `${base}&snob=1&axe=${Math.floor((village.axes||0)/nc)}&light=${Math.floor((village.lc||0)/nc)}`;
+}
+
+function fmtDuration(ms) {
+  if (ms < 0) ms = -ms;
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function fmtDateLocal(isoStr) {
+  if (!isoStr) return '-';
+  const d = new Date(isoStr);
+  const pad = n => String(n).padStart(2,'0');
+  return `${pad(d.getDate())}/${pad(d.getMonth()+1)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function fmtMs(ms) {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${h}h ${m}m ${s}s`;
+}
+
+function localDatetimeValue(ms) {
+  const d = new Date(ms);
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+// ══════════════════════════════════════════════
+// PERSISTENCE — localStorage
+// ══════════════════════════════════════════════
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      DATA = { ...DATA, ...parsed };
+      // ensure arrays exist
+      if (!Array.isArray(DATA.villages)) DATA.villages = [];
+      if (!Array.isArray(DATA.targets))  DATA.targets  = [];
+      if (!Array.isArray(DATA.attacks))  DATA.attacks  = [];
+      if (!DATA.settings) DATA.settings = { worldSpeed: 2, unitSpeed: 0.5, serverUrl: 'es100.guerrastribales.es' };
+      if (DATA.settings.lang) { currentLang = DATA.settings.lang; }
+    }
+  } catch(e) { /* ignore */ }
+}
+
+function saveData() {
+  localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+  writeFileIfConnected();
+}
+
+// ══════════════════════════════════════════════
+// PERSISTENCE — File System Access API
+// ══════════════════════════════════════════════
+
+async function openIdb() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open('tw_attack_planner_idb', 1);
+    req.onupgradeneeded = e => {
+      e.target.result.createObjectStore('handles');
+    };
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = e => rej(e);
+  });
+}
+
+async function idbSet(key, val) {
+  const db = await openIdb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').put(val, key);
+    tx.oncomplete = () => res();
+    tx.onerror = e => rej(e);
+  });
+}
+
+async function idbGet(key) {
+  const db = await openIdb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('handles', 'readonly');
+    const req = tx.objectStore('handles').get(key);
+    req.onsuccess = () => res(req.result);
+    req.onerror   = e => rej(e);
+  });
+}
+
+async function tryAutoConnect() {
+  try {
+    const h = await idbGet(IDB_FILE);
+    if (!h) return;
+    const perm = await h.queryPermission({ mode: 'readwrite' });
+    if (perm === 'granted') {
+      fileHandle = h;
+      setFileStatus(true, h.name);
+    } else {
+      const req = await h.requestPermission({ mode: 'readwrite' });
+      if (req === 'granted') {
+        fileHandle = h;
+        setFileStatus(true, h.name);
+      }
+    }
+  } catch(e) { /* no handle stored */ }
+}
+
+async function tryAutoConnectDb() {
+  try {
+    const h = await idbGet(IDB_DB);
+    if (!h) return;
+    const perm = await h.queryPermission({ mode: 'read' });
+    if (perm === 'granted') {
+      dbDirHandle = h;
+      await loadDbFiles();
+    }
+  } catch(e) { /* no handle stored */ }
+}
+
+async function connectFile() {
+  try {
+    const [h] = await window.showOpenFilePicker({
+      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
+      multiple: false
+    }).catch(() => [null]);
+    if (!h) return;
+    fileHandle = h;
+    await idbSet(IDB_FILE, h);
+    setFileStatus(true, h.name);
+    // read existing content
+    const file = await h.getFile();
+    const text = await file.text();
+    try {
+      const parsed = JSON.parse(text);
+      DATA = { ...DATA, ...parsed };
+      if (!Array.isArray(DATA.villages)) DATA.villages = [];
+      if (!Array.isArray(DATA.targets))  DATA.targets  = [];
+      if (!Array.isArray(DATA.attacks))  DATA.attacks  = [];
+      applySettings();
+      renderAll();
+    } catch(e) { /* new file, write current data */ }
+    writeFileIfConnected();
+  } catch(e) { /* cancelled */ }
+}
+
+async function writeFileIfConnected() {
+  if (!fileHandle) return;
+  try {
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(DATA, null, 2));
+    await writable.close();
+  } catch(e) { /* permission lost */ }
+}
+
+function setFileStatus(connected, name) {
+  const dot  = document.getElementById('file-dot');
+  const text = document.getElementById('file-status-text');
+  if (connected) {
+    dot.className  = 'file-status-dot dot-ok';
+    text.className = 'connected';
+    text.textContent = name || t('file_connected');
+  } else {
+    dot.className  = 'file-status-dot dot-off';
+    text.className = '';
+    text.textContent = t('file_not_connected');
+  }
+}
+
+function exportJson() {
+  const blob = new Blob([JSON.stringify(DATA, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tw_attack_planner.json';
+  a.click();
+}
+
+function importJson() {
+  document.getElementById('import-input').click();
+}
+
+function handleImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const parsed = JSON.parse(ev.target.result);
+      DATA = { ...DATA, ...parsed };
+      if (!Array.isArray(DATA.villages)) DATA.villages = [];
+      if (!Array.isArray(DATA.targets))  DATA.targets  = [];
+      if (!Array.isArray(DATA.attacks))  DATA.attacks  = [];
+      applySettings();
+      saveData();
+      renderAll();
+    } catch(err) {
+      alert(t('alert_invalid_json'));
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+// ══════════════════════════════════════════════
+// VILLAGE DB
+// ══════════════════════════════════════════════
+
+async function connectDbFolder() {
+  try {
+    const h = await window.showDirectoryPicker({ mode: 'read' });
+    dbDirHandle = h;
+    await idbSet(IDB_DB, h);
+    await loadDbFiles();
+  } catch(e) { /* cancelled */ }
+}
+
+async function loadDbFiles() {
+  if (!dbDirHandle) return;
+  try {
+    villageDb = [];
+    playerMap = {};
+
+    // player.txt: id,name,...
+    try {
+      const ph = await dbDirHandle.getFileHandle('player.txt');
+      const pf = await ph.getFile();
+      const pt = await pf.text();
+      for (const line of pt.split('\n')) {
+        const parts = line.trim().split(',');
+        if (parts.length >= 2) {
+          playerMap[parts[0].trim()] = decodeURIComponent(parts[1].trim().replace(/\+/g,' '));
+        }
+      }
+    } catch(e) { /* file missing */ }
+
+    // village.txt: id,name,x,y,playerId,points,...
+    try {
+      const vh = await dbDirHandle.getFileHandle('village.txt');
+      const vf = await vh.getFile();
+      const vt = await vf.text();
+      for (const line of vt.split('\n')) {
+        const parts = line.trim().split(',');
+        if (parts.length >= 6) {
+          villageDb.push({
+            id:       parts[0].trim(),
+            name:     decodeURIComponent(parts[1].trim().replace(/\+/g,' ')),
+            x:        parseInt(parts[2]),
+            y:        parseInt(parts[3]),
+            playerId: parts[4].trim(),
+            points:   parseInt(parts[5]) || 0
+          });
+        }
+      }
+    } catch(e) { /* file missing */ }
+
+    document.getElementById('db-status').textContent =
+      `${villageDb.length.toLocaleString()} villages loaded`;
+    renderDb('');
+  } catch(e) {
+    document.getElementById('db-status').textContent = t('db_error_loading');
+  }
+}
+
+function scheduleDbSearch() {
+  clearTimeout(dbSearchTimer);
+  dbSearchTimer = setTimeout(() => {
+    renderDb(document.getElementById('db-search').value);
+  }, 200);
+}
+
+function renderDb(query) {
+  const q = query.trim().toLowerCase();
+  let results = villageDb;
+  if (q) {
+    results = villageDb.filter(v =>
+      v.name.toLowerCase().includes(q) ||
+      v.id.includes(q) ||
+      (playerMap[v.playerId] || '').toLowerCase().includes(q) ||
+      `${v.x}|${v.y}`.includes(q)
+    );
+  }
+  const total   = results.length;
+  const capped  = results.slice(0, 200);
+  const countEl = document.getElementById('db-count');
+  countEl.textContent = total > 200 ? t('db_showing').replace('{total}', total.toLocaleString()) :
+                        total > 0   ? `${total.toLocaleString()} results` : t('empty_no_results');
+
+  const tbody = document.getElementById('db-tbody');
+  if (capped.length === 0) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6">${villageDb.length === 0 ? t('db_no_data') : t('empty_no_results')}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = capped.map(v => {
+    const player = escHtml(playerMap[v.playerId] || '-');
+    return `<tr>
+      <td class="coords">${escHtml(v.id)}</td>
+      <td>${escHtml(v.name)}</td>
+      <td class="coords">${v.x}|${v.y}</td>
+      <td>${player}</td>
+      <td>${v.points.toLocaleString()}</td>
+      <td><button class="btn btn-primary btn-sm" onclick="addTargetFromDb('${escAttr(v.id)}')">+ Target</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function addTargetFromDb(dbId) {
+  const v = villageDb.find(x => x.id === dbId);
+  if (!v) return;
+  // check duplicate by villageId
+  if (DATA.targets.some(t => String(t.villageId) === String(v.id))) {
+    alert(t('alert_already_target'));
+    return;
+  }
+  DATA.targets.push({
+    id:        uid(),
+    name:      v.name,
+    villageId: v.id,
+    player:    playerMap[v.playerId] || '',
+    x:         v.x,
+    y:         v.y
+  });
+  saveData();
+  renderTargets();
+  refreshDropdowns();
+}
+
+function enrichTargets() {
+  if (villageDb.length === 0) {
+    alert(t('alert_no_db'));
+    return;
+  }
+  let enriched = 0;
+  DATA.targets.forEach(t => {
+    // try match by villageId first, then by coords
+    let match = villageDb.find(v => String(v.id) === String(t.villageId));
+    if (!match && t.x && t.y) match = villageDb.find(v => v.x === t.x && v.y === t.y);
+    if (match) {
+      if (!t.name || t.name === '-') t.name = match.name;
+      if (!t.villageId) t.villageId = match.id;
+      if (!t.player) t.player = playerMap[match.playerId] || '';
+      if (!t.x) t.x = match.x;
+      if (!t.y) t.y = match.y;
+      enriched++;
+    }
+  });
+  saveData();
+  renderTargets();
+  alert(t('alert_enriched').replace('{n}', enriched));
+}
+
+// ══════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const names = ['plan', 'villages', 'targets', 'db', 'guide'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(tc => {
+    tc.classList.remove('active');
+  });
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ══════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function stripBB(s) {
+  return (s || '').replace(/\[\/?[^\]]+\]/g, '').trim();
+}
+function escAttr(s) {
+  return String(s ?? '').replace(/'/g, "\\'");
+}
+
+function togglePanel(id) {
+  const panel = document.getElementById(id);
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open') && id === 'add-attack-panel') {
+    // pre-fill landing time: 1 hour from now
+    document.getElementById('aa-landing').value = localDatetimeValue(Date.now() + 3600000);
+  }
+}
+
+function onAttackTypeChange(rowId) {
+  const typeEl = rowId === 'aa-noble-row'
+    ? document.getElementById('aa-type')
+    : document.getElementById('ma-type');
+  const row = document.getElementById(rowId);
+  if (typeEl.value === 'snob') {
+    row.classList.remove('hidden');
+  } else {
+    row.classList.add('hidden');
+  }
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+function closePanel(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('open');
+}
+
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+
+// ══════════════════════════════════════════════
+// VILLAGES CRUD
+// ══════════════════════════════════════════════
+
+function addVillage() {
+  const x    = parseInt(document.getElementById('av-x').value);
+  const y    = parseInt(document.getElementById('av-y').value);
+  if (!x || !y) { alert(t('alert_coords_required')); return; }
+  const name = document.getElementById('av-name').value.trim() || `(${x}|${y})`;
+  const vid  = document.getElementById('av-vid').value.trim();
+
+  DATA.villages.push({
+    id:          uid(),
+    name,
+    villageId:   vid || '',
+    x, y,
+    axes:        parseInt(document.getElementById('av-axes').value)        || 0,
+    lc:          parseInt(document.getElementById('av-lc').value)          || 0,
+    rams:        parseInt(document.getElementById('av-rams').value)        || 0,
+    cats:        parseInt(document.getElementById('av-cats').value)        || 0,
+    nobles:      parseInt(document.getElementById('av-nobles').value)      || 0,
+  });
+  // reset form
+  ['av-name','av-vid','av-x','av-y'].forEach(id => document.getElementById(id).value = '');
+  ['av-axes','av-lc','av-rams','av-cats','av-nobles']
+    .forEach(id => document.getElementById(id).value = '0');
+  document.getElementById('add-village-panel').classList.remove('open');
+
+  saveData();
+  renderVillages();
+  refreshDropdowns();
+}
+
+function editVillage(id) {
+  const v = DATA.villages.find(v => v.id === id);
+  if (!v) return;
+  document.getElementById('mv-id').value          = v.id;
+  document.getElementById('mv-name').value        = v.name;
+  document.getElementById('mv-vid').value         = v.villageId || '';
+  document.getElementById('mv-x').value           = v.x;
+  document.getElementById('mv-y').value           = v.y;
+  document.getElementById('mv-axes').value        = v.axes || 0;
+  document.getElementById('mv-lc').value          = v.lc || 0;
+  document.getElementById('mv-rams').value        = v.rams || 0;
+  document.getElementById('mv-cats').value        = v.cats || 0;
+  document.getElementById('mv-nobles').value      = v.nobles || 0;
+  openModal('modal-village');
+}
+
+function saveVillage() {
+  const id = document.getElementById('mv-id').value;
+  const v  = DATA.villages.find(v => v.id === id);
+  if (!v) return;
+  v.name       = document.getElementById('mv-name').value.trim();
+  v.villageId  = document.getElementById('mv-vid').value.trim();
+  v.x          = parseInt(document.getElementById('mv-x').value)           || 0;
+  v.y          = parseInt(document.getElementById('mv-y').value)           || 0;
+  v.axes       = parseInt(document.getElementById('mv-axes').value)        || 0;
+  v.lc         = parseInt(document.getElementById('mv-lc').value)          || 0;
+  v.rams       = parseInt(document.getElementById('mv-rams').value)        || 0;
+  v.cats       = parseInt(document.getElementById('mv-cats').value)        || 0;
+  v.nobles     = parseInt(document.getElementById('mv-nobles').value)      || 0;
+  closeModal('modal-village');
+  saveData();
+  renderVillages();
+  refreshDropdowns();
+  renderAttacks();
+}
+
+function deleteVillage(id) {
+  if (!confirm(t('alert_delete_village'))) return;
+  DATA.villages = DATA.villages.filter(v => v.id !== id);
+  DATA.attacks  = DATA.attacks.filter(a => a.fromId !== id);
+  saveData();
+  renderVillages();
+  refreshDropdowns();
+  renderAttacks();
+}
+
+function renderVillages() {
+  const tbody = document.getElementById('villages-tbody');
+  if (DATA.villages.length === 0) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="10">${t('empty_villages')}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = DATA.villages.map(v => {
+    const pow = calcOffPow(v);
+    return `
+    <tr>
+      <td>${escHtml(v.name)}</td>
+      <td class="coords">${escHtml(v.villageId||'-')}</td>
+      <td class="coords">${v.x}|${v.y}</td>
+      <td>${v.axes||0}</td>
+      <td>${v.lc||0}</td>
+      <td>${v.rams||0}</td>
+      <td>${v.cats||0}</td>
+      <td>${v.nobles||0}</td>
+      <td>${pow.toLocaleString()} ${offTierBadge(pow)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-edit btn-sm" onclick="editVillage('${v.id}')">✎ Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteVillage('${v.id}')">✕</button>
+      </td>
+    </tr>
+  `;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════
+// TARGETS CRUD
+// ══════════════════════════════════════════════
+
+function dbAutoFillTarget() {
+  const x = parseInt(document.getElementById('at-x').value);
+  const y = parseInt(document.getElementById('at-y').value);
+  if (!x || !y || villageDb.length === 0) return;
+  const match = villageDb.find(v => v.x === x && v.y === y);
+  if (match) {
+    document.getElementById('at-name').value   = match.name;
+    document.getElementById('at-vid').value    = match.id;
+    document.getElementById('at-player').value = playerMap[match.playerId] || '';
+  }
+}
+
+function dbAutoFillModal() {
+  const x = parseInt(document.getElementById('mt-x').value);
+  const y = parseInt(document.getElementById('mt-y').value);
+  if (!x || !y || villageDb.length === 0) return;
+  const match = villageDb.find(v => v.x === x && v.y === y);
+  if (match) {
+    document.getElementById('mt-name').value   = match.name;
+    document.getElementById('mt-vid').value    = match.id;
+    document.getElementById('mt-player').value = playerMap[match.playerId] || '';
+  }
+}
+
+function dbAutoFillVillage() {
+  const x = parseInt(document.getElementById('av-x').value);
+  const y = parseInt(document.getElementById('av-y').value);
+  if (!x || !y || villageDb.length === 0) return;
+  const match = villageDb.find(v => v.x === x && v.y === y);
+  if (match) {
+    document.getElementById('av-name').value = match.name;
+    document.getElementById('av-vid').value  = match.id;
+  }
+}
+
+function parseReqLines(text, attacker) {
+  const reqs = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(/^(off|ram|complete|1\/2|half|axe|snob|noble)\s*(?:(\d{1,2}:\d{2})[–\-\/](\d{1,2}:\d{2}))?/i);
+    if (!m) continue;
+    const typeRaw = m[1].toLowerCase();
+    const unitType = (typeRaw === 'off' || typeRaw === 'ram' || typeRaw === 'complete') ? 'ram'
+                   : (typeRaw === '1/2' || typeRaw === 'half' || typeRaw === 'axe')     ? 'axe'
+                   : 'snob';
+    reqs.push({ unitType, attacker, timeFrom: m[2] || '', timeTo: m[3] || '' });
+  }
+  return reqs;
+}
+
+function addTarget() {
+  const x = parseInt(document.getElementById('at-x').value);
+  const y = parseInt(document.getElementById('at-y').value);
+  if (!x || !y) { alert(t('alert_coords_required')); return; }
+
+  const targetType = document.getElementById('at-type').value;
+  const attacker   = (DATA.settings.playerName || '').trim();
+  const reqs       = targetType === 'off'
+    ? parseReqLines(document.getElementById('at-reqs').value, attacker)
+    : [];
+
+  DATA.targets.push({
+    id:         uid(),
+    name:       document.getElementById('at-name').value.trim() || `${x}|${y}`,
+    villageId:  document.getElementById('at-vid').value.trim() || '',
+    player:     document.getElementById('at-player').value.trim() || '',
+    x, y,
+    targetType,
+    requirements: reqs
+  });
+  ['at-x','at-y','at-name','at-vid','at-player'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('at-reqs').value = '';
+  document.getElementById('at-type').value = 'off';
+  document.getElementById('at-reqs-row').style.display = '';
+  document.getElementById('add-target-panel').classList.remove('open');
+
+  saveData();
+  renderTargets();
+  refreshDropdowns();
+}
+
+function editTarget(id) {
+  const t = DATA.targets.find(t => t.id === id);
+  if (!t) return;
+  document.getElementById('mt-id').value     = t.id;
+  document.getElementById('mt-x').value      = t.x;
+  document.getElementById('mt-y').value      = t.y;
+  document.getElementById('mt-name').value   = t.name;
+  document.getElementById('mt-vid').value    = t.villageId || '';
+  document.getElementById('mt-player').value = t.player || '';
+  openModal('modal-target');
+}
+
+function saveTarget() {
+  const id = document.getElementById('mt-id').value;
+  const t  = DATA.targets.find(t => t.id === id);
+  if (!t) return;
+  t.x         = parseInt(document.getElementById('mt-x').value)      || 0;
+  t.y         = parseInt(document.getElementById('mt-y').value)      || 0;
+  t.name      = document.getElementById('mt-name').value.trim()      || `${t.x}|${t.y}`;
+  t.villageId = document.getElementById('mt-vid').value.trim()       || '';
+  t.player    = document.getElementById('mt-player').value.trim()    || '';
+  closeModal('modal-target');
+  saveData();
+  renderTargets();
+  refreshDropdowns();
+  renderAttacks();
+}
+
+function deleteTarget(id) {
+  if (!confirm(t('alert_delete_target'))) return;
+  DATA.targets  = DATA.targets.filter(t => t.id !== id);
+  DATA.attacks  = DATA.attacks.filter(a => a.targetId !== id);
+  saveData();
+  renderTargets();
+  refreshDropdowns();
+  renderAttacks();
+}
+
+function reqBadgeHtml(unitType) {
+  const cls = unitType === 'ram' ? 'req-ram' : unitType === 'snob' ? 'req-snob' : 'req-axe';
+  const label = unitType === 'ram' ? '⚔ off' : unitType === 'snob' ? '👑 snob' : '🪓 1/2';
+  return `<span class="req-badge ${cls}">${label}</span>`;
+}
+
+function renderRequirements(reqs) {
+  if (!reqs || !reqs.length) return '<span class="text-dim">—</span>';
+  return reqs.map(r => {
+    const time = (r.timeFrom && r.timeTo) ? `<span style="font-family:monospace;color:#6090c0;font-size:10px"> ${escHtml(r.timeFrom)}–${escHtml(r.timeTo)}</span>` : '';
+    return `${reqBadgeHtml(r.unitType)}<small style="color:#806838;font-size:10px"> ${escHtml(r.attacker)}</small>${time}`;
+  }).join('<br>');
+}
+
+function renderTargets() {
+  const tbody = document.getElementById('targets-tbody');
+  if (DATA.targets.length === 0) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="7">${t('empty_targets')}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = DATA.targets.map(t => {
+    const typeBadge = t.targetType === 'off'
+      ? `<span class="badge ttype-off">Off</span>`
+      : t.targetType === 'fake'
+        ? `<span class="badge ttype-fake">Fake</span>`
+        : `<span class="text-dim">—</span>`;
+    return `
+    <tr>
+      <td>${escHtml(t.name)}</td>
+      <td class="coords">${escHtml(t.villageId||'-')}</td>
+      <td class="coords">${t.x}|${t.y}</td>
+      <td>${escHtml(stripBB(t.player)||'-')}</td>
+      <td>${typeBadge}</td>
+      <td style="font-size:12px;line-height:1.6">${renderRequirements(t.requirements)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-edit btn-sm" onclick="editTarget('${t.id}')">✎ Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteTarget('${t.id}')">✕</button>
+      </td>
+    </tr>
+  `;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════
+// MASS TARGET IMPORT
+// ══════════════════════════════════════════════
+
+function parseOffPlanBB(text) {
+  const targets = [];
+  let current = null;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    // Village line: "N. X|Y - Player." (optional spaces/trailing dot)
+    const vm = line.match(/^\d+\.\s+(\d+)\|(\d+)\s*-\s*(.+?)\.?\s*$/);
+    if (vm) {
+      if (current) targets.push(current);
+      current = { x: parseInt(vm[1]), y: parseInt(vm[2]), player: vm[3].trim().replace(/\[\/?[^\]]+\]/g, '').trim(), requirements: [] };
+      continue;
+    }
+    if (!current) continue;
+    // Attack line: [unit]TYPE[/unit] [player]NAME[/player] [b]HH:MM/HH:MM[/b]
+    const am = line.match(/\[unit\](\w+)\[\/unit\].*?\[player\](.+?)\[\/player\].*?(\d{2}:\d{2})\/(\d{2}:\d{2})/);
+    if (am) {
+      current.requirements.push({ unitType: am[1], attacker: am[2].trim(), timeFrom: am[3], timeTo: am[4] });
+    }
+  }
+  if (current) targets.push(current);
+  return targets;
+}
+
+function importOffTargets() {
+  const text = document.getElementById('import-off-text').value.trim();
+  if (!text) return;
+  const parsed = parseOffPlanBB(text);
+  if (!parsed.length) { alert(t('alert_no_targets_found')); return; }
+  let added = 0, updated = 0;
+  parsed.forEach(p => {
+    const existing = DATA.targets.find(t => t.x === p.x && t.y === p.y);
+    if (existing) {
+      if (p.player) existing.player = p.player;
+      existing.targetType   = 'off';
+      existing.requirements = p.requirements;
+      updated++;
+    } else {
+      DATA.targets.push({
+        id: uid(), name: `${p.x}|${p.y}`, villageId: '',
+        x: p.x, y: p.y, player: p.player,
+        targetType: 'off', requirements: p.requirements
+      });
+      added++;
+    }
+  });
+  enrichTargetsSilent();
+  saveData();
+  renderTargets();
+  refreshDropdowns();
+  document.getElementById('import-off-text').value = '';
+  closePanel('import-off-panel');
+  alert(t('alert_off_imported').replace('{added}', added).replace('{updated}', updated));
+}
+
+function importFakeTargets() {
+  const text = document.getElementById('import-fake-text').value.trim();
+  if (!text) return;
+  let added = 0, skipped = 0;
+  for (const m of text.matchAll(/(\d+)\|(\d+)/g)) {
+    const x = parseInt(m[1]), y = parseInt(m[2]);
+    if (DATA.targets.find(t => t.x === x && t.y === y)) { skipped++; continue; }
+    DATA.targets.push({
+      id: uid(), name: `${x}|${y}`, villageId: '',
+      x, y, player: '', targetType: 'fake', requirements: []
+    });
+    added++;
+  }
+  enrichTargetsSilent();
+  saveData();
+  renderTargets();
+  refreshDropdowns();
+  document.getElementById('import-fake-text').value = '';
+  closePanel('import-fake-panel');
+  alert(t('alert_fake_imported').replace('{added}', added).replace('{skipped}', skipped));
+}
+
+function enrichTargetsSilent() {
+  if (!villageDb.length) return;
+  DATA.targets.forEach(t => {
+    if (t.villageId) return;
+    const match = villageDb.find(v => v.x === t.x && v.y === t.y);
+    if (match) {
+      t.villageId = match.id;
+      if (!t.name || t.name === `${t.x}|${t.y}`) t.name = match.name;
+      if (!t.player) t.player = playerMap[match.playerId] || '';
+    }
+  });
+}
+
+// ══════════════════════════════════════════════
+// AUTO-GENERATE ATTACKS
+// ══════════════════════════════════════════════
+
+function openAutoGenerate() {
+  if (!DATA.targets.length) { alert(t('alert_no_targets')); return; }
+  if (!DATA.villages.length) { alert(t('alert_no_villages')); return; }
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById('ag-date').value = today;
+
+  // Populate per-village divided-off checkboxes
+  const container = document.getElementById('ag-divided-off-villages');
+  const noble_vils = DATA.villages.filter(v => (v.nobles || 0) > 0);
+  if (noble_vils.length) {
+    container.innerHTML = noble_vils.map(v =>
+      `<label style="cursor:pointer;color:#d4b483">
+        <input type="checkbox" class="ag-dov-cb" data-vid="${v.id}">
+        &nbsp;${v.name} (${v.x}|${v.y}) ${offTierBadge(calcOffPow(v))} — ${v.nobles} noble(s)
+      </label>`
+    ).join('');
+  } else {
+    container.innerHTML = `<em style="color:#5a3a18">${t('ag_no_nobles')}</em>`;
+  }
+  document.getElementById('ag-divided-off-all').checked = false;
+
+  updateAutoGenPreview();
+  openModal('modal-autogen');
+}
+
+function toggleAllDividedOff(checked) {
+  document.querySelectorAll('.ag-dov-cb').forEach(cb => cb.checked = checked);
+}
+
+function updateAutoGenPreview() {
+  const myName = (DATA.settings.playerName || '').trim().toLowerCase();
+  const offTargets  = DATA.targets.filter(t => t.targetType === 'off');
+  const fakeTargets = DATA.targets.filter(t => t.targetType === 'fake');
+
+  let offCount = 0, snobCount = 0;
+  offTargets.forEach(t => {
+    const reqs = (t.requirements || []).filter(r => !myName || r.attacker.toLowerCase() === myName);
+    offCount  += reqs.filter(r => r.unitType === 'ram' || r.unitType === 'axe').length;
+    snobCount += reqs.filter(r => r.unitType === 'snob').length;
+  });
+
+  const includeFakes = document.getElementById('ag-include-fakes')?.checked ?? false;
+  const vilsWithRams = DATA.villages.filter(v => (v.rams || 0) > 0).length;
+  const fakeSlots    = vilsWithRams * 10;
+  const fakeTargets2 = offTargets.length + fakeTargets.length;
+  const fakeEst      = Math.min(fakeTargets2, fakeSlots);
+
+  const nameNote = myName
+    ? `Filtering to player <strong>${escHtml(DATA.settings.playerName)}</strong>`
+    : `<span style="color:#c06030">⚠ No player name set — all requirements will be assigned</span>`;
+
+  const fakePart = includeFakes
+    ? ` · up to <strong>${fakeEst}</strong> fakes across ${DATA.villages.length} village(s)`
+    : ` · <span style="color:#806838">fakes disabled</span>`;
+
+  document.getElementById('ag-preview').innerHTML =
+    `${nameNote}<br>` +
+    `Expected: <strong>${offCount}</strong> off(s) · <strong>${snobCount}</strong> snob train(s)${fakePart}`;
+}
+
+function autoGenerateAttacks(landingDateStr, criteria = { power: true, distance: true, window: false }, includeFakes = true, dividedOffVillages = new Set()) {
+  const myName = (DATA.settings.playerName || '').trim().toLowerCase();
+
+  function myReqs(target) {
+    const reqs = target.requirements || [];
+    return myName ? reqs.filter(r => r.attacker.toLowerCase() === myName) : reqs;
+  }
+
+  function landingISO(timeStr) {
+    return new Date(`${landingDateStr}T${timeStr || '02:00'}:00`).toISOString();
+  }
+
+  const offTargets  = DATA.targets.filter(t => t.targetType === 'off');
+  const fakeTargets = DATA.targets.filter(t => t.targetType === 'fake');
+  const defaultTime = offTargets.find(t => (t.requirements||[]).length)?.requirements[0]?.timeFrom || '02:00';
+
+  const vs = {};
+  DATA.villages.forEach(v => {
+    vs[v.id] = { noblesLeft: v.nobles || 0, usedForOff: false, fakeCount: 0 };
+  });
+
+  const attacks = [];
+
+  // ── Snob trains ──
+  let missedSnobs = [];
+  offTargets.forEach(target => {
+    const snobLines = myReqs(target).filter(r => r.unitType === 'snob');
+    if (!snobLines.length) return;
+    snobLines.forEach(req => {
+      const iso = landingISO(req.timeFrom || defaultTime);
+      const wf = req.timeFrom, wt = req.timeTo;
+      const v = DATA.villages
+        .filter(v => vs[v.id].noblesLeft > 0)
+        .sort(criteria.distance
+          ? (a, b) => dist(a, target) - dist(b, target)
+          : (a, b) => vs[b.id].noblesLeft - vs[a.id].noblesLeft
+        )[0];
+      if (!v) { missedSnobs.push({ targetId: target.id, unitType: 'snob', iso, windowFrom: wf, windowTo: wt }); return; }
+      const nc = Math.min(4, vs[v.id].noblesLeft);
+      vs[v.id].noblesLeft  -= nc;
+      vs[v.id].usedForSnob  = true;
+      attacks.push({ id: uid(), fromId: v.id, targetId: target.id, type: 'snob', nobleCount: nc, landingTime: iso, windowFrom: wf, windowTo: wt, dividedOff: dividedOffVillages.has(v.id), sent: false });
+    });
+  });
+
+  // ── Build off needs list ──
+  const offNeeds = [];
+  offTargets.forEach(target => {
+    myReqs(target).filter(r => r.unitType === 'ram').forEach(r => {
+      const iso = landingISO(r.timeFrom || defaultTime);
+      offNeeds.push({ target, iso, windowFrom: r.timeFrom, windowTo: r.timeTo, minPow: TIER.tq, fallbackPow: TIER.half, unitType: 'off' });
+    });
+    myReqs(target).filter(r => r.unitType === 'axe').forEach(r => {
+      const iso = landingISO(r.timeFrom || defaultTime);
+      offNeeds.push({ target, iso, windowFrom: r.timeFrom, windowTo: r.timeTo, minPow: TIER.half, fallbackPow: TIER.half, unitType: 'axe' });
+    });
+  });
+
+  // ── Assign offs by combined criteria ──
+  const offAssignments = assignOffsComposite(offNeeds, vs, criteria, dividedOffVillages);
+
+  offAssignments.forEach(({ v, need }) => {
+    attacks.push({ id: uid(), fromId: v.id, targetId: need.target.id, type: 'off', nobleCount: 1, landingTime: need.iso, windowFrom: need.windowFrom, windowTo: need.windowTo, sent: false });
+  });
+
+  const assignedNeeds = new Set(offAssignments.map(a => a.need));
+  const missedOffs = offNeeds
+    .filter(need => !assignedNeeds.has(need))
+    .map(need => ({ targetId: need.target.id, unitType: need.unitType, iso: need.iso, windowFrom: need.windowFrom, windowTo: need.windowTo }));
+
+  // ── Fakes ──
+  if (includeFakes) {
+    const allFakeTargets = [...offTargets, ...fakeTargets];
+    const vilsWithRams   = DATA.villages.filter(v => (v.rams || 0) > 0);
+    let vi = 0;
+
+    for (const target of allFakeTargets) {
+      if (vilsWithRams.every(v => vs[v.id].fakeCount >= 10)) break;
+      const iso = landingISO(defaultTime);
+      for (let attempt = 0; attempt < vilsWithRams.length; attempt++) {
+        const v = vilsWithRams[(vi + attempt) % vilsWithRams.length];
+        if (vs[v.id].fakeCount < 10) {
+          vs[v.id].fakeCount++;
+          vi = (vi + attempt + 1) % vilsWithRams.length;
+          attacks.push({ id: uid(), fromId: v.id, targetId: target.id, type: 'fake', nobleCount: 1, landingTime: iso, sent: false });
+          break;
+        }
+      }
+    }
+  }
+
+  return { attacks, missedSnobs, missedOffs };
+}
+
+// Combined composite assignment — lexicographic priority: Power (×10000) → Distance (×100) → Window (×1)
+function assignOffsComposite(needs, vs, criteria, dividedOffVillages = new Set()) {
+  const result = [];
+  const ws = DATA.settings.worldSpeed;
+  const us = DATA.settings.unitSpeed;
+
+  needs.forEach(need => {
+    const avail = pow => DATA.villages.filter(v =>
+      !vs[v.id].usedForOff &&
+      !dividedOffVillages.has(v.id) &&
+      calcOffPow(v) >= pow
+    );
+
+    const score = v => {
+      let s = 0;
+      const pow = calcOffPow(v);
+      const d   = dist(v, need.target);
+
+      if (criteria.power) {
+        // ram: strongest first (higher score = better); axe: weakest qualifying first (lower power = better)
+        const powScore = need.unitType === 'axe' ? 1 - pow / 1000000 : pow / 1000000;
+        s += powScore * 10000;
+      }
+
+      if (criteria.distance) {
+        s += Math.max(0, 1 - d / 200) * 100;
+      }
+
+      if (criteria.window && need.windowFrom && need.windowTo) {
+        const tMs    = travelMs(d, 'off', ws, us);
+        const sendMs = new Date(need.iso).getTime() - tMs;
+        const base   = need.iso.slice(0, 10); // YYYY-MM-DD
+        const fromMs = new Date(`${base}T${need.windowFrom}:00`).getTime();
+        const toMs   = new Date(`${base}T${need.windowTo}:00`).getTime();
+        const midMs  = (fromMs + toMs) / 2;
+        const span   = Math.max(toMs - fromMs, 1800000);
+        s += Math.max(0, 1 - Math.abs(sendMs - midMs) / (span * 4)) * 1;
+      }
+
+      return s;
+    };
+
+    const byScore = (a, b) => score(b) - score(a);
+
+    const v = avail(need.minPow).sort(byScore)[0]
+           || avail(need.fallbackPow).sort(byScore)[0];
+
+    if (!v) return;
+    vs[v.id].usedForOff = true;
+    result.push({ v, need });
+  });
+  return result;
+}
+
+// Strategy 1: per-target greedy, closest available village
+// Tiebreak on power: axe (1/2 off) → weakest first; ram (complete) → strongest first
+function assignOffsShortest(needs, vs) {
+  const result = [];
+  needs.forEach(need => {
+    const byDist = (a, b) => {
+      const dd = dist(a, need.target) - dist(b, need.target);
+      if (dd !== 0) return dd;
+      return need.unitType === 'axe' ? calcOffPow(a) - calcOffPow(b) : calcOffPow(b) - calcOffPow(a);
+    };
+    const avail  = pow => DATA.villages.filter(v => !vs[v.id].usedForOff && calcOffPow(v) >= pow);
+    // Prefer villages not already committed to a snob train
+    const v = avail(need.minPow).filter(v => !vs[v.id].usedForSnob).sort(byDist)[0]
+           || avail(need.minPow).sort(byDist)[0]
+           || avail(need.fallbackPow).filter(v => !vs[v.id].usedForSnob).sort(byDist)[0]
+           || avail(need.fallbackPow).sort(byDist)[0];
+    if (!v) return;
+    vs[v.id].usedForOff = true;
+    result.push({ v, need });
+  });
+  return result;
+}
+
+// Strategy 2: highest off power — strongest available village per complete off, weakest qualifying per 1/2 off
+function assignOffsHighestPower(needs, vs) {
+  const result = [];
+  needs.forEach(need => {
+    // axe (1/2 off): weakest qualifying first — preserve strong villages for complete-off targets
+    // ram (complete off): strongest first
+    const byPow = need.unitType === 'axe'
+      ? (a, b) => calcOffPow(a) - calcOffPow(b)
+      : (a, b) => calcOffPow(b) - calcOffPow(a);
+    const avail  = pow => DATA.villages.filter(v => !vs[v.id].usedForOff && calcOffPow(v) >= pow);
+    const v = avail(need.minPow).filter(v => !vs[v.id].usedForSnob).sort(byPow)[0]
+           || avail(need.minPow).sort(byPow)[0]
+           || avail(need.fallbackPow).filter(v => !vs[v.id].usedForSnob).sort(byPow)[0]
+           || avail(need.fallbackPow).sort(byPow)[0];
+    if (!v) return;
+    vs[v.id].usedForOff = true;
+    result.push({ v, need });
+  });
+  return result;
+}
+
+// Strategy 3: minimize range of send-at times using sliding-window bipartite matching
+function assignOffsMinWindow(needs, vs) {
+  if (!needs.length) return [];
+
+  const eligible = v => !vs[v.id].usedForOff && needs.some(n => calcOffPow(v) >= n.minPow || calcOffPow(v) >= n.fallbackPow);
+  // Prefer villages not already committed to a snob train; fall back to all eligible if not enough
+  let cands = DATA.villages.filter(v => eligible(v) && !vs[v.id].usedForSnob);
+  if (cands.length < needs.length) cands = DATA.villages.filter(eligible);
+  if (cands.length < needs.length) return assignOffsShortest(needs, vs);
+
+  // All (village, need) pairs sorted by distance asc
+  const pairs = [];
+  cands.forEach((v, vi) => {
+    const pow = calcOffPow(v);
+    needs.forEach((need, ni) => {
+      if (pow >= need.minPow || pow >= need.fallbackPow)
+        pairs.push({ vi, ni, v, need, d: dist(v, need.target) });
+    });
+  });
+  pairs.sort((a, b) => a.d - b.d);
+
+  const N = needs.length;
+  let bestResult = null;
+  let bestRange  = Infinity;
+
+  for (let lo = 0; lo <= pairs.length - N; lo++) {
+    for (let hi = lo + N - 1; hi < pairs.length; hi++) {
+      const assignment = offBipartiteMatch(pairs, lo, hi, cands.length, N);
+      if (assignment) {
+        const range = pairs[hi].d - pairs[lo].d;
+        if (range < bestRange) { bestRange = range; bestResult = assignment; }
+        break; // found tightest hi for this lo
+      }
+    }
+    if (bestRange === 0) break; // can't do better
+  }
+
+  if (!bestResult) return assignOffsShortest(needs, vs);
+  bestResult.forEach(({ v }) => { vs[v.id].usedForOff = true; });
+  return bestResult;
+}
+
+// Augmenting-path bipartite matching over pairs[lo..hi]
+function offBipartiteMatch(pairs, lo, hi, numV, numN) {
+  const adj = Array.from({ length: numN }, () => []);
+  for (let i = lo; i <= hi; i++) adj[pairs[i].ni].push(pairs[i].vi);
+
+  const matchN = new Array(numN).fill(-1);
+  const matchV = new Array(numV).fill(-1);
+  let matched  = 0;
+
+  function dfs(ni, seen) {
+    for (const vi of adj[ni]) {
+      if (seen[vi]) continue;
+      seen[vi] = true;
+      if (matchV[vi] === -1 || dfs(matchV[vi], seen)) {
+        matchN[ni] = vi; matchV[vi] = ni; return true;
+      }
+    }
+    return false;
+  }
+
+  for (let ni = 0; ni < numN; ni++) {
+    if (dfs(ni, new Array(numV).fill(false))) matched++;
+  }
+  if (matched < numN) return null;
+
+  const result = [];
+  for (let ni = 0; ni < numN; ni++) {
+    const vi = matchN[ni];
+    for (let i = lo; i <= hi; i++) {
+      if (pairs[i].vi === vi && pairs[i].ni === ni) { result.push({ v: pairs[i].v, need: pairs[i].need }); break; }
+    }
+  }
+  return result;
+}
+
+function runAutoGenerate() {
+  const dateStr  = document.getElementById('ag-date').value;
+  if (!dateStr) { alert(t('alert_pick_date')); return; }
+  const criteria = {
+    power:    document.getElementById('ag-crit-power').checked,
+    distance: document.getElementById('ag-crit-distance').checked,
+    window:   document.getElementById('ag-crit-window').checked,
+  };
+  const includeFakes = document.getElementById('ag-include-fakes').checked;
+  const dividedOffVillages = new Set(
+    [...document.querySelectorAll('.ag-dov-cb:checked')].map(cb => cb.dataset.vid)
+  );
+
+  const { attacks, missedSnobs, missedOffs } = autoGenerateAttacks(dateStr, criteria, includeFakes, dividedOffVillages);
+  const unassigned = [
+    ...missedSnobs.map(m => ({ id: uid(), fromId: null, targetId: m.targetId, type: 'unassigned', unitType: m.unitType, landingTime: m.iso, windowFrom: m.windowFrom, windowTo: m.windowTo, sent: false })),
+    ...missedOffs.map(m =>  ({ id: uid(), fromId: null, targetId: m.targetId, type: 'unassigned', unitType: m.unitType, landingTime: m.iso, windowFrom: m.windowFrom, windowTo: m.windowTo, sent: false })),
+  ];
+
+  if (!attacks.length && !unassigned.length) {
+    alert(t('alert_no_attacks_generated'));
+    return;
+  }
+
+  DATA.attacks = DATA.attacks.filter(a => a.type !== 'unassigned');
+  DATA.attacks.push(...attacks, ...unassigned);
+  saveData();
+  renderAttacks();
+  closeModal('modal-autogen');
+
+  const offs  = attacks.filter(a => a.type === 'off').length;
+  const snobs = attacks.filter(a => a.type === 'snob').length;
+  const fakes = attacks.filter(a => a.type === 'fake').length;
+  let msg = t('alert_generated')
+    .replace('{total}', attacks.length)
+    .replace('{offs}', offs)
+    .replace('{snobs}', snobs)
+    .replace('{fakes}', fakes);
+  if (unassigned.length) {
+    msg += t('alert_generated_unassigned').replace('{n}', unassigned.length);
+  }
+  alert(msg);
+}
+
+// ══════════════════════════════════════════════
+// ATTACKS CRUD
+// ══════════════════════════════════════════════
+
+function addAttack() {
+  const fromId     = document.getElementById('aa-from').value;
+  const targetId   = document.getElementById('aa-target').value;
+  const type       = document.getElementById('aa-type').value;
+  const nobleCount = parseInt(document.getElementById('aa-nobles').value) || 1;
+  const landingVal = document.getElementById('aa-landing').value;
+
+  if (!fromId)     { alert(t('alert_select_from'));   return; }
+  if (!targetId)   { alert(t('alert_select_target')); return; }
+  if (!landingVal) { alert(t('alert_set_landing'));   return; }
+
+  DATA.attacks.push({
+    id:          uid(),
+    fromId,
+    targetId,
+    type,
+    nobleCount:  type === 'snob' ? nobleCount : 1,
+    landingTime: new Date(landingVal).toISOString(),
+    sent:        false
+  });
+
+  document.getElementById('add-attack-panel').classList.remove('open');
+  saveData();
+  renderAttacks();
+}
+
+function editAttack(id) {
+  const a = DATA.attacks.find(a => a.id === id);
+  if (!a) return;
+  document.getElementById('ma-id').value      = a.id;
+  document.getElementById('ma-type').value    = a.type;
+  document.getElementById('ma-nobles').value  = a.nobleCount || 1;
+  document.getElementById('ma-landing').value = localDatetimeValue(new Date(a.landingTime).getTime());
+
+  // populate dropdowns
+  refreshModalDropdowns();
+  document.getElementById('ma-from').value   = a.fromId;
+  document.getElementById('ma-target').value = a.targetId;
+
+  // show/hide noble row
+  const nobleRow = document.getElementById('ma-noble-row');
+  nobleRow.classList.toggle('hidden', a.type !== 'snob');
+
+  openModal('modal-attack');
+}
+
+function saveAttack() {
+  const id = document.getElementById('ma-id').value;
+  const a  = DATA.attacks.find(a => a.id === id);
+  if (!a) return;
+  const landingVal = document.getElementById('ma-landing').value;
+  a.fromId     = document.getElementById('ma-from').value;
+  a.targetId   = document.getElementById('ma-target').value;
+  a.type       = document.getElementById('ma-type').value;
+  a.nobleCount = parseInt(document.getElementById('ma-nobles').value) || 1;
+  a.landingTime = new Date(landingVal).toISOString();
+  closeModal('modal-attack');
+  saveData();
+  renderAttacks();
+}
+
+function deleteAttack(id) {
+  if (!confirm(t('alert_delete_attack'))) return;
+  DATA.attacks = DATA.attacks.filter(a => a.id !== id);
+  saveData();
+  renderAttacks();
+}
+
+function toggleSent(id) {
+  const a = DATA.attacks.find(a => a.id === id);
+  if (!a) return;
+  a.sent = !a.sent;
+  saveData();
+  renderAttacks();
+}
+
+function clearAllAttacks() {
+  if (!confirm(t('alert_delete_all'))) return;
+  DATA.attacks = [];
+  saveData();
+  renderAttacks();
+}
+
+function fmtDatetimeExport(ms) {
+  const d = new Date(ms);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function exportToNotepad() {
+  const rows = DATA.attacks
+    .map(a => ({ atk: a, c: computeAttackRow(a) }))
+    .filter(r => r.c)
+    .sort((a, b) => a.c.sendMs - b.c.sendMs);
+
+  if (!rows.length) { alert(t('alert_no_attacks_export')); return; }
+
+  let out = '[table]\n';
+  out += '[**]#[||]Source[||]Target[||]Target Player[||]Type[||]Send time[||]Arrival time[||]Attack URL[/**]\n';
+
+  rows.forEach(({ atk, c }, i) => {
+    const village = DATA.villages.find(v => v.id === atk.fromId);
+    const target  = DATA.targets.find(t => t.id === atk.targetId);
+    const src     = `[coord]${village.x}|${village.y}[/coord]`;
+    const tgt     = `[coord]${target.x}|${target.y}[/coord]`;
+    const player  = target.player ? `[player]${target.player}[/player]` : '-';
+    const url     = `[url=${c.url}]open[/url]`;
+    out += `[*]${i+1}[|]${src}[|]${tgt}[|]${player}[|]${atk.type}[|]${fmtDatetimeExport(c.sendMs)}[|]${fmtDatetimeExport(c.landMs)}[|]${url}[|]\n`;
+  });
+
+  out += '[/table]';
+
+  document.getElementById('export-text').value = out;
+  openModal('modal-export');
+}
+
+function copyExportText() {
+  const ta = document.getElementById('export-text');
+  navigator.clipboard.writeText(ta.value)
+    .then(() => { const btn = event.target; const orig = btn.textContent; btn.textContent = t('btn_copied'); setTimeout(() => btn.textContent = orig, 1500); })
+    .catch(() => { ta.select(); document.execCommand('copy'); });
+}
+
+function clearSent() {
+  if (!confirm(t('alert_clear_sent'))) return;
+  DATA.attacks = DATA.attacks.filter(a => !a.sent);
+  saveData();
+  renderAttacks();
+}
+
+function clearVillages() {
+  if (!confirm(t('alert_clear_villages'))) return;
+  DATA.villages = [];
+  saveData();
+  renderVillages();
+  refreshDropdowns();
+}
+
+function clearTargets() {
+  if (!confirm(t('alert_clear_targets'))) return;
+  DATA.targets = [];
+  saveData();
+  renderTargets();
+  refreshDropdowns();
+}
+
+function copyUrl(id) {
+  const a = DATA.attacks.find(a => a.id === id);
+  if (!a) return;
+  const row = computeAttackRow(a);
+  if (!row) return;
+  navigator.clipboard.writeText(row.url).then(() => {
+    const btn = document.getElementById('copy-btn-' + id);
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = '✓';
+      setTimeout(() => { btn.textContent = orig; }, 1200);
+    }
+  });
+}
+
+function fmtDistNum(d) {
+  return d.toFixed(1);
+}
+
+function setAttackSort(col) {
+  if (attackSortCol === col) attackSortDir = -attackSortDir;
+  else { attackSortCol = col; attackSortDir = 1; }
+  renderAttacks();
+}
+
+function renderAttacks() {
+  const tbody = document.getElementById('attack-tbody');
+
+  const rows = DATA.attacks.map(a => {
+    const computed = computeAttackRow(a);
+    const village  = DATA.villages.find(v => v.id === a.fromId);
+    const target   = DATA.targets.find(t => t.id === a.targetId);
+    return { atk: a, computed, village, target };
+  });
+
+  // ── Filter ──
+  const fv = id => { const el = document.getElementById(id); return el ? el.value.trim().toLowerCase() : ''; };
+  const fFrom   = fv('af-from');
+  const fTarget = fv('af-target');
+  const fVname  = fv('af-villageName');
+  const fPlayer = fv('af-playerName');
+  const fType   = fv('af-type');
+
+  const filtered = rows.filter(({ atk, village, target }) => {
+    if (fFrom   && !(village?.name  || '').toLowerCase().includes(fFrom))        return false;
+    if (fTarget && !`${target?.x||''}|${target?.y||''}`.includes(fTarget))       return false;
+    if (fVname  && !(target?.name   || '').toLowerCase().includes(fVname))       return false;
+    if (fPlayer && !(target?.player || '').toLowerCase().includes(fPlayer))      return false;
+    if (fType   && !atk.type.toLowerCase().includes(fType))                      return false;
+    return true;
+  });
+
+  // ── Sort ──
+  const sortVal = ({ atk, computed, village, target }) => {
+    switch (attackSortCol) {
+      case 'from':        return (village?.name  || '').toLowerCase();
+      case 'target':      return target ? `${target.x}|${target.y}` : '';
+      case 'villageName': return (target?.name   || '').toLowerCase();
+      case 'playerName':  return (target?.player || '').toLowerCase();
+      case 'type':        return atk.type;
+      case 'offPow':      return (atk.type === 'off' && village) ? calcOffPow(village) : -1;
+      case 'dist':        return computed ? computed.d    : Infinity;
+      case 'travel':      return computed ? computed.tMs  : Infinity;
+      case 'landing':     return new Date(atk.landingTime).getTime();
+      case 'sendAt':      return computed ? computed.sendMs : 0;
+      default: return 0;
+    }
+  };
+
+  filtered.sort((a, b) => {
+    if (a.atk.sent !== b.atk.sent) return a.atk.sent ? 1 : -1;
+    const va = sortVal(a), vb = sortVal(b);
+    const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+    return cmp * attackSortDir;
+  });
+
+  // ── Update sort icons ──
+  ['from','target','villageName','playerName','type','offPow','dist','travel','landing','sendAt'].forEach(col => {
+    const el = document.getElementById('si-' + col);
+    if (el) el.textContent = col === attackSortCol ? (attackSortDir === 1 ? '▲' : '▼') : '';
+  });
+
+  if (filtered.length === 0) {
+    const hasFilter = fFrom || fTarget || fVname || fPlayer || fType;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="13">${hasFilter ? t('empty_attacks_filtered') : t('empty_attacks')}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(({ atk: a, computed: c, village, target }) => {
+    const server   = DATA.settings.serverUrl;
+    const twLink   = (href, content, cls = '') =>
+      `<a href="${escHtml(href)}" target="_blank" rel="noopener" class="tw-link${cls ? ' ' + cls : ''}">${content}</a>`;
+    const villageUrl = id => `https://${server}/game.php?screen=info_village&id=${id}`;
+    const playerUrl  = id => `https://${server}/game.php?screen=info_player&id=${id}`;
+
+    // From village
+    const fromLabel = village ? escHtml(village.name) : `<span class="text-dim">Unknown</span>`;
+    const fromName  = village?.villageId ? twLink(villageUrl(village.villageId), fromLabel) : fromLabel;
+
+    // Target coords
+    const coordSpan   = target ? `<span class="coords">${target.x}|${target.y}</span>` : `<span class="text-dim">—</span>`;
+    const targetCoord = target?.villageId ? twLink(villageUrl(target.villageId), `${target.x}|${target.y}`, 'coords') : coordSpan;
+
+    // Village name — fall back to DB lookup if name is just "X|Y"
+    const rawVName = (() => {
+      if (!target) return null;
+      if (target.name && target.name !== `${target.x}|${target.y}`) return target.name;
+      // Live DB lookup: prefer villageId match, fall back to coords
+      const db = (target.villageId ? villageDb.find(v => String(v.id) === String(target.villageId)) : null)
+              || villageDb.find(v => v.x === parseInt(target.x) && v.y === parseInt(target.y));
+      return db ? db.name : null;
+    })();
+    const vnLabel    = rawVName ? escHtml(rawVName) : `<span class="text-dim">—</span>`;
+    const villageName = (rawVName && target?.villageId) ? twLink(villageUrl(target.villageId), escHtml(rawVName)) : vnLabel;
+
+    // Player name — strip BB-code, link via playerMap reverse lookup
+    const rawPlayer  = target ? stripBB(target.player) : '';
+    const playerId   = rawPlayer ? Object.keys(playerMap).find(id => playerMap[id] === rawPlayer) : null;
+    const pLabel     = rawPlayer ? escHtml(rawPlayer) : `<span class="text-dim">—</span>`;
+    const playerName = (rawPlayer && playerId) ? twLink(playerUrl(playerId), escHtml(rawPlayer)) : pLabel;
+    // ── Unassigned placeholder row ──
+    if (a.type === 'unassigned') {
+      const unitLabel = a.unitType === 'snob' ? '👑 snob' : a.unitType === 'axe' ? '🪓 1/2' : '⚔ off';
+      const unitCls   = a.unitType === 'snob' ? 'req-snob' : a.unitType === 'axe' ? 'req-axe' : 'req-ram';
+      const winLabel  = (a.windowFrom && a.windowTo)
+        ? `<span style="font-family:monospace;color:#6090c0;font-size:11px">${escHtml(a.windowFrom)}–${escHtml(a.windowTo)}</span>`
+        : '<span class="text-dim">—</span>';
+      return `<tr id="row-${a.id}" class="row-unassigned">
+        <td><span style="color:#e05050;font-weight:bold">⚠ Unassigned</span></td>
+        <td>${targetCoord}</td>
+        <td>${villageName}</td>
+        <td>${playerName}</td>
+        <td><span class="req-badge ${unitCls}">${unitLabel}</span></td>
+        <td><span class="text-dim">—</span></td>
+        <td><span class="text-dim">—</span></td>
+        <td><span class="text-dim">—</span></td>
+        <td>${winLabel}</td>
+        <td><span class="text-dim">—</span></td>
+        <td></td>
+        <td><span class="text-dim">—</span></td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-danger btn-sm" onclick="deleteAttack('${a.id}')">✕</button>
+        </td>
+      </tr>`;
+    }
+
+    const typeBadge   = `<span class="badge badge-${a.type}">${a.type.toUpperCase()}</span>`;
+
+    let distCell = '-', travelCell = '-', landingCell = '-', sendCell = '-';
+    if (c) {
+      distCell    = fmtDistNum(c.d);
+      travelCell  = fmtMs(c.tMs);
+      landingCell = fmtDateLocal(a.landingTime)
+        + (a.windowFrom && a.windowTo ? `<br><small style="color:#6090c0;font-size:10px">${escHtml(a.windowFrom)}–${escHtml(a.windowTo)}</small>` : '');
+      const sd = new Date(c.sendMs);
+      const sp = n => String(n).padStart(2,'0');
+      sendCell = `${sp(sd.getDate())}/${sp(sd.getMonth()+1)} ${sp(sd.getHours())}:${sp(sd.getMinutes())}:${sp(sd.getSeconds())}`;
+    }
+
+    const attackBtns = c
+      ? `<a class="btn btn-attack btn-sm" href="${escHtml(c.url)}" target="_blank" rel="noopener">${t('btn_send')}</a>
+         <button class="btn btn-copy btn-sm" id="copy-btn-${a.id}" onclick="copyUrl('${a.id}')">${t('btn_copy_url')}</button>`
+      : `<span class="text-dim">—</span>`;
+
+    const sentLabel = a.sent ? t('btn_unmark_sent') : t('btn_mark_sent');
+    const sentClass = a.sent ? 'btn-ghost' : 'btn-sent';
+
+    return `<tr id="row-${a.id}" class="${a.sent ? 'row-sent' : ''}">
+      <td>${fromName}</td>
+      <td>${targetCoord}</td>
+      <td>${villageName}</td>
+      <td>${playerName}</td>
+      <td>${typeBadge}${a.type === 'snob' ? ` <small style="color:#6090e0">×${a.nobleCount}</small>` : ''}</td>
+      <td>${a.type === 'off' && village ? `${calcOffPow(village).toLocaleString()} ${offTierBadge(calcOffPow(village))}` : '<span class="text-dim">—</span>'}</td>
+      <td>${distCell}</td>
+      <td style="font-family:monospace;font-size:12px">${travelCell}</td>
+      <td style="font-family:monospace;font-size:12px">${landingCell}</td>
+      <td style="font-family:monospace;font-size:12px">${sendCell}</td>
+      <td id="cd-${a.id}"></td>
+      <td style="white-space:nowrap">${attackBtns}</td>
+      <td style="white-space:nowrap">
+        <button class="btn ${sentClass} btn-sm" onclick="toggleSent('${a.id}')">${sentLabel}</button>
+        <button class="btn btn-edit btn-sm" onclick="editAttack('${a.id}')">✎</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteAttack('${a.id}')">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // immediately tick
+  updateCountdowns();
+}
+
+// ══════════════════════════════════════════════
+// COUNTDOWNS — live, no full re-render
+// ══════════════════════════════════════════════
+
+function updateCountdowns() {
+  const now = Date.now();
+  DATA.attacks.forEach(a => {
+    const cdEl  = document.getElementById('cd-' + a.id);
+    const rowEl = document.getElementById('row-' + a.id);
+    if (!cdEl || !rowEl) return;
+
+    if (a.sent) {
+      cdEl.textContent  = t('status_sent');
+      cdEl.className    = 'cd-sent';
+      rowEl.className   = 'row-sent';
+      return;
+    }
+
+    const c = computeAttackRow(a);
+    if (!c) {
+      cdEl.textContent = '—';
+      cdEl.className   = '';
+      return;
+    }
+
+    const diff = c.sendMs - now; // ms until send time
+
+    // Remove existing state classes
+    rowEl.className = '';
+
+    if (diff > 30 * 60000) {
+      // > 30 min: green
+      cdEl.textContent = fmtDuration(diff);
+      cdEl.className   = 'cd-ok';
+    } else if (diff > 5 * 60000) {
+      // 5-30 min: yellow
+      cdEl.textContent = fmtDuration(diff);
+      cdEl.className   = 'cd-soon';
+      rowEl.className  = 'row-urgent';
+    } else if (diff > 60000) {
+      // 1-5 min: orange
+      cdEl.textContent = fmtDuration(diff);
+      cdEl.className   = 'cd-urgent';
+      rowEl.className  = 'row-urgent';
+    } else if (diff > 0) {
+      // <1 min: red blinking SEND NOW
+      cdEl.textContent = t('status_send_now');
+      cdEl.className   = 'cd-now';
+      rowEl.className  = 'row-now';
+    } else {
+      // past send time
+      const late = -diff;
+      cdEl.textContent = `${t('status_late')} ${fmtDuration(late)}`;
+      cdEl.className   = 'cd-late';
+      rowEl.className  = 'row-now';
+    }
+  });
+}
+
+// ══════════════════════════════════════════════
+// DROPDOWNS
+// ══════════════════════════════════════════════
+
+function refreshDropdowns() {
+  const villageOptions = DATA.villages.map(v =>
+    `<option value="${v.id}">${escHtml(v.name)} (${v.x}|${v.y})</option>`
+  ).join('');
+  const targetOptions = DATA.targets.map(t =>
+    `<option value="${t.id}">${escHtml(t.name)} (${t.x}|${t.y})</option>`
+  ).join('');
+
+  const emptyVillage = `<option value="">-- Select Village --</option>`;
+  const emptyTarget  = `<option value="">-- Select Target --</option>`;
+
+  document.getElementById('aa-from').innerHTML   = emptyVillage + villageOptions;
+  document.getElementById('aa-target').innerHTML = emptyTarget  + targetOptions;
+}
+
+function refreshModalDropdowns() {
+  const villageOptions = DATA.villages.map(v =>
+    `<option value="${v.id}">${escHtml(v.name)} (${v.x}|${v.y})</option>`
+  ).join('');
+  const targetOptions = DATA.targets.map(t =>
+    `<option value="${t.id}">${escHtml(t.name)} (${t.x}|${t.y})</option>`
+  ).join('');
+
+  document.getElementById('ma-from').innerHTML   = villageOptions;
+  document.getElementById('ma-target').innerHTML = targetOptions;
+}
+
+// ══════════════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════════════
+
+function applySettings() {
+  document.getElementById('cfg-server').value = DATA.settings.serverUrl   || 'es100.guerrastribales.es';
+  document.getElementById('cfg-ws').value     = DATA.settings.worldSpeed  || 2;
+  document.getElementById('cfg-us').value     = DATA.settings.unitSpeed   || 0.5;
+  document.getElementById('cfg-player').value = DATA.settings.playerName  || '';
+}
+
+function bindSettings() {
+  document.getElementById('cfg-server').addEventListener('input', e => {
+    DATA.settings.serverUrl = e.target.value;
+    saveData();
+    renderAttacks();
+  });
+  document.getElementById('cfg-ws').addEventListener('change', e => {
+    DATA.settings.worldSpeed = parseFloat(e.target.value) || 2;
+    saveData();
+    renderAttacks();
+  });
+  document.getElementById('cfg-us').addEventListener('change', e => {
+    DATA.settings.unitSpeed = parseFloat(e.target.value) || 0.5;
+    saveData();
+    renderAttacks();
+  });
+  document.getElementById('cfg-player').addEventListener('input', e => {
+    DATA.settings.playerName = e.target.value.trim();
+    saveData();
+  });
+}
+
+// ══════════════════════════════════════════════
+// VILLAGE IMPORT (bookmarklet + paste)
+// ══════════════════════════════════════════════
+
+const ATTACK_BOOKMARKLET = `(function(){var tbodies=document.querySelectorAll('tbody.row_marker');if(!tbodies.length){alert('No villages found. Make sure you are on the Mass Recruit page (Overview Villages \u2192 Recruit).');return;}var villages=[];tbodies.forEach(function(tbody){var anyInp=tbody.querySelector('input[name^="units["]');if(!anyInp)return;var m=anyInp.name.match(/units\\[(\\d+)\\]/);if(!m)return;var vid=m[1];var link=tbody.querySelector('td a');if(!link)return;var txt=link.textContent.trim();var cm=txt.match(/\\((\\d+)\\|(\\d+)\\)/);if(!cm)return;var name=txt.replace(/\\s*\\(.*/,'').trim();function get(unit){var inp=tbody.querySelector('input[name="units['+vid+']['+unit+']"]');return inp?parseInt(inp.getAttribute('data-existing'))||0:0;}villages.push({id:vid,name:name,x:parseInt(cm[1]),y:parseInt(cm[2]),axes:get('axe'),lc:get('light'),rams:get('ram'),cats:get('catapult'),nobles:get('snob')});});if(!villages.length){alert('Could not parse any village data.');return;}var json=JSON.stringify({server:location.hostname,villages:villages},null,2);navigator.clipboard.writeText(json).then(function(){alert('Copied '+villages.length+' villages to clipboard! Go paste it in the Attack Planner.');}).catch(function(){alert('Could not copy to clipboard. Try Chrome or Edge.');});})();`;
+
+function initBookmarklet() {
+  const link = document.getElementById('bm-link');
+  if (link) link.href = 'javascript:' + ATTACK_BOOKMARKLET;
+}
+
+function copyBookmarklet() {
+  const code = 'javascript:' + ATTACK_BOOKMARKLET;
+  navigator.clipboard.writeText(code)
+    .then(() => alert(t('alert_bm_copied')))
+    .catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = code;
+      ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      alert(t('alert_bm_copied'));
+    });
+}
+
+function pasteVillages() {
+  navigator.clipboard.readText()
+    .then(text => processVillagesJSON(text))
+    .catch(() => {
+      const text = prompt('Paste the village JSON here:');
+      if (text) processVillagesJSON(text);
+    });
+}
+
+function processVillagesJSON(text) {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed.villages || !Array.isArray(parsed.villages)) {
+      alert(t('alert_invalid_format'));
+      return;
+    }
+    if (parsed.server && !DATA.settings.serverUrl) {
+      DATA.settings.serverUrl = parsed.server;
+      const inp = document.getElementById('server-url');
+      if (inp) inp.value = parsed.server;
+    }
+    let added = 0, updated = 0;
+    parsed.villages.forEach(pv => {
+      const existing = DATA.villages.find(v =>
+        (pv.id && v.villageId === String(pv.id)) ||
+        (v.x === parseInt(pv.x) && v.y === parseInt(pv.y))
+      );
+      if (existing) {
+        if (pv.axes   !== undefined) existing.axes   = pv.axes   || 0;
+        if (pv.lc     !== undefined) existing.lc     = pv.lc     || 0;
+        if (pv.rams   !== undefined) existing.rams   = pv.rams   || 0;
+        if (pv.cats   !== undefined) existing.cats   = pv.cats   || 0;
+        if (pv.nobles !== undefined) existing.nobles = pv.nobles || 0;
+        updated++;
+      } else {
+        DATA.villages.push({
+          id:         uid(),
+          name:       pv.name || `(${pv.x}|${pv.y})`,
+          villageId:  String(pv.id || ''),
+          x:          parseInt(pv.x) || 0,
+          y:          parseInt(pv.y) || 0,
+          axes:       pv.axes   || 0,
+          lc:         pv.lc     || 0,
+          rams:       pv.rams   || 0,
+          cats:       pv.cats   || 0,
+          nobles:     pv.nobles || 0,
+        });
+        added++;
+      }
+    });
+
+    // Auto-detect player name from Village DB if not yet set
+    if (!DATA.settings.playerName && villageDb.length) {
+      const firstId = String(parsed.villages[0]?.id || '');
+      const dbEntry = firstId ? villageDb.find(v => v.id === firstId) : null;
+      if (dbEntry) {
+        const name = playerMap[dbEntry.playerId] || '';
+        if (name) {
+          DATA.settings.playerName = name;
+          document.getElementById('cfg-player').value = name;
+        }
+      }
+    }
+
+    saveData();
+    renderVillages();
+    refreshDropdowns();
+    alert(t('alert_import_villages_ok').replace('{added}', added).replace('{updated}', updated));
+  } catch(e) {
+    alert(t('alert_parse_error') + e.message);
+  }
+}
+
+function parseRecruitHTML(htmlText) {
+  const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+  const villages = [];
+  const seen = new Set();
+
+  doc.querySelectorAll('a[href*="screen=overview"]').forEach(link => {
+    const href = link.getAttribute('href') || '';
+    const idMatch = href.match(/[?&]village=(\d+)/);
+    if (!idMatch) return;
+    const villageId = idMatch[1];
+    if (seen.has(villageId)) return;
+    seen.add(villageId);
+
+    const text = link.textContent.trim();
+    const coordMatch = text.match(/\((\d+)\|(\d+)\)/);
+    if (!coordMatch) return;
+
+    const getUnit = unit => {
+      const inp = doc.querySelector(`input[name="units[${villageId}][${unit}]"]`);
+      return inp ? (parseInt(inp.getAttribute('data-existing') || '0') || 0) : 0;
+    };
+
+    villages.push({
+      id:     villageId,
+      name:   text,
+      x:      parseInt(coordMatch[1]),
+      y:      parseInt(coordMatch[2]),
+      axes:   getUnit('axe'),
+      lc:     getUnit('light'),
+      rams:   getUnit('ram'),
+      cats:   getUnit('catapult'),
+      nobles: getUnit('snob'),
+    });
+  });
+
+  return villages;
+}
+
+function importFromRecruitHTML(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const villages = parseRecruitHTML(e.target.result);
+    if (!villages.length) {
+      alert(t('alert_invalid_format'));
+      event.target.value = '';
+      return;
+    }
+    let added = 0, updated = 0;
+    villages.forEach(pv => {
+      const existing = DATA.villages.find(v =>
+        (pv.id && v.villageId === pv.id) ||
+        (v.x === pv.x && v.y === pv.y)
+      );
+      if (existing) {
+        existing.axes   = pv.axes;
+        existing.lc     = pv.lc;
+        existing.rams   = pv.rams;
+        existing.cats   = pv.cats;
+        existing.nobles = pv.nobles;
+        updated++;
+      } else {
+        DATA.villages.push({
+          id:        uid(),
+          name:      pv.name,
+          villageId: pv.id,
+          x:         pv.x,
+          y:         pv.y,
+          axes:      pv.axes,
+          lc:        pv.lc,
+          rams:      pv.rams,
+          cats:      pv.cats,
+          nobles:    pv.nobles,
+        });
+        added++;
+      }
+    });
+    saveData();
+    renderVillages();
+    refreshDropdowns();
+    alert(t('alert_import_villages_ok').replace('{added}', added).replace('{updated}', updated));
+    event.target.value = '';
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ══════════════════════════════════════════════
+// RENDER ALL
+// ══════════════════════════════════════════════
+
+function renderAll() {
+  renderVillages();
+  renderTargets();
+  renderAttacks();
+  refreshDropdowns();
+}
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+
+(async function init() {
+  loadData();
+  applySettings();
+  applyTranslations();
+  bindSettings();
+  renderAll();
+  initBookmarklet();
+  setInterval(updateCountdowns, 1000);
+  await tryAutoConnect();
+  await tryAutoConnectDb();
+})();
+</script>
+<div class="footer">
+  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.0.0 &nbsp;·&nbsp; 2026-06-09 01:30
+</div>
+</body>
+</html>

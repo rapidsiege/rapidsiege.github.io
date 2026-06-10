@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TW Tribe Calculator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #111008;
+      color: #d4b483;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(180deg, #2d1f0e 0%, #1e1408 100%);
+      border-bottom: 2px solid #7a5c10;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .header h1 { color: #f0c040; font-size: 19px; letter-spacing: 0.5px; white-space: nowrap; }
+    .header-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+
+    /* ── File bar ── */
+    .file-bar {
+      background: #160f04;
+      border-bottom: 1px solid #3a2808;
+      padding: 6px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+    .file-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot-ok   { background: #40c860; box-shadow: 0 0 5px #40c860; }
+    .dot-off  { background: #806030; }
+    #file-status-text { color: #907050; }
+    #file-status-text.connected { color: #70c080; }
+    .file-bar-actions { display: flex; gap: 8px; margin-left: auto; }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      background: #1a1008;
+      border-bottom: 2px solid #4a3010;
+      padding: 0 20px;
+      overflow-x: auto;
+    }
+    .tab {
+      padding: 11px 22px;
+      cursor: pointer;
+      color: #8a6a40;
+      border-bottom: 3px solid transparent;
+      font-weight: 500;
+      font-size: 13px;
+      transition: color .15s;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .tab:hover { color: #c8a060; }
+    .tab.active { color: #f0c040; border-bottom-color: #f0c040; }
+
+    /* ── Tab content ── */
+    .tab-content { display: none; padding: 22px 24px; }
+    .tab-content.active { display: block; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 7px 15px; border-radius: 4px; cursor: pointer;
+      font-size: 13px; font-weight: 500; border: 1px solid transparent;
+      transition: all .15s; white-space: nowrap;
+    }
+    .btn-primary { background: #5a3d08; color: #f0c040; border-color: #c0900a; }
+    .btn-primary:hover { background: #6e4c0a; }
+    .btn-ghost { background: transparent; color: #908060; border-color: #4a3010; }
+    .btn-ghost:hover { background: #2e1e08; color: #c0a060; }
+    .btn-file { background: #0e3020; color: #50d890; border-color: #208050; }
+    .btn-file:hover { background: #123828; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #1e1408;
+      border: 1px solid #4a3010;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    th {
+      background: #2e1e08;
+      color: #e0a820;
+      padding: 9px 12px;
+      text-align: right;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+    }
+    th.left { text-align: left; }
+    th:hover { background: #3a2610; color: #f0c040; }
+    th .sort-arrow { margin-left: 4px; opacity: 0.4; font-size: 10px; }
+    th.sort-asc .sort-arrow::after  { content: '▲'; opacity: 1; }
+    th.sort-desc .sort-arrow::after { content: '▼'; opacity: 1; }
+    th .sort-arrow::after { content: '⬍'; }
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #2e1e08;
+      color: #d0a870;
+      text-align: right;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    td.left { text-align: left; }
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #261808; }
+    .empty-row td { text-align: center; color: #5a3a18; padding: 36px; }
+    tr.total-row td { background: #2a1c08; color: #f0c040; font-weight: 700; border-top: 2px solid #7a5c10; }
+    tr.total-row:hover td { background: #342408; }
+
+    /* ── Section header ── */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .section-header h2 { color: #f0c040; font-size: 15px; font-weight: 600; }
+
+    /* ── Stats cards ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: #1e1408;
+      border: 1px solid #4a3010;
+      border-radius: 6px;
+      padding: 14px 16px;
+    }
+    .stat-label { font-size: 11px; color: #806030; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .stat-value { font-size: 22px; font-weight: 700; color: #f0c040; }
+    .stat-sub   { font-size: 11px; color: #706050; margin-top: 3px; }
+
+    /* ── Power bars ── */
+    .power-bar-wrap { margin-bottom: 24px; }
+    .power-bar-label { display: flex; justify-content: space-between; font-size: 12px; color: #906838; margin-bottom: 5px; }
+    .power-bar-track { height: 10px; background: #2e1e08; border-radius: 5px; overflow: hidden; }
+    .power-bar-fill { height: 100%; border-radius: 5px; transition: width 0.4s; }
+    .bar-off  { background: linear-gradient(90deg, #c03010, #e05020); }
+    .bar-def  { background: linear-gradient(90deg, #1060a0, #2080d0); }
+    .bar-cav  { background: linear-gradient(90deg, #108060, #20c080); }
+
+    /* ── Unit breakdown ── */
+    .unit-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .unit-card {
+      background: #1e1408;
+      border: 1px solid #3a2808;
+      border-radius: 5px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .unit-name  { font-size: 11px; color: #806030; text-transform: uppercase; letter-spacing: 0.4px; }
+    .unit-count { font-size: 18px; font-weight: 700; color: #d4b483; }
+    .unit-type-off  { border-left: 3px solid #c04020; }
+    .unit-type-def  { border-left: 3px solid #2070c0; }
+    .unit-type-misc { border-left: 3px solid #706030; }
+
+    /* ── Filter row ── */
+    .filter-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .filter-row input, .filter-row select {
+      background: #1a1008;
+      border: 1px solid #4a3010;
+      color: #d4b483;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .filter-row input:focus, .filter-row select:focus { outline: none; border-color: #c0900a; }
+    .filter-row label { font-size: 12px; color: #806030; }
+
+    /* ── Drop zone ── */
+    .drop-zone {
+      border: 2px dashed #4a3010;
+      border-radius: 8px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+      background: #160f04;
+      margin: 24px 0;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: #c0900a; background: #1e1408; }
+    .drop-zone-icon { font-size: 36px; margin-bottom: 12px; }
+    .drop-zone-text { color: #907050; font-size: 14px; }
+    .drop-zone-text strong { color: #d4b483; }
+
+    /* ── Player tag ── */
+    .player-tag {
+      display: inline-block;
+      background: #2a1c08;
+      border: 1px solid #5a3d10;
+      border-radius: 3px;
+      padding: 2px 8px;
+      font-size: 12px;
+      color: #c8a060;
+      white-space: nowrap;
+    }
+
+    /* ── Village type badge ── */
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .badge-off  { background: rgba(192,64,32,0.25); color: #e06040; border: 1px solid #803020; }
+    .badge-def  { background: rgba(32,96,192,0.25); color: #60a0e0; border: 1px solid #2060a0; }
+    .badge-mixed { background: rgba(160,120,32,0.25); color: #d0a040; border: 1px solid #806020; }
+    .badge-empty { background: rgba(80,60,30,0.2); color: #706050; border: 1px solid #4a3010; }
+
+    /* ── Number formatting ── */
+    .num-zero { color: #4a3010; }
+    .num-high { color: #f0c040; font-weight: 600; }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      .tab-content { padding: 14px 12px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* ── Off-tier badges ── */
+    .badge-complete { background: rgba(220,40,10,0.3); color: #ff6040; border: 1px solid #b02010; }
+    .badge-tq       { background: rgba(200,110,10,0.28); color: #f0a030; border: 1px solid #a06010; }
+    .badge-half     { background: rgba(180,170,10,0.22); color: #d8d030; border: 1px solid #888010; }
+
+    /* ── Threshold inputs ── */
+    .threshold-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      padding: 10px 14px;
+      background: #160f04;
+      border: 1px solid #3a2808;
+      border-radius: 5px;
+    }
+    .threshold-row label { font-size: 12px; color: #806030; }
+    .threshold-row input[type=number] {
+      background: #1a1008;
+      border: 1px solid #4a3010;
+      color: #d4b483;
+      padding: 5px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+      width: 110px;
+    }
+    .threshold-row input[type=number]:focus { outline: none; border-color: #c0900a; }
+    .tier-legend { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-left: auto; }
+
+    /* ── Paste area ── */
+    .paste-area {
+      margin-top: 0;
+      border: 1px solid #3a2808;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .paste-area-header {
+      background: #1e1408;
+      padding: 8px 14px;
+      font-size: 12px;
+      color: #806030;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid #3a2808;
+    }
+    .paste-area-header span { letter-spacing: 0.3px; }
+    #paste-input {
+      display: block;
+      width: 100%;
+      height: 130px;
+      background: #120d03;
+      border: none;
+      color: #d4b483;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      padding: 10px 14px;
+      resize: vertical;
+      outline: none;
+    }
+    #paste-input::placeholder { color: #4a3010; }
+    #paste-input:focus { background: #160f04; }
+
+    /* ── BB Modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #1e1408;
+      border: 1px solid #7a5c10;
+      border-radius: 8px;
+      width: min(680px, 95vw);
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .modal-header {
+      background: #2e1e08;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #4a3010;
+    }
+    .modal-header h3 { color: #f0c040; font-size: 14px; }
+    .modal-close { background: none; border: none; color: #806030; font-size: 18px; cursor: pointer; line-height: 1; }
+    .modal-close:hover { color: #f0c040; }
+    .modal-body { padding: 14px 16px; flex: 1; overflow-y: auto; }
+    .modal-body textarea {
+      width: 100%; height: 340px;
+      background: #120d03;
+      border: 1px solid #3a2808;
+      color: #d4b483;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      padding: 10px 12px;
+      border-radius: 4px;
+      resize: vertical;
+      outline: none;
+    }
+    .modal-footer {
+      padding: 10px 16px;
+      border-top: 1px solid #3a2808;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* ── Lang buttons ── */
+    .lang-btn { padding: 3px 8px; background: #1e1408; border-color: #4a3010; color: #a08050; display:inline-flex; align-items:center; gap:5px; }
+    .lang-btn.lang-active { border-color: #f0c040; color: #f0c040; background: #2a1c08; }
+    .lang-btn:hover { border-color: #c8a060; color: #c8a060; }
+
+    /* ── Hidden file input ── */
+    #file-input { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ HEADER ═══════════════════════════ -->
+<div class="header">
+  <h1>⚔ TW Tribe Calculator</h1>
+  <div class="header-right">
+    <button id="lang-btn-en" class="btn btn-sm lang-btn lang-active" onclick="changeLang('en')"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 40'%3E%3Crect width='60' height='40' fill='%23012169'/%3E%3Cpath d='M0,0 L60,40 M60,0 L0,40' stroke='%23fff' stroke-width='8'/%3E%3Cpath d='M0,0 L60,40 M60,0 L0,40' stroke='%23C8102E' stroke-width='4'/%3E%3Cpath d='M30,0 V40 M0,20 H60' stroke='%23fff' stroke-width='12'/%3E%3Cpath d='M30,0 V40 M0,20 H60' stroke='%23C8102E' stroke-width='8'/%3E%3C/svg%3E" width="20" height="14" alt="" style="border-radius:2px"> EN</button>
+    <button id="lang-btn-es" class="btn btn-sm lang-btn" onclick="changeLang('es')"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 40'%3E%3Crect width='60' height='40' fill='%23C60B1E'/%3E%3Crect y='10' width='60' height='20' fill='%23FFC400'/%3E%3C/svg%3E" width="20" height="14" alt="" style="border-radius:2px"> ES</button>
+    <button class="btn btn-file btn-sm" onclick="document.getElementById('file-input').click()" data-i18n="btn_load_file">📂 Load File</button>
+    <button class="btn btn-ghost btn-sm" onclick="clearData()" data-i18n="btn_clear">✕ Clear</button>
+    <input type="file" id="file-input" accept=".txt,.csv" multiple onchange="handleFileInput(this)">
+  </div>
+</div>
+
+<!-- ═══════════════════════════ FILE BAR ═══════════════════════════ -->
+<div class="file-bar">
+  <div class="file-status-dot dot-off" id="file-dot"></div>
+  <span id="file-status-text">No file loaded — drag &amp; drop a tribe info .txt file or use Load File</span>
+  <span id="file-summary" style="color:#706050;"></span>
+</div>
+
+<!-- ═══════════════════════════ TABS ═══════════════════════════ -->
+<div class="tabs">
+  <div class="tab active"  data-tab="overview"    onclick="switchTab('overview')"   data-i18n="tab_overview">Overview</div>
+  <div class="tab"         data-tab="players"     onclick="switchTab('players')"    data-i18n="tab_players">By Player</div>
+  <div class="tab"         data-tab="byvillages"  onclick="switchTab('byvillages')" data-i18n="tab_byvillages">By Villages</div>
+  <div class="tab"         data-tab="villages"    onclick="switchTab('villages')"   data-i18n="tab_villages">Villages</div>
+  <div class="tab"         data-tab="rankings"    onclick="switchTab('rankings')"   data-i18n="tab_rankings">Rankings</div>
+  <div class="tab"         data-tab="settings"    onclick="switchTab('settings')"   data-i18n="tab_settings">⚙ Settings</div>
+</div>
+
+<!-- ═══════════════════════════ OVERVIEW ═══════════════════════════ -->
+<div class="tab-content active" id="tab-overview">
+  <div id="overview-drop">
+    <div class="drop-zone" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)" onclick="document.getElementById('file-input').click()">
+      <div class="drop-zone-icon">📋</div>
+      <div class="drop-zone-text"><strong data-i18n="drop_title">Drop your tribe info .txt here</strong><br><span data-i18n="drop_sub">or click to browse</span></div>
+    </div>
+    <div class="paste-area">
+      <div class="paste-area-header">
+        <span data-i18n="lbl_paste_data">Or paste data directly (same CSV format)</span>
+        <button class="btn btn-primary btn-sm" onclick="loadFromPaste()" data-i18n="btn_load_pasted">Load Pasted Data</button>
+      </div>
+      <textarea id="paste-input" placeholder="Coords,Player,spear,sword,axe,spy,light,heavy,ram,catapult,knight,snob,&#10;500|500,PlayerName,1000,500,2000,200,1500,300,100,50,1,0,"></textarea>
+    </div>
+  </div>
+  <div id="overview-content" style="display:none;">
+    <div class="stats-grid" id="stat-cards"></div>
+    <div class="section-header"><h2 data-i18n="sec_tribe_power">Tribe Power</h2></div>
+    <div class="power-bar-wrap" id="power-bars"></div>
+    <div class="section-header"><h2 data-i18n="sec_total_units">Total Units</h2></div>
+    <div class="unit-grid" id="unit-cards"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ BY PLAYER ═══════════════════════════ -->
+<div class="tab-content" id="tab-players">
+  <div class="section-header">
+    <h2 data-i18n="sec_player_summary">Player Summary</h2>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="exportTable('players-table','tribe_players.csv')">⬇ Export CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="showPlayersBBTable()">⬇ Export BB Table</button>
+    </div>
+  </div>
+  <div class="filter-row">
+    <input type="text" id="player-search" placeholder="Search player…" oninput="renderPlayersTable()">
+    <label data-i18n="lbl_show">Show:</label>
+    <select id="player-filter-type" onchange="renderPlayersTable()">
+      <option value="all" data-i18n="opt_all_villages">All villages</option>
+      <option value="off" data-i18n="opt_off_only">Offensive only</option>
+      <option value="def" data-i18n="opt_def_only">Defensive only</option>
+    </select>
+  </div>
+  <div class="table-wrap">
+    <table id="players-table">
+      <thead>
+        <tr>
+          <th class="left" onclick="sortTable('players',0)" data-i18n-th="th_player">Player <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',1)" data-i18n-th="th_villages">Villages <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',2)" data-i18n-th="th_spear">Spear <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',3)" data-i18n-th="th_sword">Sword <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',4)" data-i18n-th="th_axe">Axe <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',5)" data-i18n-th="th_spy">Spy <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',6)" data-i18n-th="th_light">Light <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',7)" data-i18n-th="th_heavy">Heavy <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',8)" data-i18n-th="th_ram">Ram <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',9)" data-i18n-th="th_cat">Cat <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',10)" data-i18n-th="th_knight">Knight <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',11)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',12)" data-i18n-th="th_off_power">⚔ Off Power <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',13)" data-i18n-th="th_def_power">🛡 Def Power <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',14)" title="Villages with Complete Off offensive power"><span class="badge badge-complete" style="cursor:pointer;">Complete</span> <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',15)" title="Villages with 3/4 offensive power"><span class="badge badge-tq" style="cursor:pointer;">3/4</span> <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',16)" title="Villages with 1/2 offensive power"><span class="badge badge-half" style="cursor:pointer;">1/2</span> <span class="sort-arrow"></span></th>
+        </tr>
+      </thead>
+      <tbody id="players-tbody">
+        <tr class="empty-row"><td colspan="17">Load a file to see player data</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ BY VILLAGES ═══════════════════════════ -->
+<div class="tab-content" id="tab-byvillages">
+  <div class="section-header">
+    <h2 data-i18n="sec_off_by_village">Offensive Power by Village</h2>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="exportTable('byvillages-table','tribe_offpower.csv')">⬇ Export CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="showBBTable()">⬇ Export BB Table</button>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:12px;color:#806030;">
+    <span>Tier thresholds configured in</span>
+    <button class="btn btn-ghost btn-sm" onclick="switchTab('settings')">⚙ Settings</button>
+    <div class="tier-legend">
+      <span class="badge badge-complete">Complete Off</span>
+      <span class="badge badge-tq">3/4</span>
+      <span class="badge badge-half">1/2</span>
+    </div>
+  </div>
+  <div class="filter-row">
+    <input type="text" id="byvillages-search" placeholder="Search player or coord…" oninput="renderByVillagesTable()">
+    <label data-i18n="lbl_tier">Tier:</label>
+    <select id="byvillages-filter-tier" onchange="renderByVillagesTable()">
+      <option value="all" data-i18n="opt_all_tiers">All tiers</option>
+      <option value="complete" data-i18n="opt_complete">Complete Off</option>
+      <option value="tq" data-i18n="opt_tq">3/4</option>
+      <option value="half" data-i18n="opt_half">1/2</option>
+      <option value="none" data-i18n="opt_below">Below threshold</option>
+    </select>
+  </div>
+  <div class="table-wrap">
+    <table id="byvillages-table">
+      <thead>
+        <tr>
+          <th class="left" onclick="sortByVillages(0)" data-i18n-th="th_coord">Coord <span class="sort-arrow"></span></th>
+          <th class="left" onclick="sortByVillages(1)" data-i18n-th="th_player">Player <span class="sort-arrow"></span></th>
+          <th onclick="sortByVillages(2)" data-i18n-th="th_off_power">⚔ Off Power <span class="sort-arrow"></span></th>
+          <th data-i18n="th_tier">Tier</th>
+          <th onclick="sortByVillages(4)" data-i18n-th="th_axe">Axe <span class="sort-arrow"></span></th>
+          <th onclick="sortByVillages(5)" data-i18n-th="th_light">Light <span class="sort-arrow"></span></th>
+          <th onclick="sortByVillages(6)" data-i18n-th="th_heavy">Heavy <span class="sort-arrow"></span></th>
+          <th onclick="sortByVillages(7)" data-i18n-th="th_knight">Knight <span class="sort-arrow"></span></th>
+          <th onclick="sortByVillages(8)" data-i18n-th="th_ram">Ram <span class="sort-arrow"></span></th>
+          <th onclick="sortByVillages(9)" data-i18n-th="th_cat">Cat <span class="sort-arrow"></span></th>
+          <th onclick="sortByVillages(10)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
+        </tr>
+      </thead>
+      <tbody id="byvillages-tbody">
+        <tr class="empty-row"><td colspan="11">Load a file to see data</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ VILLAGES ═══════════════════════════ -->
+<div class="tab-content" id="tab-villages">
+  <div class="section-header">
+    <h2 data-i18n="sec_village_detail">Village Detail</h2>
+    <button class="btn btn-ghost btn-sm" onclick="exportTable('villages-table','tribe_villages.csv')">⬇ Export CSV</button>
+  </div>
+  <div class="filter-row">
+    <input type="text" id="village-search" placeholder="Search player or coord…" oninput="renderVillagesTable()">
+    <label data-i18n="lbl_type">Type:</label>
+    <select id="village-filter-type" onchange="renderVillagesTable()">
+      <option value="all" data-i18n="opt_all">All</option>
+      <option value="off" data-i18n="opt_off">Offensive</option>
+      <option value="def" data-i18n="opt_def">Defensive</option>
+      <option value="mixed" data-i18n="opt_mixed">Mixed</option>
+      <option value="empty" data-i18n="opt_empty">Empty</option>
+    </select>
+    <label data-i18n="lbl_sort">Sort:</label>
+    <select id="village-sort" onchange="renderVillagesTable()">
+      <option value="player" data-i18n="opt_player_sort">Player</option>
+      <option value="off" data-i18n="opt_off_desc">Off Power ↓</option>
+      <option value="def" data-i18n="opt_def_desc">Def Power ↓</option>
+      <option value="coord" data-i18n="opt_coord">Coord</option>
+    </select>
+  </div>
+  <div class="table-wrap">
+    <table id="villages-table">
+      <thead>
+        <tr>
+          <th class="left" data-i18n="th_coord">Coord</th>
+          <th class="left" data-i18n="th_player">Player</th>
+          <th data-i18n="th_type">Type</th>
+          <th data-i18n="th_spear">Spear</th>
+          <th data-i18n="th_sword">Sword</th>
+          <th data-i18n="th_axe">Axe</th>
+          <th data-i18n="th_spy">Spy</th>
+          <th data-i18n="th_light">Light</th>
+          <th data-i18n="th_heavy">Heavy</th>
+          <th data-i18n="th_ram">Ram</th>
+          <th data-i18n="th_cat">Cat</th>
+          <th data-i18n="th_knight">Knight</th>
+          <th data-i18n="th_snob">Snob</th>
+          <th data-i18n="th_off">⚔ Off</th>
+          <th data-i18n="th_def">🛡 Def</th>
+        </tr>
+      </thead>
+      <tbody id="villages-tbody">
+        <tr class="empty-row"><td colspan="15">Load a file to see village data</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ RANKINGS ═══════════════════════════ -->
+<div class="tab-content" id="tab-rankings">
+  <div id="rankings-content">
+    <div style="color:#5a3a18;padding:36px;text-align:center;">Load a file to see rankings</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ SETTINGS ═══════════════════════════ -->
+<div class="tab-content" id="tab-settings">
+  <div class="section-header"><h2 data-i18n="sec_off_thresholds">Offensive Power Thresholds</h2></div>
+  <div class="threshold-row">
+    <label data-i18n="lbl_complete_off">Complete Off ≥</label>
+    <input type="number" id="thresh-complete" value="500000" oninput="renderTierTables()">
+    <label data-i18n="lbl_tq">3/4 ≥</label>
+    <input type="number" id="thresh-tq" value="350000" oninput="renderTierTables()">
+    <label data-i18n="lbl_half">1/2 ≥</label>
+    <input type="number" id="thresh-half" value="250000" oninput="renderTierTables()">
+    <div class="tier-legend">
+      <span class="badge badge-complete">Complete Off</span>
+      <span class="badge badge-tq">3/4</span>
+      <span class="badge badge-half">1/2</span>
+    </div>
+  </div>
+  <p style="font-size:12px;color:#5a3a18;margin-top:10px;" data-i18n="settings_note">Changes apply instantly to By Villages and By Player tabs.</p>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// CONSTANTS
+// ══════════════════════════════════════════════════════════════
+const UNITS = ['spear','sword','axe','spy','light','heavy','ram','catapult','knight','snob'];
+const UNIT_LABELS = ['Spear','Sword','Axe','Spy','Light','Heavy','Ram','Cat','Knight','Snob'];
+
+// Attack / Def-inf / Def-cav values (standard TW)
+const ATT  = { spear:10,  sword:25,  axe:40,  spy:35,  light:130, heavy:150, ram:2,   catapult:100, knight:150, snob:30  };
+const DINF = { spear:15,  sword:45,  axe:10,  spy:200, light:30,  heavy:200, ram:20,  catapult:100, knight:250, snob:100 };
+const DCAV = { spear:45,  sword:50,  axe:10,  spy:200, light:40,  heavy:80,  ram:50,  catapult:50,  knight:400, snob:100 };
+
+const UNIT_TYPE = { // off / def / misc
+  spear:'def', sword:'def', axe:'off', spy:'misc',
+  light:'off', heavy:'def', ram:'off', catapult:'misc',
+  knight:'def', snob:'misc'
+};
+
+// ══════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════
+let villages = [];   // [{coord, player, spear, sword, axe, spy, light, heavy, ram, catapult, knight, snob, offPow, defInf, defCav, type}]
+let players  = {};   // {playerName: {villages:[], totals:{...}, offPow, defInf, defCav}}
+let sortState = { players: {col:0,dir:1}, villages: {col:-1,dir:1} };
+let sortStateByVil = { col: 2, dir: 1 }; // default: off power desc
+
+// ══════════════════════════════════════════════════════════════
+// TRANSLATIONS
+// ══════════════════════════════════════════════════════════════
+let lang = 'en';
+
+const T = {
+  en: {
+    tab_overview:'Overview', tab_players:'By Player', tab_byvillages:'By Villages',
+    tab_villages:'Villages', tab_rankings:'Rankings', tab_settings:'⚙ Settings',
+    sec_tribe_power:'Tribe Power', sec_total_units:'Total Units',
+    sec_player_summary:'Player Summary', sec_village_detail:'Village Detail',
+    sec_off_by_village:'Offensive Power by Village', sec_off_thresholds:'Offensive Power Thresholds',
+    btn_load_file:'📂 Load File', btn_clear:'✕ Clear',
+    btn_load_pasted:'Load Pasted Data', btn_close:'Close', bb_copy_btn:'Copy to Clipboard',
+    bb_modal_title:'BB Table — paste into tribe forum',
+    lbl_show:'Show:', lbl_type:'Type:', lbl_sort:'Sort:', lbl_tier:'Tier:',
+    lbl_complete_off:'Complete Off ≥', lbl_tq:'3/4 ≥', lbl_half:'1/2 ≥',
+    lbl_paste_data:'Or paste data directly (same CSV format)',
+    settings_note:'Changes apply instantly to By Villages and By Player tabs.',
+    opt_all_villages:'All villages', opt_off_only:'Offensive only', opt_def_only:'Defensive only',
+    opt_all:'All', opt_off:'Offensive', opt_def:'Defensive', opt_mixed:'Mixed', opt_empty:'Empty',
+    opt_player_sort:'Player', opt_off_desc:'Off Power ↓', opt_def_desc:'Def Power ↓', opt_coord:'Coord',
+    opt_all_tiers:'All tiers', opt_complete:'Complete Off', opt_tq:'3/4', opt_half:'1/2', opt_below:'Below threshold',
+    th_player:'Player', th_villages:'Villages', th_coord:'Coord', th_type:'Type',
+    th_spear:'Spear', th_sword:'Sword', th_axe:'Axe', th_spy:'Spy',
+    th_light:'Light', th_heavy:'Heavy', th_ram:'Ram', th_cat:'Cat',
+    th_knight:'Knight', th_snob:'Snob',
+    th_off_power:'⚔ Off Power', th_def_power:'🛡 Def Power', th_off:'⚔ Off', th_def:'🛡 Def', th_tier:'Tier',
+    drop_title:'Drop your tribe info .txt here', drop_sub:'or click to browse',
+    status_no_file:'No file loaded — drag & drop a tribe info .txt file or use Load File',
+    stat_players:'Players', stat_villages:'Villages', stat_avg:'Avg Villages/Player',
+    stat_nobles:'Total Nobles (Snobs)', stat_rams:'Total Rams',
+    stat_off_power:'⚔ Total Off Power', stat_def_inf:'🛡 Def vs Infantry', stat_def_cav:'🛡 Def vs Cavalry',
+    bar_off:'⚔ Offensive Power', bar_def:'🛡 Defensive Power (vs Infantry)',
+    rank_off:'⚔ Off Power', rank_def:'🛡 Def Power', rank_villages:'🏘 Villages',
+    rank_spear:'🗡 Spears', rank_sword:'⚔ Swords', rank_axe:'🪓 Axes',
+    rank_spy:'🔍 Spies', rank_light:'🏹 Light Cav', rank_heavy:'🐴 Heavy Cav',
+    rank_rams:'🐏 Rams', rank_cat:'💣 Catapults', rank_knight:'🐴 Knights', rank_nobles:'👑 Nobles',
+    unit_spear:'Spear', unit_sword:'Sword', unit_axe:'Axe', unit_spy:'Spy',
+    unit_light:'Light', unit_heavy:'Heavy', unit_ram:'Ram', unit_catapult:'Cat',
+    unit_knight:'Knight', unit_snob:'Snob',
+    tribe_total:'TRIBE TOTAL',
+    empty_load_players:'Load a file to see player data',
+    empty_no_players:'No players match filter',
+    empty_load_byvillages:'Load a file to see data',
+    empty_no_byvillages:'No villages match filter',
+    empty_load_villages:'Load a file to see village data',
+    empty_no_villages:'No villages match filter',
+    empty_load_rankings:'Load a file to see rankings',
+    vil_type_sub: (o,d,m,e) => `${o} off · ${d} def · ${m} mixed · ${e} empty`,
+    footer_dev_by: 'Developed by', footer_version: 'Version',
+  },
+  es: {
+    tab_overview:'Resumen', tab_players:'Por Jugador', tab_byvillages:'Por Aldea',
+    tab_villages:'Aldeas', tab_rankings:'Rankings', tab_settings:'⚙ Config.',
+    sec_tribe_power:'Poder de Tribu', sec_total_units:'Unidades Totales',
+    sec_player_summary:'Resumen por Jugador', sec_village_detail:'Detalle de Aldeas',
+    sec_off_by_village:'Poder Ofensivo por Aldea', sec_off_thresholds:'Umbrales de Poder Ofensivo',
+    btn_load_file:'📂 Cargar', btn_clear:'✕ Limpiar',
+    btn_load_pasted:'Cargar Datos', btn_close:'Cerrar', bb_copy_btn:'Copiar al portapapeles',
+    bb_modal_title:'Tabla BB — pega en el foro de tribu',
+    lbl_show:'Mostrar:', lbl_type:'Tipo:', lbl_sort:'Orden:', lbl_tier:'Nivel:',
+    lbl_complete_off:'Off Completo ≥', lbl_tq:'3/4 ≥', lbl_half:'1/2 ≥',
+    lbl_paste_data:'O pega los datos directamente (mismo formato CSV)',
+    settings_note:'Los cambios se aplican al instante en las pestañas correspondientes.',
+    opt_all_villages:'Todas las aldeas', opt_off_only:'Solo ofensivas', opt_def_only:'Solo defensivas',
+    opt_all:'Todos', opt_off:'Ofensivo', opt_def:'Defensivo', opt_mixed:'Mixto', opt_empty:'Vacío',
+    opt_player_sort:'Jugador', opt_off_desc:'Poder Of. ↓', opt_def_desc:'Poder Def. ↓', opt_coord:'Coord',
+    opt_all_tiers:'Todos los niveles', opt_complete:'Off Completo', opt_tq:'3/4', opt_half:'1/2', opt_below:'Bajo umbral',
+    th_player:'Jugador', th_villages:'Aldeas', th_coord:'Coord', th_type:'Tipo',
+    th_spear:'Lanza', th_sword:'Espada', th_axe:'Hacha', th_spy:'Espía',
+    th_light:'C. Ligera', th_heavy:'C. Pesada', th_ram:'Ariete', th_cat:'Catap.',
+    th_knight:'Paladín', th_snob:'Noble',
+    th_off_power:'⚔ Pod. Ofens.', th_def_power:'🛡 Pod. Def.', th_off:'⚔ Ofens.', th_def:'🛡 Def.', th_tier:'Nivel',
+    drop_title:'Suelta tu archivo .txt de tribu aquí', drop_sub:'o haz clic para buscar',
+    status_no_file:'Sin archivo — arrastra el .txt de tu tribu o usa Cargar',
+    stat_players:'Jugadores', stat_villages:'Aldeas', stat_avg:'Aldeas/Jugador (media)',
+    stat_nobles:'Total Nobles', stat_rams:'Total Arietes',
+    stat_off_power:'⚔ Pod. Ofensivo Total', stat_def_inf:'🛡 Def vs Infantería', stat_def_cav:'🛡 Def vs Caballería',
+    bar_off:'⚔ Poder Ofensivo', bar_def:'🛡 Poder Defensivo (vs Infantería)',
+    rank_off:'⚔ Pod. Ofensivo', rank_def:'🛡 Pod. Defensivo', rank_villages:'🏘 Aldeas',
+    rank_spear:'🗡 Lanzas', rank_sword:'⚔ Espadas', rank_axe:'🪓 Hachas',
+    rank_spy:'🔍 Espías', rank_light:'🏹 C. Ligera', rank_heavy:'🐴 C. Pesada',
+    rank_rams:'🐏 Arietes', rank_cat:'💣 Catapultas', rank_knight:'🐴 Paladines', rank_nobles:'👑 Nobles',
+    unit_spear:'Lanza', unit_sword:'Espada', unit_axe:'Hacha', unit_spy:'Espía',
+    unit_light:'C. Ligera', unit_heavy:'C. Pesada', unit_ram:'Ariete', unit_catapult:'Catapulta',
+    unit_knight:'Paladín', unit_snob:'Noble',
+    tribe_total:'TOTAL TRIBU',
+    empty_load_players:'Carga un archivo para ver jugadores',
+    empty_no_players:'Ningún jugador coincide con el filtro',
+    empty_load_byvillages:'Carga un archivo para ver datos',
+    empty_no_byvillages:'Ninguna aldea coincide con el filtro',
+    empty_load_villages:'Carga un archivo para ver aldeas',
+    empty_no_villages:'Ninguna aldea coincide con el filtro',
+    empty_load_rankings:'Carga un archivo para ver rankings',
+    vil_type_sub: (o,d,m,e) => `${o} ofens. · ${d} def. · ${m} mixtas · ${e} vacías`,
+    footer_dev_by: 'Desarrollado por', footer_version: 'Versión',
+  }
+};
+
+function t(k) { return (T[lang] && T[lang][k]) || T.en[k] || k; }
+
+function changeLang(l) {
+  lang = l;
+  document.getElementById('lang-btn-en').classList.toggle('lang-active', l === 'en');
+  document.getElementById('lang-btn-es').classList.toggle('lang-active', l === 'es');
+  applyLang();
+  if (villages.length) {
+    renderOverview();
+    renderPlayersTable();
+    renderByVillagesTable();
+    renderVillagesTable();
+    renderRankings();
+  }
+}
+
+function applyLang() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const v = t(el.dataset.i18n);
+    if (v) el.textContent = v;
+  });
+  document.querySelectorAll('[data-i18n-th]').forEach(el => {
+    const v = t(el.dataset.i18nTh);
+    if (v && el.childNodes[0]) el.childNodes[0].textContent = v + ' ';
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const v = t(el.dataset.i18nPlaceholder);
+    if (v) el.placeholder = v;
+  });
+  if (!villages.length) {
+    const txt = document.getElementById('file-status-text');
+    if (txt && !txt.classList.contains('connected')) txt.textContent = t('status_no_file');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// FILE HANDLING
+// ══════════════════════════════════════════════════════════════
+function handleFileInput(input) {
+  if (input.files && input.files.length) loadFiles(input.files);
+}
+function onDragOver(e)  { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+function onDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+function onDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
+}
+function loadFiles(fileList) {
+  const files = [...fileList];
+  const results = new Array(files.length);
+  let done = 0;
+  files.forEach((file, i) => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      results[i] = ev.target.result;
+      if (++done === files.length) {
+        // merge: keep first header, strip headers from subsequent files
+        const isHeader = line => /^coords?[,\t]/i.test(line.trim());
+        const merged = results.map((text, idx) =>
+          idx === 0 ? text : text.split('\n').filter(l => !isHeader(l)).join('\n')
+        ).join('\n');
+        const label = files.length === 1 ? files[0].name : `${files.length} files`;
+        parseData(merged, label);
+      }
+    };
+    reader.readAsText(file);
+  });
+}
+function loadFromPaste() {
+  const text = document.getElementById('paste-input').value.trim();
+  if (!text) return;
+  parseData(text, 'pasted data');
+}
+
+function clearData() {
+  villages = []; players = {};
+  document.getElementById('file-dot').className = 'file-status-dot dot-off';
+  document.getElementById('file-status-text').textContent = t('status_no_file');
+  document.getElementById('file-status-text').className = '';
+  document.getElementById('file-summary').textContent = '';
+  document.getElementById('paste-input').value = '';
+  document.getElementById('overview-drop').style.display = '';
+  document.getElementById('overview-content').style.display = 'none';
+  document.getElementById('players-tbody').innerHTML = `<tr class="empty-row"><td colspan="17">${t('empty_load_players')}</td></tr>`;
+  document.getElementById('byvillages-tbody').innerHTML = `<tr class="empty-row"><td colspan="11">${t('empty_load_byvillages')}</td></tr>`;
+  document.getElementById('villages-tbody').innerHTML = `<tr class="empty-row"><td colspan="15">${t('empty_load_villages')}</td></tr>`;
+  document.getElementById('rankings-content').innerHTML = `<div style="color:#5a3a18;padding:36px;text-align:center;">${t('empty_load_rankings')}</div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// PARSING
+// ══════════════════════════════════════════════════════════════
+function parseData(text, filename) {
+  villages = [];
+  players  = {};
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+
+  for (const line of lines) {
+    const cols = line.split(',').map(c => c.trim());
+    if (!cols[0] || cols[0].toLowerCase() === 'coords') continue; // skip header
+    if (!cols[0].includes('|') && !cols[0].match(/^\d+\|\d+$/)) {
+      // Try to handle malformed coord like "002|7" — keep as-is
+    }
+
+    const coord  = cols[0];
+    const player = cols[1] || 'Unknown';
+    const units  = {};
+    UNITS.forEach((u, i) => { units[u] = parseInt(cols[2 + i]) || 0; });
+
+    const OFF_UNITS = ['axe','light','ram','catapult'];
+    const DEF_UNITS = ['spear','sword','heavy','catapult','knight'];
+    const offPow = OFF_UNITS.reduce((s,u) => s + units[u] * ATT[u],  0);
+    const defInf = DEF_UNITS.reduce((s,u) => s + units[u] * DINF[u], 0);
+    const defCav = DEF_UNITS.reduce((s,u) => s + units[u] * DCAV[u], 0);
+
+    // Classify village
+    const totalUnits = UNITS.reduce((s,u) => s + units[u], 0);
+    let type = 'empty';
+    if (totalUnits > 0) {
+      const offScore = units.axe + units.light + units.ram;
+      const defScore = units.spear + units.sword + units.heavy + units.knight;
+      if (offScore > defScore * 2)      type = 'off';
+      else if (defScore > offScore * 2) type = 'def';
+      else                              type = 'mixed';
+    }
+
+    const vil = { coord, player, ...units, offPow, defInf, defCav, type };
+    villages.push(vil);
+
+    if (!players[player]) {
+      players[player] = { villages: [], totals: Object.fromEntries(UNITS.map(u => [u,0])), offPow:0, defInf:0, defCav:0 };
+    }
+    players[player].villages.push(vil);
+    UNITS.forEach(u => { players[player].totals[u] += units[u]; });
+    players[player].offPow += offPow;
+    players[player].defInf += defInf;
+    players[player].defCav += defCav;
+  }
+
+  // Status bar
+  const playerCount = Object.keys(players).length;
+  document.getElementById('file-dot').className = 'file-status-dot dot-ok';
+  const txt = document.getElementById('file-status-text');
+  txt.textContent = filename;
+  txt.className = 'connected';
+  document.getElementById('file-summary').textContent =
+    `${villages.length} villages · ${playerCount} players`;
+
+  renderOverview();
+  renderPlayersTable();
+  renderByVillagesTable();
+  renderVillagesTable();
+  renderRankings();
+
+  document.getElementById('overview-drop').style.display = 'none';
+  document.getElementById('overview-content').style.display = '';
+}
+
+// ══════════════════════════════════════════════════════════════
+// OVERVIEW
+// ══════════════════════════════════════════════════════════════
+function renderOverview() {
+  const playerCount = Object.keys(players).length;
+  const totals = Object.fromEntries(UNITS.map(u => [u, villages.reduce((s,v) => s+v[u], 0)]));
+  const totalOff = villages.reduce((s,v) => s+v.offPow, 0);
+  const totalDefInf = villages.reduce((s,v) => s+v.defInf, 0);
+  const totalDefCav = villages.reduce((s,v) => s+v.defCav, 0);
+
+  const offVils   = villages.filter(v => v.type === 'off').length;
+  const defVils   = villages.filter(v => v.type === 'def').length;
+  const mixedVils = villages.filter(v => v.type === 'mixed').length;
+  const emptyVils = villages.filter(v => v.type === 'empty').length;
+  const totalSnobs = villages.reduce((s,v) => s+v.snob, 0);
+  const totalRams  = villages.reduce((s,v) => s+v.ram,  0);
+
+  // Stat cards
+  document.getElementById('stat-cards').innerHTML = `
+    <div class="stat-card"><div class="stat-label">${t('stat_players')}</div><div class="stat-value">${playerCount}</div></div>
+    <div class="stat-card"><div class="stat-label">${t('stat_villages')}</div><div class="stat-value">${villages.length}</div><div class="stat-sub">${(T[lang]?.vil_type_sub || T.en.vil_type_sub)(offVils,defVils,mixedVils,emptyVils)}</div></div>
+    <div class="stat-card"><div class="stat-label">${t('stat_avg')}</div><div class="stat-value">${(villages.length/playerCount).toFixed(1)}</div></div>
+    <div class="stat-card"><div class="stat-label">${t('stat_nobles')}</div><div class="stat-value">${fmt(totalSnobs)}</div></div>
+    <div class="stat-card"><div class="stat-label">${t('stat_rams')}</div><div class="stat-value">${fmt(totalRams)}</div></div>
+    <div class="stat-card"><div class="stat-label">${t('stat_off_power')}</div><div class="stat-value" style="color:#e06040;">${fmtM(totalOff)}</div></div>
+    <div class="stat-card"><div class="stat-label">${t('stat_def_inf')}</div><div class="stat-value" style="color:#60a0e0;">${fmtM(totalDefInf)}</div></div>
+    <div class="stat-card"><div class="stat-label">${t('stat_def_cav')}</div><div class="stat-value" style="color:#40c080;">${fmtM(totalDefCav)}</div></div>
+  `;
+
+  // Power bars
+  const maxOff = Math.max(...Object.values(players).map(p => p.offPow));
+  const maxDef = Math.max(...Object.values(players).map(p => p.defInf));
+  const maxCav = Math.max(...Object.values(players).map(p => p.defCav));
+  const topOffPlayer = Object.entries(players).sort((a,b) => b[1].offPow - a[1].offPow)[0];
+  const topDefPlayer = Object.entries(players).sort((a,b) => b[1].defInf - a[1].defInf)[0];
+  const topCavPlayer = Object.entries(players).sort((a,b) => b[1].defCav - a[1].defCav)[0];
+
+  document.getElementById('power-bars').innerHTML = `
+    <div style="margin-bottom:16px;">
+      <div class="power-bar-label"><span>${t('bar_off')}</span><span style="color:#e06040;">${fmtM(totalOff)} pts</span></div>
+      <div style="display:grid;gap:5px;">
+        ${Object.entries(players).sort((a,b)=>b[1].offPow-a[1].offPow).slice(0,8).map(([name,p]) => `
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#806030;margin-bottom:2px;">
+              <span>${decode(name)}</span><span style="color:#d0a870;">${fmtM(p.offPow)}</span>
+            </div>
+            <div class="power-bar-track"><div class="power-bar-fill bar-off" style="width:${maxOff>0?Math.round(p.offPow/maxOff*100):0}%"></div></div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div style="margin-bottom:16px;">
+      <div class="power-bar-label"><span>${t('bar_def')}</span><span style="color:#60a0e0;">${fmtM(totalDefInf)} pts</span></div>
+      <div style="display:grid;gap:5px;">
+        ${Object.entries(players).sort((a,b)=>b[1].defInf-a[1].defInf).slice(0,8).map(([name,p]) => `
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#806030;margin-bottom:2px;">
+              <span>${decode(name)}</span><span style="color:#d0a870;">${fmtM(p.defInf)}</span>
+            </div>
+            <div class="power-bar-track"><div class="power-bar-fill bar-def" style="width:${maxDef>0?Math.round(p.defInf/maxDef*100):0}%"></div></div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  // Unit cards
+  const OFF_ONLY_SET = new Set(['axe','light','ram']);
+  const DEF_ONLY_SET = new Set(['spear','sword','heavy','knight']);
+  document.getElementById('unit-cards').innerHTML = UNITS.map((u,i) => {
+    const total = villages.reduce((s,v) => s+v[u], 0);
+    const cls = UNIT_TYPE[u] === 'off' ? 'unit-type-off' : UNIT_TYPE[u] === 'def' ? 'unit-type-def' : 'unit-type-misc';
+    let statLine;
+    if (OFF_ONLY_SET.has(u))      statLine = `Att: ${ATT[u]}`;
+    else if (DEF_ONLY_SET.has(u)) statLine = `Def: ${DINF[u]}/${DCAV[u]}`;
+    else if (u === 'catapult')    statLine = `Att: ${ATT[u]} | Def: ${DINF[u]}/${DCAV[u]}`;
+    else                          statLine = '—';
+    return `<div class="unit-card ${cls}">
+      <div class="unit-name">${t('unit_' + UNITS[i])}</div>
+      <div class="unit-count">${fmt(total)}</div>
+      <div class="stat-sub">${statLine}</div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// PLAYERS TABLE
+// ══════════════════════════════════════════════════════════════
+function renderPlayersTable() {
+  const search = (document.getElementById('player-search').value || '').toLowerCase();
+  const typeFilter = document.getElementById('player-filter-type').value;
+
+  let data = Object.entries(players).map(([name, p]) => {
+    const offVilCount = p.villages.filter(v => v.type === 'off').length;
+    const defVilCount = p.villages.filter(v => v.type === 'def').length;
+    const tierComplete = p.villages.filter(v => getOffTier(v.offPow) === 'complete').length;
+    const tierTq       = p.villages.filter(v => getOffTier(v.offPow) === 'tq').length;
+    const tierHalf     = p.villages.filter(v => getOffTier(v.offPow) === 'half').length;
+    return { name, vilCount: p.villages.length, offVilCount, defVilCount, ...p.totals, offPow: p.offPow, defInf: p.defInf, tierComplete, tierTq, tierHalf };
+  });
+
+  if (search) data = data.filter(r => r.name.toLowerCase().includes(search));
+  if (typeFilter === 'off') data = data.filter(r => r.offVilCount > 0);
+  if (typeFilter === 'def') data = data.filter(r => r.defVilCount > 0);
+
+  // Apply sort
+  const { col, dir } = sortState.players;
+  if (col >= 0) {
+    data.sort((a,b) => {
+      const vals = [a.name, a.vilCount, ...UNITS.map(u=>a[u]), a.offPow, a.defInf, a.tierComplete, a.tierTq, a.tierHalf];
+      const bvals= [b.name, b.vilCount, ...UNITS.map(u=>b[u]), b.offPow, b.defInf, b.tierComplete, b.tierTq, b.tierHalf];
+      const av = vals[col], bv = bvals[col];
+      if (typeof av === 'string') return dir * av.localeCompare(bv);
+      return dir * (bv - av);
+    });
+  }
+
+  // Tribe totals
+  const tribeTotals = Object.fromEntries(UNITS.map(u => [u, villages.reduce((s,v)=>s+v[u],0)]));
+  const tribeOff = villages.reduce((s,v)=>s+v.offPow,0);
+  const tribeDef = villages.reduce((s,v)=>s+v.defInf,0);
+
+  const rows = data.map(r => `
+    <tr>
+      <td class="left"><span class="player-tag">${decode(r.name)}</span></td>
+      <td>${r.vilCount}</td>
+      ${UNITS.map(u => numCell(r[u])).join('')}
+      <td style="color:#e06040;font-weight:600;">${fmtM(r.offPow)}</td>
+      <td style="color:#60a0e0;font-weight:600;">${fmtM(r.defInf)}</td>
+      <td style="color:#ff6040;font-weight:${r.tierComplete>0?'700':'400'};${r.tierComplete===0?'color:#4a3010;':''}">${r.tierComplete||'—'}</td>
+      <td style="color:#f0a030;font-weight:${r.tierTq>0?'700':'400'};${r.tierTq===0?'color:#4a3010;':''}">${r.tierTq||'—'}</td>
+      <td style="color:#d8d030;font-weight:${r.tierHalf>0?'700':'400'};${r.tierHalf===0?'color:#4a3010;':''}">${r.tierHalf||'—'}</td>
+    </tr>
+  `).join('');
+
+  const tribeComplete = villages.filter(v => getOffTier(v.offPow) === 'complete').length;
+  const tribeTq       = villages.filter(v => getOffTier(v.offPow) === 'tq').length;
+  const tribeHalfTier = villages.filter(v => getOffTier(v.offPow) === 'half').length;
+
+  const totalRow = `
+    <tr class="total-row">
+      <td class="left">${t('tribe_total')}</td>
+      <td>${villages.length}</td>
+      ${UNITS.map(u => `<td>${fmt(tribeTotals[u])}</td>`).join('')}
+      <td>${fmtM(tribeOff)}</td>
+      <td>${fmtM(tribeDef)}</td>
+      <td>${tribeComplete||'—'}</td>
+      <td>${tribeTq||'—'}</td>
+      <td>${tribeHalfTier||'—'}</td>
+    </tr>
+  `;
+
+  document.getElementById('players-tbody').innerHTML = rows + totalRow ||
+    `<tr class="empty-row"><td colspan="17">${t('empty_no_players')}</td></tr>`;
+
+  // sync sort arrows
+  const { col: pcol, dir: pdir } = sortState.players;
+  document.getElementById('players-table').querySelectorAll('th').forEach((th, i) => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (i === pcol) th.classList.add(pdir === -1 ? 'sort-desc' : 'sort-asc');
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// BY VILLAGES TABLE
+// ══════════════════════════════════════════════════════════════
+function renderTierTables() {
+  renderByVillagesTable();
+  renderPlayersTable();
+}
+
+function getOffTier(offPow) {
+  const tc  = parseInt(document.getElementById('thresh-complete')?.value) || 500000;
+  const ttq = parseInt(document.getElementById('thresh-tq')?.value)       || 350000;
+  const th  = parseInt(document.getElementById('thresh-half')?.value)     || 250000;
+  if (offPow >= tc)  return 'complete';
+  if (offPow >= ttq) return 'tq';
+  if (offPow >= th)  return 'half';
+  return 'none';
+}
+
+function renderByVillagesTable() {
+  const search     = (document.getElementById('byvillages-search')?.value || '').toLowerCase();
+  const tierFilter = document.getElementById('byvillages-filter-tier')?.value || 'all';
+
+  let data = villages.map(v => ({ ...v, tier: getOffTier(v.offPow) }));
+
+  if (search) data = data.filter(v =>
+    decode(v.player).toLowerCase().includes(search) || v.coord.includes(search));
+  if (tierFilter !== 'all') data = data.filter(v => v.tier === tierFilter);
+
+  const { col, dir } = sortStateByVil;
+  data.sort((a, b) => {
+    const av = [a.coord, decode(a.player), a.offPow, 0, a.axe, a.light, a.heavy, a.knight, a.ram, a.catapult, a.snob][col];
+    const bv = [b.coord, decode(b.player), b.offPow, 0, b.axe, b.light, b.heavy, b.knight, b.ram, b.catapult, b.snob][col];
+    if (typeof av === 'string') return dir * av.localeCompare(bv);
+    return dir * (bv - av);
+  });
+
+  const TIER_BADGE = {
+    complete: '<span class="badge badge-complete">Complete Off</span>',
+    tq:       '<span class="badge badge-tq">3/4</span>',
+    half:     '<span class="badge badge-half">1/2</span>',
+    none:     '<span class="badge badge-empty">—</span>',
+  };
+
+  const rows = data.map(v => `
+    <tr>
+      <td class="left" style="font-family:monospace;">${v.coord}</td>
+      <td class="left"><span class="player-tag">${decode(v.player)}</span></td>
+      <td style="color:#e06040;font-weight:600;">${v.offPow.toLocaleString()}</td>
+      <td>${TIER_BADGE[v.tier]}</td>
+      ${numCell(v.axe)}
+      ${numCell(v.light)}
+      ${numCell(v.heavy)}
+      ${numCell(v.knight)}
+      ${numCellAccent(v.ram)}
+      ${numCellAccent(v.catapult)}
+      ${numCellAccent(v.snob)}
+    </tr>
+  `).join('');
+
+  document.getElementById('byvillages-tbody').innerHTML = rows ||
+    `<tr class="empty-row"><td colspan="11">${t('empty_no_byvillages')}</td></tr>`;
+
+  // sync sort arrows
+  document.getElementById('byvillages-table').querySelectorAll('th').forEach((th, i) => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (i === col) th.classList.add(dir === -1 ? 'sort-desc' : 'sort-asc');
+  });
+}
+
+function sortByVillages(col) {
+  if (sortStateByVil.col === col) sortStateByVil.dir *= -1;
+  else { sortStateByVil.col = col; sortStateByVil.dir = -1; }
+  renderByVillagesTable();
+}
+
+// ══════════════════════════════════════════════════════════════
+// VILLAGES TABLE
+// ══════════════════════════════════════════════════════════════
+function renderVillagesTable() {
+  const search     = (document.getElementById('village-search').value || '').toLowerCase();
+  const typeFilter = document.getElementById('village-filter-type').value;
+  const sortBy     = document.getElementById('village-sort').value;
+
+  let data = [...villages];
+
+  if (search) data = data.filter(v => v.player.toLowerCase().includes(search) || v.coord.includes(search));
+  if (typeFilter !== 'all') data = data.filter(v => v.type === typeFilter);
+
+  if (sortBy === 'off')    data.sort((a,b) => b.offPow - a.offPow);
+  else if (sortBy === 'def') data.sort((a,b) => b.defInf - a.defInf);
+  else if (sortBy === 'coord') data.sort((a,b) => a.coord.localeCompare(b.coord));
+  else data.sort((a,b) => a.player.localeCompare(b.player) || a.coord.localeCompare(b.coord));
+
+  const typeBadge = {
+    off: '<span class="badge badge-off">OFF</span>',
+    def: '<span class="badge badge-def">DEF</span>',
+    mixed: '<span class="badge badge-mixed">MIX</span>',
+    empty: '<span class="badge badge-empty">—</span>',
+  };
+
+  const rows = data.map(v => `
+    <tr>
+      <td class="left" style="font-family:monospace;">${v.coord}</td>
+      <td class="left"><span class="player-tag">${decode(v.player)}</span></td>
+      <td>${typeBadge[v.type]}</td>
+      ${UNITS.map(u => numCell(v[u])).join('')}
+      <td style="color:#e06040;">${fmtM(v.offPow)}</td>
+      <td style="color:#60a0e0;">${fmtM(v.defInf)}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('villages-tbody').innerHTML = rows ||
+    `<tr class="empty-row"><td colspan="15">${t('empty_no_villages')}</td></tr>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// RANKINGS
+// ══════════════════════════════════════════════════════════════
+function renderRankings() {
+  const playerList = Object.entries(players).map(([name, p]) => ({ name, ...p.totals, offPow: p.offPow, defInf: p.defInf, defCav: p.defCav, vilCount: p.villages.length }));
+
+  const rankSection = (title, sorted, valueKey, fmt_fn, color) => {
+    const top = sorted.slice(0, 10);
+    const rows = top.map((r, i) => `
+      <tr>
+        <td class="left" style="color:#806030;">${i+1}</td>
+        <td class="left"><span class="player-tag">${decode(r.name)}</span></td>
+        <td style="color:${color};font-weight:600;">${fmt_fn(r[valueKey])}</td>
+      </tr>
+    `).join('');
+    return `
+      <div style="margin-bottom:28px;">
+        <div class="section-header"><h2>${title}</h2></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th class="left">#</th><th class="left">Player</th><th>${title}</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  };
+
+  const grid = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px;">`;
+  let html = grid;
+  html += rankSection(t('rank_off'),      [...playerList].sort((a,b)=>b.offPow-a.offPow),   'offPow',   fmtM, '#e06040');
+  html += rankSection(t('rank_def'),      [...playerList].sort((a,b)=>b.defInf-a.defInf),   'defInf',   fmtM, '#60a0e0');
+  html += rankSection(t('rank_villages'), [...playerList].sort((a,b)=>b.vilCount-a.vilCount),'vilCount', fmt,  '#f0c040');
+  html += rankSection(t('rank_spear'),    [...playerList].sort((a,b)=>b.spear-a.spear),      'spear',    fmt,  '#60a0e0');
+  html += rankSection(t('rank_sword'),    [...playerList].sort((a,b)=>b.sword-a.sword),      'sword',    fmt,  '#4090d0');
+  html += rankSection(t('rank_axe'),      [...playerList].sort((a,b)=>b.axe-a.axe),          'axe',      fmt,  '#c04020');
+  html += rankSection(t('rank_spy'),      [...playerList].sort((a,b)=>b.spy-a.spy),           'spy',      fmt,  '#a0a060');
+  html += rankSection(t('rank_light'),    [...playerList].sort((a,b)=>b.light-a.light),       'light',    fmt,  '#d4b483');
+  html += rankSection(t('rank_heavy'),    [...playerList].sort((a,b)=>b.heavy-a.heavy),       'heavy',    fmt,  '#2080c0');
+  html += rankSection(t('rank_rams'),     [...playerList].sort((a,b)=>b.ram-a.ram),           'ram',      fmt,  '#c08020');
+  html += rankSection(t('rank_cat'),      [...playerList].sort((a,b)=>b.catapult-a.catapult), 'catapult', fmt,  '#c06030');
+  html += rankSection(t('rank_nobles'),   [...playerList].sort((a,b)=>b.snob-a.snob),         'snob',     fmt,  '#f0c040');
+  html += '</div>';
+
+  document.getElementById('rankings-content').innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════
+// SORTING
+// ══════════════════════════════════════════════════════════════
+function sortTable(tableId, col) {
+  const state = sortState[tableId];
+  if (state.col === col) state.dir *= -1;
+  else { state.col = col; state.dir = -1; }
+
+  // Update header arrows
+  const table = document.getElementById(tableId + '-table');
+  table.querySelectorAll('th').forEach((th, i) => {
+    th.classList.remove('sort-asc','sort-desc');
+    if (i === col) th.classList.add(state.dir === -1 ? 'sort-desc' : 'sort-asc');
+  });
+
+  if (tableId === 'players') renderPlayersTable();
+}
+
+// ══════════════════════════════════════════════════════════════
+// EXPORT
+// ══════════════════════════════════════════════════════════════
+function exportTable(tableId, filename) {
+  const table = document.getElementById(tableId);
+  const rows = [...table.querySelectorAll('tr')];
+  const csv = rows.map(row =>
+    [...row.querySelectorAll('th,td')].map(cell => {
+      const t = cell.innerText.replace(/[,\n]/g, ' ').trim();
+      return `"${t}"`;
+    }).join(',')
+  ).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+// ══════════════════════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════════════════════
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + id));
+}
+
+// ══════════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════════
+function fmt(n)  { return n === 0 ? '<span class="num-zero">0</span>' : n.toLocaleString(); }
+function fmtM(n) { // format large numbers as K/M
+  if (n >= 1_000_000) return (n/1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000)     return (n/1_000).toFixed(1) + 'K';
+  return n.toLocaleString();
+}
+function numCell(n) {
+  if (n === 0) return '<td class="num-zero">0</td>';
+  if (n >= 2000) return `<td class="num-high">${n.toLocaleString()}</td>`;
+  return `<td>${n.toLocaleString()}</td>`;
+}
+function numCellAccent(n) {
+  if (n === 0) return '<td class="num-zero">0</td>';
+  const style = n >= 100 ? 'color:#f0c040;font-weight:600;' : 'color:#c8982a;';
+  return `<td style="${style}">${n.toLocaleString()}</td>`;
+}
+function decode(s) { // URL-decode player names like "Vitrocer%C3%A1mica"
+  try { return decodeURIComponent(s); } catch { return s; }
+}
+
+// ══════════════════════════════════════════════════════════════
+// BB TABLE EXPORT
+// ══════════════════════════════════════════════════════════════
+function showPlayersBBTable() {
+  const search    = (document.getElementById('player-search').value || '').toLowerCase();
+  const typeFilter = document.getElementById('player-filter-type').value;
+
+  let data = Object.entries(players).map(([name, p]) => ({
+    name,
+    tierComplete: p.villages.filter(v => getOffTier(v.offPow) === 'complete').length,
+    tierTq:       p.villages.filter(v => getOffTier(v.offPow) === 'tq').length,
+    tierHalf:     p.villages.filter(v => getOffTier(v.offPow) === 'half').length,
+    snob:         p.totals.snob,
+    offVilCount:  p.villages.filter(v => v.type === 'off').length,
+    defVilCount:  p.villages.filter(v => v.type === 'def').length,
+  }));
+
+  if (search) data = data.filter(r => decode(r.name).toLowerCase().includes(search));
+  if (typeFilter === 'off') data = data.filter(r => r.offVilCount > 0);
+  if (typeFilter === 'def') data = data.filter(r => r.defVilCount > 0);
+
+  data.sort((a, b) => decode(a.name).localeCompare(decode(b.name)));
+
+  const completeLabel = t('opt_complete');
+  const sep = '[||]';
+  let bb = '[table]\n';
+  bb += `[**]${t('th_player')}${sep}${completeLabel}${sep}3/4${sep}1/2${sep}${t('th_snob')}[/**]\n`;
+  for (const r of data) {
+    bb += `[*][player]${decode(r.name)}[/player][|]${r.tierComplete||0}[|]${r.tierTq||0}[|]${r.tierHalf||0}[|]${r.snob||0}\n`;
+  }
+  bb += '[/table]';
+
+  document.getElementById('bb-output').value = bb;
+  document.getElementById('bb-modal').classList.add('open');
+}
+
+function showBBTable() {
+  const table = document.getElementById('byvillages-table');
+  const headers = [...table.querySelectorAll('thead th')].map(th => th.innerText.replace(/[▲▼⬍]/g,'').trim());
+  const rows    = [...table.querySelectorAll('tbody tr')].filter(tr => !tr.classList.contains('empty-row'));
+
+  const sep = '[||]';
+  const cellSep = '[|]';
+  let bb = '[table]\n';
+  bb += '[**]' + headers.join(sep) + '[/**]\n';
+  for (const row of rows) {
+    const cells = [...row.querySelectorAll('td')].map(td => td.innerText.trim());
+    cells[0] = `[coord]${cells[0]}[/coord]`;
+    cells[1] = `[player]${cells[1]}[/player]`;
+    bb += '[*]' + cells.join(cellSep) + '\n';
+  }
+  bb += '[/table]';
+
+  document.getElementById('bb-output').value = bb;
+  document.getElementById('bb-modal').classList.add('open');
+}
+
+function closeBBModal() {
+  document.getElementById('bb-modal').classList.remove('open');
+}
+
+function copyBBTable() {
+  const ta = document.getElementById('bb-output');
+  ta.select();
+  document.execCommand('copy');
+  const btn = document.getElementById('bb-copy-btn');
+  btn.textContent = '✓ Copied!';
+  setTimeout(() => { btn.textContent = t('bb_copy_btn'); }, 2000);
+}
+
+// Allow dropping files anywhere on the page
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  if (e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
+});
+</script>
+
+<!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
+<div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+  <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
+  <span><span data-i18n="footer_version">Version</span> 1.0.3 &nbsp;·&nbsp; 2026-06-08 19:00</span>
+</div>
+
+<!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
+<div class="modal-overlay" id="bb-modal" onclick="if(event.target===this)closeBBModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 data-i18n="bb_modal_title">BB Table — paste into tribe forum</h3>
+      <button class="modal-close" onclick="closeBBModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <textarea id="bb-output" readonly spellcheck="false"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeBBModal()" data-i18n="btn_close">Close</button>
+      <button class="btn btn-primary btn-sm" id="bb-copy-btn" onclick="copyBBTable()" data-i18n="bb_copy_btn">Copy to Clipboard</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,2235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TW Farm Calculator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #111008;
+      color: #d4b483;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(180deg, #2d1f0e 0%, #1e1408 100%);
+      border-bottom: 2px solid #7a5c10;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .header h1 { color: #f0c040; font-size: 19px; letter-spacing: 0.5px; white-space: nowrap; }
+    .header-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .setting-group { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+    .setting-group label { color: #a08050; white-space: nowrap; }
+
+    /* ── File status bar ── */
+    .file-bar {
+      background: #160f04;
+      border-bottom: 1px solid #3a2808;
+      padding: 6px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+    .file-status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-ok   { background: #40c860; box-shadow: 0 0 5px #40c860; }
+    .dot-off  { background: #806030; }
+    #file-status-text { color: #907050; }
+    #file-status-text.connected { color: #70c080; }
+    .file-bar-actions { display: flex; gap: 8px; margin-left: auto; }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      background: #1a1008;
+      border-bottom: 2px solid #4a3010;
+      padding: 0 20px;
+    }
+    .tab {
+      padding: 11px 22px;
+      cursor: pointer;
+      color: #8a6a40;
+      border-bottom: 3px solid transparent;
+      font-weight: 500;
+      font-size: 13px;
+      transition: color .15s;
+      user-select: none;
+    }
+    .tab:hover { color: #c8a060; }
+    .tab.active { color: #f0c040; border-bottom-color: #f0c040; }
+
+    /* ── Tab content ── */
+    .tab-content { display: none; padding: 22px 24px; }
+    .tab-content.active { display: block; }
+
+    /* ── Guide tab ── */
+    .faq-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; }
+    @media (max-width: 800px) { .faq-columns { grid-template-columns: 1fr; } }
+    .faq-col h2 { color: #f0c040; font-size: 15px; font-weight: 600; margin-bottom: 18px; padding-bottom: 8px; border-bottom: 1px solid #4a3010; }
+    .faq-step { margin-bottom: 20px; padding: 14px 16px; background: #1e1408; border: 1px solid #3a2808; border-radius: 6px; }
+    .faq-step h3 { color: #c8a060; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .faq-step p { color: #9a7848; font-size: 13px; line-height: 1.65; }
+    .faq-step p + p { margin-top: 6px; }
+    .faq-step strong { color: #c8a060; font-weight: 600; }
+    .faq-step code { background: #2a1c08; border: 1px solid #4a3010; border-radius: 3px; padding: 1px 5px; font-family: monospace; font-size: 12px; color: #f0d080; }
+    .faq-step-num { display: inline-block; background: #7a5c10; color: #f0c040; border-radius: 50%; width: 20px; height: 20px; text-align: center; line-height: 20px; font-size: 11px; font-weight: 700; margin-right: 6px; flex-shrink: 0; }
+    .lang-en-only, .lang-es-only { display: none; }
+    [data-lang='en'] .lang-en-only { display: block; }
+    [data-lang='es'] .lang-es-only { display: block; }
+
+    /* ── Section header ── */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .section-header h2 { color: #f0c040; font-size: 15px; font-weight: 600; }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #1e1408;
+      border: 1px solid #4a3010;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    th {
+      background: #2e1e08;
+      color: #e0a820;
+      padding: 9px 12px;
+      text-align: left;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #2e1e08;
+      color: #d0a870;
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #261808; }
+    .empty-row td { text-align: center; color: #5a3a18; padding: 36px; }
+
+    /* ── Forms ── */
+    .form-panel {
+      background: #1e1408;
+      border: 1px solid #4a3010;
+      border-radius: 6px;
+      padding: 18px 20px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .form-panel.open { display: block; }
+    .form-panel h3 {
+      color: #e0a820;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 14px;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-group label { font-size: 11px; color: #906838; text-transform: uppercase; letter-spacing: 0.5px; }
+    input[type="text"], input[type="number"], input[type="datetime-local"], select {
+      background: #111008;
+      border: 1px solid #4a3010;
+      color: #d4b483;
+      padding: 7px 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      width: 100%;
+      transition: border-color .15s;
+    }
+    input:focus, select:focus { outline: none; border-color: #c0900a; }
+    input[type="datetime-local"]::-webkit-calendar-picker-indicator { filter: invert(0.7); }
+    .form-divider { border: none; border-top: 1px solid #3a2008; margin: 14px 0; }
+    .form-actions { display: flex; gap: 8px; margin-top: 4px; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 7px 15px; border-radius: 4px; cursor: pointer;
+      font-size: 13px; font-weight: 500; border: 1px solid transparent;
+      transition: all .15s; white-space: nowrap;
+    }
+    .btn-primary { background: #5a3d08; color: #f0c040; border-color: #c0900a; }
+    .btn-primary:hover { background: #6e4c0a; }
+    .btn-ghost { background: transparent; color: #908060; border-color: #4a3010; }
+    .btn-ghost:hover { background: #2e1e08; color: #c0a060; }
+    .btn-edit { background: #0e2a40; color: #60a8e0; border-color: #2060a0; }
+    .btn-edit:hover { background: #123450; }
+    .btn-danger { background: #3a0e0e; color: #e06060; border-color: #801818; }
+    .btn-danger:hover { background: #4a1212; }
+    .btn-file { background: #0e3020; color: #50d890; border-color: #208050; }
+    .btn-file:hover { background: #123828; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn-attack { background: #3a1008; color: #e08060; border-color: #901830; }
+    .btn-attack:hover { background: #4a1410; }
+    .btn-attack:disabled { opacity: 0.38; cursor: not-allowed; }
+    .btn-attack-dim { opacity: 0.35; }
+    .lang-btn { padding: 3px 8px; background: #1e1408; border-color: #4a3010; color: #a08050; display:inline-flex; align-items:center; gap:5px; }
+    .lang-btn.lang-active { border-color: #f0c040; color: #f0c040; background: #2a1c08; }
+    .lang-btn:hover { border-color: #c8a060; color: #c8a060; }
+    .btn-bookmarklet { background: #3a2e06; color: #f0d040; border-color: #a08010; }
+    .btn-bookmarklet:hover { background: #4a3a08; }
+    .btn-sent { background: #0e3018; color: #50d890; border-color: #208050; }
+    .btn-sent:hover { background: #123828; }
+
+    /* ── Calculator ── */
+    .calc-header { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+    .calc-header .form-group { min-width: 220px; }
+    .target-summary {
+      background: #1e1408; border: 1px solid #4a3010; border-radius: 6px;
+      padding: 14px 18px; margin-bottom: 18px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px;
+    }
+    .info-item { display: flex; flex-direction: column; gap: 3px; }
+    .info-label { font-size: 11px; color: #806038; text-transform: uppercase; letter-spacing: 0.5px; }
+    .info-value { font-size: 17px; color: #f0c040; font-weight: 600; }
+    .info-value.small { font-size: 13px; }
+
+    /* ── Badges ── */
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+    .badge-ok  { background: #0e3018; color: #50d870; }
+    .badge-warn{ background: #302808; color: #d0b030; }
+    .badge-bad { background: #300e0e; color: #e05050; }
+
+    /* ── Calculator rows ── */
+    .row-dim td { opacity: 0.55; }
+    .lc-ok  { color: #50d870 !important; }
+    .lc-bad { color: #e05050 !important; }
+
+    /* ── Modal ── */
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.75); z-index: 200;
+      align-items: center; justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: #1e1408; border: 1px solid #7a5c10; border-radius: 8px;
+      padding: 22px 24px; width: 95%; max-width: 580px; max-height: 90vh; overflow-y: auto;
+    }
+    .modal h3 { color: #f0c040; margin-bottom: 16px; font-size: 15px; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+
+    /* ── Bookmarklet panel ── */
+    .bookmarklet-panel {
+      background: #1a1408;
+      border: 1px solid #4a3810;
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin-top: 14px;
+    }
+    .bookmarklet-panel h4 {
+      color: #e0a820; font-size: 12px; text-transform: uppercase;
+      letter-spacing: 0.6px; margin-bottom: 10px;
+    }
+    .bookmarklet-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+    .bookmarklet-note { font-size: 12px; color: #806838; font-style: italic; }
+
+    /* ── Misc ── */
+    .coords { font-family: monospace; font-size: 12px; color: #a08850; }
+    strong { color: #e0c090; }
+    .text-dim { color: #5a3a18; }
+    .note { font-size: 12px; color: #806838; font-style: italic; }
+
+    /* ── Village Database ── */
+    .db-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    #db-search { flex: 1; min-width: 200px; max-width: 420px; }
+    #db-status { font-size: 12px; color: #806838; font-style: italic; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════ HEADER ══════════════════ -->
+<div class="header">
+  <h1>⚔ Tribalwars — Farm Calculator</h1>
+  <div class="header-right">
+    <div class="setting-group">
+      <label data-i18n="lang_label">Lang</label>
+      <div style="display:flex;gap:3px">
+        <button id="lang-btn-en" class="btn btn-sm lang-btn lang-active" onclick="changeLang('en')"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 40'%3E%3Crect width='60' height='40' fill='%23012169'/%3E%3Cpath d='M0,0 L60,40 M60,0 L0,40' stroke='%23fff' stroke-width='8'/%3E%3Cpath d='M0,0 L60,40 M60,0 L0,40' stroke='%23C8102E' stroke-width='4'/%3E%3Cpath d='M30,0 V40 M0,20 H60' stroke='%23fff' stroke-width='12'/%3E%3Cpath d='M30,0 V40 M0,20 H60' stroke='%23C8102E' stroke-width='8'/%3E%3C/svg%3E" width="20" height="14" alt="" style="border-radius:2px"> EN</button>
+        <button id="lang-btn-es" class="btn btn-sm lang-btn" onclick="changeLang('es')"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 40'%3E%3Crect width='60' height='40' fill='%23C60B1E'/%3E%3Crect y='10' width='60' height='20' fill='%23FFC400'/%3E%3C/svg%3E" width="20" height="14" alt="" style="border-radius:2px"> ES</button>
+      </div>
+    </div>
+    <div class="setting-group">
+      <label for="serverUrlInp" data-i18n="server_url">Server URL</label>
+      <input type="text" id="serverUrlInp" placeholder="es100.guerrastribales.es" style="width:220px" data-i18n-placeholder="server_url_ph">
+    </div>
+    <div class="setting-group">
+      <label for="worldSpeedSel" data-i18n="world_speed">World Speed</label>
+      <select id="worldSpeedSel" style="width:70px">
+        <option value="0.5">0.5×</option>
+        <option value="1">1×</option>
+        <option value="2" selected>2×</option>
+        <option value="3">3×</option>
+        <option value="5">5×</option>
+        <option value="10">10×</option>
+      </select>
+    </div>
+    <div class="setting-group">
+      <label for="unitSpeedSel" data-i18n="unit_speed">Unit Speed</label>
+      <select id="unitSpeedSel" style="width:70px">
+        <option value="0.25">0.25×</option>
+        <option value="0.5" selected>0.5×</option>
+        <option value="1">1×</option>
+        <option value="2">2×</option>
+        <option value="3">3×</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ FILE BAR ══════════════════ -->
+<div class="file-bar">
+  <div class="file-status-dot dot-off" id="file-dot"></div>
+  <span id="file-status-text">Not connected to a file — using browser storage</span>
+  <div class="file-bar-actions">
+    <button class="btn btn-file btn-sm" id="btn-connect" onclick="connectFile()" data-i18n="btn_open_file">📂 Open / Create Data File</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportJSON()" data-i18n-title="btn_export_title" title="Download a backup copy" data-i18n="btn_export">⬇ Export JSON</button>
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('import-input').click()" data-i18n-title="btn_import_title" title="Restore from a backup" data-i18n="btn_import">⬆ Import JSON</button>
+    <input type="file" id="import-input" accept=".json" style="display:none" onchange="importJSON(event)">
+  </div>
+</div>
+
+<!-- ══════════════════ TABS ══════════════════ -->
+<nav class="tabs">
+  <div class="tab active" data-tab="my-villages" data-i18n="tab_my_villages">My Villages</div>
+  <div class="tab" data-tab="targets" data-i18n="tab_targets">Target Villages</div>
+  <div class="tab" data-tab="calculator" data-i18n="tab_calculator">Calculator</div>
+  <div class="tab" data-tab="village-db" data-i18n="tab_village_db">Village Database</div>
+  <div class="tab" data-tab="guide" data-i18n="tab_guide">Guide</div>
+</nav>
+
+<!-- ══════════════════ MY VILLAGES ══════════════════ -->
+<section id="tab-my-villages" class="tab-content active">
+  <div class="section-header">
+    <h2 data-i18n="tab_my_villages">My Villages</h2>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-file btn-sm" onclick="pasteMyVillages()" data-i18n="btn_paste_my_villages">📋 Paste Villages</button>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('import-villages-input').click()" data-i18n="btn_import_my_villages">⬆ Import File</button>
+      <input type="file" id="import-villages-input" accept=".json" style="display:none" onchange="importMyVillages(event)">
+      <button class="btn btn-primary" onclick="togglePanel('own-add-panel')" data-i18n="btn_add_village">+ Add Village</button>
+    </div>
+  </div>
+
+  <!-- Bookmarklet help panel -->
+  <div class="bookmarklet-panel">
+    <h4 data-i18n="bm_own_title">📥 Export bookmarklet — run on your TW overview_villages?mode=units page</h4>
+    <div class="bookmarklet-row">
+      <a id="bookmarklet-link" class="btn btn-bookmarklet btn-sm" href="#" data-i18n-title="bm_drag_title" title="Drag this to your bookmarks bar" data-i18n="bm_drag">🔖 Drag to bookmarks bar</a>
+      <button class="btn btn-ghost btn-sm" onclick="copyBookmarklet()" data-i18n="btn_copy">Copy</button>
+    </div>
+    <p class="bookmarklet-note" data-i18n="bm_own_note">1. Drag the gold button to your browser's bookmarks bar. 2. Open your TW account → Overview Villages → Units tab. 3. Click the bookmark — a JSON file will download. 4. Come back here and click "Import My Villages" to load it.</p>
+  </div>
+
+  <div id="own-add-panel" class="form-panel" style="margin-top:16px">
+    <h3 data-i18n="btn_add_village">Add Village</h3>
+    <div class="form-grid">
+      <div class="form-group"><label data-i18n="lbl_name">Name</label><input type="text" id="own-name" placeholder="e.g. Main Base" data-i18n-placeholder="ph_own_name"></div>
+      <div class="form-group"><label data-i18n="lbl_village_id">Village ID</label><input type="text" id="own-vid" placeholder="e.g. 7648" data-i18n-placeholder="ph_vid"></div>
+      <div class="form-group"><label>X</label><input type="number" id="own-x" placeholder="500"></div>
+      <div class="form-group"><label>Y</label><input type="number" id="own-y" placeholder="500"></div>
+      <div class="form-group"><label data-i18n="lbl_lc_avail">LC Available</label><input type="number" id="own-lc" placeholder="100" min="0"></div>
+      <div class="form-group"><label data-i18n="lbl_hc_avail">HC Available</label><input type="number" id="own-hc" placeholder="0" min="0"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addOwnVillage()" data-i18n="btn_add_village">Add</button>
+      <button class="btn btn-ghost" onclick="togglePanel('own-add-panel')" data-i18n="btn_cancel">Cancel</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th data-i18n="lbl_name">Name</th><th data-i18n="lbl_village_id">Village ID</th><th data-i18n="lbl_coordinates">Coordinates</th><th data-i18n="lbl_lc_avail">LC Available</th><th data-i18n="lbl_hc_avail">HC Available</th><th data-i18n="lbl_actions">Actions</th></tr></thead>
+      <tbody id="own-tbody"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════ TARGETS ══════════════════ -->
+<section id="tab-targets" class="tab-content">
+  <div class="section-header">
+    <h2 data-i18n="tab_targets">Target Villages</h2>
+    <button class="btn btn-ghost btn-sm" onclick="enrichTargetsFromDb()" data-i18n-title="btn_enrich_title" title="Fill in missing name/ID/player from Village Database" data-i18n="btn_enrich">✦ Enrich from DB</button>
+    <button class="btn btn-primary" onclick="openTargetAddPanel()" data-i18n="btn_add_target">+ Add Target</button>
+  </div>
+  <div id="target-add-panel" class="form-panel">
+    <h3 data-i18n="sec_village_info">Village Info</h3>
+    <div id="t-db-hint" style="font-size:12px;color:#50d870;margin-bottom:10px;display:none"></div>
+    <div class="form-grid">
+      <div class="form-group"><label>X</label><input type="number" id="t-x" placeholder="500" oninput="lookupTargetFromDb()"></div>
+      <div class="form-group"><label>Y</label><input type="number" id="t-y" placeholder="500" oninput="lookupTargetFromDb()"></div>
+      <div class="form-group"><label data-i18n="lbl_village_name">Village Name</label><input type="text" id="t-name" placeholder="e.g. FarmVille" data-i18n-placeholder="ph_village_name"></div>
+      <div class="form-group"><label data-i18n="lbl_village_id">Village ID</label><input type="text" id="t-vid" placeholder="e.g. 1234" data-i18n-placeholder="ph_vid2"></div>
+      <div class="form-group"><label data-i18n="lbl_player_name">Player Name</label><input type="text" id="t-player" placeholder="e.g. BarbarianKing" data-i18n-placeholder="ph_player_name"></div>
+      <div class="form-group"><label data-i18n="lbl_sawmill">Sawmill Level</label><input type="number" id="t-sawmill" value="0" min="0" max="30"></div>
+      <div class="form-group"><label data-i18n="lbl_clay_pit">Clay Pit Level</label><input type="number" id="t-clay" value="0" min="0" max="30"></div>
+      <div class="form-group"><label data-i18n="lbl_iron_mine">Iron Mine Level</label><input type="number" id="t-iron" value="0" min="0" max="30"></div>
+      <div class="form-group"><label data-i18n="lbl_warehouse">Warehouse Level</label><input type="number" id="t-warehouse" value="0" min="0" max="30"></div>
+      <div class="form-group"><label data-i18n="lbl_hiding">Hiding Place Level</label><input type="number" id="t-hiding" value="0" min="0" max="10"></div>
+      <div class="form-group">
+        <label data-i18n="lbl_bonus">Production Bonus</label>
+        <select id="t-bonus">
+          <option value="none" data-i18n="bonus_none">None</option>
+          <option value="wood100" data-i18n="bonus_wood100">+100% Wood</option>
+          <option value="clay100" data-i18n="bonus_clay100">+100% Clay</option>
+          <option value="iron100" data-i18n="bonus_iron100">+100% Iron</option>
+          <option value="all30" data-i18n="bonus_all30">+30% All resources</option>
+        </select>
+      </div>
+    </div>
+    <hr class="form-divider">
+    <h3 data-i18n="sec_last_loot_optional">Last Loot (optional — enables precise estimates)</h3>
+    <div class="form-grid">
+      <div class="form-group"><label data-i18n="lbl_loot_left">Resources Left After Loot</label><input type="text" id="t-loot-left" placeholder="e.g. 2.766 2.531 878" data-i18n-placeholder="ph_loot_left"></div>
+      <div class="form-group"><label data-i18n="lbl_loot_time">Loot Time</label><input type="text" id="t-loot-time" placeholder="DD.MM.YY HH:MM:SS:MS" data-i18n-placeholder="ph_loot_time"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addTarget()" data-i18n="btn_add_target">Add Target</button>
+      <button class="btn btn-ghost" onclick="togglePanel('target-add-panel')" data-i18n="btn_cancel">Cancel</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th data-i18n="lbl_name">Name</th><th data-i18n="lbl_id">ID</th><th data-i18n="lbl_coords">Coords</th><th data-i18n="lbl_sawmill_short">Sawmill</th><th data-i18n="lbl_clay_short">Clay Pit</th><th data-i18n="lbl_iron_short">Iron Mine</th>
+          <th data-i18n="lbl_bonus_short">Bonus</th><th data-i18n="lbl_prod_hr">Prod/hr ×speed</th><th data-i18n="lbl_last_loot">Last Loot</th><th data-i18n="lbl_resources_now">Resources Now</th><th data-i18n="lbl_actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="targets-tbody"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════ CALCULATOR ══════════════════ -->
+<section id="tab-calculator" class="tab-content">
+  <div class="calc-header">
+    <div class="form-group" style="min-width:240px">
+      <label data-i18n="lbl_target_village">Target Village</label>
+      <select id="calc-target-sel" onchange="runCalc()">
+        <option value="" data-i18n="opt_select_target">— select a target —</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="runCalc()" data-i18n="btn_recalculate">↻ Recalculate</button>
+    <span class="note" id="calc-updated-at"></span>
+  </div>
+  <div id="calc-summary" class="target-summary" style="display:none"></div>
+  <div id="calc-table-wrap" style="display:none">
+    <div class="section-header">
+      <h2 data-i18n="sec_attack_plans">Attack Plans — All My Villages</h2>
+      <span class="note" data-i18n="lbl_sorted_lc">Sorted by fewest LC needed</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="lbl_my_village">My Village</th><th data-i18n="lbl_coords">Coords</th><th data-i18n="lbl_distance">Distance</th><th>LC Travel</th><th>HC Travel</th>
+            <th data-i18n="lbl_resources_arrival">Resources at Arrival</th><th data-i18n="lbl_lc_needed">LC Needed</th><th data-i18n="lbl_lc_avail_short">LC Avail</th>
+            <th data-i18n="lbl_hc_needed">HC Needed</th><th data-i18n="lbl_hc_avail_short">HC Avail</th><th data-i18n="lbl_status">Status</th><th data-i18n="lbl_attack">Attack</th>
+          </tr>
+        </thead>
+        <tbody id="calc-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+  <div id="calc-empty" style="text-align:center;padding:60px;color:#5a3a18" data-i18n="empty_calc">
+    Select a target village to see attack plans.
+  </div>
+</section>
+
+<!-- ══════════════════ VILLAGE DATABASE ══════════════════ -->
+<section id="tab-village-db" class="tab-content">
+  <div class="section-header">
+    <h2 data-i18n="tab_village_db">Village Database</h2>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="db-connect-btn" class="btn btn-file btn-sm" onclick="connectDbFiles()" data-i18n="btn_connect_db">📂 Connect DB Folder</button>
+      <button id="db-refresh-btn" class="btn btn-ghost btn-sm" onclick="refreshDbFiles()" style="display:none" data-i18n="btn_refresh">↻ Re-sync Files</button>
+    </div>
+  </div>
+  <div class="db-controls">
+    <input type="text" id="db-search" placeholder="Search by name, coords or player ID…" oninput="debouncedDbSearch()" data-i18n-placeholder="ph_db_search">
+    <span id="db-status" data-i18n="db_not_loaded">Not loaded. Use the bookmarklet above or the file buttons.</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th data-i18n="lbl_id">ID</th><th data-i18n="lbl_name">Name</th><th data-i18n="lbl_coords">Coords</th><th data-i18n="lbl_player">Player</th><th data-i18n="lbl_points">Points</th><th data-i18n="lbl_action">Action</th></tr></thead>
+      <tbody id="db-tbody"><tr class="empty-row"><td colspan="6" data-i18n="empty_db">Load the village database to begin.</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════ GUIDE ══════════════════ -->
+<section id="tab-guide" class="tab-content">
+  <div class="faq-columns">
+
+    <!-- ── First Setup ── -->
+    <div class="faq-col">
+      <div class="lang-en-only">
+        <h2>🚀 First Setup</h2>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">1</span> Connect the Village Database</h3>
+          <p>Go to the <strong>Village Database</strong> tab → click <strong>Connect DB Folder</strong> → select the folder containing <code>village.txt</code> and <code>player.txt</code> (the same folder as this HTML file).</p>
+          <p>The folder is remembered for future sessions. If the files change, click <strong>Re-sync Files</strong> to reload them.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">2</span> Set your Server URL</h3>
+          <p>In the top bar, enter your server URL — e.g. <code>es100.guerrastribales.es</code>. This is used to build the attack links in the Calculator.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">3</span> Configure World Settings</h3>
+          <p>Set <strong>World Speed</strong> and <strong>Unit Speed</strong> to match your server. For es100: World Speed <code>2×</code>, Unit Speed <code>0.5×</code>.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">4</span> Import your villages</h3>
+          <p>In the <strong>My Villages</strong> tab, drag the gold bookmarklet button to your browser's bookmarks bar. Then open your TW account → Overview → Units tab and click the bookmark — a JSON file will download.</p>
+          <p>Come back here and click <strong>Import My Villages</strong> to load it. Your villages, coordinates and troop counts are imported automatically.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">5</span> Add target villages</h3>
+          <p>Go to <strong>Target Villages</strong> → click <strong>+ Add Target</strong>. Enter the X and Y coordinates first — the database will auto-fill the name, village ID and player.</p>
+          <p>Set building levels (Sawmill, Clay Pit, Iron Mine), Warehouse level and optionally Hiding Place level. Paste Last Loot data if you have it — this gives much more precise estimates.</p>
+        </div>
+      </div>
+      <div class="lang-es-only">
+        <h2>🚀 Configuración Inicial</h2>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">1</span> Conectar la base de datos</h3>
+          <p>Ve a la pestaña <strong>Base de Datos</strong> → haz clic en <strong>Conectar Carpeta BD</strong> → selecciona la carpeta que contiene <code>village.txt</code> y <code>player.txt</code> (la misma carpeta donde está este archivo HTML).</p>
+          <p>La carpeta se recuerda para futuras sesiones. Si los archivos cambian, haz clic en <strong>Resincronizar archivos</strong> para recargarlos.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">2</span> Configurar la URL del servidor</h3>
+          <p>En la barra superior, introduce la URL de tu servidor — ej. <code>es100.guerrastribales.es</code>. Se usa para generar los enlaces de ataque en la Calculadora.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">3</span> Configurar la velocidad del mundo</h3>
+          <p>Ajusta <strong>Velocidad del Mundo</strong> y <strong>Velocidad de Unidades</strong> según tu servidor. Para es100: Velocidad <code>2×</code>, Velocidad de Unidades <code>0.5×</code>.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">4</span> Importar tus pueblos</h3>
+          <p>En la pestaña <strong>Mis Pueblos</strong>, arrastra el botón dorado a la barra de marcadores de tu navegador. Luego abre tu cuenta en GT → Visión General → Tropas y haz clic en el marcador — se descargará un JSON.</p>
+          <p>Vuelve aquí y haz clic en <strong>Importar Mis Pueblos</strong>. Tus pueblos, coordenadas y tropas se importan automáticamente.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">5</span> Añadir pueblos objetivo</h3>
+          <p>Ve a <strong>Pueblos Objetivo</strong> → haz clic en <strong>+ Añadir Objetivo</strong>. Introduce primero las coordenadas X e Y — la base de datos rellenará automáticamente el nombre, ID de pueblo y jugador.</p>
+          <p>Configura los niveles de edificios (Leñador, Barrera, Mina de Hierro), nivel de Almacén y, opcionalmente, nivel de Escondrijo. Pega los datos del último saqueo si los tienes — mejora mucho la precisión de las estimaciones.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Daily Use ── -->
+    <div class="faq-col">
+      <div class="lang-en-only">
+        <h2>⚔ Daily Use</h2>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">1</span> Update your troops</h3>
+          <p>Re-run the bookmarklet on your TW Overview → Units page and click <strong>Import My Villages</strong> again. It updates existing villages in place — no duplicates.</p>
+          <p>Or go to <strong>My Villages</strong> and edit any village manually to adjust LC/HC counts.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">2</span> Log a raid result</h3>
+          <p>After attacking, go to <strong>Target Villages</strong> → click <strong>Edit</strong> on the target. Paste the leftover resources (e.g. <code>260 238 81</code>) into <em>Last Loot Left</em> and the timestamp (e.g. <code>25.05.26 20:13:25:000</code>) into <em>Last Loot Time</em>.</p>
+          <p>The calculator will project resources forward from that point, accounting for production at each building level.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">3</span> Use the Calculator</h3>
+          <p>Go to <strong>Calculator</strong> → select a target from the dropdown. Your villages are listed sorted by distance.</p>
+          <p>Attack buttons are <strong>bright</strong> when you have enough troops for that unit type, and <strong>dimmed</strong> when you don't. Villages with zero troops are hidden. Click ⚔ LC or ⚔ HC to open the rally point pre-filled.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">4</span> Re-sync the database</h3>
+          <p>If you download updated map files (<code>village.txt</code> / <code>player.txt</code>), go to <strong>Village Database</strong> → click <strong>Re-sync Files</strong> to reload the latest data.</p>
+          <p>Use the search bar to find any village by name, coordinates or player, and add it as a target with one click.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">5</span> Save &amp; backup</h3>
+          <p>Data auto-saves to a local file (<code>tw_farm_data.json</code>) and to browser storage as a backup. Use <strong>Export JSON</strong> in the top bar to download a manual backup, or <strong>Import JSON</strong> to restore one.</p>
+        </div>
+      </div>
+      <div class="lang-es-only">
+        <h2>⚔ Uso Diario</h2>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">1</span> Actualizar tus tropas</h3>
+          <p>Vuelve a ejecutar el marcador en tu página de GT Visión General → Tropas y haz clic en <strong>Importar Mis Pueblos</strong> de nuevo. Actualiza los pueblos existentes sin duplicarlos.</p>
+          <p>O ve a <strong>Mis Pueblos</strong> y edita cualquier pueblo manualmente para ajustar los recuentos de Lijas/Pesadas.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">2</span> Registrar el resultado de un ataque</h3>
+          <p>Tras atacar, ve a <strong>Pueblos Objetivo</strong> → haz clic en <strong>Editar</strong> en el objetivo. Pega los recursos restantes (ej. <code>260 238 81</code>) en <em>Recursos Restantes</em> y la marca de tiempo (ej. <code>25.05.26 20:13:25:000</code>) en <em>Hora del Último Saqueo</em>.</p>
+          <p>La calculadora proyectará los recursos desde ese momento, teniendo en cuenta la producción según los niveles de edificios.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">3</span> Usar la Calculadora</h3>
+          <p>Ve a <strong>Calculadora</strong> → selecciona un objetivo en el desplegable. Tus pueblos aparecen ordenados por distancia.</p>
+          <p>Los botones de ataque están <strong>brillantes</strong> cuando tienes suficientes tropas de ese tipo, y <strong>apagados</strong> cuando no. Los pueblos sin tropas están ocultos. Haz clic en ⚔ Lijas o ⚔ Pesadas para abrir la plaza de reuniones pre-rellenada.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">4</span> Resincronizar la base de datos</h3>
+          <p>Si descargas archivos de mapa actualizados (<code>village.txt</code> / <code>player.txt</code>), ve a <strong>Base de Datos</strong> → haz clic en <strong>Resincronizar archivos</strong> para cargar los datos más recientes.</p>
+          <p>Usa la barra de búsqueda para encontrar cualquier pueblo por nombre, coordenadas o jugador, y añádelo como objetivo con un clic.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">5</span> Guardar y hacer copia de seguridad</h3>
+          <p>Los datos se guardan automáticamente en un archivo local (<code>tw_farm_data.json</code>) y en el almacenamiento del navegador como copia de seguridad. Usa <strong>Exportar JSON</strong> en la barra superior para una copia manual, o <strong>Importar JSON</strong> para restaurar una.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════ EDIT OWN MODAL ══════════════════ -->
+<div class="modal-backdrop" id="own-modal">
+  <div class="modal">
+    <h3 data-i18n="modal_edit_village">Edit Village</h3>
+    <input type="hidden" id="eown-id">
+    <div class="form-grid">
+      <div class="form-group"><label data-i18n="lbl_name">Name</label><input type="text" id="eown-name"></div>
+      <div class="form-group"><label data-i18n="lbl_village_id">Village ID</label><input type="text" id="eown-vid" placeholder="e.g. 7648" data-i18n-placeholder="ph_vid"></div>
+      <div class="form-group"><label>X</label><input type="number" id="eown-x"></div>
+      <div class="form-group"><label>Y</label><input type="number" id="eown-y"></div>
+      <div class="form-group"><label data-i18n="lbl_lc_avail">LC Available</label><input type="number" id="eown-lc" min="0"></div>
+      <div class="form-group"><label data-i18n="lbl_hc_avail">HC Available</label><input type="number" id="eown-hc" min="0"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('own-modal')" data-i18n="btn_cancel">Cancel</button>
+      <button class="btn btn-primary" onclick="saveOwnVillage()" data-i18n="btn_save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ EDIT TARGET MODAL ══════════════════ -->
+<div class="modal-backdrop" id="target-modal">
+  <div class="modal">
+    <h3 data-i18n="modal_edit_target">Edit Target Village</h3>
+    <input type="hidden" id="et-id">
+    <div class="form-grid">
+      <div class="form-group"><label>X</label><input type="number" id="et-x" oninput="lookupTargetEditFromDb()"></div>
+      <div class="form-group"><label>Y</label><input type="number" id="et-y" oninput="lookupTargetEditFromDb()"></div>
+      <div class="form-group"><label data-i18n="lbl_village_name">Village Name</label><input type="text" id="et-name"></div>
+      <div class="form-group"><label data-i18n="lbl_village_id">Village ID</label><input type="text" id="et-vid" placeholder="e.g. 1234" data-i18n-placeholder="ph_vid2"></div>
+      <div class="form-group"><label data-i18n="lbl_player_name">Player Name</label><input type="text" id="et-player"></div>
+      <div class="form-group"><label data-i18n="lbl_sawmill">Sawmill Level</label><input type="number" id="et-sawmill" min="0" max="30"></div>
+      <div class="form-group"><label data-i18n="lbl_clay_pit">Clay Pit Level</label><input type="number" id="et-clay" min="0" max="30"></div>
+      <div class="form-group"><label data-i18n="lbl_iron_mine">Iron Mine Level</label><input type="number" id="et-iron" min="0" max="30"></div>
+      <div class="form-group"><label data-i18n="lbl_warehouse">Warehouse Level</label><input type="number" id="et-warehouse" value="0" min="0" max="30"></div>
+      <div class="form-group"><label data-i18n="lbl_hiding">Hiding Place Level</label><input type="number" id="et-hiding" value="0" min="0" max="10"></div>
+      <div class="form-group">
+        <label data-i18n="lbl_bonus">Production Bonus</label>
+        <select id="et-bonus">
+          <option value="none" data-i18n="bonus_none">None</option>
+          <option value="wood100" data-i18n="bonus_wood100">+100% Wood</option>
+          <option value="clay100" data-i18n="bonus_clay100">+100% Clay</option>
+          <option value="iron100" data-i18n="bonus_iron100">+100% Iron</option>
+          <option value="all30" data-i18n="bonus_all30">+30% All resources</option>
+        </select>
+      </div>
+    </div>
+    <hr class="form-divider">
+    <h3 data-i18n="sec_last_loot">Last Loot</h3>
+    <div class="form-grid">
+      <div class="form-group"><label data-i18n="lbl_loot_left">Resources Left After Loot</label><input type="text" id="et-loot-left" placeholder="e.g. 2.766 2.531 878" data-i18n-placeholder="ph_loot_left"></div>
+      <div class="form-group"><label data-i18n="lbl_loot_time">Loot Time</label><input type="text" id="et-loot-time" placeholder="DD.MM.YY HH:MM:SS:MS" data-i18n-placeholder="ph_loot_time"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('target-modal')" data-i18n="btn_cancel">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTarget()" data-i18n="btn_save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ SCRIPT ══════════════════ -->
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════
+//  LANGUAGE / i18n
+// ══════════════════════════════════════════════════════
+
+const LANG = {
+  en: {
+    // Header labels
+    lang_label: 'Lang',
+    server_url: 'Server URL',
+    server_url_ph: 'es100.guerrastribales.es',
+    world_speed: 'World Speed',
+    unit_speed: 'Unit Speed',
+    lc_carry: 'LC Carry',
+    hc_carry: 'HC Carry',
+
+    // File bar
+    btn_open_file: '📂 Open / Create Data File',
+    btn_export: '⬇ Export JSON',
+    btn_export_title: 'Download a backup copy',
+    btn_import: '⬆ Import JSON',
+    btn_import_title: 'Restore from a backup',
+
+    // Tabs
+    tab_my_villages: 'My Villages',
+    tab_targets: 'Target Villages',
+    tab_calculator: 'Calculator',
+    tab_village_db: 'Village Database',
+
+    // Buttons (shared)
+    btn_add_village: '+ Add Village',
+    btn_add_target: '+ Add Target',
+    btn_cancel: 'Cancel',
+    btn_save: 'Save',
+    btn_copy: 'Copy',
+    btn_edit: 'Edit',
+    btn_delete: 'Delete',
+    btn_paste_my_villages: '📋 Paste Villages',
+    btn_import_my_villages: '⬆ Import File',
+    btn_enrich: '✦ Enrich from DB',
+    btn_enrich_title: 'Fill in missing name/ID/player from Village Database',
+    btn_recalculate: '↻ Recalculate',
+    btn_connect_db: '📂 Connect DB Folder',
+    btn_change_db: '📂 Change DB Folder',
+    btn_refresh: '↻ Re-sync Files',
+    btn_add_target_db: '+ Add Target',
+
+    // Bookmarklet panels
+    bm_own_title: '📥 Export bookmarklet — run on your TW overview_villages?mode=units page',
+    bm_drag: '🔖 Drag to bookmarks bar',
+    bm_drag_title: 'Drag this to your bookmarks bar',
+    bm_own_note: '1. Drag the gold button to your browser\'s bookmarks bar. 2. Open your TW account → Overview Villages → Units tab. 3. Click the bookmark — your village data is copied to clipboard. 4. Come back here and click "Paste Villages" to load it.',
+
+    // Form labels
+    lbl_name: 'Name',
+    lbl_village_id: 'Village ID',
+    lbl_village_name: 'Village Name',
+    lbl_player_name: 'Player Name',
+    lbl_coordinates: 'Coordinates',
+    lbl_lc_avail: 'LC Available',
+    lbl_hc_avail: 'HC Available',
+    lbl_sawmill: 'Sawmill Level',
+    lbl_clay_pit: 'Clay Pit Level',
+    lbl_iron_mine: 'Iron Mine Level',
+    lbl_warehouse: 'Warehouse Level',
+    lbl_hiding: 'Hiding Place Level',
+    lbl_bonus: 'Production Bonus',
+    lbl_loot_left: 'Resources Left After Loot',
+    lbl_loot_time: 'Loot Time',
+    lbl_target_village: 'Target Village',
+    lbl_actions: 'Actions',
+    lbl_action: 'Action',
+    lbl_id: 'ID',
+    lbl_coords: 'Coords',
+    lbl_sawmill_short: 'Sawmill',
+    lbl_clay_short: 'Clay Pit',
+    lbl_iron_short: 'Iron Mine',
+    lbl_bonus_short: 'Bonus',
+    lbl_prod_hr: 'Prod/hr ×speed',
+    lbl_last_loot: 'Last Loot',
+    lbl_resources_now: 'Resources Now',
+    lbl_my_village: 'My Village',
+    lbl_distance: 'Distance',
+    lbl_travel_time: 'Travel Time',
+    lbl_resources_arrival: 'Resources at Arrival',
+    lbl_lc_needed: 'LC Needed',
+    lbl_lc_avail_short: 'LC Avail',
+    lbl_hc_needed: 'HC Needed',
+    lbl_hc_avail_short: 'HC Avail',
+    lbl_status: 'Status',
+    lbl_attack: 'Attack',
+    lbl_sent: 'Sent',
+    lbl_player: 'Player',
+    lbl_points: 'Points',
+
+    // Section headers
+    sec_village_info: 'Village Info',
+    sec_last_loot_optional: 'Last Loot (optional — enables precise estimates)',
+    sec_last_loot: 'Last Loot',
+    tab_guide: 'Guide',
+    sec_attack_plans: 'Attack Plans — All My Villages',
+    lbl_sorted_lc: 'Sorted by shortest distance',
+
+    // Modal titles
+    modal_edit_village: 'Edit Village',
+    modal_edit_target: 'Edit Target Village',
+
+    // Placeholders
+    ph_own_name: 'e.g. Main Base',
+    ph_vid: 'e.g. 7648',
+    ph_vid2: 'e.g. 1234',
+    ph_village_name: 'e.g. FarmVille',
+    ph_player_name: 'e.g. BarbarianKing',
+    ph_loot_left: 'e.g. 2.766 2.531 878',
+    ph_loot_time: 'DD.MM.YY HH:MM:SS:MS',
+    ph_db_search: 'Search by name, coords or player ID\u2026',
+    server_url_ph: 'es100.guerrastribales.es',
+
+    // Bonus options
+    bonus_none: 'None',
+    bonus_wood100: '+100% Wood',
+    bonus_clay100: '+100% Clay',
+    bonus_iron100: '+100% Iron',
+    bonus_all30: '+30% All resources',
+
+    // Calculator
+    opt_select_target: '— select a target —',
+
+    // Info panel labels (dynamic, used via t())
+    info_target: 'Target',
+    info_player: 'Player',
+    info_coordinates: 'Coordinates',
+    info_prod_hr: 'Prod / hr',
+    info_prod_min: 'Prod / min',
+    info_resources_now: 'Resources Now',
+    info_last_loot: 'Last Loot',
+    info_max_loot: 'Max Loot/res',
+
+    // Status badges (dynamic)
+    status_ready: 'Ready \u2713',
+    status_short: 'Short {n}',
+    status_empty: 'Empty',
+    status_no_vid: 'No VID',
+
+    // Empty states (dynamic)
+    empty_own: 'No villages yet. Add your first village above.',
+    empty_targets: 'No targets yet.',
+    empty_calc_own: 'No own villages. Add them in the "My Villages" tab.',
+    empty_calc: 'Select a target village to see attack plans.',
+    empty_db: 'Load the village database to begin.',
+    empty_no_results: 'No results.',
+
+    // DB status
+    db_not_loaded: 'Not loaded. Click "Connect DB Folder" to link your village/player files.',
+    db_connected_refresh: 'DB files connected \u2014 click Refresh to load.',
+
+    // File status
+    file_not_connected: 'Not connected to a file \u2014 using browser storage',
+    file_change: '📂 Change File',
+    file_open: '📂 Open / Create Data File',
+
+    // Alert / confirm messages
+    alert_fill_coords: 'Fill in coordinates.',
+    alert_fill_name_coords: 'Fill in name and coordinates.',
+    alert_fill_required: 'Fill in all required fields.',
+    alert_delete_village: 'Delete this village?',
+    alert_delete_target: 'Delete this target?',
+    alert_bad_import: 'File does not look like a TW Farm Calculator backup.',
+    alert_import_ok: 'Import successful!',
+    alert_bad_villages_export: 'File does not look like a TW villages export.',
+    alert_no_db: 'Load the Village Database first.',
+    alert_nothing_enrich: 'Nothing to enrich \u2014 all targets already have full data.',
+    alert_no_api: 'Your browser does not support the File System Access API.\nUse Chrome or Edge, or use the Export/Import buttons as an alternative.',
+    alert_perm_denied: 'Permission denied \u2014 cannot read/write the file.',
+    alert_no_db_api: 'Directory picker not supported. Use Chrome or Edge, or use the bookmarklet + Load DB File instead.',
+    alert_select_both: 'Select both village.txt and player.txt (Ctrl+click to pick both).',
+    alert_perm_denied_short: 'Permission denied.',
+    alert_no_db_connected: 'No DB files connected. Click "Connect DB Files" first.',
+    alert_bm_copied: 'Bookmarklet code copied to clipboard!',
+    alert_already_target: 'is already in your target list.',
+    alert_enriched: 'Enriched {n} target(s).',
+    alert_import_villages_ok: 'Import complete: {added} added, {updated} updated.',
+
+    // Calc updated at
+    calc_updated: 'Updated at',
+
+    // Distance suffix
+    dist_fields: 'fields',
+  },
+
+  es: {
+    // Header labels
+    lang_label: 'Idioma',
+    server_url: 'URL del Servidor',
+    server_url_ph: 'es100.guerrastribales.es',
+    world_speed: 'Velocidad del Mundo',
+    unit_speed: 'Velocidad de Unidades',
+    lc_carry: 'Lijas',
+    hc_carry: 'Pesadas',
+
+    // File bar
+    btn_open_file: '📂 Abrir / Crear Archivo',
+    btn_export: '⬇ Exportar JSON',
+    btn_export_title: 'Descargar una copia de seguridad',
+    btn_import: '⬆ Importar JSON',
+    btn_import_title: 'Restaurar desde una copia de seguridad',
+
+    // Tabs
+    tab_my_villages: 'Mis Pueblos',
+    tab_targets: 'Pueblos Objetivo',
+    tab_calculator: 'Calculadora',
+    tab_village_db: 'Base de Datos',
+
+    // Buttons (shared)
+    btn_add_village: '+ A\u00f1adir Pueblo',
+    btn_add_target: '+ A\u00f1adir Objetivo',
+    btn_cancel: 'Cancelar',
+    btn_save: 'Guardar',
+    btn_copy: 'Copiar',
+    btn_edit: 'Editar',
+    btn_delete: 'Eliminar',
+    btn_paste_my_villages: '📋 Pegar Pueblos',
+    btn_import_my_villages: '⬆ Importar Archivo',
+    btn_enrich: '✦ Completar desde BD',
+    btn_enrich_title: 'Rellenar nombre/ID/jugador desde la Base de Datos',
+    btn_recalculate: '↻ Recalcular',
+    btn_connect_db: '📂 Conectar Carpeta BD',
+    btn_change_db: '📂 Cambiar Carpeta BD',
+    btn_refresh: '↻ Resincronizar archivos',
+    btn_add_target_db: '+ A\u00f1adir Objetivo',
+
+    // Bookmarklet panels
+    bm_own_title: '📥 Script para exportar tropas \u2014 \u00dasalo en tu p\u00e1gina de Visi\u00f3n General \u2192 Tropas (overview_villages?mode=units)',
+    bm_drag: '🔖 Arrastra a marcadores',
+    bm_drag_title: 'Arrastra este bot\u00f3n a la barra de marcadores',
+    bm_own_note: '1. Arrastra el bot\u00f3n dorado a la barra de marcadores (puedes cambiar el nombre). 2. Abre tu cuenta de GT \u2192 Visi\u00f3n General \u2192 Tropas. 3. Haz clic en el marcador \u2014 los datos se copiar\u00e1n al portapapeles. 4. Vuelve aqu\u00ed y haz clic en "Pegar Pueblos" para cargarlos.',
+
+    // Form labels
+    lbl_name: 'Nombre',
+    lbl_village_id: 'ID de Pueblo',
+    lbl_village_name: 'Nombre de Pueblo',
+    lbl_player_name: 'Nombre del Jugador',
+    lbl_coordinates: 'Coordenadas',
+    lbl_lc_avail: 'Caball. Ligera Disp.',
+    lbl_hc_avail: 'Caball. Pesada Disp.',
+    lbl_sawmill: 'Nivel Le\u00f1ador',
+    lbl_clay_pit: 'Nivel Barrera',
+    lbl_iron_mine: 'Nivel Mina de Hierro',
+    lbl_warehouse: 'Nivel Almac\u00e9n',
+    lbl_hiding: 'Nivel Escondrijo',
+    lbl_bonus: 'Bonus de Producci\u00f3n',
+    lbl_loot_left: 'Recursos Restantes Tras Saqueo',
+    lbl_loot_time: 'Hora del Saqueo',
+    lbl_target_village: 'Pueblo Objetivo',
+    lbl_actions: 'Acciones',
+    lbl_action: 'Acci\u00f3n',
+    lbl_id: 'ID',
+    lbl_coords: 'Coords',
+    lbl_sawmill_short: 'Madera',
+    lbl_clay_short: 'Barro',
+    lbl_iron_short: 'Hierro',
+    lbl_bonus_short: 'Bonus',
+    lbl_prod_hr: 'Prod/h',
+    lbl_last_loot: '\u00dalt. Saqueo',
+    lbl_resources_now: 'Recursos Ahora',
+    lbl_my_village: 'Pueblo',
+    lbl_distance: 'Dist.',
+    lbl_travel_time: 'Viaje',
+    lbl_resources_arrival: 'Recursos a Llegada',
+    lbl_lc_needed: 'Lijas',
+    lbl_lc_avail_short: 'Lij. Disp.',
+    lbl_hc_needed: 'Pesadas',
+    lbl_hc_avail_short: 'Pes. Disp.',
+    lbl_status: 'Estado',
+    lbl_attack: 'Atacar',
+    lbl_sent: 'Enviado',
+    lbl_player: 'Jugador',
+    lbl_points: 'Puntos',
+
+    // Section headers
+    sec_village_info: 'Info de Pueblo',
+    sec_last_loot_optional: '\u00daltimo Saqueo (opcional \u2014 mejora las estimaciones)',
+    sec_last_loot: '\u00daltimo Saqueo',
+    tab_guide: 'Guía',
+    sec_attack_plans: 'Planes de Ataque \u2014 Todos Mis Pueblos',
+    lbl_sorted_lc: 'Ordenado por menor distancia',
+
+    // Modal titles
+    modal_edit_village: 'Editar Pueblo',
+    modal_edit_target: 'Editar Pueblo Objetivo',
+
+    // Placeholders
+    ph_own_name: 'ej. Base Principal',
+    ph_vid: 'ej. 7648',
+    ph_vid2: 'ej. 1234',
+    ph_village_name: 'ej. GranjaVille',
+    ph_player_name: 'ej. ReyBarbaro',
+    ph_loot_left: 'ej. 2.766 2.531 878',
+    ph_loot_time: 'DD.MM.AA HH:MM:SS:MS',
+    ph_db_search: 'Buscar por nombre, coords o ID de jugador\u2026',
+
+    // Bonus options
+    bonus_none: 'Ninguno',
+    bonus_wood100: '+100% Madera',
+    bonus_clay100: '+100% Barro',
+    bonus_iron100: '+100% Hierro',
+    bonus_all30: '+30% Todo',
+
+    // Calculator
+    opt_select_target: '\u2014 selecciona un objetivo \u2014',
+
+    // Info panel labels (dynamic)
+    info_target: 'Objetivo',
+    info_player: 'Jugador',
+    info_coordinates: 'Coordenadas',
+    info_prod_hr: 'Prod / h',
+    info_prod_min: 'Prod / min',
+    info_resources_now: 'Recursos Ahora',
+    info_last_loot: '\u00daltimo Saqueo',
+    info_max_loot: 'M\u00e1x. Saqueo/rec',
+
+    // Status badges (dynamic)
+    status_ready: 'Listo \u2713',
+    status_short: 'Faltan {n}',
+    status_empty: 'Vac\u00edo',
+    status_no_vid: 'Sin ID',
+
+    // Empty states (dynamic)
+    empty_own: 'No hay pueblos. A\u00f1ade el primero arriba.',
+    empty_targets: 'No hay objetivos.',
+    empty_calc_own: 'No hay pueblos propios. A\u00f1\u00e1delos en la pesta\u00f1a "Mis Pueblos".',
+    empty_calc: 'Selecciona un pueblo objetivo para ver los planes de ataque.',
+    empty_db: 'Carga la base de datos de pueblos para comenzar.',
+    empty_no_results: 'Sin resultados.',
+
+    // DB status
+    db_not_loaded: 'No cargada. Haz clic en "Conectar Carpeta BD" para vincular tus archivos.',
+    db_connected_refresh: 'Archivos BD conectados \u2014 haz clic en Actualizar para cargar.',
+
+    // File status
+    file_not_connected: 'Sin conexi\u00f3n a archivo \u2014 usando almacenamiento del navegador',
+    file_change: '📂 Cambiar Archivo',
+    file_open: '📂 Abrir / Crear Archivo',
+
+    // Alert / confirm messages
+    alert_fill_coords: 'Rellena las coordenadas.',
+    alert_fill_name_coords: 'Rellena el nombre y las coordenadas.',
+    alert_fill_required: 'Rellena todos los campos requeridos.',
+    alert_delete_village: '\u00bfEliminar este pueblo?',
+    alert_delete_target: '\u00bfEliminar este objetivo?',
+    alert_bad_import: 'El archivo no parece una copia de seguridad de la Calculadora.',
+    alert_import_ok: '\u00a1Importaci\u00f3n correcta!',
+    alert_bad_villages_export: 'El archivo no parece una exportaci\u00f3n de pueblos TW.',
+    alert_no_db: 'Carga primero la Base de Datos de Pueblos.',
+    alert_nothing_enrich: 'Nada que completar \u2014 todos los objetivos ya tienen datos completos.',
+    alert_no_api: 'Tu navegador no soporta la File System Access API.\nUsa Chrome o Edge, o usa los botones Exportar/Importar como alternativa.',
+    alert_perm_denied: 'Permiso denegado \u2014 no se puede leer/escribir el archivo.',
+    alert_no_db_api: 'Selector de carpeta no soportado. Usa Chrome o Edge, o usa el bookmarklet + Cargar Archivo BD.',
+    alert_select_both: 'Selecciona village.txt y player.txt (Ctrl+clic para elegir ambos).',
+    alert_perm_denied_short: 'Permiso denegado.',
+    alert_no_db_connected: 'No hay archivos BD conectados. Haz clic en "Conectar Archivos BD".',
+    alert_bm_copied: '\u00a1C\u00f3digo de bookmarklet copiado al portapapeles!',
+    alert_already_target: 'ya est\u00e1 en tu lista de objetivos.',
+    alert_enriched: '{n} objetivo(s) completado(s).',
+    alert_import_villages_ok: 'Importaci\u00f3n completa: {added} a\u00f1adidas, {updated} actualizadas.',
+
+    // Calc updated at
+    calc_updated: 'Actualizado a las',
+
+    // Distance suffix
+    dist_fields: 'casillas',
+  }
+};
+
+let currentLang = 'en';
+
+function t(key) {
+  return (LANG[currentLang] && LANG[currentLang][key] !== undefined)
+    ? LANG[currentLang][key]
+    : (LANG.en[key] !== undefined ? LANG.en[key] : key);
+}
+
+function applyTranslations() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    el.title = t(el.getAttribute('data-i18n-title'));
+  });
+  // Sync lang buttons and body data-lang (controls .lang-en-only / .lang-es-only visibility)
+  document.body.dataset.lang = currentLang;
+  updateLangButtons();
+}
+
+function updateLangButtons() {
+  ['en', 'es'].forEach(l => {
+    const btn = document.getElementById('lang-btn-' + l);
+    if (btn) btn.classList.toggle('lang-active', l === currentLang);
+  });
+}
+
+function changeLang(lang) {
+  currentLang = lang;
+  DATA.settings.lang = lang;
+  saveData();
+  applyTranslations();
+  renderAll();
+}
+
+// ══════════════════════════════════════════════════════
+//  DATA LAYER
+//  Single in-memory object. All mutations call saveData().
+//  saveData() writes to localStorage (always) + JSON file (if connected).
+// ══════════════════════════════════════════════════════
+
+const LC_CARRY = 80;
+const HC_CARRY = 50;
+
+let DATA = {
+  settings:    { worldSpeed: 2, unitSpeed: 0.5, serverUrl: '', lang: 'en' },
+  ownVillages: [],
+  targets:     []
+};
+
+// ── LocalStorage backup ────────────────────────────────
+const LS_KEY = 'tw_farm_data';
+
+function loadFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      DATA.settings    = { ...DATA.settings,    ...(parsed.settings    || {}) };
+      DATA.ownVillages = parsed.ownVillages || [];
+      DATA.targets     = (parsed.targets || []).map(t => ({ ...t, lastLootLeft: migrateLootLeft(t.lastLootLeft) }));
+      return true;
+    }
+  } catch (e) { console.warn('LS load failed', e); }
+  return false;
+}
+
+function migrateOldKeys() {
+  // Upgrade from the previous version's separate localStorage keys
+  const oldSettings = localStorage.getItem('tw_settings');
+  const oldOwn      = localStorage.getItem('tw_own_villages');
+  const oldTargets  = localStorage.getItem('tw_targets');
+  let migrated = false;
+  if (oldOwn && DATA.ownVillages.length === 0) {
+    try { DATA.ownVillages = JSON.parse(oldOwn); migrated = true; } catch(e){}
+  }
+  if (oldTargets && DATA.targets.length === 0) {
+    try { DATA.targets = JSON.parse(oldTargets); migrated = true; } catch(e){}
+  }
+  if (oldSettings) {
+    try { DATA.settings = { ...DATA.settings, ...JSON.parse(oldSettings) }; migrated = true; } catch(e){}
+  }
+  if (migrated) {
+    // Clean up old keys and save under new key
+    ['tw_settings','tw_own_villages','tw_targets'].forEach(k => localStorage.removeItem(k));
+    saveToLocalStorage();
+  }
+}
+
+function saveToLocalStorage() {
+  localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+}
+
+// ── File System (Chrome/Edge) ──────────────────────────
+let fileHandle  = null;
+let fileSaving  = false;
+
+// IndexedDB helper — stores the FileSystemFileHandle between page loads
+const IDB = (() => {
+  const NAME = 'tw_farm_idb', STORE = 'kv', VERSION = 1;
+  function open() {
+    return new Promise((res, rej) => {
+      const req = indexedDB.open(NAME, VERSION);
+      req.onupgradeneeded = e => e.target.result.createObjectStore(STORE);
+      req.onsuccess = e => res(e.target.result);
+      req.onerror   = e => rej(e.target.error);
+    });
+  }
+  return {
+    async get(key) {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const r = db.transaction(STORE).objectStore(STORE).get(key);
+        r.onsuccess = () => res(r.result);
+        r.onerror   = () => rej(r.error);
+      });
+    },
+    async set(key, val) {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(val, key);
+        tx.oncomplete = res;
+        tx.onerror    = () => rej(tx.error);
+      });
+    },
+    async del(key) {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).delete(key);
+        tx.oncomplete = res;
+        tx.onerror    = () => rej(tx.error);
+      });
+    }
+  };
+})();
+
+function setFileConnected(name) {
+  document.getElementById('file-dot').className        = 'file-status-dot dot-ok';
+  const st = document.getElementById('file-status-text');
+  st.textContent = `Connected \u2192 ${name}  (auto-saves on every change)`;
+  st.className   = 'connected';
+  document.getElementById('btn-connect').textContent = t('file_change');
+}
+
+function setFileDisconnected() {
+  document.getElementById('file-dot').className        = 'file-status-dot dot-off';
+  const st = document.getElementById('file-status-text');
+  st.textContent = t('file_not_connected');
+  st.className   = '';
+  document.getElementById('btn-connect').textContent = t('file_open');
+}
+
+async function writeToFile() {
+  if (!fileHandle || fileSaving) return;
+  fileSaving = true;
+  try {
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(DATA, null, 2));
+    await writable.close();
+  } catch (e) {
+    console.error('File save failed:', e);
+    // If permission was revoked, disconnect gracefully
+    if (e.name === 'NotAllowedError') {
+      fileHandle = null;
+      await IDB.del('fileHandle').catch(() => {});
+      setFileDisconnected();
+    }
+  } finally {
+    fileSaving = false;
+  }
+}
+
+async function readFromFile(handle) {
+  const file = await handle.getFile();
+  const text = await file.text();
+  if (!text.trim()) return; // empty file — keep current DATA
+  const parsed = JSON.parse(text);
+  if (parsed && typeof parsed === 'object') {
+    DATA.settings    = { ...DATA.settings,    ...(parsed.settings    || {}) };
+    DATA.ownVillages = parsed.ownVillages || DATA.ownVillages;
+    DATA.targets     = (parsed.targets || DATA.targets).map(t => ({ ...t, lastLootLeft: migrateLootLeft(t.lastLootLeft) }));
+  }
+}
+
+async function connectFile() {
+  if (!window.showOpenFilePicker) {
+    alert(t('alert_no_api'));
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      id: 'tw-data',
+      startIn: 'documents',
+      types: [{ description: 'JSON data file', accept: { 'application/json': ['.json'] } }],
+      excludeAcceptAllOption: false
+    });
+    await activateHandle(handle);
+  } catch (e) {
+    if (e.name !== 'AbortError') console.error(e);
+  }
+}
+
+async function activateHandle(handle, isNew = false) {
+  // Ensure we have read-write permission
+  const perm = await handle.requestPermission({ mode: 'readwrite' });
+  if (perm !== 'granted') { alert(t('alert_perm_denied')); return; }
+
+  fileHandle = handle;
+  await IDB.set('fileHandle', handle);
+
+  if (!isNew) {
+    try { await readFromFile(handle); } catch (e) { console.warn('Could not read file, will overwrite:', e); }
+  }
+
+  // Flush current DATA to file and localStorage
+  saveData();
+  setFileConnected(handle.name);
+  renderAll();
+}
+
+async function tryAutoConnect() {
+  if (!window.showOpenFilePicker) return; // API not supported
+  try {
+    const handle = await IDB.get('fileHandle');
+    if (!handle) return;
+
+    // Check existing permission without prompting (silent)
+    const perm = await handle.queryPermission({ mode: 'readwrite' });
+    if (perm === 'granted') {
+      fileHandle = handle;
+      try { await readFromFile(handle); } catch (e) { /* file may be empty */ }
+      saveData();
+      setFileConnected(handle.name);
+      renderAll();
+    } else {
+      // Permission needs re-grant — show a subtle prompt
+      setFileDisconnected();
+      const dot = document.getElementById('file-dot');
+      dot.style.background = '#c0a020';
+      document.getElementById('file-status-text').textContent =
+        `Previously used: ${handle.name} \u2014 click "${t('file_open')}" to reconnect`;
+    }
+  } catch (e) {
+    console.warn('Auto-connect failed:', e);
+  }
+}
+
+// ── Central save ──────────────────────────────────────
+function saveData() {
+  saveToLocalStorage();
+  writeToFile(); // async, fire-and-forget
+}
+
+// ── Export / Import (fallback) ────────────────────────
+function exportJSON() {
+  const blob = new Blob([JSON.stringify(DATA, null, 2)], { type: 'application/json' });
+  const a    = Object.assign(document.createElement('a'), {
+    href:     URL.createObjectURL(blob),
+    download: 'tw_farm_data.json'
+  });
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importJSON(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      if (!parsed.ownVillages && !parsed.targets) { alert(t('alert_bad_import')); return; }
+      DATA.settings    = { ...DATA.settings,    ...(parsed.settings    || {}) };
+      DATA.ownVillages = parsed.ownVillages || [];
+      DATA.targets     = (parsed.targets || []).map(t => ({ ...t, lastLootLeft: migrateLootLeft(t.lastLootLeft) }));
+      saveData();
+      renderAll();
+      alert(t('alert_import_ok'));
+    } catch (err) { alert('Could not parse file: ' + err.message); }
+  };
+  reader.readAsText(file);
+  event.target.value = ''; // reset so same file can be re-imported
+}
+
+// ── Import My Villages (bookmarklet JSON) ─────────────
+function processMyVillagesJSON(text) {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed.villages || !Array.isArray(parsed.villages)) {
+      alert(t('alert_bad_villages_export'));
+      return;
+    }
+    if (parsed.server && !DATA.settings.serverUrl) {
+      DATA.settings.serverUrl = parsed.server;
+    }
+    let added = 0, updated = 0;
+    parsed.villages.forEach(function(pv) {
+      const existing = DATA.ownVillages.find(function(v) { return v.villageId === String(pv.id); });
+      if (existing) {
+        existing.name        = pv.name        || existing.name;
+        existing.x           = pv.x           != null ? pv.x : existing.x;
+        existing.y           = pv.y           != null ? pv.y : existing.y;
+        existing.lcAvailable = pv.lcAvailable != null ? pv.lcAvailable : existing.lcAvailable;
+        existing.hcAvailable = pv.hcAvailable != null ? pv.hcAvailable : existing.hcAvailable;
+        updated++;
+      } else {
+        DATA.ownVillages.push({
+          id:          uid(),
+          villageId:   String(pv.id || ''),
+          name:        pv.name || '',
+          x:           pv.x   || 0,
+          y:           pv.y   || 0,
+          lcAvailable: pv.lcAvailable || 0,
+          hcAvailable: pv.hcAvailable || 0
+        });
+        added++;
+      }
+    });
+    saveData();
+    renderAll();
+    alert(t('alert_import_villages_ok').replace('{added}', added).replace('{updated}', updated));
+  } catch (err) { alert('Could not parse: ' + err.message); }
+}
+
+async function pasteMyVillages() {
+  try {
+    const text = await navigator.clipboard.readText();
+    processMyVillagesJSON(text);
+  } catch (e) {
+    alert('Could not read clipboard. Make sure you ran the bookmarklet first, or use "Import File".');
+  }
+}
+
+function importMyVillages(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => processMyVillagesJSON(e.target.result);
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ══════════════════════════════════════════════════════
+//  BOOKMARKLET
+// ══════════════════════════════════════════════════════
+
+const BOOKMARKLET_CODE = `(function(){var tbodies=document.querySelectorAll('tbody.row_marker');if(!tbodies.length){alert('No villages found. Make sure you are on overview_villages?mode=units');return;}var hasArchers=false;document.querySelectorAll('thead th img').forEach(function(img){if((img.src||'').match(/unit_archer\\./i))hasArchers=true;});var lightIdx=hasArchers?5:4;var heavyIdx=hasArchers?7:5;var villages=[];tbodies.forEach(function(tbody){var qe=tbody.querySelector('.quickedit-vn');if(!qe)return;var vid=qe.getAttribute('data-id');var label=qe.querySelector('.quickedit-label');if(!label)return;var txt=label.textContent.trim();var cm=txt.match(/\\((\\d+)\\|(\\d+)\\)/);if(!cm)return;var name=txt.replace(/\\s*\\(\\d+\\|\\d+\\).*/,'').trim();var rows=tbody.querySelectorAll('tr');var ownRow=rows[0];if(!ownRow)return;var cells=ownRow.querySelectorAll('td.unit-item');var lc=cells[lightIdx]?parseInt(cells[lightIdx].textContent)||0:0;var hc=cells[heavyIdx]?parseInt(cells[heavyIdx].textContent)||0:0;villages.push({id:vid,name:name,x:parseInt(cm[1]),y:parseInt(cm[2]),lcAvailable:lc,hcAvailable:hc});});if(!villages.length){alert('Could not parse any village data.');return;}var json=JSON.stringify({server:location.hostname,villages:villages},null,2);navigator.clipboard.writeText(json).then(function(){alert('Copied '+villages.length+' villages to clipboard! Go paste it in the calculator.');}).catch(function(){alert('Could not copy to clipboard. Try Chrome or Edge.');});})();`;
+
+function initBookmarklet() {
+  const link = document.getElementById('bookmarklet-link');
+  link.href = 'javascript:' + BOOKMARKLET_CODE;
+}
+
+function copyBookmarklet() {
+  const code = 'javascript:' + BOOKMARKLET_CODE;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(function() {
+      alert(t('alert_bm_copied'));
+    }).catch(function() {
+      fallbackCopy(code);
+    });
+  } else {
+    fallbackCopy(code);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  alert(t('alert_bm_copied'));
+}
+
+// ══════════════════════════════════════════════════════
+//  GAME FORMULAS
+// ══════════════════════════════════════════════════════
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+const fmt = n => Math.round(n).toLocaleString();
+const fmtCoords = (x, y) => `(${x}|${y})`;
+
+function fmtTime(minutes) {
+  if (minutes < 1) return '<1m';
+  const h = Math.floor(minutes / 60), m = Math.round(minutes % 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function fmtArrivalTime(travelMinutes) {
+  const d = new Date(Date.now() + travelMinutes * 60000);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function fmtDateShort(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// Parse loot-left: "260 238 81" → {w:260, c:238, i:81} (strips Spanish dot thousand-separators)
+function parseLootLeft(str) {
+  if (!str || !str.trim()) return null;
+  const parts = str.trim().split(/\s+/).map(p => parseInt(p.replace(/\./g, '')) || 0);
+  if (parts.length < 3) return null;
+  return { w: parts[0], c: parts[1], i: parts[2] };
+}
+
+function formatLootLeft(ll) {
+  if (!ll || typeof ll !== 'object') return '';
+  return `${ll.w} ${ll.c} ${ll.i}`;
+}
+
+// Migrate old lastLootLeft (stored as summed number) — can't recover per-resource, clear it
+function migrateLootLeft(val) {
+  if (val && typeof val === 'object' && 'w' in val) return val;
+  return null;
+}
+
+// Parse "DD.MM.YY HH:MM:SS:MS" → ISO string
+function parseLootTime(str) {
+  if (!str || !str.trim()) return null;
+  const m = str.trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s+(\d{1,2}):(\d{2}):(\d{2}):(\d{1,3})$/);
+  if (m) {
+    const [, dd, mo, yy, hh, mi, ss, ms] = m;
+    const year = parseInt(yy) < 100 ? 2000 + parseInt(yy) : parseInt(yy);
+    return new Date(year, parseInt(mo)-1, parseInt(dd), parseInt(hh), parseInt(mi), parseInt(ss), parseInt(ms.padEnd(3,'0'))).toISOString();
+  }
+  const d = new Date(str);
+  return isNaN(d) ? null : d.toISOString();
+}
+
+// Format ISO → "DD.MM.YY HH:MM:SS:MS" for display in text inputs
+function formatLootDisplay(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const p = (n, l=2) => String(n).padStart(l, '0');
+  return `${p(d.getDate())}.${p(d.getMonth()+1)}.${p(d.getFullYear()%100)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}:${p(d.getMilliseconds(),3)}`;
+}
+
+function esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Production per hour, one building, at given level × world speed (exact server values)
+const BUILDING_PROD = [5,30,35,41,47,55,64,74,86,100,117,136,158,184,214,249,289,337,391,455,530,616,717,833,969,1127,1311,1525,1774,2063,2400];
+function buildingProdHr(level, ws) {
+  const base = BUILDING_PROD[Math.min(Math.max(level, 0), 30)];
+  return Math.round(base * ws);
+}
+
+// Apply village production bonus
+// bonus values: 'none' | 'wood100' | 'clay100' | 'iron100' | 'all30'
+function applyBonus(wood, clay, iron, bonus) {
+  switch (bonus) {
+    case 'wood100': return { wood: wood * 2, clay,          iron          };
+    case 'clay100': return { wood,           clay: clay * 2, iron          };
+    case 'iron100': return { wood,           clay,           iron: iron * 2 };
+    case 'all30':   return { wood: Math.round(wood * 1.3), clay: Math.round(clay * 1.3), iron: Math.round(iron * 1.3) };
+    default:        return { wood, clay, iron };
+  }
+}
+
+function prodHrByResource(t, ws) {
+  const wood = buildingProdHr(t.sawmill  || 0, ws);
+  const clay = buildingProdHr(t.clayPit  || 0, ws);
+  const iron = buildingProdHr(t.ironMine || 0, ws);
+  const b = applyBonus(wood, clay, iron, t.bonus || 'none');
+  return { w: b.wood, c: b.clay, i: b.iron };
+}
+
+function totalProdHr(t, ws) {
+  const p = prodHrByResource(t, ws);
+  return p.w + p.c + p.i;
+}
+
+function getBonusLabel(bonus) {
+  return t('bonus_' + (bonus || 'none'));
+}
+
+// Warehouse capacity per resource type at given level (exact server values)
+const WAREHOUSE_CAP = [0,1000,1229,1512,1859,2285,2810,3454,4247,5222,6420,7893,9705,11932,14670,18037,22177,27266,33523,41217,50675,62305,76604,94184,115798,142373,175047,215219,264611,325337,400000];
+function warehouseCapacity(level) {
+  if (!level || level <= 0) return Infinity;
+  return WAREHOUSE_CAP[Math.min(level, 30)] || Infinity;
+}
+
+// Hiding place — resources protected per resource type at given level (exact server values)
+const HIDING_PROT = [0,150,200,267,356,474,632,843,1125,1500,2000];
+function hidingProtected(level) {
+  if (!level || level <= 0) return 0;
+  return HIDING_PROT[Math.min(level, 10)] || 0;
+}
+
+// Effective lootable total — visible resources capped by warehouse per type
+// Hiding place is NOT subtracted here: lastLootLeft already reflects visible (post-hiding) resources,
+// and the hidden amount is invisible to both spies and attackers.
+function lootable(res, warehouseLevel) {
+  const cap = warehouseCapacity(warehouseLevel);
+  return Math.min(res.w, cap)
+       + Math.min(res.c, cap)
+       + Math.min(res.i, cap);
+}
+
+function dist(a, b) { return Math.sqrt((b.x-a.x)**2 + (b.y-a.y)**2); }
+
+// Travel time in minutes — LC base 10 min/field, HC base 11 min/field at speed 1
+function travelMin(origin, dest, ws, us, baseMin = 10) { return dist(origin, dest) * (baseMin / (ws * (us || 1))); }
+
+function resourcesNow(t, ws) {
+  if (!t.lastLootTime) return null;
+  const mins = (Date.now() - new Date(t.lastLootTime).getTime()) / 60_000;
+  const p  = prodHrByResource(t, ws);
+  const ll = t.lastLootLeft || { w: 0, c: 0, i: 0 };
+  return Math.max(0, ll.w + (p.w / 60) * mins)
+       + Math.max(0, ll.c + (p.c / 60) * mins)
+       + Math.max(0, ll.i + (p.i / 60) * mins);
+}
+
+function resourcesOnArrival(t, origin, ws, us, baseMin = 10) {
+  const travel = travelMin(origin, t, ws, us, baseMin);
+  const p = prodHrByResource(t, ws);
+  if (!t.lastLootTime) return { w: (p.w/60)*travel, c: (p.c/60)*travel, i: (p.i/60)*travel };
+  const sinceloot = (Date.now() - new Date(t.lastLootTime).getTime()) / 60_000;
+  const ll = t.lastLootLeft || { w: 0, c: 0, i: 0 };
+  return {
+    w: Math.max(0, ll.w + (p.w/60) * (sinceloot + travel)),
+    c: Math.max(0, ll.c + (p.c/60) * (sinceloot + travel)),
+    i: Math.max(0, ll.i + (p.i/60) * (sinceloot + travel)),
+  };
+}
+
+// ══════════════════════════════════════════════════════
+//  UI
+// ══════════════════════════════════════════════════════
+
+function togglePanel(id) { document.getElementById(id).classList.toggle('open'); }
+function closeModal(id)  { document.getElementById(id).classList.remove('open'); }
+
+document.querySelectorAll('.modal-backdrop').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+});
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const name = tab.dataset.tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+    document.querySelectorAll('.tab-content').forEach(s => s.classList.toggle('active', s.id === `tab-${name}`));
+    if (name === 'calculator') { refreshCalcDropdown(); runCalc(); }
+    if (name === 'village-db' && villageDb.length > 0) renderVillageDb();
+  });
+});
+
+// Settings — read from DATA, write back + save
+document.getElementById('serverUrlInp').addEventListener('change', function () {
+  DATA.settings.serverUrl = this.value.trim();
+  saveData();
+  runCalc();
+});
+
+document.getElementById('worldSpeedSel').addEventListener('change', function () {
+  DATA.settings.worldSpeed = parseFloat(this.value);
+  saveData();
+  renderTargets();
+  runCalc();
+});
+
+document.getElementById('unitSpeedSel').addEventListener('change', function () {
+  DATA.settings.unitSpeed = parseFloat(this.value);
+  saveData();
+  runCalc();
+});
+
+function applySettings() {
+  document.getElementById('serverUrlInp').value  = DATA.settings.serverUrl  || '';
+  document.getElementById('worldSpeedSel').value = DATA.settings.worldSpeed;
+  document.getElementById('unitSpeedSel').value  = DATA.settings.unitSpeed  || 0.5;
+  if (DATA.settings.lang) {
+    currentLang = DATA.settings.lang;
+    updateLangButtons();
+  }
+}
+
+// ── My Villages ───────────────────────────────────────
+function renderOwnVillages() {
+  document.getElementById('own-tbody').innerHTML = DATA.ownVillages.length === 0
+    ? `<tr class="empty-row"><td colspan="6">${t('empty_own')}</td></tr>`
+    : DATA.ownVillages.map(v => `
+        <tr>
+          <td><strong>${esc(v.name)}</strong></td>
+          <td class="coords" style="font-size:12px">${esc(v.villageId || '')}</td>
+          <td class="coords">${fmtCoords(v.x, v.y)}</td>
+          <td>${(v.lcAvailable || 0).toLocaleString()}</td>
+          <td>${(v.hcAvailable || 0).toLocaleString()}</td>
+          <td style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-edit btn-sm" onclick="openOwnModal('${v.id}')">${t('btn_edit')}</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteOwn('${v.id}')">${t('btn_delete')}</button>
+          </td>
+        </tr>`).join('');
+}
+
+function addOwnVillage() {
+  const name = document.getElementById('own-name').value.trim();
+  const vid  = document.getElementById('own-vid').value.trim();
+  const x    = parseInt(document.getElementById('own-x').value);
+  const y    = parseInt(document.getElementById('own-y').value);
+  const lc   = parseInt(document.getElementById('own-lc').value) || 0;
+  const hc   = parseInt(document.getElementById('own-hc').value) || 0;
+  if (!name || isNaN(x) || isNaN(y)) { alert(t('alert_fill_name_coords')); return; }
+  DATA.ownVillages.push({ id: uid(), villageId: vid, name, x, y, lcAvailable: lc, hcAvailable: hc });
+  saveData();
+  ['own-name','own-vid','own-x','own-y','own-lc','own-hc'].forEach(id => document.getElementById(id).value = '');
+  togglePanel('own-add-panel');
+  renderOwnVillages();
+}
+
+function deleteOwn(id) {
+  if (!confirm(t('alert_delete_village'))) return;
+  DATA.ownVillages = DATA.ownVillages.filter(v => v.id !== id);
+  saveData();
+  renderOwnVillages();
+}
+
+function openOwnModal(id) {
+  const v = DATA.ownVillages.find(v => v.id === id);
+  if (!v) return;
+  document.getElementById('eown-id').value   = v.id;
+  document.getElementById('eown-vid').value  = v.villageId || '';
+  document.getElementById('eown-name').value = v.name;
+  document.getElementById('eown-x').value    = v.x;
+  document.getElementById('eown-y').value    = v.y;
+  document.getElementById('eown-lc').value   = v.lcAvailable || 0;
+  document.getElementById('eown-hc').value   = v.hcAvailable || 0;
+  document.getElementById('own-modal').classList.add('open');
+}
+
+function saveOwnVillage() {
+  const id   = document.getElementById('eown-id').value;
+  const vid  = document.getElementById('eown-vid').value.trim();
+  const name = document.getElementById('eown-name').value.trim();
+  const x    = parseInt(document.getElementById('eown-x').value);
+  const y    = parseInt(document.getElementById('eown-y').value);
+  const lc   = parseInt(document.getElementById('eown-lc').value) || 0;
+  const hc   = parseInt(document.getElementById('eown-hc').value) || 0;
+  if (!name || isNaN(x) || isNaN(y)) { alert(t('alert_fill_required')); return; }
+  DATA.ownVillages = DATA.ownVillages.map(v => v.id === id ? { ...v, villageId: vid, name, x, y, lcAvailable: lc, hcAvailable: hc } : v);
+  saveData();
+  closeModal('own-modal');
+  renderOwnVillages();
+}
+
+// ── Enrich targets from DB ────────────────────────────
+function enrichTargetsFromDb() {
+  if (villageDb.length === 0) { alert(t('alert_no_db')); return; }
+  let count = 0;
+  DATA.targets.forEach(t => {
+    const v = lookupVillageByCoords(t.x, t.y);
+    if (!v) return;
+    let changed = false;
+    if (!t.villageId) { t.villageId = String(v.id); changed = true; }
+    if (!t.name || t.name === `(${t.x}|${t.y})`) { t.name = v.name; changed = true; }
+    if (!t.player && v.playerId !== 0) { t.player = playerDb[v.playerId] || String(v.playerId); changed = true; }
+    if (changed) count++;
+  });
+  if (count === 0) { alert(t('alert_nothing_enrich')); return; }
+  saveData();
+  renderTargets();
+  refreshCalcDropdown();
+  alert(t('alert_enriched').replace('{n}', count));
+}
+
+// ── DB lookup helpers ─────────────────────────────────
+function lookupVillageByCoords(x, y) {
+  if (villageDb.length === 0 || isNaN(x) || isNaN(y)) return null;
+  return villageDb.find(v => v.x === x && v.y === y) || null;
+}
+
+function applyDbLookup(v, nameId, vidId, playerId, hintId) {
+  if (!v) return;
+  document.getElementById(nameId).value   = v.name;
+  document.getElementById(vidId).value    = String(v.id);
+  document.getElementById(playerId).value = v.playerId !== 0 ? (playerDb[v.playerId] || String(v.playerId)) : '';
+  if (hintId) {
+    const hint = document.getElementById(hintId);
+    hint.textContent = `✓ Found: ${v.name}${v.playerId !== 0 ? ' — ' + (playerDb[v.playerId] || 'Player ' + v.playerId) : ' (Barbarian)'}`;
+    hint.style.display = 'block';
+  }
+}
+
+function lookupTargetFromDb() {
+  const x = parseInt(document.getElementById('t-x').value);
+  const y = parseInt(document.getElementById('t-y').value);
+  applyDbLookup(lookupVillageByCoords(x, y), 't-name', 't-vid', 't-player', 't-db-hint');
+}
+
+function lookupTargetEditFromDb() {
+  const x = parseInt(document.getElementById('et-x').value);
+  const y = parseInt(document.getElementById('et-y').value);
+  applyDbLookup(lookupVillageByCoords(x, y), 'et-name', 'et-vid', 'et-player', null);
+}
+
+// ── Target Villages ───────────────────────────────────
+function openTargetAddPanel() {
+  togglePanel('target-add-panel');
+}
+
+function renderTargets() {
+  const ws = DATA.settings.worldSpeed;
+  document.getElementById('targets-tbody').innerHTML = DATA.targets.length === 0
+    ? `<tr class="empty-row"><td colspan="11">${t('empty_targets')}</td></tr>`
+    : DATA.targets.map(tgt => {
+        const prodHr = totalProdHr(tgt, ws);
+        const nowRes = resourcesNow(tgt, ws);
+        const bonusLabel = t('bonus_' + (tgt.bonus || 'none').replace('%',''));
+        const bonusBadge = tgt.bonus && tgt.bonus !== 'none'
+          ? `<span class="badge badge-ok" style="font-size:10px">${t('bonus_' + tgt.bonus)}</span>`
+          : `<span style="color:#5a3a18;font-size:12px">—</span>`;
+        return `
+          <tr>
+            <td>
+              <strong>${esc(tgt.name)}</strong>
+              ${tgt.player ? `<br><span style="font-size:11px;color:#806838">${esc(tgt.player)}</span>` : ''}
+            </td>
+            <td class="coords" style="font-size:12px">${esc(tgt.villageId || '')}</td>
+            <td class="coords">${fmtCoords(tgt.x, tgt.y)}</td>
+            <td>${tgt.sawmill  || 0}</td>
+            <td>${tgt.clayPit  || 0}</td>
+            <td>${tgt.ironMine || 0}</td>
+            <td>${bonusBadge}</td>
+            <td>${prodHr.toLocaleString()}</td>
+            <td style="font-size:12px">${fmtDateShort(tgt.lastLootTime)}</td>
+            <td>${nowRes !== null ? fmt(nowRes) : '<span class="text-dim">—</span>'}</td>
+            <td style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn btn-edit btn-sm" onclick="openTargetModal('${tgt.id}')">${t('btn_edit')}</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteTarget('${tgt.id}')">${t('btn_delete')}</button>
+            </td>
+          </tr>`;
+      }).join('');
+}
+
+function addTarget() {
+  const name     = document.getElementById('t-name').value.trim();
+  const vid      = document.getElementById('t-vid').value.trim();
+  const x        = parseInt(document.getElementById('t-x').value);
+  const y        = parseInt(document.getElementById('t-y').value);
+  const sawmill   = parseInt(document.getElementById('t-sawmill').value)   || 0;
+  const clayPit   = parseInt(document.getElementById('t-clay').value)      || 0;
+  const ironMine  = parseInt(document.getElementById('t-iron').value)      || 0;
+  const warehouse = parseInt(document.getElementById('t-warehouse').value) || 0;
+  const hiding    = parseInt(document.getElementById('t-hiding').value)    || 0;
+  const lootLeft = parseLootLeft(document.getElementById('t-loot-left').value);
+  const lootTime = parseLootTime(document.getElementById('t-loot-time').value);
+  const bonus    = document.getElementById('t-bonus').value || 'none';
+  const player   = document.getElementById('t-player').value.trim();
+  if (isNaN(x) || isNaN(y)) { alert(t('alert_fill_coords')); return; }
+  const resolvedName = name || `(${x}|${y})`;
+  DATA.targets.push({ id: uid(), villageId: vid, name: resolvedName, player, x, y, sawmill, clayPit, ironMine, warehouse, hidingPlace: hiding, bonus, lastLootLeft: lootLeft, lastLootTime: lootTime });
+  saveData();
+  ['t-name','t-vid','t-player','t-x','t-y','t-loot-time'].forEach(id => document.getElementById(id).value = '');
+  ['t-sawmill','t-clay','t-iron','t-warehouse','t-hiding'].forEach(id => document.getElementById(id).value = '0');
+  document.getElementById('t-loot-left').value = '';
+  document.getElementById('t-db-hint').style.display = 'none';
+  togglePanel('target-add-panel');
+  renderTargets();
+  refreshCalcDropdown();
+}
+
+function deleteTarget(id) {
+  if (!confirm(t('alert_delete_target'))) return;
+  DATA.targets = DATA.targets.filter(t => t.id !== id);
+  saveData();
+  renderTargets();
+  refreshCalcDropdown();
+}
+
+function openTargetModal(id) {
+  const t = DATA.targets.find(t => t.id === id);
+  if (!t) return;
+  document.getElementById('et-id').value       = t.id;
+  document.getElementById('et-vid').value      = t.villageId || '';
+  document.getElementById('et-name').value     = t.name;
+  document.getElementById('et-player').value   = t.player || '';
+  document.getElementById('et-x').value        = t.x;
+  document.getElementById('et-y').value        = t.y;
+  document.getElementById('et-sawmill').value   = t.sawmill    || 0;
+  document.getElementById('et-clay').value      = t.clayPit    || 0;
+  document.getElementById('et-iron').value      = t.ironMine   || 0;
+  document.getElementById('et-warehouse').value = t.warehouse  || 0;
+  document.getElementById('et-hiding').value    = t.hidingPlace || 0;
+  document.getElementById('et-bonus').value    = t.bonus    || 'none';
+  document.getElementById('et-loot-left').value = formatLootLeft(t.lastLootLeft);
+  document.getElementById('et-loot-time').value= formatLootDisplay(t.lastLootTime);
+  document.getElementById('target-modal').classList.add('open');
+}
+
+function saveTarget() {
+  const id       = document.getElementById('et-id').value;
+  const vid      = document.getElementById('et-vid').value.trim();
+  const name     = document.getElementById('et-name').value.trim();
+  const x        = parseInt(document.getElementById('et-x').value);
+  const y        = parseInt(document.getElementById('et-y').value);
+  const sawmill   = parseInt(document.getElementById('et-sawmill').value)   || 0;
+  const clayPit   = parseInt(document.getElementById('et-clay').value)      || 0;
+  const ironMine  = parseInt(document.getElementById('et-iron').value)      || 0;
+  const warehouse = parseInt(document.getElementById('et-warehouse').value) || 0;
+  const hiding    = parseInt(document.getElementById('et-hiding').value)    || 0;
+  const lootLeft = parseLootLeft(document.getElementById('et-loot-left').value);
+  const lootTime = parseLootTime(document.getElementById('et-loot-time').value);
+  const bonus    = document.getElementById('et-bonus').value || 'none';
+  const player   = document.getElementById('et-player').value.trim();
+  if (isNaN(x) || isNaN(y)) { alert(t('alert_fill_coords')); return; }
+  const resolvedName = name || `(${x}|${y})`;
+  DATA.targets = DATA.targets.map(t =>
+    t.id === id ? { ...t, villageId: vid, name: resolvedName, player, x, y, sawmill, clayPit, ironMine, warehouse, hidingPlace: hiding, bonus, lastLootLeft: lootLeft, lastLootTime: lootTime } : t
+  );
+  saveData();
+  closeModal('target-modal');
+  renderTargets();
+  refreshCalcDropdown();
+  runCalc();
+}
+
+// ── Calculator ────────────────────────────────────────
+function refreshCalcDropdown() {
+  const sel = document.getElementById('calc-target-sel');
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">${t('opt_select_target')}</option>`
+    + DATA.targets.map(t => {
+        const label = t.player ? `${esc(t.name)} (${esc(t.player)}) ${fmtCoords(t.x, t.y)}` : `${esc(t.name)} ${fmtCoords(t.x, t.y)}`;
+        return `<option value="${t.id}"${t.id === cur ? ' selected' : ''}>${label}</option>`;
+      }).join('');
+}
+
+function buildAttackUrl(serverUrl, ownVillageId, targetVillageId, unitType, count) {
+  return `https://${serverUrl}/game.php?village=${ownVillageId}&screen=place&target=${targetVillageId}&attack=true&spy=1&${unitType}=${count}`;
+}
+
+function runCalc() {
+  const { worldSpeed: ws, unitSpeed: us, serverUrl } = DATA.settings;
+  const lcCarry = LC_CARRY;
+  const hcCarry = HC_CARRY;
+  const targetId  = document.getElementById('calc-target-sel').value;
+  const summaryEl = document.getElementById('calc-summary');
+  const tableWrap = document.getElementById('calc-table-wrap');
+  const emptyEl   = document.getElementById('calc-empty');
+
+  if (!targetId) {
+    summaryEl.style.display = 'none';
+    tableWrap.style.display = 'none';
+    emptyEl.style.display   = 'block';
+    document.getElementById('calc-updated-at').textContent = '';
+    return;
+  }
+
+  const target = DATA.targets.find(t => t.id === targetId);
+  if (!target) return;
+
+  summaryEl.style.display = 'grid';
+  tableWrap.style.display = 'block';
+  emptyEl.style.display   = 'none';
+  document.getElementById('calc-updated-at').textContent = `${t('calc_updated')} ${new Date().toLocaleTimeString()}`;
+
+  const prodHr  = totalProdHr(target, ws);
+  const nowRes  = resourcesNow(target, ws);
+
+  summaryEl.innerHTML = `
+    <div class="info-item"><span class="info-label">${t('info_target')}</span><span class="info-value">${esc(target.name)}</span></div>
+    <div class="info-item"><span class="info-label">${t('info_player')}</span><span class="info-value small">${target.player ? esc(target.player) : '—'}</span></div>
+    <div class="info-item"><span class="info-label">${t('info_coordinates')}</span><span class="info-value">${fmtCoords(target.x, target.y)}</span></div>
+    <div class="info-item"><span class="info-label">${t('info_prod_hr')}</span><span class="info-value">${prodHr.toLocaleString()}</span></div>
+    <div class="info-item"><span class="info-label">${t('info_prod_min')}</span><span class="info-value">${(prodHr/60).toFixed(1)}</span></div>
+    <div class="info-item"><span class="info-label">${t('info_resources_now')}</span><span class="info-value">${nowRes !== null ? fmt(nowRes) : '—'}</span></div>
+    <div class="info-item"><span class="info-label">${t('info_last_loot')}</span><span class="info-value small">${fmtDateShort(target.lastLootTime)}</span></div>
+    ${target.warehouse ? `<div class="info-item"><span class="info-label">${t('info_max_loot')}</span><span class="info-value">${fmt(warehouseCapacity(target.warehouse) - hidingProtected(target.hidingPlace || 0))}</span></div>` : ''}
+  `;
+
+  if (DATA.ownVillages.length === 0) {
+    document.getElementById('calc-tbody').innerHTML =
+      `<tr class="empty-row"><td colspan="12">${t('empty_calc_own')}</td></tr>`;
+    return;
+  }
+
+  const rows = DATA.ownVillages.filter(v => (v.lcAvailable || 0) > 0 || (v.hcAvailable || 0) > 0).map(v => {
+    const d             = dist(v, target);
+    const travel        = travelMin(v, target, ws, us, 10);
+    const travelHC      = travelMin(v, target, ws, us, 11);
+    const rawArrivalLC  = resourcesOnArrival(target, v, ws, us, 10);
+    const rawArrivalHC  = resourcesOnArrival(target, v, ws, us, 11);
+    const arrival       = lootable(rawArrivalLC, target.warehouse || 0);
+    const arrivalHC     = lootable(rawArrivalHC, target.warehouse || 0);
+    const lcNeeded = Math.max(0, Math.ceil(arrival / lcCarry));
+    const hcNeeded = Math.max(0, Math.ceil(arrivalHC / hcCarry));
+    return { v, d, travel, travelHC, arrival, arrivalHC, lcNeeded, hcNeeded };
+  }).sort((a, b) => a.d - b.d);
+
+  document.getElementById('calc-tbody').innerHTML = rows.map(({ v, d, travel, travelHC, arrival, lcNeeded, hcNeeded }) => {
+    const lcAvail = v.lcAvailable || 0;
+    const hcAvail = v.hcAvailable || 0;
+    const lcEnough = lcAvail >= lcNeeded;
+    let status, badgeClass;
+    if (lcNeeded === 0)    { status = t('status_empty');                                                    badgeClass = 'badge-warn'; }
+    else if (lcEnough)     { status = t('status_ready');                                                    badgeClass = 'badge-ok';   }
+    else                   { status = t('status_short').replace('{n}', (lcNeeded-lcAvail).toLocaleString()); badgeClass = 'badge-bad'; }
+
+    // Attack buttons
+    const canAttack = !!(v.villageId && target.villageId && serverUrl);
+    const disabledAttr = canAttack ? '' : ' disabled';
+    const titleAttr    = canAttack ? '' : ' title="Set Village IDs and Server URL to enable"';
+    const lcDim = lcNeeded === 0 || lcAvail < lcNeeded;
+    const hcDim = hcNeeded === 0 || hcAvail < hcNeeded;
+    const sentLCBtn = lcNeeded > 0 ? `<button class="btn btn-sent btn-sm" onclick="markSent('${v.id}',${lcNeeded},0)" title="Sent ${lcNeeded} LC">✓ LC</button>` : '';
+    const sentHCBtn = hcNeeded > 0 ? `<button class="btn btn-sent btn-sm" onclick="markSent('${v.id}',0,${hcNeeded})" title="Sent ${hcNeeded} HC">✓ HC</button>` : '';
+    let lcAttackBtn, hcAttackBtn;
+    if (canAttack) {
+      const lcUrl = buildAttackUrl(serverUrl, v.villageId, target.villageId, 'light', lcNeeded);
+      const hcUrl = buildAttackUrl(serverUrl, v.villageId, target.villageId, 'heavy', hcNeeded);
+      lcAttackBtn = `<a href="${esc(lcUrl)}" target="_blank" rel="noopener" class="btn btn-attack btn-sm${lcDim ? ' btn-attack-dim' : ''}">⚔ LC</a>`;
+      hcAttackBtn = `<a href="${esc(hcUrl)}" target="_blank" rel="noopener" class="btn btn-attack btn-sm${hcDim ? ' btn-attack-dim' : ''}">⚔ HC</a>`;
+    } else {
+      lcAttackBtn = `<button class="btn btn-attack btn-sm${lcDim ? ' btn-attack-dim' : ''}"${disabledAttr}${titleAttr}>⚔ LC</button>`;
+      hcAttackBtn = `<button class="btn btn-attack btn-sm${hcDim ? ' btn-attack-dim' : ''}"${disabledAttr}${titleAttr}>⚔ HC</button>`;
+    }
+
+    return `
+      <tr class="${lcEnough || lcNeeded === 0 ? '' : 'row-dim'}">
+        <td><strong>${esc(v.name)}</strong></td>
+        <td class="coords">${fmtCoords(v.x, v.y)}</td>
+        <td>${d.toFixed(1)} ${t('dist_fields')}</td>
+        <td>${fmtTime(travel)}<br><span style="font-size:11px;color:#a08850">${fmtArrivalTime(travel)}</span></td>
+        <td>${fmtTime(travelHC)}<br><span style="font-size:11px;color:#a08850">${fmtArrivalTime(travelHC)}</span></td>
+        <td>${fmt(arrival)}</td>
+        <td><strong class="${lcEnough ? 'lc-ok' : 'lc-bad'}">${lcNeeded.toLocaleString()}</strong></td>
+        <td><span class="${lcEnough ? 'lc-ok' : ''}">${lcAvail.toLocaleString()}</span></td>
+        <td><strong class="${hcAvail >= hcNeeded ? 'lc-ok' : 'lc-bad'}">${hcNeeded.toLocaleString()}</strong></td>
+        <td><span class="${hcAvail >= hcNeeded ? 'lc-ok' : ''}">${hcAvail.toLocaleString()}</span></td>
+        <td><span class="badge ${badgeClass}">${status}</span></td>
+        <td style="display:flex;gap:5px;flex-wrap:wrap">${lcAttackBtn}${sentLCBtn}${hcAttackBtn}${sentHCBtn}</td>
+      </tr>`;
+  }).join('');
+}
+
+function markSent(villageId, lc, hc) {
+  const v = DATA.ownVillages.find(v => v.id === villageId);
+  if (!v) return;
+  v.lcAvailable = Math.max(0, (v.lcAvailable || 0) - lc);
+  v.hcAvailable = Math.max(0, (v.hcAvailable || 0) - hc);
+  saveData();
+  renderOwnVillages();
+  runCalc();
+}
+
+// ══════════════════════════════════════════════════════
+//  VILLAGE DATABASE
+// ══════════════════════════════════════════════════════
+
+// ── DB directory handle (reads village.txt + player.txt from the connected folder) ──
+let dbDirHandle = null;
+
+async function loadDbFromDir() {
+  try {
+    const [vFile, pFile] = await Promise.all([
+      dbDirHandle.getFileHandle('village.txt').then(h => h.getFile()),
+      dbDirHandle.getFileHandle('player.txt').then(h => h.getFile()),
+    ]);
+    const [vText, pText] = await Promise.all([vFile.text(), pFile.text()]);
+    villageDb = parseVillageDb(vText);
+    playerDb  = parsePlayerDb(pText);
+    document.getElementById('db-status').textContent =
+      `${villageDb.length.toLocaleString()} villages, ${Object.keys(playerDb).length.toLocaleString()} players loaded.`;
+    if (document.getElementById('tab-village-db').classList.contains('active')) renderVillageDb();
+  } catch(e) {
+    document.getElementById('db-status').textContent = 'village.txt / player.txt not found in selected folder.';
+    console.error(e);
+  }
+}
+
+async function tryAutoLoadDbFiles() {
+  if (!window.showDirectoryPicker) return;
+  try {
+    const dh = await IDB.get('dbDirHandle');
+    if (!dh) return;
+    dbDirHandle = dh;
+    updateDbConnectBtn();
+    const perm = await dh.queryPermission({ mode: 'read' });
+    if (perm === 'granted') {
+      await loadDbFromDir();
+    } else {
+      document.getElementById('db-status').textContent = t('db_connected_refresh');
+    }
+  } catch(e) { console.warn('DB auto-load failed:', e); }
+}
+
+async function connectDbFiles() {
+  if (!window.showDirectoryPicker) { alert(t('alert_no_db_api')); return; }
+  try {
+    const dh = await window.showDirectoryPicker({ id: 'tw-db-dir', mode: 'read' });
+    dbDirHandle = dh;
+    await IDB.del('villageHandle').catch(() => {});
+    await IDB.del('playerHandle').catch(() => {});
+    await IDB.set('dbDirHandle', dh);
+    await loadDbFromDir();
+    updateDbConnectBtn();
+  } catch(e) { if (e.name !== 'AbortError') console.error(e); }
+}
+
+async function refreshDbFiles() {
+  if (!dbDirHandle) { alert(t('alert_no_db_connected')); return; }
+  try {
+    const perm = await dbDirHandle.requestPermission({ mode: 'read' });
+    if (perm !== 'granted') { alert(t('alert_perm_denied_short')); return; }
+    await loadDbFromDir();
+  } catch(e) { console.error(e); }
+}
+
+function updateDbConnectBtn() {
+  const connected = !!dbDirHandle;
+  const connectBtn = document.getElementById('db-connect-btn');
+  const refreshBtn = document.getElementById('db-refresh-btn');
+  if (connectBtn) connectBtn.textContent = connected ? t('btn_change_db') : t('btn_connect_db');
+  if (refreshBtn) refreshBtn.style.display = connected ? '' : 'none';
+}
+
+
+let villageDb = [];
+let playerDb  = {}; // id → name
+
+function parsePlayerDb(text) {
+  const result = {};
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    const p = t.split(',');
+    if (p.length < 6) continue;
+    const [id, rawName] = p;
+    result[parseInt(id)] = decodeURIComponent(rawName.replace(/\+/g, ' '));
+  }
+  return result;
+}
+
+function parseVillageDb(text) {
+  const result = [];
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    const p = t.split(',');
+    if (p.length < 7) continue;
+    const [id, rawName, x, y, playerId, points] = p;
+    result.push({
+      id:       parseInt(id),
+      name:     decodeURIComponent(rawName.replace(/\+/g, ' ')),
+      x:        parseInt(x),
+      y:        parseInt(y),
+      playerId: parseInt(playerId),
+      points:   parseInt(points)
+    });
+  }
+  return result;
+}
+
+
+function loadVillageDbFromFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    villageDb = parseVillageDb(e.target.result);
+    document.getElementById('db-status').textContent = `${villageDb.length.toLocaleString()} villages loaded from file.`;
+    renderVillageDb();
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function loadPlayerDbFromFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    playerDb = parsePlayerDb(e.target.result);
+    document.getElementById('db-status').textContent =
+      `${villageDb.length.toLocaleString()} villages, ${Object.keys(playerDb).length.toLocaleString()} players loaded.`;
+    renderVillageDb();
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+let dbSearchTimer = null;
+function debouncedDbSearch() {
+  clearTimeout(dbSearchTimer);
+  dbSearchTimer = setTimeout(renderVillageDb, 200);
+}
+
+function renderVillageDb() {
+  const query = (document.getElementById('db-search').value || '').toLowerCase().trim();
+  const MAX   = 500;
+  const rows  = query
+    ? villageDb.filter(v =>
+        v.name.toLowerCase().includes(query) ||
+        `${v.x}|${v.y}`.includes(query) ||
+        String(v.playerId).includes(query) ||
+        String(v.id).includes(query))
+    : villageDb;
+  const shown = rows.slice(0, MAX);
+  const statusEl = document.getElementById('db-status');
+  if (villageDb.length > 0) {
+    statusEl.textContent = query
+      ? `${rows.length.toLocaleString()} match${rows.length !== 1 ? 'es' : ''}${rows.length > MAX ? ` (showing first ${MAX})` : ''}`
+      : `${villageDb.length.toLocaleString()} villages — ${rows.length > MAX ? `showing first ${MAX}, search to filter` : 'showing all'}`;
+  }
+  document.getElementById('db-tbody').innerHTML = shown.length === 0
+    ? `<tr class="empty-row"><td colspan="6">${t('empty_no_results')}</td></tr>`
+    : shown.map(v => `
+        <tr>
+          <td class="coords" style="font-size:12px">${v.id}</td>
+          <td><strong>${esc(v.name)}</strong></td>
+          <td class="coords">${fmtCoords(v.x, v.y)}</td>
+          <td>${v.playerId === 0 ? '<span class="text-dim">Barbarian</span>' : `<strong>${esc(playerDb[v.playerId] || String(v.playerId))}</strong>`}</td>
+          <td>${v.points.toLocaleString()}</td>
+          <td><button class="btn btn-primary btn-sm" onclick="addTargetFromDb(${v.id})">${t('btn_add_target_db')}</button></td>
+        </tr>`).join('');
+}
+
+function addTargetFromDb(villageId) {
+  const v = villageDb.find(v => v.id === villageId);
+  if (!v) return;
+  if (DATA.targets.find(tgt => tgt.villageId === String(v.id))) {
+    alert(`"${v.name}" ${t('alert_already_target')}`);
+    return;
+  }
+  // Switch to Targets tab
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'targets'));
+  document.querySelectorAll('.tab-content').forEach(s => s.classList.toggle('active', s.id === 'tab-targets'));
+  // Pre-fill form
+  document.getElementById('t-name').value   = v.name;
+  document.getElementById('t-vid').value    = String(v.id);
+  document.getElementById('t-x').value      = v.x;
+  document.getElementById('t-y').value      = v.y;
+  document.getElementById('t-player').value = v.playerId !== 0 ? (playerDb[v.playerId] || String(v.playerId)) : '';
+  ['t-sawmill','t-clay','t-iron','t-warehouse','t-hiding'].forEach(id => document.getElementById(id).value = '0');
+  document.getElementById('t-loot-left').value = '';
+  document.getElementById('t-loot-time').value = '';
+  const panel = document.getElementById('target-add-panel');
+  if (!panel.classList.contains('open')) panel.classList.add('open');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── renderAll ─────────────────────────────────────────
+function renderAll() {
+  applySettings();
+  applyTranslations();
+  renderOwnVillages();
+  renderTargets();
+  refreshCalcDropdown();
+  runCalc();
+}
+
+// ── Auto-refresh ──────────────────────────────────────
+setInterval(() => {
+  if (document.getElementById('tab-calculator').classList.contains('active')) runCalc();
+  if (document.getElementById('tab-targets').classList.contains('active'))    renderTargets();
+}, 60_000);
+
+// ══════════════════════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════════════════════
+loadFromLocalStorage();
+migrateOldKeys();
+applySettings();
+applyTranslations();
+initBookmarklet();
+tryAutoLoadDbFiles();
+renderOwnVillages();
+renderTargets();
+refreshCalcDropdown();
+tryAutoConnect(); // async — updates UI when file reconnects
+</script>
+</body>
+</html>
