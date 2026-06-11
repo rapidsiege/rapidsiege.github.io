@@ -1,0 +1,3 @@
+# Claude Code / OMC local session state — never publish
+.omc/
+.claude/settings.local.json
