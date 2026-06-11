@@ -716,13 +716,13 @@
     <label data-i18n="lbl_def_winoff">Default off window:</label>
     <span style="display:inline-flex;gap:3px;align-items:center;">
       <input type="time" id="ot-def-winoff-s" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinOff')">
-      <button class="btn btn-ghost btn-sm" id="ot-def-winoff-fix" style="padding:1px 6px;" onclick="fixDefWin('defWinOff')">✓</button>
+      <button class="btn btn-ghost btn-sm" id="ot-def-winoff-fix" style="padding:1px 6px;" onclick="fixDefWin('defWinOff')">=</button>
       <input type="time" id="ot-def-winoff-e" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinOff')">
     </span>
     <label data-i18n="lbl_def_winsnob">Default snob window:</label>
     <span style="display:inline-flex;gap:3px;align-items:center;">
       <input type="time" id="ot-def-winsnob-s" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinSnob')">
-      <button class="btn btn-ghost btn-sm" id="ot-def-winsnob-fix" style="padding:1px 6px;" onclick="fixDefWin('defWinSnob')">✓</button>
+      <button class="btn btn-ghost btn-sm" id="ot-def-winsnob-fix" style="padding:1px 6px;" onclick="fixDefWin('defWinSnob')">=</button>
       <input type="time" id="ot-def-winsnob-e" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinSnob')">
     </span>
   </div>
@@ -750,7 +750,7 @@
           <th data-i18n="th_snob_players">Snob Players</th>
           <th data-i18n="th_nobles">Nobles</th>
           <th class="left" data-i18n="th_snob_senders">Senders</th>
-          <th data-i18n="th_escort">Escort</th>
+          <th data-i18n="th_escort">Snob Mode</th>
           <th data-i18n="th_win_off">Off Windows</th>
           <th data-i18n="th_win_snob">Snob Window</th>
           <th></th>
@@ -790,6 +790,8 @@
     </select>
     <label data-i18n="lbl_max_dist">Max distance:</label>
     <input type="number" id="plan-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited">
+    <label data-i18n="lbl_snob_max">Snob max distance:</label>
+    <input type="number" id="plan-snob-max" value="70" min="0" style="width:70px;" title="0 = unlimited">
     <label data-i18n="lbl_prefer">Prioritize:</label>
     <select id="plan-prefer">
       <option value="dist" data-i18n="opt_pref_dist">Distance</option>
@@ -982,13 +984,14 @@ const T = {
     th_snob_players:'Snob Players', th_nobles:'Nobles', th_win_off:'Off Windows', th_win_snob:'Snob Window',
     empty_no_targets:'No targets yet — add coordinates above',
     ot_defender_note:'Defender auto-fills from the village database.',
-    th_snob_senders:'Senders', th_escort:'Escort',
-    opt_escort_yes:'⚔ Escorted', opt_escort_no:'👑 Solo',
+    th_snob_senders:'Senders', th_escort:'Snob Mode',
+    opt_escort_yes:'⚔ Split Off', opt_escort_no:'👑 Solo',
     opt_pick_sender:'+ assign…',
     senders_need_troops:'Load the tribe troop file to pick senders',
     warn_target_not_in_db: c => `Target ${c} not found in the village database`,
     warn_missed_snob_player: (pl, c) => `${pl} has no available snob village for ${c}`,
-    warn_escort_used: (pl, c) => `${pl} has snobs left for ${c} but no free off to escort them — set the train to Solo or free up an off`,
+    warn_escort_used: (pl, c) => `${pl} has snobs left for ${c} but no free off to split — set the train to Solo or free up an off`,
+    warn_snob_range: (pl, c) => `${pl}'s snob villages are beyond the noble travel range for ${c}`,
     warn_sender_capacity: (pl, used, have) => `${pl} has not enough nobles: ${used} assigned, but only ${have} available`,
     warn_nobles_mismatch: (c, sum, n) => `Snob trains for ${c} total ${sum} nobles but the target asks for ${n}`,
     fix_time_title:'Set end = start (fixed time instead of a window)',
@@ -997,6 +1000,7 @@ const T = {
     win_count_title:'Offs landing in this window (0 = automatic share)',
     snob_count_title:'Nobles this sender sends here (0 = split evenly)',
     lbl_max_dist:'Max distance:',
+    lbl_snob_max:'Snob max distance:',
     lbl_prefer:'Prioritize:', opt_pref_dist:'Distance', opt_pref_power:'Power',
     btn_generate:'⚡ Generate Plan', btn_export_forum:'⬇ Export Forum BB',
     empty_no_plan:'No plan yet — add targets, then click Generate Plan',
@@ -1012,6 +1016,7 @@ const T = {
     bb_legend_snob: n => `NOBLE TRAIN (${n} Nobles).`,
     bb_unassigned:'⚠ UNASSIGNED',
     tier_complete:'Complete', tier_tq:'3/4', tier_half:'1/2', type_snob:'Snobs',
+    type_snob_split:'Split Off Snobs',
     tab_db:'🗃 Database', sec_db:'Village Database',
     btn_connect_db:'📁 Connect DB Folder', btn_change_db:'📁 Change DB Folder',
     btn_resync_db:'🔄 Re-sync Files', btn_load_db_files:'📂 Load Files…',
@@ -1098,13 +1103,14 @@ const T = {
     th_snob_players:'Jug. Nobles', th_nobles:'Nobles', th_win_off:'Ventanas Off', th_win_snob:'Ventana Nobles',
     empty_no_targets:'Sin objetivos — añade coordenadas arriba',
     ot_defender_note:'El defensor se rellena automáticamente desde la base de datos.',
-    th_snob_senders:'Remitentes', th_escort:'Escolta',
-    opt_escort_yes:'⚔ Escoltado', opt_escort_no:'👑 Solo',
+    th_snob_senders:'Remitentes', th_escort:'Modo Nobles',
+    opt_escort_yes:'⚔ Partir Off', opt_escort_no:'👑 Solo',
     opt_pick_sender:'+ asignar…',
     senders_need_troops:'Carga el archivo de tropas para elegir remitentes',
     warn_target_not_in_db: c => `El objetivo ${c} no existe en la base de datos de aldeas`,
     warn_missed_snob_player: (pl, c) => `${pl} no tiene aldea con nobles disponible para ${c}`,
-    warn_escort_used: (pl, c) => `${pl} tiene nobles para ${c} pero ningún off libre para escoltarlos — pon el tren en Solo o libera un off`,
+    warn_escort_used: (pl, c) => `${pl} tiene nobles para ${c} pero ningún off libre para partir — pon el tren en Solo o libera un off`,
+    warn_snob_range: (pl, c) => `Las aldeas con nobles de ${pl} están fuera del alcance de los nobles para ${c}`,
     warn_sender_capacity: (pl, used, have) => `${pl} no tiene suficientes nobles: ${used} asignados, pero solo ${have} disponibles`,
     warn_nobles_mismatch: (c, sum, n) => `Los trenes de nobles para ${c} suman ${sum} nobles pero el objetivo pide ${n}`,
     fix_time_title:'Fijar fin = inicio (hora fija en vez de ventana)',
@@ -1113,6 +1119,7 @@ const T = {
     win_count_title:'Offs que caen en esta ventana (0 = reparto automático)',
     snob_count_title:'Nobles que envía este remitente aquí (0 = reparto equitativo)',
     lbl_max_dist:'Distancia máx.:',
+    lbl_snob_max:'Distancia máx. nobles:',
     lbl_prefer:'Priorizar:', opt_pref_dist:'Distancia', opt_pref_power:'Poder',
     btn_generate:'⚡ Generar Plan', btn_export_forum:'⬇ Exportar BB Foro',
     empty_no_plan:'Sin plan — añade objetivos y pulsa Generar Plan',
@@ -1128,6 +1135,7 @@ const T = {
     bb_legend_snob: n => `TREN DE NOBLES (${n} Nobles).`,
     bb_unassigned:'⚠ SIN ASIGNAR',
     tier_complete:'Completo', tier_tq:'3/4', tier_half:'1/2', type_snob:'Nobles',
+    type_snob_split:'Nobles (Partir Off)',
     tab_db:'🗃 Base de Datos', sec_db:'Base de Datos de Aldeas',
     btn_connect_db:'📁 Conectar Carpeta BD', btn_change_db:'📁 Cambiar Carpeta BD',
     btn_resync_db:'🔄 Resincronizar', btn_load_db_files:'📂 Cargar Archivos…',
@@ -2082,7 +2090,7 @@ function renderOffTargets() {
     const winEditor = (prefix, winStr, chgJs, fixJs) => {
       const [ws, we] = winParts(winStr);
       return `<input type="time" id="${prefix}-s" class="cell-input mono" style="width:78px;" value="${ws}" onchange="${chgJs}">` +
-             `<button class="btn btn-ghost btn-sm" style="padding:1px 5px;" title="${esc(t('fix_time_title'))}" onclick="${fixJs}">✓</button>` +
+             `<button class="btn btn-ghost btn-sm" style="padding:1px 5px;" title="${esc(t('fix_time_title'))}" onclick="${fixJs}">=</button>` +
              `<input type="time" id="${prefix}-e" class="cell-input mono" style="width:78px;" value="${we}" onchange="${chgJs}">`;
     };
     const multiWin = tg.offWindows.length > 1;
@@ -2164,6 +2172,10 @@ function generatePlan() {
   targets.filter(T => !T.c).forEach(T => planWarnings.push(t('warn_invalid_coord')(T.tg.coord)));
 
   const okDist = (p, tc) => maxDist <= 0 || distXY(p.c, tc) <= maxDist;
+  // Nobles have a hard travel limit in the game (70 fields on es100)
+  const snobMaxRaw = parseFloat((document.getElementById('plan-snob-max') || {}).value);
+  const snobMax = isNaN(snobMaxRaw) ? 70 : snobMaxRaw;
+  const okSnobDist = (p, tc) => snobMax <= 0 || distXY(p.c, tc) <= snobMax;
   const byPref = tc => (a, b) => prefer === 'power'
     ? (b.v.offPow - a.v.offPow) || (distXY(a.c, tc) - distXY(b.c, tc))
     : (distXY(a.c, tc) - distXY(b.c, tc)) || (b.v.offPow - a.v.offPow);
@@ -2212,10 +2224,10 @@ function generatePlan() {
     const mode = T.tg.snobMode || 'escorted';
     const chosen = new Set();
     spec.forEach(({ name: want, count: nc }) => {
-      // A village may host several trains while it has snobs left; in escorted
-      // mode its off can only escort once (solo trains from it stay fine)
+      // A village may host several trains while it has snobs left; in split-off
+      // mode its off can only be split once (solo trains from it stay fine)
       let cands = pool.filter(p =>
-        p.snobLeft > 0 && okDist(p, T.c) &&
+        p.snobLeft > 0 && okDist(p, T.c) && okSnobDist(p, T.c) &&
         (want ? p.v.player === want : !chosen.has(p.v.player)) &&
         (mode !== 'escorted' || !p.usedOff));
       if (mode === 'escorted') {
@@ -2228,15 +2240,21 @@ function generatePlan() {
       const fresh = cands.filter(p => !p.usedSnob);
       if (fresh.length) cands = fresh;
       if (!cands.length) {
-        // distinguish "snobs left but the off already escorted" from "no snobs"
-        const escortBlocked = mode === 'escorted' && want &&
-          pool.some(p => p.snobLeft > 0 && okDist(p, T.c) && p.v.player === want);
-        planWarnings.push(want
-          ? (escortBlocked
-              ? t('warn_escort_used')(decode(want), T.tg.coord)
-              : t('warn_missed_snob_player')(decode(want), T.tg.coord))
-          : t('warn_missed_snob')(T.tg.coord));
-        T.snobRows.push({ type: 'snob', count: nc, unassigned: true });
+        // pinpoint the blocker: out of noble range / off already split / no snobs
+        let msg;
+        if (want) {
+          const mine = pool.filter(p => p.snobLeft > 0 && okDist(p, T.c) && p.v.player === want);
+          if (mine.length && !mine.some(p => okSnobDist(p, T.c)))
+            msg = t('warn_snob_range')(decode(want), T.tg.coord);
+          else if (mode === 'escorted' && mine.some(p => okSnobDist(p, T.c)))
+            msg = t('warn_escort_used')(decode(want), T.tg.coord);
+          else
+            msg = t('warn_missed_snob_player')(decode(want), T.tg.coord);
+        } else {
+          msg = t('warn_missed_snob')(T.tg.coord);
+        }
+        planWarnings.push(msg);
+        T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true });
         return;
       }
       // escorted: strongest escort wins; solo: nearest village, weakest off stays home
@@ -2248,7 +2266,8 @@ function generatePlan() {
       if (mode === 'escorted') p.usedOff = true;
       const d = distXY(p.c, T.c);
       T.snobRows.push({
-        type: 'snob', count: nc, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+        type: 'snob', count: nc, escorted: mode === 'escorted',
+        srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.snob, ws, us),
       });
     });
@@ -2297,7 +2316,7 @@ function renderPlanTable() {
     const first = r.tIdx !== lastIdx;
     lastIdx = r.tIdx;
     const badge = r.type === 'snob'
-      ? `<span class="badge badge-snob">${r.count > 1 ? r.count + 'x ' : ''}👑 ${t('type_snob')}</span>`
+      ? `<span class="badge badge-snob">${r.count > 1 ? r.count + 'x ' : ''}👑 ${t(r.escorted ? 'type_snob_split' : 'type_snob')}</span>`
       : `<span class="badge badge-${r.type === 'complete' ? 'complete' : r.type === 'tq' ? 'tq' : 'half'}">${t('tier_' + r.type)}</span>`;
     const trStyle = [
       first && i > 0 ? 'border-top:2px solid #7a5c10' : '',
