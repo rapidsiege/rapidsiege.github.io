@@ -659,7 +659,7 @@
   </div>
 
   <div class="db-controls">
-    <button class="btn btn-file" onclick="connectDbFolder()" data-i18n="btn_connect_db">⟁ Connect DB Folder</button>
+    <button class="btn btn-file" id="db-connect-btn" onclick="connectDbFolder()" data-i18n="btn_connect_db">⟁ Connect DB Folder</button>
     <span id="db-status" data-i18n="db_not_connected">No folder connected</span>
   </div>
 
@@ -1159,6 +1159,8 @@ const LANG = {
     // DB
     db_showing: 'Showing 200 of {total}',
     db_error_loading: 'Error loading files',
+    db_web_updated: '— auto-loaded from web mirror (updated {ts})',
+    db_web_failed: 'Could not load map data from the web — reload the page to retry.',
     db_no_data: 'No data loaded.',
     empty_no_results: 'No results.',
 
@@ -1346,6 +1348,8 @@ const LANG = {
     // DB
     db_showing: 'Mostrando 200 de {total}',
     db_error_loading: 'Error al cargar archivos',
+    db_web_updated: '— carga automática del espejo web (actualizado {ts})',
+    db_web_failed: 'No se pudieron cargar los datos del mapa desde la web — recarga la página para reintentar.',
     db_no_data: 'Sin datos cargados.',
     empty_no_results: 'Sin resultados.',
 
@@ -1740,50 +1744,81 @@ async function connectDbFolder() {
   } catch(e) { /* cancelled */ }
 }
 
+function applyDbTexts(pText, vText) {
+  villageDb = [];
+  playerMap = {};
+
+  // player.txt: id,name,...
+  if (pText) {
+    for (const line of pText.split('\n')) {
+      const parts = line.trim().split(',');
+      if (parts.length >= 2) {
+        playerMap[parts[0].trim()] = decodeURIComponent(parts[1].trim().replace(/\+/g,' '));
+      }
+    }
+  }
+
+  // village.txt: id,name,x,y,playerId,points,...
+  if (vText) {
+    for (const line of vText.split('\n')) {
+      const parts = line.trim().split(',');
+      if (parts.length >= 6) {
+        villageDb.push({
+          id:       parts[0].trim(),
+          name:     decodeURIComponent(parts[1].trim().replace(/\+/g,' ')),
+          x:        parseInt(parts[2]),
+          y:        parseInt(parts[3]),
+          playerId: parts[4].trim(),
+          points:   parseInt(parts[5]) || 0
+        });
+      }
+    }
+  }
+
+  document.getElementById('db-status').textContent =
+    `${villageDb.length.toLocaleString()} villages loaded`;
+  renderDb('');
+}
+
 async function loadDbFiles() {
   if (!dbDirHandle) return;
   try {
-    villageDb = [];
-    playerMap = {};
-
-    // player.txt: id,name,...
+    let pText = null, vText = null;
     try {
-      const ph = await dbDirHandle.getFileHandle('player.txt');
-      const pf = await ph.getFile();
-      const pt = await pf.text();
-      for (const line of pt.split('\n')) {
-        const parts = line.trim().split(',');
-        if (parts.length >= 2) {
-          playerMap[parts[0].trim()] = decodeURIComponent(parts[1].trim().replace(/\+/g,' '));
-        }
-      }
+      const pf = await (await dbDirHandle.getFileHandle('player.txt')).getFile();
+      pText = await pf.text();
     } catch(e) { /* file missing */ }
-
-    // village.txt: id,name,x,y,playerId,points,...
     try {
-      const vh = await dbDirHandle.getFileHandle('village.txt');
-      const vf = await vh.getFile();
-      const vt = await vf.text();
-      for (const line of vt.split('\n')) {
-        const parts = line.trim().split(',');
-        if (parts.length >= 6) {
-          villageDb.push({
-            id:       parts[0].trim(),
-            name:     decodeURIComponent(parts[1].trim().replace(/\+/g,' ')),
-            x:        parseInt(parts[2]),
-            y:        parseInt(parts[3]),
-            playerId: parts[4].trim(),
-            points:   parseInt(parts[5]) || 0
-          });
-        }
-      }
+      const vf = await (await dbDirHandle.getFileHandle('village.txt')).getFile();
+      vText = await vf.text();
     } catch(e) { /* file missing */ }
-
-    document.getElementById('db-status').textContent =
-      `${villageDb.length.toLocaleString()} villages loaded`;
-    renderDb('');
+    applyDbTexts(pText, vText);
   } catch(e) {
     document.getElementById('db-status').textContent = t('db_error_loading');
+  }
+}
+
+// ── Environment: 'production' when served over http(s) (the GitHub Pages site,
+//    where a scheduled Action mirrors the world data under data/es100/);
+//    'development' when opened from disk (file://) — uses local files instead.
+const TW_ENV = (typeof location !== 'undefined' && /^https?:$/.test(location.protocol))
+  ? 'production' : 'development';
+const TW_DATA_URL = 'data/es100/';
+
+async function loadDbFromWeb() {
+  try {
+    const [vText, pText, updated] = await Promise.all([
+      fetch(TW_DATA_URL + 'village.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }),
+      fetch(TW_DATA_URL + 'player.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }),
+      fetch(TW_DATA_URL + 'last-updated.txt').then(r => r.ok ? r.text() : '').catch(() => ''),
+    ]);
+    applyDbTexts(pText, vText);
+    if (updated.trim()) {
+      document.getElementById('db-status').textContent +=
+        ' ' + t('db_web_updated').replace('{ts}', updated.trim());
+    }
+  } catch(e) {
+    document.getElementById('db-status').textContent = t('db_web_failed');
   }
 }
 
@@ -3357,7 +3392,15 @@ function renderAll() {
   initBookmarklet();
   setInterval(updateCountdowns, 1000);
   await tryAutoConnect();
-  await tryAutoConnectDb();
+  // Village DB: production (live site) fetches the web mirror,
+  // development restores the locally connected folder
+  if (TW_ENV === 'production') {
+    const btn = document.getElementById('db-connect-btn');
+    if (btn) btn.style.display = 'none';
+    await loadDbFromWeb();
+  } else {
+    await tryAutoConnectDb();
+  }
 })();
 </script>
 <div class="footer">

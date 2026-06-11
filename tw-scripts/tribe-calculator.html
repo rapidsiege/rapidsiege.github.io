@@ -820,11 +820,11 @@
     <div style="display:flex;gap:8px;">
       <button class="btn btn-file btn-sm" id="db-connect-btn" onclick="connectDbFolder()" data-i18n="btn_connect_db">📁 Connect DB Folder</button>
       <button class="btn btn-ghost btn-sm" id="db-refresh-btn" style="display:none;" onclick="refreshDbFiles()" data-i18n="btn_resync_db">🔄 Re-sync Files</button>
-      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('db-file-input').click()" data-i18n="btn_load_db_files">📂 Load Files…</button>
+      <button class="btn btn-ghost btn-sm" id="db-load-btn" onclick="document.getElementById('db-file-input').click()" data-i18n="btn_load_db_files">📂 Load Files…</button>
       <input type="file" id="db-file-input" accept=".txt" multiple style="display:none;" onchange="loadDbFromFileInput(this)">
     </div>
   </div>
-  <div style="font-size:12px;color:#806030;margin-bottom:10px;" data-i18n="db_note">Download village.txt and player.txt from your world's map files (e.g. es100.guerrastribales.es/map/village.txt) and connect the folder — coordinates will then auto-fill the owner in Offensive Targets and Tribe Timings.</div>
+  <div style="font-size:12px;color:#806030;margin-bottom:10px;" id="db-note" data-i18n="db_note">Download village.txt and player.txt from your world's map files (e.g. es100.guerrastribales.es/map/village.txt) and connect the folder — coordinates will then auto-fill the owner in Offensive Targets and Tribe Timings.</div>
   <div class="filter-row">
     <div class="file-status-dot dot-off" id="db-dot"></div>
     <span id="db-status" style="font-size:12px;color:#907050;" data-i18n="db_status_none">No database loaded</span>
@@ -1004,6 +1004,9 @@ const T = {
     db_status_loaded: (v, p) => `${v} villages · ${p} players loaded`,
     db_connected_refresh:'Folder connected — click Re-sync Files to grant access and load',
     db_not_found:'village.txt / player.txt not found in selected folder.',
+    db_note_prod:'Village and player data load automatically from the world map mirror (refreshed every ~2 h). Coordinates auto-fill the owner in Offensive Targets and Tribe Timings.',
+    db_web_updated: ts => `auto-loaded from web mirror (updated ${ts})`,
+    db_web_failed:'Could not load map data from the web — reload the page to retry.',
     ph_db_search:'Search village, player or coord…',
     th_village:'Village', th_points:'Points',
     db_no_data:'Connect the DB folder or load village.txt + player.txt',
@@ -1109,6 +1112,9 @@ const T = {
     db_status_loaded: (v, p) => `${v} aldeas · ${p} jugadores cargados`,
     db_connected_refresh:'Carpeta conectada — pulsa Resincronizar para conceder acceso y cargar',
     db_not_found:'No se encontraron village.txt / player.txt en la carpeta seleccionada.',
+    db_note_prod:'Los datos de aldeas y jugadores se cargan automáticamente del espejo del mapa (actualizado cada ~2 h). Las coordenadas rellenan automáticamente el dueño en Objetivos Ofensivos y Tiempos de Tribu.',
+    db_web_updated: ts => `carga automática del espejo web (actualizado ${ts})`,
+    db_web_failed:'No se pudieron cargar los datos del mapa desde la web — recarga la página para reintentar.',
     ph_db_search:'Buscar aldea, jugador o coordenada…',
     th_village:'Aldea', th_points:'Puntos',
     db_no_data:'Conecta la carpeta BD o carga village.txt + player.txt',
@@ -2167,6 +2173,29 @@ let coordDb       = {}; // "x|y" → village record
 let dbDirHandle   = null;
 let dbSearchTimer = null;
 
+// ── Environment: 'production' when served over http(s) (the GitHub Pages site,
+//    where a scheduled Action mirrors the world data under data/es100/);
+//    'development' when opened from disk (file://) — uses local files instead.
+const TW_ENV = (typeof location !== 'undefined' && /^https?:$/.test(location.protocol))
+  ? 'production' : 'development';
+const TW_DATA_URL = 'data/es100/';
+
+async function loadDbFromWeb() {
+  try {
+    const [vText, pText, updated] = await Promise.all([
+      fetch(TW_DATA_URL + 'village.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }),
+      fetch(TW_DATA_URL + 'player.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }),
+      fetch(TW_DATA_URL + 'last-updated.txt').then(r => r.ok ? r.text() : '').catch(() => ''),
+    ]);
+    setDbData(vText, pText);
+    if (updated.trim()) {
+      document.getElementById('db-status').textContent += ` — ${t('db_web_updated')(updated.trim())}`;
+    }
+  } catch (e) {
+    document.getElementById('db-status').textContent = t('db_web_failed');
+  }
+}
+
 function decodeName(s) { try { return decodeURIComponent(String(s).replace(/\+/g, ' ')); } catch { return s; } }
 
 function parsePlayerDb(text) { // id,name,tribe,villages,points,rank
@@ -2498,9 +2527,20 @@ loadOffensive();
 renderOffTargets();
 renderPlanTable();
 
-// Village database: render empty state, then try to restore the remembered folder
+// Village database: render empty state, then load per environment — production
+// (the live site) fetches the web mirror, development restores the local folder
 renderDbTable();
-tryAutoLoadDb();
+if (TW_ENV === 'production') {
+  for (const id of ['db-connect-btn', 'db-refresh-btn', 'db-load-btn']) {
+    const btn = document.getElementById(id);
+    if (btn) btn.style.display = 'none';
+  }
+  const note = document.getElementById('db-note');
+  if (note) { note.setAttribute('data-i18n', 'db_note_prod'); note.textContent = t('db_note_prod'); }
+  loadDbFromWeb();
+} else {
+  tryAutoLoadDb();
+}
 
 // Allow dropping files anywhere on the page
 document.addEventListener('dragover', e => e.preventDefault());
