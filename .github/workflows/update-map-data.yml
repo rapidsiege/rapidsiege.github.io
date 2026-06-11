@@ -18,19 +18,29 @@ jobs:
 
       - name: Download map files
         run: |
-          mkdir -p tw-scripts/data/es100
-          for f in village.txt player.txt; do
-            curl -fsSL --retry 3 --retry-delay 10 \
-              "https://es100.guerrastribales.es/map/$f" \
-              -o "tw-scripts/data/es100/$f"
+          base="https://es100.guerrastribales.es"
+          out="tw-scripts/data/es100"
+          mkdir -p "$out"
+          for f in village.txt player.txt ally.txt conquer.txt \
+                   kill_att.txt kill_def.txt kill_sup.txt kill_all.txt \
+                   kill_att_tribe.txt kill_def_tribe.txt kill_all_tribe.txt kill_sup_tribe.txt; do
+            curl -fsSL --retry 3 --retry-delay 10 "$base/map/$f" -o "$out/$f"
           done
-          date -u +"%Y-%m-%dT%H:%M:%SZ" > tw-scripts/data/es100/last-updated.txt
+          # get_conquer only accepts a `since` up to 24h in the past — use 23h
+          since=$(( $(date +%s) - 82800 ))
+          curl -fsSL --retry 3 --retry-delay 10 \
+            "$base/interface.php?func=get_conquer&since=$since" -o "$out/conquer_recent.txt"
+          for q in get_config get_unit_info get_building_info; do
+            curl -fsSL --retry 3 --retry-delay 10 \
+              "$base/interface.php?func=$q" -o "$out/$q.xml"
+          done
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > "$out/last-updated.txt"
 
       - name: Commit and push if data changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- tw-scripts/data/es100/village.txt tw-scripts/data/es100/player.txt
+          git add -- tw-scripts/data ':(exclude)tw-scripts/data/es100/last-updated.txt'
           if git diff --cached --quiet; then
             echo "Map data unchanged; nothing to commit."
             exit 0
