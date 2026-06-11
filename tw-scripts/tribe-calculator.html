@@ -714,9 +714,17 @@
     <input type="date" id="ot-date" onchange="updOTCfg('dateISO',this.value)">
     <span id="ot-date-preview" style="font-size:12px;color:#f0c040;font-weight:600;"></span>
     <label data-i18n="lbl_def_winoff">Default off window:</label>
-    <input type="text" id="ot-def-winoff" value="01:00/02:00" style="width:100px;font-family:'Consolas','Courier New',monospace;" onchange="updOTCfg('defWinOff',this.value)">
+    <span style="display:inline-flex;gap:3px;align-items:center;">
+      <input type="time" id="ot-def-winoff-s" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinOff')">
+      <button class="btn btn-ghost btn-sm" id="ot-def-winoff-fix" style="padding:1px 6px;" onclick="fixDefWin('defWinOff')">✓</button>
+      <input type="time" id="ot-def-winoff-e" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinOff')">
+    </span>
     <label data-i18n="lbl_def_winsnob">Default snob window:</label>
-    <input type="text" id="ot-def-winsnob" value="02:00/02:30" style="width:100px;font-family:'Consolas','Courier New',monospace;" onchange="updOTCfg('defWinSnob',this.value)">
+    <span style="display:inline-flex;gap:3px;align-items:center;">
+      <input type="time" id="ot-def-winsnob-s" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinSnob')">
+      <button class="btn btn-ghost btn-sm" id="ot-def-winsnob-fix" style="padding:1px 6px;" onclick="fixDefWin('defWinSnob')">✓</button>
+      <input type="time" id="ot-def-winsnob-e" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinSnob')">
+    </span>
   </div>
   <div class="filter-row" style="margin-top:10px;">
     <input type="text" id="ot-add-coord" placeholder="500|500" style="width:90px;font-family:'Consolas','Courier New',monospace;" onkeydown="if(event.key==='Enter')addOffTarget()">
@@ -743,7 +751,7 @@
           <th data-i18n="th_nobles">Nobles</th>
           <th class="left" data-i18n="th_snob_senders">Senders</th>
           <th data-i18n="th_escort">Escort</th>
-          <th data-i18n="th_win_off">Off Window</th>
+          <th data-i18n="th_win_off">Off Windows</th>
           <th data-i18n="th_win_snob">Snob Window</th>
           <th></th>
         </tr>
@@ -971,7 +979,7 @@ const T = {
     th_target:'Target', th_def_player:'Defender', th_source:'Source', th_window:'Window',
     th_travel:'Travel', th_launch:'Launch Window',
     th_complete:'Complete', th_tq:'3/4', th_half:'1/2',
-    th_snob_players:'Snob Players', th_nobles:'Nobles', th_win_off:'Off Window', th_win_snob:'Snob Window',
+    th_snob_players:'Snob Players', th_nobles:'Nobles', th_win_off:'Off Windows', th_win_snob:'Snob Window',
     empty_no_targets:'No targets yet — add coordinates above',
     ot_defender_note:'Defender auto-fills from the village database.',
     th_snob_senders:'Senders', th_escort:'Escort',
@@ -980,6 +988,13 @@ const T = {
     senders_need_troops:'Load the tribe troop file to pick senders',
     warn_target_not_in_db: c => `Target ${c} not found in the village database`,
     warn_missed_snob_player: (pl, c) => `${pl} has no available snob village for ${c}`,
+    warn_sender_capacity: (pl, used, have) => `${pl} is assigned ${used} nobles across all targets but only has ${have} snobs`,
+    warn_nobles_mismatch: (c, sum, n) => `Snob trains for ${c} total ${sum} nobles but the target asks for ${n}`,
+    fix_time_title:'Set end = start (fixed time instead of a window)',
+    add_window_title:'Add another off window',
+    del_window_title:'Remove this window',
+    win_count_title:'Offs landing in this window (0 = automatic share)',
+    snob_count_title:'Nobles this sender sends here (0 = split evenly)',
     lbl_max_dist:'Max distance:',
     lbl_prefer:'Prioritize:', opt_pref_dist:'Distance', opt_pref_power:'Power',
     btn_generate:'⚡ Generate Plan', btn_export_forum:'⬇ Export Forum BB',
@@ -1079,7 +1094,7 @@ const T = {
     th_target:'Objetivo', th_def_player:'Defensor', th_source:'Origen', th_window:'Ventana',
     th_travel:'Viaje', th_launch:'Ventana de Envío',
     th_complete:'Completo', th_tq:'3/4', th_half:'1/2',
-    th_snob_players:'Jug. Nobles', th_nobles:'Nobles', th_win_off:'Ventana Off', th_win_snob:'Ventana Nobles',
+    th_snob_players:'Jug. Nobles', th_nobles:'Nobles', th_win_off:'Ventanas Off', th_win_snob:'Ventana Nobles',
     empty_no_targets:'Sin objetivos — añade coordenadas arriba',
     ot_defender_note:'El defensor se rellena automáticamente desde la base de datos.',
     th_snob_senders:'Remitentes', th_escort:'Escolta',
@@ -1088,6 +1103,13 @@ const T = {
     senders_need_troops:'Carga el archivo de tropas para elegir remitentes',
     warn_target_not_in_db: c => `El objetivo ${c} no existe en la base de datos de aldeas`,
     warn_missed_snob_player: (pl, c) => `${pl} no tiene aldea con nobles disponible para ${c}`,
+    warn_sender_capacity: (pl, used, have) => `${pl} tiene asignados ${used} nobles entre todos los objetivos pero solo tiene ${have}`,
+    warn_nobles_mismatch: (c, sum, n) => `Los trenes de nobles para ${c} suman ${sum} nobles pero el objetivo pide ${n}`,
+    fix_time_title:'Fijar fin = inicio (hora fija en vez de ventana)',
+    add_window_title:'Añadir otra ventana off',
+    del_window_title:'Eliminar esta ventana',
+    win_count_title:'Offs que caen en esta ventana (0 = reparto automático)',
+    snob_count_title:'Nobles que envía este remitente aquí (0 = reparto equitativo)',
     lbl_max_dist:'Distancia máx.:',
     lbl_prefer:'Priorizar:', opt_pref_dist:'Distancia', opt_pref_power:'Poder',
     btn_generate:'⚡ Generar Plan', btn_export_forum:'⬇ Exportar BB Foro',
@@ -1740,7 +1762,7 @@ const PLAN_BASE_MIN = { off: 30, snob: 35 };
 const TIER_FIELD = { complete: 'nComplete', tq: 'nTq', half: 'nHalf' };
 
 let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30' };
-let offTargets   = []; // [{id, coord, player, nComplete, nTq, nHalf, snobPlayers, nobles, winOff, winSnob}]
+let offTargets   = []; // [{id, coord, player, nComplete, nTq, nHalf, snobPlayers, nobles, offWindows:[{win,count}], winSnob, snobMode, snobAssignees:[{name,count}]}]
 let planRows     = []; // denormalized so a saved plan renders without the troop file loaded
 let planWarnings = [];
 let otNextId     = 1;
@@ -1765,23 +1787,74 @@ function loadOffensive() {
     }
   } catch {}
   // normalize targets saved by older versions
-  for (const tg of offTargets) {
-    if (!tg.snobMode) tg.snobMode = 'escorted';
-    if (!Array.isArray(tg.snobAssignees)) tg.snobAssignees = [];
+  offTargets.forEach(normalizeOffTarget);
+  document.getElementById('ot-date').value = otCfg.dateISO || '';
+  setWinInputs('ot-def-winoff', otCfg.defWinOff);
+  setWinInputs('ot-def-winsnob', otCfg.defWinSnob);
+  for (const id of ['ot-def-winoff-fix', 'ot-def-winsnob-fix']) {
+    const b = document.getElementById(id);
+    if (b) b.title = t('fix_time_title');
   }
-  document.getElementById('ot-date').value        = otCfg.dateISO || '';
-  document.getElementById('ot-def-winoff').value  = otCfg.defWinOff;
-  document.getElementById('ot-def-winsnob').value = otCfg.defWinSnob;
 }
 
 function updOTCfg(k, v) { otCfg[k] = v.trim(); saveOffensive(); }
+
+// ── Time-window helpers (windows stored as 'HH:MM/HH:MM'; start === end = fixed time) ──
+function winParts(s) {
+  const m = String(s || '').match(/(\d{1,2}):(\d{2})\s*[\/\-–]\s*(\d{1,2}):(\d{2})/);
+  if (!m) return ['', ''];
+  const p = n => String(n).padStart(2, '0');
+  return [`${p(+m[1])}:${m[2]}`, `${p(+m[3])}:${m[4]}`];
+}
+function winStrFrom(s, e) { return s ? `${s}/${e || s}` : ''; }
+function fmtWindow(s) {
+  const [a, b] = winParts(s);
+  return a ? (a === b ? a : `${a}/${b}`) : (s || '');
+}
+function setWinInputs(prefix, winStr) {
+  const [s, e] = winParts(winStr);
+  const si = document.getElementById(prefix + '-s'), ei = document.getElementById(prefix + '-e');
+  if (si) si.value = s;
+  if (ei) ei.value = e;
+}
+function readWinInputs(prefix) {
+  const si = document.getElementById(prefix + '-s'), ei = document.getElementById(prefix + '-e');
+  return winStrFrom(si ? si.value : '', ei ? ei.value : '');
+}
+function updDefWin(key) {
+  otCfg[key] = readWinInputs(key === 'defWinOff' ? 'ot-def-winoff' : 'ot-def-winsnob');
+  saveOffensive();
+}
+function fixDefWin(key) {
+  const prefix = key === 'defWinOff' ? 'ot-def-winoff' : 'ot-def-winsnob';
+  const si = document.getElementById(prefix + '-s'), ei = document.getElementById(prefix + '-e');
+  if (si && ei) { ei.value = si.value; updDefWin(key); }
+}
+
+// Normalize a target saved by (or pasted from) older versions:
+// winOff string → offWindows list, assignee names → {name, count} objects
+function normalizeOffTarget(tg) {
+  if (!tg.snobMode) tg.snobMode = 'escorted';
+  if (!Array.isArray(tg.snobAssignees)) tg.snobAssignees = [];
+  tg.snobAssignees = tg.snobAssignees.filter(Boolean).map(a => typeof a === 'string'
+    ? { name: a, count: 0 }
+    : { name: a.name, count: Math.max(0, parseInt(a.count) || 0) });
+  if (!Array.isArray(tg.offWindows) || !tg.offWindows.length) {
+    tg.offWindows = [{ win: tg.winOff !== undefined ? tg.winOff : (otCfg.defWinOff || ''), count: 0 }];
+  }
+  tg.offWindows = tg.offWindows.map(w => typeof w === 'string'
+    ? { win: w, count: 0 }
+    : { win: w.win || '', count: Math.max(0, parseInt(w.count) || 0) });
+  delete tg.winOff;
+  return tg;
+}
 
 function newOffTarget(coord, player) {
   return {
     id: otNextId++, coord, player,
     nComplete: 1, nTq: 0, nHalf: 1, snobPlayers: 1, nobles: 4,
     snobMode: 'escorted', snobAssignees: [],
-    winOff: otCfg.defWinOff, winSnob: otCfg.defWinSnob,
+    offWindows: [{ win: otCfg.defWinOff, count: 0 }], winSnob: otCfg.defWinSnob,
   };
 }
 
@@ -1850,7 +1923,7 @@ function addSnobAssignee(id, name) {
   if (!name) return;
   const tg = offTargets.find(x => x.id === id);
   if (!tg) return;
-  tg.snobAssignees.push(name);
+  tg.snobAssignees.push({ name, count: 0 });
   if (tg.snobAssignees.length > (tg.snobPlayers || 0)) tg.snobPlayers = tg.snobAssignees.length;
   saveOffensive(); renderOffTargets();
 }
@@ -1860,6 +1933,95 @@ function removeSnobAssignee(id, idx) {
   if (!tg) return;
   tg.snobAssignees.splice(idx, 1);
   saveOffensive(); renderOffTargets();
+}
+
+function updSnobCount(id, idx, val) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg || !tg.snobAssignees[idx]) return;
+  tg.snobAssignees[idx].count = Math.max(0, parseInt(val) || 0);
+  saveOffensive(); renderOffTargets();
+}
+
+// Per-target window editing (inputs are looked up by id prefix; no re-render
+// on time changes so the picker keeps focus)
+function updTgWin(id, kind, widx) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg) return;
+  if (kind === 'snob') tg.winSnob = readWinInputs(`otsw-${id}`);
+  else if (tg.offWindows[widx]) tg.offWindows[widx].win = readWinInputs(`otw-${id}-${widx}`);
+  saveOffensive();
+}
+function fixTgWin(id, kind, widx) {
+  const prefix = kind === 'snob' ? `otsw-${id}` : `otw-${id}-${widx}`;
+  const si = document.getElementById(prefix + '-s'), ei = document.getElementById(prefix + '-e');
+  if (si && ei) { ei.value = si.value; updTgWin(id, kind, widx); }
+}
+function addOffWin(id) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg) return;
+  const last = tg.offWindows[tg.offWindows.length - 1];
+  tg.offWindows.push({ win: last ? last.win : otCfg.defWinOff, count: 0 });
+  saveOffensive(); renderOffTargets();
+}
+function delOffWin(id, widx) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg) return;
+  tg.offWindows.splice(widx, 1);
+  if (!tg.offWindows.length) tg.offWindows.push({ win: otCfg.defWinOff, count: 0 });
+  saveOffensive(); renderOffTargets();
+}
+function updOffWinCount(id, widx, val) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg || !tg.offWindows[widx]) return;
+  tg.offWindows[widx].count = Math.max(0, parseInt(val) || 0);
+  saveOffensive();
+}
+
+// Effective noble count per train: explicit sender counts are honored, the
+// remaining nobles are split evenly across the trains without a fixed count
+function targetTrainSpec(tg) {
+  const assignees = (tg.snobAssignees || []).filter(a => a && a.name);
+  const nTrains = Math.max(tg.snobPlayers || 0, assignees.length);
+  if (!nTrains || !tg.nobles) return [];
+  const explicitSum = assignees.reduce((s, a) => s + (a.count > 0 ? a.count : 0), 0);
+  const nAuto = nTrains - assignees.filter(a => a.count > 0).length;
+  const auto = nAuto > 0 ? splitNobles(Math.max(0, tg.nobles - explicitSum), nAuto) : [];
+  let ai = 0;
+  const spec = [];
+  for (let ti = 0; ti < nTrains; ti++) {
+    const a = assignees[ti] || null;
+    const count = a && a.count > 0 ? a.count : (auto[ai++] || 0);
+    spec.push({ name: a ? a.name : null, count });
+  }
+  return spec.filter(x => x.count > 0);
+}
+
+// player name → nobles assigned across all targets (named senders only)
+function senderNobleTotals() {
+  const agg = {};
+  for (const tg of offTargets) {
+    for (const s of targetTrainSpec(tg)) {
+      if (s.name) agg[s.name] = (agg[s.name] || 0) + s.count;
+    }
+  }
+  return agg;
+}
+
+// How many offs each window takes: explicit counts first, windows with
+// count 0 share the remainder evenly (earlier windows absorb the rounding)
+function windowOffCounts(wins, total) {
+  const counts = wins.map(w => w.count > 0 ? w.count : 0);
+  let left = total - counts.reduce((s, x) => s + x, 0);
+  if (left > 0) {
+    const zeros = wins.map((w, i) => w.count > 0 ? -1 : i).filter(i => i >= 0);
+    if (zeros.length) {
+      const base = Math.floor(left / zeros.length), rem = left % zeros.length;
+      zeros.forEach((idx, j) => { counts[idx] += base + (j < rem ? 1 : 0); });
+    } else {
+      counts[counts.length - 1] += left; // explicit counts under-cover → rest lands last
+    }
+  }
+  return counts;
 }
 
 // Localized "Miércoles 10"-style label derived from the arrival date picker
@@ -1883,10 +2045,20 @@ function updateDatePreview() {
 
 function renderOffTargets() {
   updateDatePreview();
+  offTargets.forEach(normalizeOffTarget);
   const warnEl = document.getElementById('ot-warnings');
-  const unknown = villageDb.length ? offTargets.filter(tg => !coordDb[tg.coord]) : [];
-  if (warnEl) warnEl.innerHTML = unknown.length
-    ? `<div class="warn-box">${unknown.map(tg => esc(t('warn_target_not_in_db')(tg.coord))).join('<br>')}</div>` : '';
+  const warns = (villageDb.length ? offTargets.filter(tg => !coordDb[tg.coord]) : [])
+    .map(tg => t('warn_target_not_in_db')(tg.coord));
+  // senders assigned more nobles (across all targets) than they actually own
+  if (Object.keys(players).length) {
+    const agg = senderNobleTotals();
+    for (const [nm, used] of Object.entries(agg)) {
+      const have = players[nm] ? players[nm].totals.snob : 0;
+      if (used > have) warns.push(t('warn_sender_capacity')(decode(nm), used, have));
+    }
+  }
+  if (warnEl) warnEl.innerHTML = warns.length
+    ? `<div class="warn-box">${warns.map(esc).join('<br>')}</div>` : '';
 
   const tbody = document.getElementById('offtargets-tbody');
   if (!offTargets.length) {
@@ -1897,14 +2069,31 @@ function renderOffTargets() {
   tbody.innerHTML = offTargets.map((tg, i) => {
     const isUnknown = villageDb.length && !coordDb[tg.coord];
     const dbTitle = esc(dbOwnerLabel(tg.coord));
-    const chips = tg.snobAssignees.map((nm, j) =>
-      `<span class="chip">${esc(decode(nm))}<span class="chip-x" onclick="removeSnobAssignee(${tg.id},${j})">✕</span></span>`).join('');
+    const chips = tg.snobAssignees.map((a, j) =>
+      `<span class="chip">${esc(decode(a.name))} ×<input type="number" min="0" value="${a.count || 0}" title="${esc(t('snob_count_title'))}" style="width:32px;background:transparent;border:none;border-bottom:1px solid #7a5c10;color:inherit;font-size:11px;text-align:center;" onchange="updSnobCount(${tg.id},${j},this.value)"><span class="chip-x" onclick="removeSnobAssignee(${tg.id},${j})">✕</span></span>`).join('');
     const senderPicker = senders.length
       ? `<select class="cell-input" style="width:118px;" onchange="addSnobAssignee(${tg.id}, this.value)">
            <option value="">${t('opt_pick_sender')}</option>
            ${senders.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.snob})</option>`).join('')}
          </select>`
       : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+    const winEditor = (prefix, winStr, chgJs, fixJs) => {
+      const [ws, we] = winParts(winStr);
+      return `<input type="time" id="${prefix}-s" class="cell-input mono" style="width:78px;" value="${ws}" onchange="${chgJs}">` +
+             `<button class="btn btn-ghost btn-sm" style="padding:1px 5px;" title="${esc(t('fix_time_title'))}" onclick="${fixJs}">✓</button>` +
+             `<input type="time" id="${prefix}-e" class="cell-input mono" style="width:78px;" value="${we}" onchange="${chgJs}">`;
+    };
+    const multiWin = tg.offWindows.length > 1;
+    const offWinCell = tg.offWindows.map((w, k) =>
+      `<div style="display:flex;gap:2px;align-items:center;justify-content:center;margin:1px 0;">
+        ${winEditor(`otw-${tg.id}-${k}`, w.win, `updTgWin(${tg.id},'off',${k})`, `fixTgWin(${tg.id},'off',${k})`)}
+        ${multiWin ? `<input type="number" min="0" value="${w.count || 0}" title="${esc(t('win_count_title'))}" class="cell-input num" style="width:38px;" onchange="updOffWinCount(${tg.id},${k},this.value)">` : ''}
+        ${multiWin ? `<span class="chip-x" title="${esc(t('del_window_title'))}" onclick="delOffWin(${tg.id},${k})">✕</span>` : ''}
+      </div>`).join('')
+      + `<button class="btn btn-ghost btn-sm" style="padding:0 6px;margin-top:1px;" title="${esc(t('add_window_title'))}" onclick="addOffWin(${tg.id})">+</button>`;
+    const snobWinCell = `<div style="display:flex;gap:2px;align-items:center;justify-content:center;">
+        ${winEditor(`otsw-${tg.id}`, tg.winSnob, `updTgWin(${tg.id},'snob',0)`, `fixTgWin(${tg.id},'snob',0)`)}
+      </div>`;
     return `
     <tr>
       <td style="color:#806030;">${i + 1}</td>
@@ -1922,8 +2111,8 @@ function renderOffTargets() {
           <option value="solo"${tg.snobMode === 'solo' ? ' selected' : ''}>${t('opt_escort_no')}</option>
         </select>
       </td>
-      <td><input class="cell-input mono" style="width:92px;" value="${esc(tg.winOff)}" onchange="updOT(${tg.id},'winOff',this.value)"></td>
-      <td><input class="cell-input mono" style="width:92px;" value="${esc(tg.winSnob)}" onchange="updOT(${tg.id},'winSnob',this.value)"></td>
+      <td>${offWinCell}</td>
+      <td>${snobWinCell}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="delOffTarget(${tg.id})">✕</button></td>
     </tr>`;
   }).join('');
@@ -1943,7 +2132,8 @@ function launchWindowStr(winStr, travelMin) {
   const p = n => String(n).padStart(2, '0');
   const fm = m => { const x = ((m % 1440) + 1440 * 100) % 1440; return `${p(Math.floor(x / 60))}:${p(x % 60)}`; };
   const days = w.f - tr < 0 ? Math.ceil((tr - w.f) / 1440) : 0;
-  return `${fm(w.f - tr)}–${fm(w.to - tr)}${days ? ` (−${days}d)` : ''}`;
+  const span = w.f === w.to ? fm(w.f - tr) : `${fm(w.f - tr)}–${fm(w.to - tr)}`;
+  return `${span}${days ? ` (−${days}d)` : ''}`;
 }
 
 function splitNobles(total, nPlayers) {
@@ -1954,6 +2144,7 @@ function splitNobles(total, nPlayers) {
 function generatePlan() {
   if (!villages.length)   { alert(t('plan_need_data'));    return; }
   if (!offTargets.length) { alert(t('plan_need_targets')); return; }
+  offTargets.forEach(normalizeOffTarget);
 
   const ws      = parseFloat(document.getElementById('plan-world-speed').value) || 1;
   const us      = parseFloat(document.getElementById('plan-unit-speed').value) || 1;
@@ -2003,13 +2194,13 @@ function generatePlan() {
   // auto-picked from distinct players; escort mode is a per-target setting
   for (const T of targets) {
     if (!T.c || !T.tg.nobles) continue;
-    const assignees = (T.tg.snobAssignees || []).filter(Boolean);
-    const nTrains = Math.max(T.tg.snobPlayers || 0, assignees.length);
-    if (!nTrains) continue;
+    const spec = targetTrainSpec(T.tg);
+    if (!spec.length) continue;
+    const specSum = spec.reduce((s, x) => s + x.count, 0);
+    if (specSum !== T.tg.nobles) planWarnings.push(t('warn_nobles_mismatch')(T.tg.coord, specSum, T.tg.nobles));
     const mode = T.tg.snobMode || 'escorted';
     const chosen = new Set();
-    splitNobles(T.tg.nobles, nTrains).forEach((nc, ti) => {
-      const want = assignees[ti] || null;
+    spec.forEach(({ name: want, count: nc }) => {
       let cands = pool.filter(p =>
         p.snobLeft > 0 && !p.usedSnob && okDist(p, T.c) &&
         (want ? p.v.player === want : !chosen.has(p.v.player)) &&
@@ -2043,13 +2234,21 @@ function generatePlan() {
     });
   }
 
-  // Windows: last off lands with the snobs (clears right before the train), earlier offs in the off window
+  // Windows: offs land strongest-first (complete → 3/4 → 1/2) across the
+  // target's off windows — each window takes its #offs, unset counts share the
+  // remainder. Snob trains land in the snob window, independent of the offs.
   for (const T of targets) {
     if (!T.c) continue;
-    T.offRows.forEach((r, idx) => {
-      r.window = (idx === T.offRows.length - 1 || !T.tg.winOff) ? (T.tg.winSnob || T.tg.winOff) : T.tg.winOff;
-    });
-    T.snobRows.forEach(r => { r.window = T.tg.winSnob || T.tg.winOff; });
+    T.offRows.sort((a, b) => TIER_RANK[b.type] - TIER_RANK[a.type]);
+    const wins = T.tg.offWindows.length ? T.tg.offWindows : [{ win: '', count: 0 }];
+    const counts = windowOffCounts(wins, T.offRows.length);
+    let wi = 0, slot = 0;
+    for (const r of T.offRows) {
+      while (wi < wins.length - 1 && slot >= counts[wi]) { wi++; slot = 0; }
+      r.window = wins[wi].win || T.tg.winSnob || '';
+      slot++;
+    }
+    T.snobRows.forEach(r => { r.window = T.tg.winSnob || (wins[wins.length - 1].win || ''); });
     [...T.offRows, ...T.snobRows].forEach(r => {
       planRows.push({ tIdx: T.i + 1, tCoord: T.tg.coord, tPlayer: T.tg.player, ...r });
     });
@@ -2092,7 +2291,7 @@ function renderPlanTable() {
       <td>${badge}</td>
       <td class="left" style="font-family:monospace;">${r.unassigned ? `<span style="color:#e06040;">${t('bb_unassigned')}</span>` : esc(r.srcCoord)}</td>
       <td class="left">${r.unassigned ? '—' : `<span class="player-tag">${esc(r.srcPlayer)}</span>`}</td>
-      <td style="color:#60a0e0;font-weight:600;font-family:monospace;">${esc(r.window || '—')}</td>
+      <td style="color:#60a0e0;font-weight:600;font-family:monospace;">${esc(fmtWindow(r.window) || '—')}</td>
       <td style="color:#f0c040;">${r.unassigned ? '—' : r.dist.toFixed(1)}</td>
       <td>${r.unassigned ? '—' : fmtTime(r.travel)}</td>
       <td style="font-family:monospace;">${r.unassigned ? '—' : launchWindowStr(r.window, r.travel)}</td>
@@ -2127,7 +2326,7 @@ function showPlanBB() {
       const icon   = r.type === 'half' ? 'axe' : r.type === 'snob' ? 'snob' : 'ram';
       const prefix = r.type === 'snob' && multiSnob ? `${r.count}x ` : '';
       const who    = r.unassigned ? t('bb_unassigned') : `[player]${r.srcPlayer}[/player]`;
-      bb += `${prefix}[unit]${icon}[/unit] ${who} [b][color=#0000a5]${r.window || '??:??'}[/color][/b]\n`;
+      bb += `${prefix}[unit]${icon}[/unit] ${who} [b][color=#0000a5]${fmtWindow(r.window) || '??:??'}[/color][/b]\n`;
     }
     bb += '\n';
   });
