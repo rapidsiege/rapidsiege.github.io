@@ -385,6 +385,48 @@
     .lang-btn.lang-active { border-color: #f0c040; color: #f0c040; background: #2a1c08; }
     .lang-btn:hover { border-color: #c8a060; color: #c8a060; }
 
+    /* ── Editable cell inputs (Offensive Targets) ── */
+    .cell-input {
+      background: #1a1008;
+      border: 1px solid #4a3010;
+      color: #d4b483;
+      padding: 4px 6px;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+    .cell-input:focus { outline: none; border-color: #c0900a; }
+    .cell-input.num { width: 54px; text-align: right; }
+    .cell-input.mono { font-family: 'Consolas', 'Courier New', monospace; }
+
+    /* ── Snob sender chips ── */
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #2a1c08;
+      border: 1px solid #5a3d10;
+      border-radius: 3px;
+      padding: 1px 6px;
+      font-size: 11px;
+      color: #c8a060;
+      white-space: nowrap;
+    }
+    .chip .chip-x { cursor: pointer; color: #806030; }
+    .chip .chip-x:hover { color: #e06040; }
+
+    /* ── Plan badges & warnings ── */
+    .badge-snob { background: rgba(240,192,64,0.22); color: #f0c040; border: 1px solid #a07810; }
+    .warn-box {
+      background: rgba(192,64,32,0.12);
+      border: 1px solid #803020;
+      border-radius: 5px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: #e08060;
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+
     /* ── Hidden file input ── */
     #file-input { display: none; }
   </style>
@@ -417,6 +459,10 @@
   <div class="tab"         data-tab="byvillages"  onclick="switchTab('byvillages')" data-i18n="tab_byvillages">By Villages</div>
   <div class="tab"         data-tab="villages"    onclick="switchTab('villages')"   data-i18n="tab_villages">Villages</div>
   <div class="tab"         data-tab="rankings"    onclick="switchTab('rankings')"   data-i18n="tab_rankings">Rankings</div>
+  <div class="tab"         data-tab="target"      onclick="switchTab('target')"     data-i18n="tab_target">⏱ Tribe Timings</div>
+  <div class="tab"         data-tab="offtargets"  onclick="switchTab('offtargets')" data-i18n="tab_offtargets">📌 Offensive Targets</div>
+  <div class="tab"         data-tab="plan"        onclick="switchTab('plan')"       data-i18n="tab_plan">⚔ Plan Offensive</div>
+  <div class="tab"         data-tab="db"          onclick="switchTab('db')"         data-i18n="tab_db">🗃 Database</div>
   <div class="tab"         data-tab="settings"    onclick="switchTab('settings')"   data-i18n="tab_settings">⚙ Settings</div>
 </div>
 
@@ -604,6 +650,205 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════ TARGET VILLAGE ═══════════════════════════ -->
+<div class="tab-content" id="tab-target">
+  <div class="section-header">
+    <h2 data-i18n="sec_target">Distance to Target</h2>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="exportTable('target-table','tribe_target.csv')">⬇ Export CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="showBBTable('target-table')">⬇ Export BB Table</button>
+    </div>
+  </div>
+  <div class="filter-row" style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <label data-i18n="lbl_target">Target:</label>
+    <input type="text" id="target-coord" placeholder="500|500" style="width:90px;font-family:'Consolas','Courier New',monospace;" oninput="renderTargetTable()">
+    <span id="target-owner-info" style="font-size:12px;color:#a08850;"></span>
+    <label data-i18n="lbl_mode">Mode:</label>
+    <select id="target-mode" onchange="renderTargetTable()">
+      <option value="off" data-i18n="opt_mode_off">⚔ Offensive</option>
+      <option value="def" data-i18n="opt_mode_def">🛡 Defensive</option>
+    </select>
+    <label data-i18n="lbl_world_speed">World speed:</label>
+    <select id="target-world-speed" onchange="renderTargetTable()">
+      <option value="0.5">0.5×</option>
+      <option value="1">1×</option>
+      <option value="2" selected>2×</option>
+      <option value="3">3×</option>
+      <option value="5">5×</option>
+      <option value="10">10×</option>
+    </select>
+    <label data-i18n="lbl_unit_speed">Unit speed:</label>
+    <select id="target-unit-speed" onchange="renderTargetTable()">
+      <option value="0.25">0.25×</option>
+      <option value="0.5" selected>0.5×</option>
+      <option value="1">1×</option>
+      <option value="2">2×</option>
+      <option value="3">3×</option>
+    </select>
+  </div>
+  <div class="filter-row" style="margin-top:10px;">
+    <input type="text" id="target-search" placeholder="Search player or coord…" oninput="renderTargetTable()">
+    <label data-i18n="lbl_min_power">Min power:</label>
+    <input type="number" id="target-min-power" value="50000" placeholder="0" style="width:110px;" oninput="renderTargetTable()">
+    <span style="font-size:12px;color:#5a3a18;" data-i18n="target_note">Travel times assume launch now — arrival time shown below each duration.</span>
+  </div>
+  <div class="table-wrap">
+    <table id="target-table">
+      <thead><tr id="target-thead-row"></tr></thead>
+      <tbody id="target-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ OFFENSIVE TARGETS ═══════════════════════════ -->
+<div class="tab-content" id="tab-offtargets">
+  <div class="section-header">
+    <h2 data-i18n="sec_offtargets">Offensive Targets</h2>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="toggleBulkAdd()" data-i18n="btn_bulk_add">📋 Bulk Add</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearOffTargets()" data-i18n="btn_clear_targets">✕ Clear All</button>
+    </div>
+  </div>
+  <div class="filter-row" style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <label data-i18n="lbl_date_label">Arrival date:</label>
+    <input type="date" id="ot-date" onchange="updOTCfg('dateISO',this.value)">
+    <span id="ot-date-preview" style="font-size:12px;color:#f0c040;font-weight:600;"></span>
+    <label data-i18n="lbl_def_winoff">Default off window:</label>
+    <input type="text" id="ot-def-winoff" value="01:00/02:00" style="width:100px;font-family:'Consolas','Courier New',monospace;" onchange="updOTCfg('defWinOff',this.value)">
+    <label data-i18n="lbl_def_winsnob">Default snob window:</label>
+    <input type="text" id="ot-def-winsnob" value="02:00/02:30" style="width:100px;font-family:'Consolas','Courier New',monospace;" onchange="updOTCfg('defWinSnob',this.value)">
+  </div>
+  <div class="filter-row" style="margin-top:10px;">
+    <input type="text" id="ot-add-coord" placeholder="500|500" style="width:90px;font-family:'Consolas','Courier New',monospace;" onkeydown="if(event.key==='Enter')addOffTarget()">
+    <button class="btn btn-primary btn-sm" onclick="addOffTarget()" data-i18n="btn_add_target">+ Add Target</button>
+    <span style="font-size:12px;color:#5a3a18;" data-i18n="ot_defender_note">Defender auto-fills from the village database.</span>
+  </div>
+  <div id="ot-bulk-wrap" style="display:none;margin-bottom:12px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="bulk_hint">Paste coordinates (one per line, optionally followed by the defender name) and click Add.</div>
+    <textarea id="ot-bulk-input" style="width:100%;height:90px;background:#120d03;border:1px solid #3a2808;color:#d4b483;font-family:'Consolas','Courier New',monospace;font-size:12px;padding:8px 10px;border-radius:4px;resize:vertical;" placeholder="546|571 Vene&#10;545|570 Vene"></textarea>
+    <button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="bulkAddTargets()" data-i18n="btn_bulk_parse">Add Pasted Targets</button>
+  </div>
+  <div id="ot-warnings"></div>
+  <div class="table-wrap">
+    <table id="offtargets-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th class="left" data-i18n="th_coord">Coord</th>
+          <th class="left" data-i18n="th_def_player">Defender</th>
+          <th data-i18n="th_complete">Complete</th>
+          <th data-i18n="th_tq">3/4</th>
+          <th data-i18n="th_half">1/2</th>
+          <th data-i18n="th_snob_players">Snob Players</th>
+          <th data-i18n="th_nobles">Nobles</th>
+          <th class="left" data-i18n="th_snob_senders">Senders</th>
+          <th data-i18n="th_escort">Escort</th>
+          <th data-i18n="th_win_off">Off Window</th>
+          <th data-i18n="th_win_snob">Snob Window</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="offtargets-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ PLAN OFFENSIVE ═══════════════════════════ -->
+<div class="tab-content" id="tab-plan">
+  <div class="section-header">
+    <h2 data-i18n="sec_plan">Offensive Plan</h2>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="showPlanBB()" data-i18n="btn_export_forum">⬇ Export Forum BB</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportTable('plan-table','tribe_plan.csv')">⬇ Export CSV</button>
+    </div>
+  </div>
+  <div class="filter-row" style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <label data-i18n="lbl_world_speed">World speed:</label>
+    <select id="plan-world-speed">
+      <option value="0.5">0.5×</option>
+      <option value="1">1×</option>
+      <option value="2" selected>2×</option>
+      <option value="3">3×</option>
+      <option value="5">5×</option>
+      <option value="10">10×</option>
+    </select>
+    <label data-i18n="lbl_unit_speed">Unit speed:</label>
+    <select id="plan-unit-speed">
+      <option value="0.25">0.25×</option>
+      <option value="0.5" selected>0.5×</option>
+      <option value="1">1×</option>
+      <option value="2">2×</option>
+      <option value="3">3×</option>
+    </select>
+    <label data-i18n="lbl_max_dist">Max distance:</label>
+    <input type="number" id="plan-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited">
+    <label data-i18n="lbl_prefer">Prioritize:</label>
+    <select id="plan-prefer">
+      <option value="dist" data-i18n="opt_pref_dist">Distance</option>
+      <option value="power" data-i18n="opt_pref_power">Power</option>
+    </select>
+    <button class="btn btn-primary btn-sm" onclick="generatePlan()" data-i18n="btn_generate">⚡ Generate Plan</button>
+  </div>
+  <div id="plan-warnings" style="margin-top:12px;"></div>
+  <div id="plan-summary" style="font-size:12px;color:#806030;margin:10px 0;"></div>
+  <div class="table-wrap">
+    <table id="plan-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th class="left" data-i18n="th_target">Target</th>
+          <th class="left" data-i18n="th_def_player">Defender</th>
+          <th data-i18n="th_type">Type</th>
+          <th class="left" data-i18n="th_source">Source</th>
+          <th class="left" data-i18n="th_player">Player</th>
+          <th data-i18n="th_window">Window</th>
+          <th data-i18n="th_distance">Distance</th>
+          <th data-i18n="th_travel">Travel</th>
+          <th data-i18n="th_launch">Launch Window</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="plan-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ DATABASE ═══════════════════════════ -->
+<div class="tab-content" id="tab-db">
+  <div class="section-header">
+    <h2 data-i18n="sec_db">Village Database</h2>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-file btn-sm" id="db-connect-btn" onclick="connectDbFolder()" data-i18n="btn_connect_db">📁 Connect DB Folder</button>
+      <button class="btn btn-ghost btn-sm" id="db-refresh-btn" style="display:none;" onclick="refreshDbFiles()" data-i18n="btn_resync_db">🔄 Re-sync Files</button>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('db-file-input').click()" data-i18n="btn_load_db_files">📂 Load Files…</button>
+      <input type="file" id="db-file-input" accept=".txt" multiple style="display:none;" onchange="loadDbFromFileInput(this)">
+    </div>
+  </div>
+  <div style="font-size:12px;color:#806030;margin-bottom:10px;" data-i18n="db_note">Download village.txt and player.txt from your world's map files (e.g. es100.guerrastribales.es/map/village.txt) and connect the folder — coordinates will then auto-fill the owner in Offensive Targets and Tribe Timings.</div>
+  <div class="filter-row">
+    <div class="file-status-dot dot-off" id="db-dot"></div>
+    <span id="db-status" style="font-size:12px;color:#907050;" data-i18n="db_status_none">No database loaded</span>
+  </div>
+  <div class="filter-row">
+    <input type="text" id="db-search" placeholder="Search village, player or coord…" data-i18n-placeholder="ph_db_search" style="width:250px;" oninput="scheduleDbSearch()">
+    <span id="db-count" style="font-size:12px;color:#806030;"></span>
+  </div>
+  <div class="table-wrap">
+    <table id="db-table">
+      <thead>
+        <tr>
+          <th class="left" data-i18n="th_coord">Coord</th>
+          <th class="left" data-i18n="th_village">Village</th>
+          <th class="left" data-i18n="th_player">Player</th>
+          <th data-i18n="th_points">Points</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="db-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- ═══════════════════════════ SETTINGS ═══════════════════════════ -->
 <div class="tab-content" id="tab-settings">
   <div class="section-header"><h2 data-i18n="sec_off_thresholds">Offensive Power Thresholds</h2></div>
@@ -641,6 +886,16 @@ const UNIT_TYPE = { // off / def / misc
   knight:'def', snob:'misc'
 };
 
+// Base travel speed in minutes per field (at world speed 1, unit speed 1)
+const UNIT_BASE_MIN = { spear:18, sword:22, axe:18, spy:9, light:10, heavy:11, ram:30, catapult:30, knight:10, snob:35 };
+const TRAVEL_ICON = { spear:'🗡', sword:'⚔', axe:'🪓', spy:'🔍', light:'🏹', heavy:'🐴', ram:'🐏', catapult:'💣', knight:'🐴', snob:'👑' };
+
+// Target tab modes: relevant power, unit-count columns, travel-time columns
+const TARGET_MODES = {
+  off: { power:'offPow', units:['axe','light','ram','catapult','snob'], travel:['light','axe','sword','ram','snob'] },
+  def: { power:'defInf', units:['spear','sword','heavy','knight'],      travel:['knight','heavy','spear','sword'] },
+};
+
 // ══════════════════════════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════════════════════════
@@ -648,6 +903,7 @@ let villages = [];   // [{coord, player, spear, sword, axe, spy, light, heavy, r
 let players  = {};   // {playerName: {villages:[], totals:{...}, offPow, defInf, defCav}}
 let sortState = { players: {col:0,dir:1}, villages: {col:-1,dir:1} };
 let sortStateByVil = { col: 2, dir: 1 }; // default: off power desc
+let targetSort = { key: 'dist', dir: 1 }; // default: distance asc
 
 // ══════════════════════════════════════════════════════════════
 // TRANSLATIONS
@@ -698,6 +954,65 @@ const T = {
     empty_load_villages:'Load a file to see village data',
     empty_no_villages:'No villages match filter',
     empty_load_rankings:'Load a file to see rankings',
+    tab_target:'⏱ Tribe Timings', sec_target:'Distance to Target',
+    lbl_target:'Target:', lbl_mode:'Mode:',
+    opt_mode_off:'⚔ Offensive', opt_mode_def:'🛡 Defensive',
+    lbl_world_speed:'World speed:', lbl_unit_speed:'Unit speed:',
+    lbl_min_power:'Min power:', th_distance:'Distance',
+    target_note:'Travel times assume launch now — arrival time shown below each duration.',
+    empty_no_target:'Enter target coordinates (e.g. 500|500) to calculate distances',
+    tt_title:'Travel time and arrival if launched now',
+    tab_offtargets:'📌 Offensive Targets', tab_plan:'⚔ Plan Offensive',
+    sec_offtargets:'Offensive Targets', sec_plan:'Offensive Plan',
+    lbl_date_label:'Arrival date:', lbl_def_winoff:'Default off window:', lbl_def_winsnob:'Default snob window:',
+    btn_add_target:'+ Add Target', btn_bulk_add:'📋 Bulk Add', btn_clear_targets:'✕ Clear All',
+    bulk_hint:'Paste coordinates (one per line, optionally followed by the defender name) and click Add.',
+    btn_bulk_parse:'Add Pasted Targets',
+    th_target:'Target', th_def_player:'Defender', th_source:'Source', th_window:'Window',
+    th_travel:'Travel', th_launch:'Launch Window',
+    th_complete:'Complete', th_tq:'3/4', th_half:'1/2',
+    th_snob_players:'Snob Players', th_nobles:'Nobles', th_win_off:'Off Window', th_win_snob:'Snob Window',
+    empty_no_targets:'No targets yet — add coordinates above',
+    ot_defender_note:'Defender auto-fills from the village database.',
+    th_snob_senders:'Senders', th_escort:'Escort',
+    opt_escort_yes:'⚔ Escorted', opt_escort_no:'👑 Solo',
+    opt_pick_sender:'+ assign…',
+    senders_need_troops:'Load the tribe troop file to pick senders',
+    warn_target_not_in_db: c => `Target ${c} not found in the village database`,
+    warn_missed_snob_player: (pl, c) => `${pl} has no available snob village for ${c}`,
+    lbl_max_dist:'Max distance:',
+    lbl_prefer:'Prioritize:', opt_pref_dist:'Distance', opt_pref_power:'Power',
+    btn_generate:'⚡ Generate Plan', btn_export_forum:'⬇ Export Forum BB',
+    empty_no_plan:'No plan yet — add targets, then click Generate Plan',
+    plan_need_data:'Load the tribe troop file first (Overview tab)',
+    plan_need_targets:'Add at least one target in the Offensive Targets tab',
+    confirm_clear_targets:'Remove all offensive targets?',
+    warn_invalid_coord: c => `Invalid target coordinates: "${c}"`,
+    warn_missed_off: (tier, coord) => `No village available for a ${tier} off on ${coord}`,
+    warn_missed_snob: coord => `Not enough snob senders for ${coord}`,
+    plan_summary: (a, u) => `${a} attacks assigned · ${u} unassigned`,
+    bb_arrival_date:'ARRIVAL DATE',
+    bb_legend_ram:'FULL OFF.', bb_legend_axe:'HALF OFF (with Rams and Light Cav too).',
+    bb_legend_snob: n => `NOBLE TRAIN (${n} Nobles).`,
+    bb_unassigned:'⚠ UNASSIGNED',
+    tier_complete:'Complete', tier_tq:'3/4', tier_half:'1/2', type_snob:'Snobs',
+    tab_db:'🗃 Database', sec_db:'Village Database',
+    btn_connect_db:'📁 Connect DB Folder', btn_change_db:'📁 Change DB Folder',
+    btn_resync_db:'🔄 Re-sync Files', btn_load_db_files:'📂 Load Files…',
+    db_note:'Download village.txt and player.txt from your world\'s map files (e.g. es100.guerrastribales.es/map/village.txt) and connect the folder — coordinates will then auto-fill the owner in Offensive Targets and Tribe Timings.',
+    db_status_none:'No database loaded',
+    db_status_loaded: (v, p) => `${v} villages · ${p} players loaded`,
+    db_connected_refresh:'Folder connected — click Re-sync Files to grant access and load',
+    db_not_found:'village.txt / player.txt not found in selected folder.',
+    ph_db_search:'Search village, player or coord…',
+    th_village:'Village', th_points:'Points',
+    db_no_data:'Connect the DB folder or load village.txt + player.txt',
+    db_showing: (s, total) => `Showing ${s} of ${total} matches`,
+    empty_no_results:'No matches',
+    alert_select_both:'Select both village.txt and player.txt (Ctrl+click to pick both).',
+    alert_no_db_api:'Your browser does not support folder access — use "Load Files…" instead.',
+    db_unknown_village:'No village at these coordinates',
+    btn_add_target_short:'+ Target', db_added:'✓ Added',
     vil_type_sub: (o,d,m,e) => `${o} off · ${d} def · ${m} mixed · ${e} empty`,
     footer_dev_by: 'Developed by', footer_version: 'Version',
   },
@@ -744,6 +1059,65 @@ const T = {
     empty_load_villages:'Carga un archivo para ver aldeas',
     empty_no_villages:'Ninguna aldea coincide con el filtro',
     empty_load_rankings:'Carga un archivo para ver rankings',
+    tab_target:'⏱ Tiempos de Tribu', sec_target:'Distancia al Objetivo',
+    lbl_target:'Objetivo:', lbl_mode:'Modo:',
+    opt_mode_off:'⚔ Ofensivo', opt_mode_def:'🛡 Defensivo',
+    lbl_world_speed:'Vel. mundo:', lbl_unit_speed:'Vel. unidades:',
+    lbl_min_power:'Poder mín.:', th_distance:'Distancia',
+    target_note:'Los tiempos de viaje asumen salida ahora — hora de llegada bajo cada duración.',
+    empty_no_target:'Introduce las coordenadas del objetivo (ej. 500|500) para calcular distancias',
+    tt_title:'Tiempo de viaje y llegada si se lanza ahora',
+    tab_offtargets:'📌 Objetivos Ofensivos', tab_plan:'⚔ Planear Ofensiva',
+    sec_offtargets:'Objetivos Ofensivos', sec_plan:'Plan Ofensivo',
+    lbl_date_label:'Fecha de llegada:', lbl_def_winoff:'Ventana off por defecto:', lbl_def_winsnob:'Ventana nobles por defecto:',
+    btn_add_target:'+ Añadir Objetivo', btn_bulk_add:'📋 Añadir en Masa', btn_clear_targets:'✕ Borrar Todo',
+    bulk_hint:'Pega coordenadas (una por línea, opcionalmente seguidas del nombre del defensor) y pulsa Añadir.',
+    btn_bulk_parse:'Añadir Objetivos Pegados',
+    th_target:'Objetivo', th_def_player:'Defensor', th_source:'Origen', th_window:'Ventana',
+    th_travel:'Viaje', th_launch:'Ventana de Envío',
+    th_complete:'Completo', th_tq:'3/4', th_half:'1/2',
+    th_snob_players:'Jug. Nobles', th_nobles:'Nobles', th_win_off:'Ventana Off', th_win_snob:'Ventana Nobles',
+    empty_no_targets:'Sin objetivos — añade coordenadas arriba',
+    ot_defender_note:'El defensor se rellena automáticamente desde la base de datos.',
+    th_snob_senders:'Remitentes', th_escort:'Escolta',
+    opt_escort_yes:'⚔ Escoltado', opt_escort_no:'👑 Solo',
+    opt_pick_sender:'+ asignar…',
+    senders_need_troops:'Carga el archivo de tropas para elegir remitentes',
+    warn_target_not_in_db: c => `El objetivo ${c} no existe en la base de datos de aldeas`,
+    warn_missed_snob_player: (pl, c) => `${pl} no tiene aldea con nobles disponible para ${c}`,
+    lbl_max_dist:'Distancia máx.:',
+    lbl_prefer:'Priorizar:', opt_pref_dist:'Distancia', opt_pref_power:'Poder',
+    btn_generate:'⚡ Generar Plan', btn_export_forum:'⬇ Exportar BB Foro',
+    empty_no_plan:'Sin plan — añade objetivos y pulsa Generar Plan',
+    plan_need_data:'Carga primero el archivo de tropas de la tribu (pestaña Resumen)',
+    plan_need_targets:'Añade al menos un objetivo en Objetivos Ofensivos',
+    confirm_clear_targets:'¿Eliminar todos los objetivos ofensivos?',
+    warn_invalid_coord: c => `Coordenadas de objetivo no válidas: "${c}"`,
+    warn_missed_off: (tier, coord) => `Sin aldea disponible para un off ${tier} sobre ${coord}`,
+    warn_missed_snob: coord => `Faltan jugadores con nobles para ${coord}`,
+    plan_summary: (a, u) => `${a} ataques asignados · ${u} sin asignar`,
+    bb_arrival_date:'FECHA DE LLEGADA',
+    bb_legend_ram:'OFF COMPLETO.', bb_legend_axe:'MEDIO OFF (Con Arietes y Ligeros también).',
+    bb_legend_snob: n => `TREN DE NOBLES (${n} Nobles).`,
+    bb_unassigned:'⚠ SIN ASIGNAR',
+    tier_complete:'Completo', tier_tq:'3/4', tier_half:'1/2', type_snob:'Nobles',
+    tab_db:'🗃 Base de Datos', sec_db:'Base de Datos de Aldeas',
+    btn_connect_db:'📁 Conectar Carpeta BD', btn_change_db:'📁 Cambiar Carpeta BD',
+    btn_resync_db:'🔄 Resincronizar', btn_load_db_files:'📂 Cargar Archivos…',
+    db_note:'Descarga village.txt y player.txt de los archivos de mapa de tu mundo (ej. es100.guerrastribales.es/map/village.txt) y conecta la carpeta — las coordenadas rellenarán automáticamente el dueño en Objetivos Ofensivos y Tiempos de Tribu.',
+    db_status_none:'Sin base de datos cargada',
+    db_status_loaded: (v, p) => `${v} aldeas · ${p} jugadores cargados`,
+    db_connected_refresh:'Carpeta conectada — pulsa Resincronizar para conceder acceso y cargar',
+    db_not_found:'No se encontraron village.txt / player.txt en la carpeta seleccionada.',
+    ph_db_search:'Buscar aldea, jugador o coordenada…',
+    th_village:'Aldea', th_points:'Puntos',
+    db_no_data:'Conecta la carpeta BD o carga village.txt + player.txt',
+    db_showing: (s, total) => `Mostrando ${s} de ${total} coincidencias`,
+    empty_no_results:'Sin coincidencias',
+    alert_select_both:'Selecciona village.txt y player.txt (Ctrl+clic para elegir ambos).',
+    alert_no_db_api:'Tu navegador no soporta acceso a carpetas — usa "Cargar Archivos…".',
+    db_unknown_village:'No hay aldea en esas coordenadas',
+    btn_add_target_short:'+ Objetivo', db_added:'✓ Añadido',
     vil_type_sub: (o,d,m,e) => `${o} ofens. · ${d} def. · ${m} mixtas · ${e} vacías`,
     footer_dev_by: 'Desarrollado por', footer_version: 'Versión',
   }
@@ -763,6 +1137,11 @@ function changeLang(l) {
     renderVillagesTable();
     renderRankings();
   }
+  renderTargetTable();
+  renderOffTargets();
+  renderPlanTable();
+  renderDbTable();
+  updateDbConnectBtn();
 }
 
 function applyLang() {
@@ -837,6 +1216,7 @@ function clearData() {
   document.getElementById('byvillages-tbody').innerHTML = `<tr class="empty-row"><td colspan="11">${t('empty_load_byvillages')}</td></tr>`;
   document.getElementById('villages-tbody').innerHTML = `<tr class="empty-row"><td colspan="15">${t('empty_load_villages')}</td></tr>`;
   document.getElementById('rankings-content').innerHTML = `<div style="color:#5a3a18;padding:36px;text-align:center;">${t('empty_load_rankings')}</div>`;
+  renderTargetTable();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -903,6 +1283,8 @@ function parseData(text, filename) {
   renderByVillagesTable();
   renderVillagesTable();
   renderRankings();
+  renderTargetTable();
+  renderOffTargets(); // sender picker depends on the troop data
 
   document.getElementById('overview-drop').style.display = 'none';
   document.getElementById('overview-content').style.display = '';
@@ -1234,6 +1616,743 @@ function renderRankings() {
 }
 
 // ══════════════════════════════════════════════════════════════
+// TARGET VILLAGE (distance calculator)
+// ══════════════════════════════════════════════════════════════
+function parseCoordStr(s) {
+  const m = String(s || '').trim().match(/(\d{1,3})\s*[|:., ]\s*(\d{1,3})/);
+  return m ? { x: +m[1], y: +m[2] } : null;
+}
+function distXY(a, b) { return Math.sqrt((b.x-a.x)**2 + (b.y-a.y)**2); }
+
+// Travel time in minutes for a given distance and unit base speed
+function travelTimeMin(d, baseMin, ws, us) { return d * baseMin / (ws * (us || 1)); }
+
+function fmtTime(minutes) {
+  if (minutes < 1) return '<1m';
+  const tot = Math.round(minutes);
+  const h = Math.floor(tot / 60), m = tot % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+function fmtArrivalTime(travelMinutes) {
+  const d = new Date(Date.now() + travelMinutes * 60000);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function targetCols() {
+  const mode = document.getElementById('target-mode')?.value || 'off';
+  const m = TARGET_MODES[mode];
+  return [
+    { key:'coord',  label:t('th_coord'),    left:true, str:true, defDir:1 },
+    { key:'player', label:t('th_player'),   left:true, str:true, defDir:1 },
+    { key:'dist',   label:t('th_distance'), defDir:1 },
+    { key:m.power,  label: mode === 'off' ? t('th_off_power') : t('th_def_power'), defDir:-1 },
+    ...m.units.map(u => ({ key:u, label:t('th_' + (u === 'catapult' ? 'cat' : u)), defDir:-1 })),
+    ...m.travel.map(u => ({ key:'tt_'+u, label:`${TRAVEL_ICON[u]} ${t('unit_'+u)}`, defDir:1, travel:true })),
+  ];
+}
+
+function renderTargetTable() {
+  const cols = targetCols();
+  document.getElementById('target-thead-row').innerHTML = cols.map(c => {
+    const sortCls = targetSort.key === c.key ? (targetSort.dir === -1 ? ' sort-desc' : ' sort-asc') : '';
+    return `<th class="${c.left ? 'left' : ''}${sortCls}"${c.travel ? ` title="${t('tt_title')}"` : ''} onclick="sortTarget('${c.key}')">${c.label} <span class="sort-arrow"></span></th>`;
+  }).join('');
+
+  const tbody = document.getElementById('target-tbody');
+  const target = parseCoordStr(document.getElementById('target-coord').value);
+  const ownerEl = document.getElementById('target-owner-info');
+  if (ownerEl) ownerEl.textContent = target ? dbOwnerLabel(`${target.x}|${target.y}`) : '';
+  if (!villages.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="${cols.length}">${t('empty_load_byvillages')}</td></tr>`;
+    return;
+  }
+  if (!target) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="${cols.length}">${t('empty_no_target')}</td></tr>`;
+    return;
+  }
+
+  const mode   = document.getElementById('target-mode')?.value || 'off';
+  const m      = TARGET_MODES[mode];
+  const ws     = parseFloat(document.getElementById('target-world-speed').value) || 1;
+  const us     = parseFloat(document.getElementById('target-unit-speed').value) || 1;
+  const search = (document.getElementById('target-search').value || '').toLowerCase();
+  const minPow = parseInt(document.getElementById('target-min-power').value) || 0;
+
+  let data = villages.map(v => {
+    const c = parseCoordStr(v.coord);
+    const row = { ...v, dist: c ? distXY(c, target) : Infinity };
+    m.travel.forEach(u => { row['tt_'+u] = travelTimeMin(row.dist, UNIT_BASE_MIN[u], ws, us); });
+    return row;
+  });
+
+  if (search) data = data.filter(v =>
+    decode(v.player).toLowerCase().includes(search) || v.coord.includes(search));
+  if (minPow > 0) data = data.filter(v => v[m.power] >= minPow);
+
+  const colDef = cols.find(c => c.key === targetSort.key) || cols[2];
+  data.sort((a, b) => {
+    const av = a[colDef.key], bv = b[colDef.key];
+    if (colDef.str) return targetSort.dir * String(av).localeCompare(String(bv));
+    return targetSort.dir * (av - bv);
+  });
+
+  const powColor = mode === 'off' ? '#e06040' : '#60a0e0';
+  const rows = data.map(v => `
+    <tr>
+      <td class="left" style="font-family:monospace;">${v.coord}</td>
+      <td class="left"><span class="player-tag">${decode(v.player)}</span></td>
+      <td style="color:#f0c040;font-weight:600;">${isFinite(v.dist) ? v.dist.toFixed(1) : '—'}</td>
+      <td style="color:${powColor};font-weight:600;">${fmtM(v[m.power])}</td>
+      ${m.units.map(u => numCell(v[u])).join('')}
+      ${m.travel.map(u => isFinite(v['tt_'+u])
+        ? `<td>${fmtTime(v['tt_'+u])}<br><span style="font-size:11px;color:#a08850;">${fmtArrivalTime(v['tt_'+u])}</span></td>`
+        : '<td class="num-zero">—</td>').join('')}
+    </tr>
+  `).join('');
+
+  tbody.innerHTML = rows ||
+    `<tr class="empty-row"><td colspan="${cols.length}">${t('empty_no_byvillages')}</td></tr>`;
+}
+
+function sortTarget(key) {
+  if (targetSort.key === key) targetSort.dir *= -1;
+  else {
+    const c = targetCols().find(c => c.key === key);
+    targetSort = { key, dir: c ? c.defDir : 1 };
+  }
+  renderTargetTable();
+}
+
+// ══════════════════════════════════════════════════════════════
+// OFFENSIVE TARGETS + PLAN OFFENSIVE
+// ══════════════════════════════════════════════════════════════
+const OT_STORE_KEY = 'tw_tribe_offensive';
+const TIER_RANK = { complete: 3, tq: 2, half: 1, none: 0 };
+// Offs travel at ram pace, noble trains at snob pace (slowest unit dictates)
+const PLAN_BASE_MIN = { off: 30, snob: 35 };
+const TIER_FIELD = { complete: 'nComplete', tq: 'nTq', half: 'nHalf' };
+
+let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30' };
+let offTargets   = []; // [{id, coord, player, nComplete, nTq, nHalf, snobPlayers, nobles, winOff, winSnob}]
+let planRows     = []; // denormalized so a saved plan renders without the troop file loaded
+let planWarnings = [];
+let otNextId     = 1;
+
+function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+function saveOffensive() {
+  localStorage.setItem(OT_STORE_KEY, JSON.stringify({
+    cfg: otCfg, targets: offTargets, plan: planRows, warnings: planWarnings, nextId: otNextId,
+  }));
+}
+
+function loadOffensive() {
+  try {
+    const d = JSON.parse(localStorage.getItem(OT_STORE_KEY));
+    if (d) {
+      otCfg        = { ...otCfg, ...(d.cfg || {}) };
+      offTargets   = d.targets || [];
+      planRows     = d.plan || [];
+      planWarnings = d.warnings || [];
+      otNextId     = d.nextId || (Math.max(0, ...offTargets.map(x => x.id)) + 1);
+    }
+  } catch {}
+  // normalize targets saved by older versions
+  for (const tg of offTargets) {
+    if (!tg.snobMode) tg.snobMode = 'escorted';
+    if (!Array.isArray(tg.snobAssignees)) tg.snobAssignees = [];
+  }
+  document.getElementById('ot-date').value        = otCfg.dateISO || '';
+  document.getElementById('ot-def-winoff').value  = otCfg.defWinOff;
+  document.getElementById('ot-def-winsnob').value = otCfg.defWinSnob;
+}
+
+function updOTCfg(k, v) { otCfg[k] = v.trim(); saveOffensive(); }
+
+function newOffTarget(coord, player) {
+  return {
+    id: otNextId++, coord, player,
+    nComplete: 1, nTq: 0, nHalf: 1, snobPlayers: 1, nobles: 4,
+    snobMode: 'escorted', snobAssignees: [],
+    winOff: otCfg.defWinOff, winSnob: otCfg.defWinSnob,
+  };
+}
+
+function addOffTarget() {
+  const coordEl = document.getElementById('ot-add-coord');
+  const c = parseCoordStr(coordEl.value);
+  if (!c) { coordEl.focus(); return; }
+  const coord = `${c.x}|${c.y}`;
+  offTargets.push(newOffTarget(coord, dbOwnerName(coord)));
+  coordEl.value = ''; coordEl.focus();
+  saveOffensive(); renderOffTargets();
+}
+
+function toggleBulkAdd() {
+  const el = document.getElementById('ot-bulk-wrap');
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+function bulkAddTargets() {
+  const input = document.getElementById('ot-bulk-input');
+  let added = 0;
+  for (const line of input.value.split('\n')) {
+    const m = line.match(/(\d{1,3})\s*\|\s*(\d{1,3})\s*(.*)/);
+    if (!m) continue;
+    const pastedName = m[3].replace(/\[\/?player\]/g, '').replace(/^[-–—.\s]+|[-–—.\s]+$/g, '').trim();
+    const coord = `${m[1]}|${m[2]}`;
+    offTargets.push(newOffTarget(coord, dbOwnerName(coord) || pastedName));
+    added++;
+  }
+  if (added) { input.value = ''; saveOffensive(); renderOffTargets(); }
+}
+
+function updOT(id, field, val) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg) return;
+  if (['nComplete','nTq','nHalf','snobPlayers','nobles'].includes(field)) tg[field] = Math.max(0, parseInt(val) || 0);
+  else tg[field] = val.trim();
+  if (field === 'coord') {
+    // defender is DB-derived; refresh it (clear if the DB doesn't know the new coord)
+    tg.player = dbOwnerName(tg.coord) || (villageDb.length ? '' : tg.player);
+    renderOffTargets();
+  }
+  saveOffensive();
+}
+
+function delOffTarget(id) {
+  offTargets = offTargets.filter(x => x.id !== id);
+  saveOffensive(); renderOffTargets();
+}
+
+function clearOffTargets() {
+  if (offTargets.length && !confirm(t('confirm_clear_targets'))) return;
+  offTargets = [];
+  saveOffensive(); renderOffTargets();
+}
+
+// Players from the loaded tribe troop file that own snobs (potential train senders)
+function snobSenderOptions() {
+  return Object.entries(players)
+    .map(([name, p]) => ({ name, snob: p.totals.snob }))
+    .filter(x => x.snob > 0)
+    .sort((a, b) => b.snob - a.snob);
+}
+
+function addSnobAssignee(id, name) {
+  if (!name) return;
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg) return;
+  tg.snobAssignees.push(name);
+  if (tg.snobAssignees.length > (tg.snobPlayers || 0)) tg.snobPlayers = tg.snobAssignees.length;
+  saveOffensive(); renderOffTargets();
+}
+
+function removeSnobAssignee(id, idx) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg) return;
+  tg.snobAssignees.splice(idx, 1);
+  saveOffensive(); renderOffTargets();
+}
+
+// Localized "Miércoles 10"-style label derived from the arrival date picker
+function bbDateLabel() {
+  if (otCfg.dateISO) {
+    const d = new Date(otCfg.dateISO + 'T00:00:00');
+    if (!isNaN(d)) {
+      const days = lang === 'es'
+        ? ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado']
+        : ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      return `${days[d.getDay()]} ${d.getDate()}`;
+    }
+  }
+  return otCfg.dateLabel || ''; // legacy free-text fallback
+}
+
+function updateDatePreview() {
+  const el = document.getElementById('ot-date-preview');
+  if (el) el.textContent = bbDateLabel();
+}
+
+function renderOffTargets() {
+  updateDatePreview();
+  const warnEl = document.getElementById('ot-warnings');
+  const unknown = villageDb.length ? offTargets.filter(tg => !coordDb[tg.coord]) : [];
+  if (warnEl) warnEl.innerHTML = unknown.length
+    ? `<div class="warn-box">${unknown.map(tg => esc(t('warn_target_not_in_db')(tg.coord))).join('<br>')}</div>` : '';
+
+  const tbody = document.getElementById('offtargets-tbody');
+  if (!offTargets.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="13">${t('empty_no_targets')}</td></tr>`;
+    return;
+  }
+  const senders = snobSenderOptions();
+  tbody.innerHTML = offTargets.map((tg, i) => {
+    const isUnknown = villageDb.length && !coordDb[tg.coord];
+    const dbTitle = esc(dbOwnerLabel(tg.coord));
+    const chips = tg.snobAssignees.map((nm, j) =>
+      `<span class="chip">${esc(decode(nm))}<span class="chip-x" onclick="removeSnobAssignee(${tg.id},${j})">✕</span></span>`).join('');
+    const senderPicker = senders.length
+      ? `<select class="cell-input" style="width:118px;" onchange="addSnobAssignee(${tg.id}, this.value)">
+           <option value="">${t('opt_pick_sender')}</option>
+           ${senders.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.snob})</option>`).join('')}
+         </select>`
+      : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+    return `
+    <tr>
+      <td style="color:#806030;">${i + 1}</td>
+      <td class="left"><input class="cell-input mono" style="width:74px;${isUnknown ? 'border-color:#b02010;' : ''}" value="${esc(tg.coord)}" title="${dbTitle}" onchange="updOT(${tg.id},'coord',this.value)"></td>
+      <td class="left" title="${dbTitle}">${tg.player ? `<span class="player-tag">${esc(tg.player)}</span>` : '<span class="num-zero">—</span>'}</td>
+      <td><input type="number" min="0" class="cell-input num" value="${tg.nComplete}" onchange="updOT(${tg.id},'nComplete',this.value)"></td>
+      <td><input type="number" min="0" class="cell-input num" value="${tg.nTq}" onchange="updOT(${tg.id},'nTq',this.value)"></td>
+      <td><input type="number" min="0" class="cell-input num" value="${tg.nHalf}" onchange="updOT(${tg.id},'nHalf',this.value)"></td>
+      <td><input type="number" min="0" class="cell-input num" value="${tg.snobPlayers}" onchange="updOT(${tg.id},'snobPlayers',this.value)"></td>
+      <td><input type="number" min="0" class="cell-input num" value="${tg.nobles}" onchange="updOT(${tg.id},'nobles',this.value)"></td>
+      <td class="left"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;max-width:250px;">${chips}${senderPicker}</div></td>
+      <td>
+        <select class="cell-input" onchange="updOT(${tg.id},'snobMode',this.value)">
+          <option value="escorted"${tg.snobMode !== 'solo' ? ' selected' : ''}>${t('opt_escort_yes')}</option>
+          <option value="solo"${tg.snobMode === 'solo' ? ' selected' : ''}>${t('opt_escort_no')}</option>
+        </select>
+      </td>
+      <td><input class="cell-input mono" style="width:92px;" value="${esc(tg.winOff)}" onchange="updOT(${tg.id},'winOff',this.value)"></td>
+      <td><input class="cell-input mono" style="width:92px;" value="${esc(tg.winSnob)}" onchange="updOT(${tg.id},'winSnob',this.value)"></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="delOffTarget(${tg.id})">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Plan generation ──────────────────────────────────────────
+function parseWindowStr(s) {
+  const m = String(s || '').match(/(\d{1,2}):(\d{2})\s*[\/\-–]\s*(\d{1,2}):(\d{2})/);
+  return m ? { f: +m[1] * 60 + +m[2], to: +m[3] * 60 + +m[4] } : null;
+}
+
+// Launch window = landing window minus travel time (wraps past midnight)
+function launchWindowStr(winStr, travelMin) {
+  const w = parseWindowStr(winStr);
+  if (!w) return '—';
+  const tr = Math.round(travelMin);
+  const p = n => String(n).padStart(2, '0');
+  const fm = m => { const x = ((m % 1440) + 1440 * 100) % 1440; return `${p(Math.floor(x / 60))}:${p(x % 60)}`; };
+  const days = w.f - tr < 0 ? Math.ceil((tr - w.f) / 1440) : 0;
+  return `${fm(w.f - tr)}–${fm(w.to - tr)}${days ? ` (−${days}d)` : ''}`;
+}
+
+function splitNobles(total, nPlayers) {
+  const n = Math.max(1, nPlayers), base = Math.floor(total / n), rem = total % n;
+  return Array.from({ length: n }, (_, i) => base + (i < rem ? 1 : 0)).filter(x => x > 0);
+}
+
+function generatePlan() {
+  if (!villages.length)   { alert(t('plan_need_data'));    return; }
+  if (!offTargets.length) { alert(t('plan_need_targets')); return; }
+
+  const ws      = parseFloat(document.getElementById('plan-world-speed').value) || 1;
+  const us      = parseFloat(document.getElementById('plan-unit-speed').value) || 1;
+  const maxDist = parseFloat(document.getElementById('plan-max-dist').value) || 0;
+  const prefer  = document.getElementById('plan-prefer').value;
+
+  const pool = villages.map(v => ({
+    v, c: parseCoordStr(v.coord), tier: getOffTier(v.offPow),
+    snobLeft: v.snob, usedOff: false, usedSnob: false,
+  })).filter(p => p.c);
+
+  planRows = []; planWarnings = [];
+
+  const targets = offTargets.map((tg, i) => ({ tg, i, c: parseCoordStr(tg.coord), offRows: [], snobRows: [] }));
+  targets.filter(T => !T.c).forEach(T => planWarnings.push(t('warn_invalid_coord')(T.tg.coord)));
+
+  const okDist = (p, tc) => maxDist <= 0 || distXY(p.c, tc) <= maxDist;
+  const byPref = tc => (a, b) => prefer === 'power'
+    ? (b.v.offPow - a.v.offPow) || (distXY(a.c, tc) - distXY(b.c, tc))
+    : (distXY(a.c, tc) - distXY(b.c, tc)) || (b.v.offPow - a.v.offPow);
+
+  // Offs: strongest requests claim villages first (complete → 3/4 → 1/2);
+  // exact-tier villages preferred so big nukes aren't wasted on 1/2 requests
+  for (const tier of ['complete', 'tq', 'half']) {
+    for (const T of targets) {
+      if (!T.c) continue;
+      for (let k = 0; k < (T.tg[TIER_FIELD[tier]] || 0); k++) {
+        let cands = pool.filter(p => !p.usedOff && p.tier === tier && okDist(p, T.c));
+        if (!cands.length) cands = pool.filter(p => !p.usedOff && TIER_RANK[p.tier] > TIER_RANK[tier] && okDist(p, T.c));
+        if (!cands.length) {
+          planWarnings.push(t('warn_missed_off')(t('tier_' + tier), T.tg.coord));
+          T.offRows.push({ type: tier, unassigned: true });
+          continue;
+        }
+        const p = cands.sort(byPref(T.c))[0];
+        p.usedOff = true;
+        const d = distXY(p.c, T.c);
+        T.offRows.push({
+          type: tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+          dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us),
+        });
+      }
+    }
+  }
+
+  // Snob trains: pre-assigned senders fill the first trains, the rest are
+  // auto-picked from distinct players; escort mode is a per-target setting
+  for (const T of targets) {
+    if (!T.c || !T.tg.nobles) continue;
+    const assignees = (T.tg.snobAssignees || []).filter(Boolean);
+    const nTrains = Math.max(T.tg.snobPlayers || 0, assignees.length);
+    if (!nTrains) continue;
+    const mode = T.tg.snobMode || 'escorted';
+    const chosen = new Set();
+    splitNobles(T.tg.nobles, nTrains).forEach((nc, ti) => {
+      const want = assignees[ti] || null;
+      let cands = pool.filter(p =>
+        p.snobLeft > 0 && !p.usedSnob && okDist(p, T.c) &&
+        (want ? p.v.player === want : !chosen.has(p.v.player)) &&
+        (mode !== 'escorted' || !p.usedOff));
+      if (mode === 'escorted') {
+        // train travels with its own off escort → prefer villages with real off power
+        const strong = cands.filter(p => TIER_RANK[p.tier] >= 1);
+        if (strong.length) cands = strong;
+      }
+      const enough = cands.filter(p => p.snobLeft >= nc);
+      if (enough.length) cands = enough;
+      if (!cands.length) {
+        planWarnings.push(want
+          ? t('warn_missed_snob_player')(decode(want), T.tg.coord)
+          : t('warn_missed_snob')(T.tg.coord));
+        T.snobRows.push({ type: 'snob', count: nc, unassigned: true });
+        return;
+      }
+      // escorted: strongest escort wins; solo: nearest village, weakest off stays home
+      cands.sort(mode === 'escorted'
+        ? (a, b) => (b.v.offPow - a.v.offPow) || (distXY(a.c, T.c) - distXY(b.c, T.c))
+        : (a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (a.v.offPow - b.v.offPow));
+      const p = cands[0];
+      p.snobLeft -= nc; p.usedSnob = true; chosen.add(p.v.player);
+      if (mode === 'escorted') p.usedOff = true;
+      const d = distXY(p.c, T.c);
+      T.snobRows.push({
+        type: 'snob', count: nc, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+        dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.snob, ws, us),
+      });
+    });
+  }
+
+  // Windows: last off lands with the snobs (clears right before the train), earlier offs in the off window
+  for (const T of targets) {
+    if (!T.c) continue;
+    T.offRows.forEach((r, idx) => {
+      r.window = (idx === T.offRows.length - 1 || !T.tg.winOff) ? (T.tg.winSnob || T.tg.winOff) : T.tg.winOff;
+    });
+    T.snobRows.forEach(r => { r.window = T.tg.winSnob || T.tg.winOff; });
+    [...T.offRows, ...T.snobRows].forEach(r => {
+      planRows.push({ tIdx: T.i + 1, tCoord: T.tg.coord, tPlayer: T.tg.player, ...r });
+    });
+  }
+
+  saveOffensive();
+  renderPlanTable();
+}
+
+function delPlanRow(i) { planRows.splice(i, 1); saveOffensive(); renderPlanTable(); }
+
+function renderPlanTable() {
+  document.getElementById('plan-warnings').innerHTML = planWarnings.length
+    ? `<div class="warn-box">${planWarnings.map(esc).join('<br>')}</div>` : '';
+  const assigned = planRows.filter(r => !r.unassigned).length;
+  document.getElementById('plan-summary').textContent =
+    planRows.length ? t('plan_summary')(assigned, planRows.length - assigned) : '';
+
+  const tbody = document.getElementById('plan-tbody');
+  if (!planRows.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="11">${t('empty_no_plan')}</td></tr>`;
+    return;
+  }
+  let lastIdx = null;
+  tbody.innerHTML = planRows.map((r, i) => {
+    const first = r.tIdx !== lastIdx;
+    lastIdx = r.tIdx;
+    const badge = r.type === 'snob'
+      ? `<span class="badge badge-snob">${r.count > 1 ? r.count + 'x ' : ''}👑 ${t('type_snob')}</span>`
+      : `<span class="badge badge-${r.type === 'complete' ? 'complete' : r.type === 'tq' ? 'tq' : 'half'}">${t('tier_' + r.type)}</span>`;
+    const trStyle = [
+      first && i > 0 ? 'border-top:2px solid #7a5c10' : '',
+      r.unassigned ? 'background:rgba(192,64,32,0.08)' : '',
+    ].filter(Boolean).join(';');
+    return `
+    <tr${trStyle ? ` style="${trStyle}"` : ''}>
+      <td style="color:#806030;">${first ? r.tIdx : ''}</td>
+      <td class="left" style="font-family:monospace;">${first ? esc(r.tCoord) : ''}</td>
+      <td class="left">${first && r.tPlayer ? `<span class="player-tag">${esc(r.tPlayer)}</span>` : ''}</td>
+      <td>${badge}</td>
+      <td class="left" style="font-family:monospace;">${r.unassigned ? `<span style="color:#e06040;">${t('bb_unassigned')}</span>` : esc(r.srcCoord)}</td>
+      <td class="left">${r.unassigned ? '—' : `<span class="player-tag">${esc(r.srcPlayer)}</span>`}</td>
+      <td style="color:#60a0e0;font-weight:600;font-family:monospace;">${esc(r.window || '—')}</td>
+      <td style="color:#f0c040;">${r.unassigned ? '—' : r.dist.toFixed(1)}</td>
+      <td>${r.unassigned ? '—' : fmtTime(r.travel)}</td>
+      <td style="font-family:monospace;">${r.unassigned ? '—' : launchWindowStr(r.window, r.travel)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Forum BB export (matches the tribe's offensive post format) ──
+function showPlanBB() {
+  if (!planRows.length) { alert(t('empty_no_plan')); return; }
+
+  const nobleCounts = [...new Set(offTargets.map(x => x.nobles).filter(Boolean))].sort((a, b) => a - b);
+  const noblesLabel = nobleCounts.length ? nobleCounts.join(' ó ') : '4';
+
+  let bb = `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabel()}[/size]\n\n`;
+  bb += `[unit]ram[/unit] --> ${t('bb_legend_ram')}\n`;
+  if (planRows.some(r => r.type === 'half')) bb += `[unit]axe[/unit] --> ${t('bb_legend_axe')}\n`;
+  if (planRows.some(r => r.type === 'snob')) bb += `[unit]snob[/unit] --> ${t('bb_legend_snob')(noblesLabel)}\n`;
+  bb += '\n';
+
+  const groups = [];
+  for (const r of planRows) {
+    let g = groups.find(x => x.idx === r.tIdx);
+    if (!g) { g = { idx: r.tIdx, coord: r.tCoord, player: r.tPlayer, rows: [] }; groups.push(g); }
+    g.rows.push(r);
+  }
+  groups.forEach((g, gi) => {
+    bb += `${gi + 1}. ${g.coord}${g.player ? ` - [player]${g.player}[/player]` : ''}\n`;
+    const multiSnob = g.rows.filter(x => x.type === 'snob').length > 1;
+    for (const r of g.rows) {
+      const icon   = r.type === 'half' ? 'axe' : r.type === 'snob' ? 'snob' : 'ram';
+      const prefix = r.type === 'snob' && multiSnob ? `${r.count}x ` : '';
+      const who    = r.unassigned ? t('bb_unassigned') : `[player]${r.srcPlayer}[/player]`;
+      bb += `${prefix}[unit]${icon}[/unit] ${who} [b][color=#0000a5]${r.window || '??:??'}[/color][/b]\n`;
+    }
+    bb += '\n';
+  });
+
+  document.getElementById('bb-output').value = bb.trimEnd() + '\n';
+  document.getElementById('bb-modal').classList.add('open');
+}
+
+// ══════════════════════════════════════════════════════════════
+// VILLAGE DATABASE (village.txt + player.txt world map exports)
+// ══════════════════════════════════════════════════════════════
+const IDB = {
+  open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('tw-tribe-calculator', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kv');
+      r.onsuccess = () => res(r.result);
+      r.onerror   = () => rej(r.error);
+    });
+  },
+  async get(k) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const rq = db.transaction('kv').objectStore('kv').get(k);
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror   = () => rej(rq.error);
+    });
+  },
+  async set(k, v) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put(v, k);
+      tx.oncomplete = () => res();
+      tx.onerror    = () => rej(tx.error);
+    });
+  },
+};
+
+let villageDb     = []; // [{id, name, x, y, playerId, points}]
+let playerDb      = {}; // playerId → name
+let coordDb       = {}; // "x|y" → village record
+let dbDirHandle   = null;
+let dbSearchTimer = null;
+
+function decodeName(s) { try { return decodeURIComponent(String(s).replace(/\+/g, ' ')); } catch { return s; } }
+
+function parsePlayerDb(text) { // id,name,tribe,villages,points,rank
+  const out = {};
+  for (const line of text.split('\n')) {
+    const p = line.trim().split(',');
+    if (p.length >= 2 && p[0]) out[p[0].trim()] = decodeName(p[1]);
+  }
+  return out;
+}
+
+function parseVillageDb(text) { // id,name,x,y,playerId,points,rank
+  const out = [];
+  for (const line of text.split('\n')) {
+    const p = line.trim().split(',');
+    if (p.length >= 6 && p[0]) out.push({
+      id: p[0].trim(), name: decodeName(p[1]),
+      x: +p[2], y: +p[3], playerId: p[4].trim(), points: parseInt(p[5]) || 0,
+    });
+  }
+  return out;
+}
+
+function setDbData(vText, pText) {
+  playerDb  = parsePlayerDb(pText);
+  villageDb = parseVillageDb(vText);
+  coordDb   = {};
+  for (const v of villageDb) coordDb[`${v.x}|${v.y}`] = v;
+  document.getElementById('db-dot').className = 'file-status-dot dot-ok';
+  document.getElementById('db-status').textContent =
+    t('db_status_loaded')(villageDb.length.toLocaleString(), Object.keys(playerDb).length.toLocaleString());
+  renderDbTable();
+  refreshTargetsFromDb();
+  renderTargetTable(); // refresh owner info in Tribe Timings
+}
+
+function dbOwnerName(coord) {
+  const v = coordDb[coord];
+  return v ? (playerDb[v.playerId] || '') : '';
+}
+
+function dbOwnerLabel(coord) {
+  if (!villageDb.length) return '';
+  const v = coordDb[coord];
+  if (!v) return t('db_unknown_village');
+  return `${v.name} · ${playerDb[v.playerId] || '—'} · ${v.points.toLocaleString()} pts`;
+}
+
+// Defenders are DB-derived: refresh every target the database knows about
+function refreshTargetsFromDb() {
+  if (!villageDb.length) return;
+  let changed = false;
+  for (const tg of offTargets) {
+    const n = dbOwnerName(tg.coord);
+    if (n && tg.player !== n) { tg.player = n; changed = true; }
+  }
+  if (changed) saveOffensive();
+  renderOffTargets();
+}
+
+async function loadDbFromDir() {
+  if (!dbDirHandle) return;
+  try {
+    const [vFile, pFile] = await Promise.all([
+      dbDirHandle.getFileHandle('village.txt').then(h => h.getFile()),
+      dbDirHandle.getFileHandle('player.txt').then(h => h.getFile()),
+    ]);
+    setDbData(await vFile.text(), await pFile.text());
+  } catch (e) {
+    document.getElementById('db-status').textContent = t('db_not_found');
+  }
+}
+
+async function connectDbFolder() {
+  if (!window.showDirectoryPicker) { alert(t('alert_no_db_api')); return; }
+  try {
+    dbDirHandle = await window.showDirectoryPicker({ id: 'tw-db-dir', mode: 'read' });
+    await IDB.set('dbDirHandle', dbDirHandle).catch(() => {});
+    await loadDbFromDir();
+    updateDbConnectBtn();
+  } catch (e) { /* picker cancelled */ }
+}
+
+async function refreshDbFiles() {
+  if (!dbDirHandle) { connectDbFolder(); return; }
+  try {
+    const perm = await dbDirHandle.requestPermission({ mode: 'read' });
+    if (perm === 'granted') await loadDbFromDir();
+  } catch (e) {}
+}
+
+// Restore the remembered folder handle; permission re-grant needs a user gesture (Re-sync)
+async function tryAutoLoadDb() {
+  if (typeof window === 'undefined' || !window.showDirectoryPicker || typeof indexedDB === 'undefined') return;
+  try {
+    const dh = await IDB.get('dbDirHandle');
+    if (!dh) return;
+    dbDirHandle = dh;
+    updateDbConnectBtn();
+    const perm = await dh.queryPermission({ mode: 'read' });
+    if (perm === 'granted') await loadDbFromDir();
+    else document.getElementById('db-status').textContent = t('db_connected_refresh');
+  } catch (e) {}
+}
+
+function updateDbConnectBtn() {
+  document.getElementById('db-connect-btn').textContent = dbDirHandle ? t('btn_change_db') : t('btn_connect_db');
+  document.getElementById('db-refresh-btn').style.display = dbDirHandle ? '' : 'none';
+}
+
+// Fallback for browsers without the File System Access API
+function loadDbFromFileInput(input) {
+  const files = [...(input.files || [])];
+  if (!files.length) return;
+  Promise.all(files.map(f => new Promise(res => {
+    const r = new FileReader();
+    r.onload = e => res({ name: f.name.toLowerCase(), text: e.target.result });
+    r.readAsText(f);
+  }))).then(rs => {
+    let vText = null, pText = null;
+    for (const r of rs) {
+      if (/village/.test(r.name)) vText = r.text;
+      else if (/player/.test(r.name)) pText = r.text;
+    }
+    if (vText === null || pText === null) {
+      // sniff by column count: village rows have ≥7 columns
+      for (const r of rs) {
+        const cols = (r.text.split('\n').find(l => l.trim()) || '').split(',');
+        if (cols.length >= 7 && vText === null) vText = r.text;
+        else if (pText === null) pText = r.text;
+      }
+    }
+    if (vText === null || pText === null) { alert(t('alert_select_both')); return; }
+    setDbData(vText, pText);
+  });
+  input.value = '';
+}
+
+function scheduleDbSearch() {
+  clearTimeout(dbSearchTimer);
+  dbSearchTimer = setTimeout(renderDbTable, 200);
+}
+
+function renderDbTable() {
+  const tbody   = document.getElementById('db-tbody');
+  const countEl = document.getElementById('db-count');
+  if (!villageDb.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="5">${t('db_no_data')}</td></tr>`;
+    countEl.textContent = '';
+    return;
+  }
+  const q = (document.getElementById('db-search').value || '').trim().toLowerCase();
+  let results = villageDb;
+  if (q) results = villageDb.filter(v =>
+    v.name.toLowerCase().includes(q) ||
+    `${v.x}|${v.y}`.includes(q) ||
+    (playerDb[v.playerId] || '').toLowerCase().includes(q));
+  const capped = results.slice(0, 200);
+  countEl.textContent = results.length > capped.length
+    ? t('db_showing')(capped.length, results.length.toLocaleString())
+    : results.length ? results.length.toLocaleString() : '';
+  if (!capped.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="5">${t('empty_no_results')}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = capped.map(v => `
+    <tr>
+      <td class="left" style="font-family:monospace;">${v.x}|${v.y}</td>
+      <td class="left">${esc(v.name)}</td>
+      <td class="left">${playerDb[v.playerId] ? `<span class="player-tag">${esc(playerDb[v.playerId])}</span>` : '<span class="num-zero">—</span>'}</td>
+      <td>${v.points.toLocaleString()}</td>
+      <td><button class="btn btn-primary btn-sm" onclick="addTargetFromDb('${v.x}|${v.y}', this)">${t('btn_add_target_short')}</button></td>
+    </tr>`).join('');
+}
+
+function addTargetFromDb(coord, btn) {
+  offTargets.push(newOffTarget(coord, dbOwnerName(coord)));
+  saveOffensive();
+  renderOffTargets();
+  if (btn) {
+    btn.textContent = t('db_added');
+    setTimeout(() => { btn.textContent = t('btn_add_target_short'); }, 1500);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 // SORTING
 // ══════════════════════════════════════════════════════════════
 function sortTable(tableId, col) {
@@ -1337,8 +2456,8 @@ function showPlayersBBTable() {
   document.getElementById('bb-modal').classList.add('open');
 }
 
-function showBBTable() {
-  const table = document.getElementById('byvillages-table');
+function showBBTable(tableId = 'byvillages-table') {
+  const table = document.getElementById(tableId);
   const headers = [...table.querySelectorAll('thead th')].map(th => th.innerText.replace(/[▲▼⬍]/g,'').trim());
   const rows    = [...table.querySelectorAll('tbody tr')].filter(tr => !tr.classList.contains('empty-row'));
 
@@ -1347,7 +2466,7 @@ function showBBTable() {
   let bb = '[table]\n';
   bb += '[**]' + headers.join(sep) + '[/**]\n';
   for (const row of rows) {
-    const cells = [...row.querySelectorAll('td')].map(td => td.innerText.trim());
+    const cells = [...row.querySelectorAll('td')].map(td => td.innerText.replace(/\s*\n\s*/g, ' ').trim());
     cells[0] = `[coord]${cells[0]}[/coord]`;
     cells[1] = `[player]${cells[1]}[/player]`;
     bb += '[*]' + cells.join(cellSep) + '\n';
@@ -1371,6 +2490,18 @@ function copyBBTable() {
   setTimeout(() => { btn.textContent = t('bb_copy_btn'); }, 2000);
 }
 
+// Initial render of the Tribe Timings tab (builds its header + empty state)
+renderTargetTable();
+
+// Restore offensive targets + plan from localStorage and render their tabs
+loadOffensive();
+renderOffTargets();
+renderPlanTable();
+
+// Village database: render empty state, then try to restore the remembered folder
+renderDbTable();
+tryAutoLoadDb();
+
 // Allow dropping files anywhere on the page
 document.addEventListener('dragover', e => e.preventDefault());
 document.addEventListener('drop', e => {
@@ -1382,7 +2513,7 @@ document.addEventListener('drop', e => {
 <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 1.0.3 &nbsp;·&nbsp; 2026-06-08 19:00</span>
+  <span><span data-i18n="footer_version">Version</span> 1.4.0 &nbsp;·&nbsp; 2026-06-11</span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
