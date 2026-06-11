@@ -988,7 +988,8 @@ const T = {
     senders_need_troops:'Load the tribe troop file to pick senders',
     warn_target_not_in_db: c => `Target ${c} not found in the village database`,
     warn_missed_snob_player: (pl, c) => `${pl} has no available snob village for ${c}`,
-    warn_sender_capacity: (pl, used, have) => `${pl} is assigned ${used} nobles across all targets but only has ${have} snobs`,
+    warn_escort_used: (pl, c) => `${pl} has snobs left for ${c} but no free off to escort them — set the train to Solo or free up an off`,
+    warn_sender_capacity: (pl, used, have) => `${pl} has not enough nobles: ${used} assigned, but only ${have} available`,
     warn_nobles_mismatch: (c, sum, n) => `Snob trains for ${c} total ${sum} nobles but the target asks for ${n}`,
     fix_time_title:'Set end = start (fixed time instead of a window)',
     add_window_title:'Add another off window',
@@ -1103,7 +1104,8 @@ const T = {
     senders_need_troops:'Carga el archivo de tropas para elegir remitentes',
     warn_target_not_in_db: c => `El objetivo ${c} no existe en la base de datos de aldeas`,
     warn_missed_snob_player: (pl, c) => `${pl} no tiene aldea con nobles disponible para ${c}`,
-    warn_sender_capacity: (pl, used, have) => `${pl} tiene asignados ${used} nobles entre todos los objetivos pero solo tiene ${have}`,
+    warn_escort_used: (pl, c) => `${pl} tiene nobles para ${c} pero ningún off libre para escoltarlos — pon el tren en Solo o libera un off`,
+    warn_sender_capacity: (pl, used, have) => `${pl} no tiene suficientes nobles: ${used} asignados, pero solo ${have} disponibles`,
     warn_nobles_mismatch: (c, sum, n) => `Los trenes de nobles para ${c} suman ${sum} nobles pero el objetivo pide ${n}`,
     fix_time_title:'Fijar fin = inicio (hora fija en vez de ventana)',
     add_window_title:'Añadir otra ventana off',
@@ -2190,6 +2192,15 @@ function generatePlan() {
     }
   }
 
+  // Named senders assigned more nobles (across all targets) than they own
+  {
+    const agg = senderNobleTotals();
+    for (const [nm, used] of Object.entries(agg)) {
+      const have = players[nm] ? players[nm].totals.snob : 0;
+      if (used > have) planWarnings.push(t('warn_sender_capacity')(decode(nm), used, have));
+    }
+  }
+
   // Snob trains: pre-assigned senders fill the first trains, the rest are
   // auto-picked from distinct players; escort mode is a per-target setting
   for (const T of targets) {
@@ -2201,8 +2212,10 @@ function generatePlan() {
     const mode = T.tg.snobMode || 'escorted';
     const chosen = new Set();
     spec.forEach(({ name: want, count: nc }) => {
+      // A village may host several trains while it has snobs left; in escorted
+      // mode its off can only escort once (solo trains from it stay fine)
       let cands = pool.filter(p =>
-        p.snobLeft > 0 && !p.usedSnob && okDist(p, T.c) &&
+        p.snobLeft > 0 && okDist(p, T.c) &&
         (want ? p.v.player === want : !chosen.has(p.v.player)) &&
         (mode !== 'escorted' || !p.usedOff));
       if (mode === 'escorted') {
@@ -2212,9 +2225,16 @@ function generatePlan() {
       }
       const enough = cands.filter(p => p.snobLeft >= nc);
       if (enough.length) cands = enough;
+      const fresh = cands.filter(p => !p.usedSnob);
+      if (fresh.length) cands = fresh;
       if (!cands.length) {
+        // distinguish "snobs left but the off already escorted" from "no snobs"
+        const escortBlocked = mode === 'escorted' && want &&
+          pool.some(p => p.snobLeft > 0 && okDist(p, T.c) && p.v.player === want);
         planWarnings.push(want
-          ? t('warn_missed_snob_player')(decode(want), T.tg.coord)
+          ? (escortBlocked
+              ? t('warn_escort_used')(decode(want), T.tg.coord)
+              : t('warn_missed_snob_player')(decode(want), T.tg.coord))
           : t('warn_missed_snob')(T.tg.coord));
         T.snobRows.push({ type: 'snob', count: nc, unassigned: true });
         return;
