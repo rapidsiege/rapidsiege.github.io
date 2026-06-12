@@ -692,7 +692,10 @@
     <input type="text" id="target-search" placeholder="Search player or coord…" oninput="renderTargetTable()">
     <label data-i18n="lbl_min_power">Min power:</label>
     <input type="number" id="target-min-power" value="50000" placeholder="0" style="width:110px;" oninput="renderTargetTable()">
-    <span style="font-size:12px;color:#5a3a18;" data-i18n="target_note">Travel times assume launch now — arrival time shown below each duration.</span>
+    <label data-i18n="lbl_arrive_by">Arrive by:</label>
+    <input type="date" id="target-arrival-date" onchange="renderTargetTable()">
+    <input type="time" id="target-arrival-time" step="1" onchange="renderTargetTable()">
+    <span style="font-size:12px;color:#5a3a18;" data-i18n="target_note">Travel times assume launch now — server-time arrival shown below each duration. Set "Arrive by" to hide villages that can't make it.</span>
   </div>
   <div class="table-wrap">
     <table id="target-table">
@@ -728,9 +731,12 @@
       <input type="time" id="ot-def-winsnob-e" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinSnob')">
     </span>
     <label data-i18n="lbl_def_offs">Default offs:</label>
-    <input type="number" id="ot-def-complete" min="0" max="99" style="width:55px;" oninput="updOTCfgInt('defComplete',this.value)" title="Complete">
-    <input type="number" id="ot-def-tq" min="0" max="99" style="width:55px;" oninput="updOTCfgInt('defTq',this.value)" title="3/4">
-    <input type="number" id="ot-def-half" min="0" max="99" style="width:55px;" oninput="updOTCfgInt('defHalf',this.value)" title="1/2">
+    <span class="badge badge-complete" data-i18n="opt_complete">Complete Off</span>
+    <input type="number" id="ot-def-complete" min="0" max="99" style="width:55px;" oninput="updOTCfgInt('defComplete',this.value)">
+    <span class="badge badge-tq" data-i18n="opt_tq">3/4</span>
+    <input type="number" id="ot-def-tq" min="0" max="99" style="width:55px;" oninput="updOTCfgInt('defTq',this.value)">
+    <span class="badge badge-half" data-i18n="opt_half">1/2</span>
+    <input type="number" id="ot-def-half" min="0" max="99" style="width:55px;" oninput="updOTCfgInt('defHalf',this.value)">
   </div>
   <div class="filter-row" style="margin-top:10px;">
     <input type="text" id="ot-add-coord" placeholder="500|500" style="width:90px;font-family:'Consolas','Courier New',monospace;" onkeydown="if(event.key==='Enter')addOffTarget()">
@@ -750,9 +756,9 @@
           <th>#</th>
           <th class="left" data-i18n="th_coord">Coord</th>
           <th class="left" data-i18n="th_def_player">Defender</th>
-          <th data-i18n="th_complete">Complete</th>
-          <th data-i18n="th_tq">3/4</th>
-          <th data-i18n="th_half">1/2</th>
+          <th><span class="badge badge-complete" data-i18n="th_complete">Complete</span></th>
+          <th><span class="badge badge-tq" data-i18n="th_tq">3/4</span></th>
+          <th><span class="badge badge-half" data-i18n="th_half">1/2</span></th>
           <th data-i18n="th_snob_players">Snob Players</th>
           <th data-i18n="th_nobles">Nobles</th>
           <th class="left" data-i18n="th_snob_senders">Senders</th>
@@ -874,17 +880,12 @@
 <div class="tab-content" id="tab-settings">
   <div class="section-header"><h2 data-i18n="sec_off_thresholds">Offensive Power Thresholds</h2></div>
   <div class="threshold-row">
-    <label data-i18n="lbl_complete_off">Complete Off ≥</label>
+    <label><span class="badge badge-complete" data-i18n="opt_complete">Complete Off</span> ≥</label>
     <input type="number" id="thresh-complete" value="500000" oninput="renderTierTables()">
-    <label data-i18n="lbl_tq">3/4 ≥</label>
+    <label><span class="badge badge-tq" data-i18n="opt_tq">3/4</span> ≥</label>
     <input type="number" id="thresh-tq" value="350000" oninput="renderTierTables()">
-    <label data-i18n="lbl_half">1/2 ≥</label>
+    <label><span class="badge badge-half" data-i18n="opt_half">1/2</span> ≥</label>
     <input type="number" id="thresh-half" value="250000" oninput="renderTierTables()">
-    <div class="tier-legend">
-      <span class="badge badge-complete">Complete Off</span>
-      <span class="badge badge-tq">3/4</span>
-      <span class="badge badge-half">1/2</span>
-    </div>
   </div>
   <p style="font-size:12px;color:#5a3a18;margin-top:10px;" data-i18n="settings_note">Changes apply instantly to By Villages and By Player tabs.</p>
   <div class="section-header"><h2 data-i18n="sec_server">Server</h2></div>
@@ -953,7 +954,6 @@ const T = {
     btn_load_pasted:'Load Pasted Data', btn_close:'Close', bb_copy_btn:'Copy to Clipboard',
     bb_modal_title:'BB Table — paste into tribe forum',
     lbl_show:'Show:', lbl_type:'Type:', lbl_sort:'Sort:', lbl_tier:'Tier:',
-    lbl_complete_off:'Complete Off ≥', lbl_tq:'3/4 ≥', lbl_half:'1/2 ≥',
     lbl_paste_data:'Or paste data directly (same CSV format)',
     settings_note:'Changes apply instantly to By Villages and By Player tabs.',
     opt_all_villages:'All villages', opt_off_only:'Offensive only', opt_def_only:'Defensive only',
@@ -991,7 +991,7 @@ const T = {
     opt_mode_off:'⚔ Offensive', opt_mode_def:'🛡 Defensive',
     lbl_world_speed:'World speed:', lbl_unit_speed:'Unit speed:',
     lbl_min_power:'Min power:', th_distance:'Distance',
-    target_note:'Travel times assume launch now — arrival time shown below each duration.',
+    target_note:'Travel times assume launch now — server-time arrival shown below each duration. Set "Arrive by" to hide villages that can\'t make it.',
     empty_no_target:'Enter target coordinates (e.g. 500|500) to calculate distances',
     tt_title:'Travel time and arrival if launched now',
     tab_offtargets:'📌 Offensive Targets', tab_plan:'⚔ Plan Offensive',
@@ -1070,6 +1070,8 @@ const T = {
     lbl_def_offs:'Default offs:', th_order:'Order', btn_export_player_bb:'⬇ Export Per-Player BB',
     bb_pp_launch:'launch', bb_legend_split: n => `noble train (${n} nobles) with split-off escort`,
     lbl_send_with:'Send with:', th_tribe:'Tribe',
+    unit_any:'Any', lbl_arrive_by:'Arrive by:',
+    warn_tier_bumped: (from, to, coord) => `No ${from} off left for ${coord} — upgraded to a ${to} off`,
     footer_dev_by: 'Developed by', footer_version: 'Version',
   },
   es: {
@@ -1082,7 +1084,6 @@ const T = {
     btn_load_pasted:'Cargar Datos', btn_close:'Cerrar', bb_copy_btn:'Copiar al portapapeles',
     bb_modal_title:'Tabla BB — pega en el foro de tribu',
     lbl_show:'Mostrar:', lbl_type:'Tipo:', lbl_sort:'Orden:', lbl_tier:'Nivel:',
-    lbl_complete_off:'Off Completo ≥', lbl_tq:'3/4 ≥', lbl_half:'1/2 ≥',
     lbl_paste_data:'O pega los datos directamente (mismo formato CSV)',
     settings_note:'Los cambios se aplican al instante en las pestañas correspondientes.',
     opt_all_villages:'Todas las aldeas', opt_off_only:'Solo ofensivas', opt_def_only:'Solo defensivas',
@@ -1120,7 +1121,7 @@ const T = {
     opt_mode_off:'⚔ Ofensivo', opt_mode_def:'🛡 Defensivo',
     lbl_world_speed:'Vel. mundo:', lbl_unit_speed:'Vel. unidades:',
     lbl_min_power:'Poder mín.:', th_distance:'Distancia',
-    target_note:'Los tiempos de viaje asumen salida ahora — hora de llegada bajo cada duración.',
+    target_note:'Los tiempos de viaje asumen salida ahora — llegada (hora del servidor) bajo cada duración. Fija "Llegar antes de" para ocultar aldeas que no llegan.',
     empty_no_target:'Introduce las coordenadas del objetivo (ej. 500|500) para calcular distancias',
     tt_title:'Tiempo de viaje y llegada si se lanza ahora',
     tab_offtargets:'📌 Objetivos Ofensivos', tab_plan:'⚔ Planear Ofensiva',
@@ -1199,6 +1200,8 @@ const T = {
     lbl_def_offs:'Offs por defecto:', th_order:'Orden', btn_export_player_bb:'⬇ Exportar BB por Jugador',
     bb_pp_launch:'salida', bb_legend_split: n => `tren de nobles (${n} nobles) con off partida`,
     lbl_send_with:'Enviar con:', th_tribe:'Tribu',
+    unit_any:'Cualquiera', lbl_arrive_by:'Llegar antes de:',
+    warn_tier_bumped: (from, to, coord) => `Sin off ${from} disponible para ${coord} — mejorado a un off ${to}`,
     footer_dev_by: 'Desarrollado por', footer_version: 'Versión',
   }
 };
@@ -1714,9 +1717,19 @@ function fmtTime(minutes) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 function fmtArrivalTime(travelMinutes) {
-  const d = new Date(Date.now() + travelMinutes * 60000);
+  // server-time arrival, consistent with the "Arrive by" deadline and the planner
+  const off = parseFloat(otCfg.serverUtcOffset);
+  const d = new Date(serverNowMs() + travelMinutes * 60000 + (isNaN(off) ? 2 : off) * 3600000);
   const p = n => String(n).padStart(2, '0');
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+
+// "Arrive by" deadline (Day + HH:MM:SS, server time) → epoch ms, or null when unset
+function targetArrivalMs() {
+  const day = document.getElementById('target-arrival-date')?.value;
+  const tm  = String(document.getElementById('target-arrival-time')?.value || '').match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!day || !tm) return null;
+  return serverWallMs(day, +tm[1] * 60 + +tm[2] + (+tm[3] || 0) / 60);
 }
 
 function targetCols() {
@@ -1737,14 +1750,15 @@ function renderTargetTable() {
   const mode = document.getElementById('target-mode')?.value || 'off';
 
   // Rebuild pace-unit select options, preserving current selection when still valid
-  const paceOpts = mode === 'off' ? ['light','axe','sword','ram'] : ['spy','light','heavy','spear','sword','knight'];
+  const paceOpts = mode === 'off' ? ['any','light','axe','sword','ram'] : ['any','spy','light','heavy','spear','sword','knight'];
   const paceEl = document.getElementById('target-pace-unit');
   if (paceEl) {
     const curPace = paceEl.value;
     paceEl.innerHTML = paceOpts.map(u => `<option value="${u}">${t('unit_'+u)}</option>`).join('');
-    if (paceOpts.includes(curPace)) paceEl.value = curPace;
+    paceEl.value = paceOpts.includes(curPace) ? curPace : 'any';
   }
-  const pace = paceEl ? paceEl.value : paceOpts[0];
+  let pace = paceEl ? paceEl.value : 'any';
+  if (!paceOpts.includes(pace)) pace = 'any';
 
   const cols = targetCols();
   document.getElementById('target-thead-row').innerHTML = cols.map(c => {
@@ -1782,6 +1796,17 @@ function renderTargetTable() {
   if (search) data = data.filter(v =>
     decode(v.player).toLowerCase().includes(search) || v.coord.includes(search));
   if (minPow > 0) data = data.filter(v => v[m.power] >= minPow);
+
+  // Arrival deadline: keep only villages that can land in time — with the chosen
+  // pace unit, or any owned unit when pace is "Any". In def mode an in-time
+  // knight overrides the pace check (it carries all the village's units along).
+  const deadlineMs = targetArrivalMs();
+  if (deadlineMs !== null) {
+    const makesIt = (row, u) => row[u] > 0 && isFinite(row['tt_'+u]) && serverNowMs() + row['tt_'+u] * 60000 <= deadlineMs;
+    data = data.filter(row => pace === 'any'
+      ? m.travel.some(u => makesIt(row, u))
+      : makesIt(row, pace) || (mode === 'def' && makesIt(row, 'knight')));
+  }
 
   const colDef = cols.find(c => c.key === targetSort.key) || cols[2];
   data.sort((a, b) => {
@@ -2248,6 +2273,7 @@ function launchWindowStr(winStr, travelMin) {
 
 function orderUnitsFor(mode, pace, v) {
   if (mode === 'off') {
+    if (pace === 'any') return {}; // plain rally-point link, no preset units
     if (v[pace] === 0) return null;
     if (pace === 'light') return { light: v.light };
     if (pace === 'axe')   return { axe: v.axe, light: v.light };
@@ -2261,6 +2287,7 @@ function orderUnitsFor(mode, pace, v) {
     for (const u of UNITS) if (v[u] > 0) all[u] = v[u];
     return all;
   }
+  if (pace === 'any') return {}; // plain rally-point link, no preset units
   if (pace === 'knight') return null;
   if (v[pace] === 0) return null;
   if (pace === 'spy')   return { spy: v.spy };
@@ -2350,13 +2377,20 @@ function generatePlan() {
     : (distXY(a.c, tc) - distXY(b.c, tc)) || (b.v.offPow - a.v.offPow);
 
   // Offs: strongest requests claim villages first (complete → 3/4 → 1/2);
-  // exact-tier villages preferred so big nukes aren't wasted on 1/2 requests
+  // an exhausted tier auto-bumps to the nearest stronger off (1/2 → 3/4 → Complete)
+  // and the row is relabeled to what is actually sent, with a warning
+  const TIER_UP = { half: ['tq', 'complete'], tq: ['complete'], complete: [] };
   for (const tier of ['complete', 'tq', 'half']) {
     for (const T of targets) {
       if (!T.c) continue;
       for (let k = 0; k < (T.tg[TIER_FIELD[tier]] || 0); k++) {
-        let cands = pool.filter(p => !p.usedOff && p.tier === tier && okOffDist(p, T.c) && okOffTime(p, T));
-        if (!cands.length) cands = pool.filter(p => !p.usedOff && TIER_RANK[p.tier] > TIER_RANK[tier] && okOffDist(p, T.c) && okOffTime(p, T));
+        const tierCands = tt => pool.filter(p => !p.usedOff && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T));
+        let sent = tier, cands = tierCands(tier);
+        for (const up of TIER_UP[tier]) {
+          if (cands.length) break;
+          cands = tierCands(up);
+          if (cands.length) sent = up;
+        }
         if (!cands.length) {
           const inBand = pool.filter(p => !p.usedOff && okOffDist(p, T.c));
           planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T))
@@ -2365,11 +2399,12 @@ function generatePlan() {
           T.offRows.push({ type: tier, unassigned: true });
           continue;
         }
+        if (sent !== tier) planWarnings.push(t('warn_tier_bumped')(t('tier_' + tier), t('tier_' + sent), T.tg.coord));
         const p = cands.sort(byPref(T.c))[0];
         p.usedOff = true;
         const d = distXY(p.c, T.c);
         T.offRows.push({
-          type: tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+          type: sent, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
           dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us),
         });
       }
@@ -3115,7 +3150,7 @@ document.addEventListener('drop', e => {
 <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 1.6.2 &nbsp;·&nbsp; 2026-06-12</span>
+  <span><span data-i18n="footer_version">Version</span> 1.6.3 &nbsp;·&nbsp; 2026-06-13</span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
