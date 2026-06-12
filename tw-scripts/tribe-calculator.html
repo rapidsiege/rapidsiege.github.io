@@ -1919,7 +1919,7 @@ function fixDefWin(key) {
 // Normalize a target saved by (or pasted from) older versions:
 // winOff string → offWindows list, assignee names → {name, count} objects
 function normalizeOffTarget(tg) {
-  if (!tg.snobMode) tg.snobMode = 'escorted';
+  if (!tg.snobMode) tg.snobMode = 'solo';
   if (!Array.isArray(tg.snobAssignees)) tg.snobAssignees = [];
   tg.snobAssignees = tg.snobAssignees.filter(Boolean).map(a => typeof a === 'string'
     ? { name: a, count: 0 }
@@ -1938,7 +1938,7 @@ function newOffTarget(coord, player) {
   return {
     id: otNextId++, coord, player,
     nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0, snobPlayers: 1, nobles: 4,
-    snobMode: 'escorted', snobAssignees: [],
+    snobMode: 'solo', snobAssignees: [],
     offWindows: [{ win: otCfg.defWinOff, count: 0 }], winSnob: otCfg.defWinSnob,
   };
 }
@@ -2192,8 +2192,8 @@ function renderOffTargets() {
       <td class="left"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;max-width:250px;">${chips}${senderPicker}</div></td>
       <td>
         <select class="cell-input" onchange="updOT(${tg.id},'snobMode',this.value)">
-          <option value="escorted"${tg.snobMode !== 'solo' ? ' selected' : ''}>${t('opt_escort_yes')}</option>
-          <option value="solo"${tg.snobMode === 'solo' ? ' selected' : ''}>${t('opt_escort_no')}</option>
+          <option value="escorted"${tg.snobMode === 'escorted' ? ' selected' : ''}>${t('opt_escort_yes')}</option>
+          <option value="solo"${tg.snobMode !== 'escorted' ? ' selected' : ''}>${t('opt_escort_no')}</option>
         </select>
       </td>
       <td>${offWinCell}</td>
@@ -2393,7 +2393,7 @@ function generatePlan() {
     if (!spec.length) continue;
     const specSum = spec.reduce((s, x) => s + x.count, 0);
     if (specSum !== T.tg.nobles) planWarnings.push(t('warn_nobles_mismatch')(T.tg.coord, specSum, T.tg.nobles));
-    const mode = T.tg.snobMode || 'escorted';
+    const mode = T.tg.snobMode || 'solo';
     const chosen = new Set();
     spec.forEach(({ name: want, count: nc }) => {
       // A village may host several trains while it has snobs left; in split-off
@@ -3115,7 +3115,7 @@ document.addEventListener('drop', e => {
 <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 1.6.1 &nbsp;·&nbsp; 2026-06-12</span>
+  <span><span data-i18n="footer_version">Version</span> 1.6.2 &nbsp;·&nbsp; 2026-06-12</span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
