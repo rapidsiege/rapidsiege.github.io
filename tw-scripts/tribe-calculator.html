@@ -795,7 +795,9 @@
       <option value="2">2×</option>
       <option value="3">3×</option>
     </select>
-    <label data-i18n="lbl_max_dist">Max distance:</label>
+    <label data-i18n="lbl_min_dist">Off min distance:</label>
+    <input type="number" id="plan-min-dist" value="0" min="0" style="width:70px;" title="0 = no minimum">
+    <label data-i18n="lbl_max_dist">Off max distance:</label>
     <input type="number" id="plan-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited">
     <label data-i18n="lbl_snob_max">Snob max distance:</label>
     <input type="number" id="plan-snob-max" value="70" min="0" style="width:70px;" title="0 = unlimited">
@@ -890,7 +892,12 @@
     <label data-i18n="lbl_server_url">Server URL:</label>
     <input type="text" id="setting-server-url" style="width:260px;" oninput="updServerUrl(this.value)">
   </div>
-  <p style="font-size:12px;color:#5a3a18;margin-top:10px;" data-i18n="server_note">Used to build rally-point links in the plan table.</p>
+  <div class="threshold-row">
+    <label data-i18n="lbl_server_offset">Server time: UTC+</label>
+    <input type="number" id="setting-server-offset" step="1" min="-12" max="14" style="width:60px;" oninput="updServerOffset(this.value)">
+    <span id="server-now" style="font-size:12px;color:#806030;margin-left:10px;"></span>
+  </div>
+  <p style="font-size:12px;color:#5a3a18;margin-top:10px;" data-i18n="server_note">Used to build rally-point links in the plan table. The UTC offset converts your local clock to server time for the launch-feasibility check (guerrastribales.es runs on UTC+2 in summer, UTC+1 in winter).</p>
 </div>
 
 <script>
@@ -1014,7 +1021,8 @@ const T = {
     del_window_title:'Remove this window',
     win_count_title:'Offs landing in this window (0 = automatic share)',
     snob_count_title:'Nobles this sender sends here (0 = split evenly)',
-    lbl_max_dist:'Max distance:',
+    lbl_min_dist:'Off min distance:',
+    lbl_max_dist:'Off max distance:',
     lbl_snob_max:'Snob max distance:',
     lbl_prefer:'Prioritize:', opt_pref_dist:'Distance', opt_pref_power:'Power',
     btn_generate:'⚡ Generate Plan', btn_export_forum:'⬇ Export Forum BB',
@@ -1025,6 +1033,9 @@ const T = {
     warn_invalid_coord: c => `Invalid target coordinates: "${c}"`,
     warn_missed_off: (tier, coord) => `No village available for a ${tier} off on ${coord}`,
     warn_missed_snob: coord => `Not enough snob senders for ${coord}`,
+    warn_off_too_late: (tier, coord) => `No village can land a ${tier} off on ${coord} in time — the launch would already be in the past`,
+    warn_snob_too_late: coord => `No snob train can reach ${coord} in time — the launch would already be in the past`,
+    warn_row_late: (src, tgt) => `${src} → ${tgt} would have to launch in the past — move it to a later window or regenerate`,
     plan_summary: (a, u) => `${a} attacks assigned · ${u} unassigned`,
     bb_arrival_date:'ARRIVAL DATE',
     bb_legend_ram:'FULL OFF.', bb_legend_axe:'HALF OFF (with Rams and Light Cav too).',
@@ -1053,7 +1064,9 @@ const T = {
     db_unknown_village:'No village at these coordinates',
     btn_add_target_short:'+ Target', db_added:'✓ Added',
     vil_type_sub: (o,d,m,e) => `${o} off · ${d} def · ${m} mixed · ${e} empty`,
-    sec_server:'Server', lbl_server_url:'Server URL:', server_note:'Used to build rally-point links in the plan table.',
+    sec_server:'Server', lbl_server_url:'Server URL:',
+    server_note:'Used to build rally-point links in the plan table. The UTC offset converts your local clock to server time for the launch-feasibility check (guerrastribales.es runs on UTC+2 in summer, UTC+1 in winter).',
+    lbl_server_offset:'Server time: UTC+', server_now: s => `Server time now: ${s}`,
     lbl_def_offs:'Default offs:', th_order:'Order', btn_export_player_bb:'⬇ Export Per-Player BB',
     bb_pp_launch:'launch', bb_legend_split: n => `noble train (${n} nobles) with split-off escort`,
     lbl_send_with:'Send with:', th_tribe:'Tribe',
@@ -1137,7 +1150,8 @@ const T = {
     del_window_title:'Eliminar esta ventana',
     win_count_title:'Offs que caen en esta ventana (0 = reparto automático)',
     snob_count_title:'Nobles que envía este remitente aquí (0 = reparto equitativo)',
-    lbl_max_dist:'Distancia máx.:',
+    lbl_min_dist:'Distancia mín. offs:',
+    lbl_max_dist:'Distancia máx. offs:',
     lbl_snob_max:'Distancia máx. nobles:',
     lbl_prefer:'Priorizar:', opt_pref_dist:'Distancia', opt_pref_power:'Poder',
     btn_generate:'⚡ Generar Plan', btn_export_forum:'⬇ Exportar BB Foro',
@@ -1147,6 +1161,9 @@ const T = {
     confirm_clear_targets:'¿Eliminar todos los objetivos ofensivos?',
     warn_invalid_coord: c => `Coordenadas de objetivo no válidas: "${c}"`,
     warn_missed_off: (tier, coord) => `Sin aldea disponible para un off ${tier} sobre ${coord}`,
+    warn_off_too_late: (tier, coord) => `Ninguna aldea llega a tiempo con un off ${tier} sobre ${coord} — el envío quedaría en el pasado`,
+    warn_snob_too_late: coord => `Ningún tren de nobles llega a tiempo a ${coord} — el envío quedaría en el pasado`,
+    warn_row_late: (src, tgt) => `${src} → ${tgt} tendría que salir en el pasado — muévelo a una ventana más tardía o regenera el plan`,
     warn_missed_snob: coord => `Faltan jugadores con nobles para ${coord}`,
     plan_summary: (a, u) => `${a} ataques asignados · ${u} sin asignar`,
     bb_arrival_date:'FECHA DE LLEGADA',
@@ -1176,7 +1193,9 @@ const T = {
     db_unknown_village:'No hay aldea en esas coordenadas',
     btn_add_target_short:'+ Objetivo', db_added:'✓ Añadido',
     vil_type_sub: (o,d,m,e) => `${o} ofens. · ${d} def. · ${m} mixtas · ${e} vacías`,
-    sec_server:'Servidor', lbl_server_url:'URL del servidor:', server_note:'Se usa para generar enlaces al punto de reunión en la tabla del plan.',
+    sec_server:'Servidor', lbl_server_url:'URL del servidor:',
+    server_note:'Se usa para generar enlaces al punto de reunión en la tabla del plan. El desfase UTC convierte tu reloj local a la hora del servidor para comprobar la viabilidad de los envíos (guerrastribales.es usa UTC+2 en verano y UTC+1 en invierno).',
+    lbl_server_offset:'Hora del servidor: UTC+', server_now: s => `Hora actual del servidor: ${s}`,
     lbl_def_offs:'Offs por defecto:', th_order:'Orden', btn_export_player_bb:'⬇ Exportar BB por Jugador',
     bb_pp_launch:'salida', bb_legend_split: n => `tren de nobles (${n} nobles) con off partida`,
     lbl_send_with:'Enviar con:', th_tribe:'Tribu',
@@ -1814,7 +1833,7 @@ const TIER_RANK = { complete: 3, tq: 2, half: 1, none: 0 };
 const PLAN_BASE_MIN = { off: 30, snob: 35 };
 const TIER_FIELD = { complete: 'nComplete', tq: 'nTq', half: 'nHalf' };
 
-let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30', serverUrl: 'es100.guerrastribales.es', defComplete: 1, defTq: 0, defHalf: 0 };
+let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30', serverUrl: 'es100.guerrastribales.es', serverUtcOffset: 2, defComplete: 1, defTq: 0, defHalf: 0 };
 let offTargets   = []; // [{id, coord, player, nComplete, nTq, nHalf, snobPlayers, nobles, offWindows:[{win,count}], winSnob, snobMode, snobAssignees:[{name,count}]}]
 let planRows     = []; // denormalized so a saved plan renders without the troop file loaded
 let planWarnings = [];
@@ -1850,6 +1869,8 @@ function loadOffensive() {
   }
   const su = document.getElementById('setting-server-url');
   if (su) su.value = otCfg.serverUrl || '';
+  const so = document.getElementById('setting-server-offset');
+  if (so) so.value = otCfg.serverUtcOffset ?? 2;
   const dc = document.getElementById('ot-def-complete');
   if (dc) dc.value = otCfg.defComplete ?? 1;
   const dt = document.getElementById('ot-def-tq');
@@ -1860,6 +1881,7 @@ function loadOffensive() {
 
 function updOTCfg(k, v) { otCfg[k] = v.trim(); saveOffensive(); }
 function updServerUrl(v) { otCfg.serverUrl = v.trim(); saveOffensive(); }
+function updServerOffset(v) { const n = parseFloat(v); otCfg.serverUtcOffset = isNaN(n) ? 2 : n; saveOffensive(); updateServerNow(); }
 function updOTCfgInt(k, v) { otCfg[k] = parseInt(v, 10) || 0; saveOffensive(); }
 
 // ── Time-window helpers (windows stored as 'HH:MM/HH:MM'; start === end = fixed time) ──
@@ -2187,6 +2209,26 @@ function parseWindowStr(s) {
   return m ? { f: +m[1] * 60 + +m[2], to: +m[3] * 60 + +m[4] } : null;
 }
 
+// ── Server time (local clock → epoch → server UTC offset) ──
+function serverNowMs() { return Date.now(); } // separate so tests can freeze the clock
+// Epoch ms of the server-local wall time `minutes` after midnight of dateISO
+function serverWallMs(dateISO, minutes) {
+  const m = String(dateISO || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const off = parseFloat(otCfg.serverUtcOffset);
+  return Date.UTC(+m[1], +m[2] - 1, +m[3]) + minutes * 60000 - (isNaN(off) ? 2 : off) * 3600000;
+}
+function serverNowStr() {
+  const off = parseFloat(otCfg.serverUtcOffset);
+  const d = new Date(serverNowMs() + (isNaN(off) ? 2 : off) * 3600000);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+function updateServerNow() {
+  const sp = document.getElementById('server-now');
+  if (sp) sp.textContent = t('server_now')(serverNowStr());
+}
+
 // Launch window = landing window minus travel time (wraps past midnight)
 function launchWindowStr(winStr, travelMin) {
   const w = parseWindowStr(winStr);
@@ -2196,7 +2238,12 @@ function launchWindowStr(winStr, travelMin) {
   const fm = m => { const x = ((m % 1440) + 1440 * 100) % 1440; return `${p(Math.floor(x / 60))}:${p(x % 60)}`; };
   const days = w.f - tr < 0 ? Math.ceil((tr - w.f) / 1440) : 0;
   const span = w.f === w.to ? fm(w.f - tr) : `${fm(w.f - tr)}–${fm(w.to - tr)}`;
-  return `${span}${days ? ` (−${days}d)` : ''}`;
+  if (!days) return span;
+  // with an arrival date set, name the actual launch day next to the −Nd marker
+  const m = String(otCfg.dateISO || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]) - days * 86400000) : null;
+  const ds = d ? ` · ${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}` : '';
+  return `${span} (−${days}d${ds})`;
 }
 
 function orderUnitsFor(mode, pace, v) {
@@ -2249,6 +2296,8 @@ function generatePlan() {
   const ws      = parseFloat(document.getElementById('plan-world-speed').value) || 1;
   const us      = parseFloat(document.getElementById('plan-unit-speed').value) || 1;
   const maxDist = parseFloat(document.getElementById('plan-max-dist').value) || 0;
+  const minDistRaw = parseFloat((document.getElementById('plan-min-dist') || {}).value);
+  const minDist = isNaN(minDistRaw) ? 0 : minDistRaw;
   const prefer  = document.getElementById('plan-prefer').value;
 
   const pool = villages.map(v => ({
@@ -2261,11 +2310,41 @@ function generatePlan() {
   const targets = offTargets.map((tg, i) => ({ tg, i, c: parseCoordStr(tg.coord), offRows: [], snobRows: [] }));
   targets.filter(T => !T.c).forEach(T => planWarnings.push(t('warn_invalid_coord')(T.tg.coord)));
 
-  const okDist = (p, tc) => maxDist <= 0 || distXY(p.c, tc) <= maxDist;
+  // Off distance band: a minimum keeps close offs free for a quick second
+  // round, a maximum avoids multi-day marches; 0 disables either bound.
+  // Snob trains only obey their own max — nobles usually must come from nearby.
+  const okOffDist = (p, tc) => {
+    const d = distXY(p.c, tc);
+    return (minDist <= 0 || d >= minDist) && (maxDist <= 0 || d <= maxDist);
+  };
   // Nobles have a hard travel limit in the game (70 fields on es100)
   const snobMaxRaw = parseFloat((document.getElementById('plan-snob-max') || {}).value);
   const snobMax = isNaN(snobMaxRaw) ? 70 : snobMaxRaw;
   const okSnobDist = (p, tc) => snobMax <= 0 || distXY(p.c, tc) <= snobMax;
+
+  // Launch feasibility: with an arrival date set, a village whose travel time
+  // pushes the launch before the current server time can never make it.
+  // Vetted against the target's LATEST possible landing minute; the assigned
+  // window may still be earlier — those rows get flagged late after assignment.
+  for (const T of targets) {
+    if (!T.c) continue;
+    const wins = (T.tg.offWindows && T.tg.offWindows.length ? T.tg.offWindows : [{ win: '' }])
+      .map(w => w.win || T.tg.winSnob || '');
+    T.offEndMin = wins.reduce((best, w) => {
+      const pw = parseWindowStr(w);
+      return pw && (best === null || pw.to > best) ? pw.to : best;
+    }, null);
+    const sw = parseWindowStr(T.tg.winSnob || wins[wins.length - 1] || '');
+    T.snobEndMin = sw ? sw.to : null;
+  }
+  const okTime = (p, T, endMin, baseMin) => {
+    if (endMin === null || endMin === undefined) return true;
+    const landMs = serverWallMs(otCfg.dateISO, endMin);
+    if (landMs === null) return true;
+    return landMs - travelTimeMin(distXY(p.c, T.c), baseMin, ws, us) * 60000 >= serverNowMs();
+  };
+  const okOffTime  = (p, T) => okTime(p, T, T.offEndMin,  PLAN_BASE_MIN.off);
+  const okSnobTime = (p, T) => okTime(p, T, T.snobEndMin, PLAN_BASE_MIN.snob);
   const byPref = tc => (a, b) => prefer === 'power'
     ? (b.v.offPow - a.v.offPow) || (distXY(a.c, tc) - distXY(b.c, tc))
     : (distXY(a.c, tc) - distXY(b.c, tc)) || (b.v.offPow - a.v.offPow);
@@ -2276,10 +2355,13 @@ function generatePlan() {
     for (const T of targets) {
       if (!T.c) continue;
       for (let k = 0; k < (T.tg[TIER_FIELD[tier]] || 0); k++) {
-        let cands = pool.filter(p => !p.usedOff && p.tier === tier && okDist(p, T.c));
-        if (!cands.length) cands = pool.filter(p => !p.usedOff && TIER_RANK[p.tier] > TIER_RANK[tier] && okDist(p, T.c));
+        let cands = pool.filter(p => !p.usedOff && p.tier === tier && okOffDist(p, T.c) && okOffTime(p, T));
+        if (!cands.length) cands = pool.filter(p => !p.usedOff && TIER_RANK[p.tier] > TIER_RANK[tier] && okOffDist(p, T.c) && okOffTime(p, T));
         if (!cands.length) {
-          planWarnings.push(t('warn_missed_off')(t('tier_' + tier), T.tg.coord));
+          const inBand = pool.filter(p => !p.usedOff && okOffDist(p, T.c));
+          planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T))
+            ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
+            : t('warn_missed_off')(t('tier_' + tier), T.tg.coord));
           T.offRows.push({ type: tier, unassigned: true });
           continue;
         }
@@ -2317,7 +2399,7 @@ function generatePlan() {
       // A village may host several trains while it has snobs left; in split-off
       // mode its off can only be split once (solo trains from it stay fine)
       let cands = pool.filter(p =>
-        p.snobLeft > 0 && okDist(p, T.c) && okSnobDist(p, T.c) &&
+        p.snobLeft > 0 && okSnobDist(p, T.c) && okSnobTime(p, T) &&
         (want ? p.v.player === want : !chosen.has(p.v.player)) &&
         (mode !== 'escorted' || !p.usedOff));
       if (mode === 'escorted') {
@@ -2330,18 +2412,25 @@ function generatePlan() {
       const fresh = cands.filter(p => !p.usedSnob);
       if (fresh.length) cands = fresh;
       if (!cands.length) {
-        // pinpoint the blocker: out of noble range / off already split / no snobs
+        // pinpoint the blocker: out of noble range / launch in the past /
+        // off already split / no snobs
         let msg;
         if (want) {
-          const mine = pool.filter(p => p.snobLeft > 0 && okDist(p, T.c) && p.v.player === want);
-          if (mine.length && !mine.some(p => okSnobDist(p, T.c)))
+          const mine = pool.filter(p => p.snobLeft > 0 && p.v.player === want);
+          const inRange = mine.filter(p => okSnobDist(p, T.c));
+          if (mine.length && !inRange.length)
             msg = t('warn_snob_range')(decode(want), T.tg.coord);
-          else if (mode === 'escorted' && mine.some(p => okSnobDist(p, T.c)))
+          else if (inRange.length && !inRange.some(p => okSnobTime(p, T)))
+            msg = t('warn_snob_too_late')(T.tg.coord);
+          else if (mode === 'escorted' && inRange.length)
             msg = t('warn_escort_used')(decode(want), T.tg.coord);
           else
             msg = t('warn_missed_snob_player')(decode(want), T.tg.coord);
         } else {
-          msg = t('warn_missed_snob')(T.tg.coord);
+          const any = pool.filter(p => p.snobLeft > 0 && okSnobDist(p, T.c));
+          msg = any.length && !any.some(p => okSnobTime(p, T))
+            ? t('warn_snob_too_late')(T.tg.coord)
+            : t('warn_missed_snob')(T.tg.coord);
         }
         planWarnings.push(msg);
         T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true });
@@ -2381,6 +2470,18 @@ function generatePlan() {
     [...T.offRows, ...T.snobRows].forEach(r => {
       planRows.push({ tIdx: T.i + 1, tCoord: T.tg.coord, tPlayer: T.tg.player, ...r });
     });
+  }
+
+  // A row can still be impossible when its assigned window is earlier than
+  // the latest one its source was vetted against — flag it instead of hiding it
+  for (const r of planRows) {
+    if (r.unassigned) continue;
+    const pw = parseWindowStr(r.window);
+    const landMs = pw ? serverWallMs(otCfg.dateISO, pw.to) : null;
+    if (landMs !== null && landMs - r.travel * 60000 < serverNowMs()) {
+      r.late = true;
+      planWarnings.push(t('warn_row_late')(r.srcCoord, r.tCoord));
+    }
   }
 
   saveOffensive();
@@ -2423,7 +2524,7 @@ function renderPlanTable() {
       <td style="color:#60a0e0;font-weight:600;font-family:monospace;">${esc(fmtWindow(r.window) || '—')}</td>
       <td style="color:#f0c040;">${r.unassigned ? '—' : r.dist.toFixed(1)}</td>
       <td>${r.unassigned ? '—' : fmtTime(r.travel)}</td>
-      <td style="font-family:monospace;">${r.unassigned ? '—' : launchWindowStr(r.window, r.travel)}</td>
+      <td style="font-family:monospace;${r.late ? 'color:#e06040;font-weight:600;' : ''}">${r.unassigned ? '—' : (r.late ? '⚠ ' : '') + launchWindowStr(r.window, r.travel)}</td>
       <td>${(() => { const url = r.unassigned ? null : rallyUrl(r.srcCoord, r.tCoord); return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
     </tr>`;
@@ -2984,6 +3085,10 @@ loadOffensive();
 renderOffTargets();
 renderPlanTable();
 
+// Live server clock in Settings (typeof guard: the headless test sandbox has no setInterval)
+updateServerNow();
+if (typeof setInterval === 'function') setInterval(updateServerNow, 1000);
+
 // Village database: render empty state, then load per environment — production
 // (the live site) fetches the web mirror, development restores the local folder
 renderDbTable();
@@ -3010,7 +3115,7 @@ document.addEventListener('drop', e => {
 <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 1.6.0 &nbsp;·&nbsp; 2026-06-12</span>
+  <span><span data-i18n="footer_version">Version</span> 1.6.1 &nbsp;·&nbsp; 2026-06-12</span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
