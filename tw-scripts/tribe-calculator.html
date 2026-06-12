@@ -668,6 +668,8 @@
       <option value="off" data-i18n="opt_mode_off">⚔ Offensive</option>
       <option value="def" data-i18n="opt_mode_def">🛡 Defensive</option>
     </select>
+    <label data-i18n="lbl_send_with">Send with:</label>
+    <select id="target-pace-unit" onchange="renderTargetTable()"></select>
     <label data-i18n="lbl_world_speed">World speed:</label>
     <select id="target-world-speed" onchange="renderTargetTable()">
       <option value="0.5">0.5×</option>
@@ -725,6 +727,10 @@
       <button class="btn btn-ghost btn-sm" id="ot-def-winsnob-fix" style="padding:1px 6px;" onclick="fixDefWin('defWinSnob')">=</button>
       <input type="time" id="ot-def-winsnob-e" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinSnob')">
     </span>
+    <label data-i18n="lbl_def_offs">Default offs:</label>
+    <input type="number" id="ot-def-complete" min="0" max="99" style="width:55px;" oninput="updOTCfgInt('defComplete',this.value)" title="Complete">
+    <input type="number" id="ot-def-tq" min="0" max="99" style="width:55px;" oninput="updOTCfgInt('defTq',this.value)" title="3/4">
+    <input type="number" id="ot-def-half" min="0" max="99" style="width:55px;" oninput="updOTCfgInt('defHalf',this.value)" title="1/2">
   </div>
   <div class="filter-row" style="margin-top:10px;">
     <input type="text" id="ot-add-coord" placeholder="500|500" style="width:90px;font-family:'Consolas','Courier New',monospace;" onkeydown="if(event.key==='Enter')addOffTarget()">
@@ -767,6 +773,7 @@
     <h2 data-i18n="sec_plan">Offensive Plan</h2>
     <div style="display:flex;gap:8px;">
       <button class="btn btn-ghost btn-sm" onclick="showPlanBB()" data-i18n="btn_export_forum">⬇ Export Forum BB</button>
+      <button class="btn btn-ghost btn-sm" onclick="showPlayerPlanBB()" data-i18n="btn_export_player_bb">⬇ Export Per-Player BB</button>
       <button class="btn btn-ghost btn-sm" onclick="exportTable('plan-table','tribe_plan.csv')">⬇ Export CSV</button>
     </div>
   </div>
@@ -815,6 +822,7 @@
           <th data-i18n="th_distance">Distance</th>
           <th data-i18n="th_travel">Travel</th>
           <th data-i18n="th_launch">Launch Window</th>
+          <th data-i18n="th_order">Order</th>
           <th></th>
         </tr>
       </thead>
@@ -847,10 +855,11 @@
     <table id="db-table">
       <thead>
         <tr>
-          <th class="left" data-i18n="th_coord">Coord</th>
-          <th class="left" data-i18n="th_village">Village</th>
-          <th class="left" data-i18n="th_player">Player</th>
-          <th data-i18n="th_points">Points</th>
+          <th class="left" onclick="sortDb('coord')" data-i18n="th_coord">Coord <span class="sort-arrow"></span></th>
+          <th class="left" onclick="sortDb('name')" data-i18n="th_village">Village <span class="sort-arrow"></span></th>
+          <th class="left" onclick="sortDb('player')" data-i18n="th_player">Player <span class="sort-arrow"></span></th>
+          <th class="left" onclick="sortDb('tribe')" data-i18n="th_tribe">Tribe <span class="sort-arrow"></span></th>
+          <th onclick="sortDb('points')" data-i18n="th_points">Points <span class="sort-arrow"></span></th>
           <th></th>
         </tr>
       </thead>
@@ -876,6 +885,12 @@
     </div>
   </div>
   <p style="font-size:12px;color:#5a3a18;margin-top:10px;" data-i18n="settings_note">Changes apply instantly to By Villages and By Player tabs.</p>
+  <div class="section-header"><h2 data-i18n="sec_server">Server</h2></div>
+  <div class="threshold-row">
+    <label data-i18n="lbl_server_url">Server URL:</label>
+    <input type="text" id="setting-server-url" style="width:260px;" oninput="updServerUrl(this.value)">
+  </div>
+  <p style="font-size:12px;color:#5a3a18;margin-top:10px;" data-i18n="server_note">Used to build rally-point links in the plan table.</p>
 </div>
 
 <script>
@@ -903,7 +918,7 @@ const TRAVEL_ICON = { spear:'🗡', sword:'⚔', axe:'🪓', spy:'🔍', light:'
 // Target tab modes: relevant power, unit-count columns, travel-time columns
 const TARGET_MODES = {
   off: { power:'offPow', units:['axe','light','ram','catapult','snob'], travel:['light','axe','sword','ram','snob'] },
-  def: { power:'defInf', units:['spear','sword','heavy','knight'],      travel:['knight','heavy','spear','sword'] },
+  def: { power:'defInf', units:['spear','sword','heavy','light','spy','knight'], travel:['spy','knight','light','heavy','spear','sword'] },
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -1020,7 +1035,7 @@ const T = {
     tab_db:'🗃 Database', sec_db:'Village Database',
     btn_connect_db:'📁 Connect DB Folder', btn_change_db:'📁 Change DB Folder',
     btn_resync_db:'🔄 Re-sync Files', btn_load_db_files:'📂 Load Files…',
-    db_note:'Download village.txt and player.txt from your world\'s map files (e.g. es100.guerrastribales.es/map/village.txt) and connect the folder — coordinates will then auto-fill the owner in Offensive Targets and Tribe Timings.',
+    db_note:'Download village.txt, player.txt and optionally ally.txt from your world\'s map files (e.g. es100.guerrastribales.es/map/village.txt) and connect the folder — coordinates will then auto-fill the owner in Offensive Targets and Tribe Timings.',
     db_status_none:'No database loaded',
     db_status_loaded: (v, p) => `${v} villages · ${p} players loaded`,
     db_connected_refresh:'Folder connected — click Re-sync Files to grant access and load',
@@ -1028,7 +1043,7 @@ const T = {
     db_note_prod:'Village and player data load automatically from the world map mirror (refreshed every ~2 h). Coordinates auto-fill the owner in Offensive Targets and Tribe Timings.',
     db_web_updated: ts => `auto-loaded from web mirror (updated ${ts})`,
     db_web_failed:'Could not load map data from the web — reload the page to retry.',
-    ph_db_search:'Search village, player or coord…',
+    ph_db_search:'Search village, player, tribe or coord…',
     th_village:'Village', th_points:'Points',
     db_no_data:'Connect the DB folder or load village.txt + player.txt',
     db_showing: (s, total) => `Showing ${s} of ${total} matches`,
@@ -1038,6 +1053,10 @@ const T = {
     db_unknown_village:'No village at these coordinates',
     btn_add_target_short:'+ Target', db_added:'✓ Added',
     vil_type_sub: (o,d,m,e) => `${o} off · ${d} def · ${m} mixed · ${e} empty`,
+    sec_server:'Server', lbl_server_url:'Server URL:', server_note:'Used to build rally-point links in the plan table.',
+    lbl_def_offs:'Default offs:', th_order:'Order', btn_export_player_bb:'⬇ Export Per-Player BB',
+    bb_pp_launch:'launch', bb_legend_split: n => `noble train (${n} nobles) with split-off escort`,
+    lbl_send_with:'Send with:', th_tribe:'Tribe',
     footer_dev_by: 'Developed by', footer_version: 'Version',
   },
   es: {
@@ -1139,7 +1158,7 @@ const T = {
     tab_db:'🗃 Base de Datos', sec_db:'Base de Datos de Aldeas',
     btn_connect_db:'📁 Conectar Carpeta BD', btn_change_db:'📁 Cambiar Carpeta BD',
     btn_resync_db:'🔄 Resincronizar', btn_load_db_files:'📂 Cargar Archivos…',
-    db_note:'Descarga village.txt y player.txt de los archivos de mapa de tu mundo (ej. es100.guerrastribales.es/map/village.txt) y conecta la carpeta — las coordenadas rellenarán automáticamente el dueño en Objetivos Ofensivos y Tiempos de Tribu.',
+    db_note:'Descarga village.txt, player.txt y opcionalmente ally.txt de los archivos de mapa de tu mundo (ej. es100.guerrastribales.es/map/village.txt) y conecta la carpeta — las coordenadas rellenarán automáticamente el dueño en Objetivos Ofensivos y Tiempos de Tribu.',
     db_status_none:'Sin base de datos cargada',
     db_status_loaded: (v, p) => `${v} aldeas · ${p} jugadores cargados`,
     db_connected_refresh:'Carpeta conectada — pulsa Resincronizar para conceder acceso y cargar',
@@ -1147,7 +1166,7 @@ const T = {
     db_note_prod:'Los datos de aldeas y jugadores se cargan automáticamente del espejo del mapa (actualizado cada ~2 h). Las coordenadas rellenan automáticamente el dueño en Objetivos Ofensivos y Tiempos de Tribu.',
     db_web_updated: ts => `carga automática del espejo web (actualizado ${ts})`,
     db_web_failed:'No se pudieron cargar los datos del mapa desde la web — recarga la página para reintentar.',
-    ph_db_search:'Buscar aldea, jugador o coordenada…',
+    ph_db_search:'Buscar aldea, jugador, tribu o coordenada…',
     th_village:'Aldea', th_points:'Puntos',
     db_no_data:'Conecta la carpeta BD o carga village.txt + player.txt',
     db_showing: (s, total) => `Mostrando ${s} de ${total} coincidencias`,
@@ -1157,6 +1176,10 @@ const T = {
     db_unknown_village:'No hay aldea en esas coordenadas',
     btn_add_target_short:'+ Objetivo', db_added:'✓ Añadido',
     vil_type_sub: (o,d,m,e) => `${o} ofens. · ${d} def. · ${m} mixtas · ${e} vacías`,
+    sec_server:'Servidor', lbl_server_url:'URL del servidor:', server_note:'Se usa para generar enlaces al punto de reunión en la tabla del plan.',
+    lbl_def_offs:'Offs por defecto:', th_order:'Orden', btn_export_player_bb:'⬇ Exportar BB por Jugador',
+    bb_pp_launch:'salida', bb_legend_split: n => `tren de nobles (${n} nobles) con off partida`,
+    lbl_send_with:'Enviar con:', th_tribe:'Tribu',
     footer_dev_by: 'Desarrollado por', footer_version: 'Versión',
   }
 };
@@ -1278,7 +1301,7 @@ function parseData(text, filename) {
     UNITS.forEach((u, i) => { units[u] = parseInt(cols[2 + i]) || 0; });
 
     const OFF_UNITS = ['axe','light','ram','catapult'];
-    const DEF_UNITS = ['spear','sword','heavy','catapult','knight'];
+    const DEF_UNITS = ['spear','sword','heavy','catapult','knight','light','spy'];
     const offPow = OFF_UNITS.reduce((s,u) => s + units[u] * ATT[u],  0);
     const defInf = DEF_UNITS.reduce((s,u) => s + units[u] * DINF[u], 0);
     const defCav = DEF_UNITS.reduce((s,u) => s + units[u] * DCAV[u], 0);
@@ -1687,12 +1710,26 @@ function targetCols() {
     { key:m.power,  label: mode === 'off' ? t('th_off_power') : t('th_def_power'), defDir:-1 },
     ...m.units.map(u => ({ key:u, label:t('th_' + (u === 'catapult' ? 'cat' : u)), defDir:-1 })),
     ...m.travel.map(u => ({ key:'tt_'+u, label:`${TRAVEL_ICON[u]} ${t('unit_'+u)}`, defDir:1, travel:true })),
+    { key:'order', label:t('th_order'), noSort:true },
   ];
 }
 
 function renderTargetTable() {
+  const mode = document.getElementById('target-mode')?.value || 'off';
+
+  // Rebuild pace-unit select options, preserving current selection when still valid
+  const paceOpts = mode === 'off' ? ['light','axe','sword','ram'] : ['spy','light','heavy','spear','sword','knight'];
+  const paceEl = document.getElementById('target-pace-unit');
+  if (paceEl) {
+    const curPace = paceEl.value;
+    paceEl.innerHTML = paceOpts.map(u => `<option value="${u}">${t('unit_'+u)}</option>`).join('');
+    if (paceOpts.includes(curPace)) paceEl.value = curPace;
+  }
+  const pace = paceEl ? paceEl.value : paceOpts[0];
+
   const cols = targetCols();
   document.getElementById('target-thead-row').innerHTML = cols.map(c => {
+    if (c.noSort) return `<th class="${c.left ? 'left' : ''}">${c.label}</th>`;
     const sortCls = targetSort.key === c.key ? (targetSort.dir === -1 ? ' sort-desc' : ' sort-asc') : '';
     return `<th class="${c.left ? 'left' : ''}${sortCls}"${c.travel ? ` title="${t('tt_title')}"` : ''} onclick="sortTarget('${c.key}')">${c.label} <span class="sort-arrow"></span></th>`;
   }).join('');
@@ -1710,7 +1747,6 @@ function renderTargetTable() {
     return;
   }
 
-  const mode   = document.getElementById('target-mode')?.value || 'off';
   const m      = TARGET_MODES[mode];
   const ws     = parseFloat(document.getElementById('target-world-speed').value) || 1;
   const us     = parseFloat(document.getElementById('target-unit-speed').value) || 1;
@@ -1736,7 +1772,12 @@ function renderTargetTable() {
   });
 
   const powColor = mode === 'off' ? '#e06040' : '#60a0e0';
-  const rows = data.map(v => `
+  const tgtCoord = `${target.x}|${target.y}`;
+  const rows = data.map(v => {
+    const units = orderUnitsFor(mode, pace, v);
+    const orderUrl = units && rallyUrl(v.coord, tgtCoord, units);
+    const orderCell = orderUrl ? `<a href="${esc(orderUrl)}" target="_blank" rel="noopener">${mode === 'off' ? '⚔' : '🛡'}</a>` : '—';
+    return `
     <tr>
       <td class="left" style="font-family:monospace;">${v.coord}</td>
       <td class="left"><span class="player-tag">${decode(v.player)}</span></td>
@@ -1746,8 +1787,10 @@ function renderTargetTable() {
       ${m.travel.map(u => isFinite(v['tt_'+u])
         ? `<td>${fmtTime(v['tt_'+u])}<br><span style="font-size:11px;color:#a08850;">${fmtArrivalTime(v['tt_'+u])}</span></td>`
         : '<td class="num-zero">—</td>').join('')}
+      <td>${orderCell}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   tbody.innerHTML = rows ||
     `<tr class="empty-row"><td colspan="${cols.length}">${t('empty_no_byvillages')}</td></tr>`;
@@ -1771,7 +1814,7 @@ const TIER_RANK = { complete: 3, tq: 2, half: 1, none: 0 };
 const PLAN_BASE_MIN = { off: 30, snob: 35 };
 const TIER_FIELD = { complete: 'nComplete', tq: 'nTq', half: 'nHalf' };
 
-let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30' };
+let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30', serverUrl: 'es100.guerrastribales.es', defComplete: 1, defTq: 0, defHalf: 0 };
 let offTargets   = []; // [{id, coord, player, nComplete, nTq, nHalf, snobPlayers, nobles, offWindows:[{win,count}], winSnob, snobMode, snobAssignees:[{name,count}]}]
 let planRows     = []; // denormalized so a saved plan renders without the troop file loaded
 let planWarnings = [];
@@ -1805,9 +1848,19 @@ function loadOffensive() {
     const b = document.getElementById(id);
     if (b) b.title = t('fix_time_title');
   }
+  const su = document.getElementById('setting-server-url');
+  if (su) su.value = otCfg.serverUrl || '';
+  const dc = document.getElementById('ot-def-complete');
+  if (dc) dc.value = otCfg.defComplete ?? 1;
+  const dt = document.getElementById('ot-def-tq');
+  if (dt) dt.value = otCfg.defTq ?? 0;
+  const dh = document.getElementById('ot-def-half');
+  if (dh) dh.value = otCfg.defHalf ?? 0;
 }
 
 function updOTCfg(k, v) { otCfg[k] = v.trim(); saveOffensive(); }
+function updServerUrl(v) { otCfg.serverUrl = v.trim(); saveOffensive(); }
+function updOTCfgInt(k, v) { otCfg[k] = parseInt(v, 10) || 0; saveOffensive(); }
 
 // ── Time-window helpers (windows stored as 'HH:MM/HH:MM'; start === end = fixed time) ──
 function winParts(s) {
@@ -1862,7 +1915,7 @@ function normalizeOffTarget(tg) {
 function newOffTarget(coord, player) {
   return {
     id: otNextId++, coord, player,
-    nComplete: 1, nTq: 0, nHalf: 1, snobPlayers: 1, nobles: 4,
+    nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0, snobPlayers: 1, nobles: 4,
     snobMode: 'escorted', snobAssignees: [],
     offWindows: [{ win: otCfg.defWinOff, count: 0 }], winSnob: otCfg.defWinSnob,
   };
@@ -2146,6 +2199,43 @@ function launchWindowStr(winStr, travelMin) {
   return `${span}${days ? ` (−${days}d)` : ''}`;
 }
 
+function orderUnitsFor(mode, pace, v) {
+  if (mode === 'off') {
+    if (v[pace] === 0) return null;
+    if (pace === 'light') return { light: v.light };
+    if (pace === 'axe')   return { axe: v.axe, light: v.light };
+    if (pace === 'sword') return { sword: 1, axe: v.axe, light: v.light };
+    if (pace === 'ram')   return { ram: v.ram, axe: v.axe, light: v.light };
+    return null;
+  }
+  // def mode
+  if (v.knight > 0) {
+    const all = {};
+    for (const u of UNITS) if (v[u] > 0) all[u] = v[u];
+    return all;
+  }
+  if (pace === 'knight') return null;
+  if (v[pace] === 0) return null;
+  if (pace === 'spy')   return { spy: v.spy };
+  if (pace === 'light') return { light: v.light };
+  if (pace === 'heavy') return { heavy: v.heavy, light: v.light, spy: v.spy };
+  if (pace === 'spear') return { spear: v.spear, heavy: v.heavy, light: v.light, spy: v.spy };
+  if (pace === 'sword') return { sword: v.sword, spear: v.spear, heavy: v.heavy, light: v.light, spy: v.spy };
+  return null;
+}
+
+function rallyUrl(srcCoord, tgtCoord, units) {
+  const sv = coordDb[srcCoord];
+  const tv = coordDb[tgtCoord];
+  if (!sv || !tv || !otCfg.serverUrl) return null;
+  const host = otCfg.serverUrl.replace(/^https?:\/\//, '');
+  const base = `https://${host}/game.php?village=${sv.id}&screen=place&target=${tv.id}`;
+  if (!units || !Object.keys(units).length) return base;
+  let url = base;
+  for (const [u, n] of Object.entries(units || {})) if (n > 0) url += `&${u}=${n}`;
+  return url;
+}
+
 function splitNobles(total, nPlayers) {
   const n = Math.max(1, nPlayers), base = Math.floor(total / n), rem = total % n;
   return Array.from({ length: n }, (_, i) => base + (i < rem ? 1 : 0)).filter(x => x > 0);
@@ -2308,7 +2398,7 @@ function renderPlanTable() {
 
   const tbody = document.getElementById('plan-tbody');
   if (!planRows.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="11">${t('empty_no_plan')}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="12">${t('empty_no_plan')}</td></tr>`;
     return;
   }
   let lastIdx = null;
@@ -2334,9 +2424,16 @@ function renderPlanTable() {
       <td style="color:#f0c040;">${r.unassigned ? '—' : r.dist.toFixed(1)}</td>
       <td>${r.unassigned ? '—' : fmtTime(r.travel)}</td>
       <td style="font-family:monospace;">${r.unassigned ? '—' : launchWindowStr(r.window, r.travel)}</td>
+      <td>${(() => { const url = r.unassigned ? null : rallyUrl(r.srcCoord, r.tCoord); return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
     </tr>`;
   }).join('');
+}
+
+// ── BB icon helper (shared by both export functions) ──
+function planRowIconBB(r) {
+  if (r.type === 'snob') return r.escorted ? '[unit]axe[/unit][unit]snob[/unit]' : '[unit]snob[/unit]';
+  return `[unit]${r.type === 'half' ? 'axe' : 'ram'}[/unit]`;
 }
 
 // ── Forum BB export (matches the tribe's offensive post format) ──
@@ -2349,7 +2446,8 @@ function showPlanBB() {
   let bb = `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabel()}[/size]\n\n`;
   bb += `[unit]ram[/unit] --> ${t('bb_legend_ram')}\n`;
   if (planRows.some(r => r.type === 'half')) bb += `[unit]axe[/unit] --> ${t('bb_legend_axe')}\n`;
-  if (planRows.some(r => r.type === 'snob')) bb += `[unit]snob[/unit] --> ${t('bb_legend_snob')(noblesLabel)}\n`;
+  if (planRows.some(r => r.type === 'snob' && !r.escorted)) bb += `[unit]snob[/unit] --> ${t('bb_legend_snob')(noblesLabel)}\n`;
+  if (planRows.some(r => r.type === 'snob' && r.escorted)) bb += `[unit]axe[/unit][unit]snob[/unit] --> ${t('bb_legend_split')(noblesLabel)}\n`;
   bb += '\n';
 
   const groups = [];
@@ -2362,13 +2460,59 @@ function showPlanBB() {
     bb += `${gi + 1}. ${g.coord}${g.player ? ` - [player]${g.player}[/player]` : ''}\n`;
     const multiSnob = g.rows.filter(x => x.type === 'snob').length > 1;
     for (const r of g.rows) {
-      const icon   = r.type === 'half' ? 'axe' : r.type === 'snob' ? 'snob' : 'ram';
+      const iconBB = planRowIconBB(r);
       const prefix = r.type === 'snob' && multiSnob ? `${r.count}x ` : '';
       const who    = r.unassigned ? t('bb_unassigned') : `[player]${r.srcPlayer}[/player]`;
-      bb += `${prefix}[unit]${icon}[/unit] ${who} [b][color=#0000a5]${fmtWindow(r.window) || '??:??'}[/color][/b]\n`;
+      bb += `${prefix}${iconBB} ${who} [b][color=#0000a5]${fmtWindow(r.window) || '??:??'}[/color][/b]\n`;
     }
     bb += '\n';
   });
+
+  document.getElementById('bb-output').value = bb.trimEnd() + '\n';
+  document.getElementById('bb-modal').classList.add('open');
+}
+
+// ── Per-player BB export ──
+function showPlayerPlanBB() {
+  if (!planRows.length) { alert(t('empty_no_plan')); return; }
+
+  const nobleCounts = [...new Set(offTargets.map(x => x.nobles).filter(Boolean))].sort((a, b) => a - b);
+  const noblesLabel = nobleCounts.length ? nobleCounts.join(' ó ') : '4';
+
+  const assigned   = planRows.filter(r => !r.unassigned);
+  const unassigned = planRows.filter(r => r.unassigned);
+
+  const byPlayer = {};
+  for (const r of assigned) {
+    if (!byPlayer[r.srcPlayer]) byPlayer[r.srcPlayer] = [];
+    byPlayer[r.srcPlayer].push(r);
+  }
+  const names = Object.keys(byPlayer).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+  let bb = '';
+  for (const name of names) {
+    const rows = byPlayer[name];
+    bb += `========== ${name} (${rows.length}) ==========\n`;
+    bb += `[b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabel()}\n\n`;
+    for (const r of rows) {
+      const iconBB  = planRowIconBB(r);
+      const prefix  = r.type === 'snob' && r.count > 1 ? `${r.count}x ` : '';
+      const defender = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
+      const url     = rallyUrl(r.srcCoord, r.tCoord);
+      const urlPart = url ? ` — [url=${url}]▶[/url]` : '';
+      bb += `${prefix}${iconBB} ${r.srcCoord} → [coord]${r.tCoord}[/coord]${defender} [b][color=#0000a5]${fmtWindow(r.window) || '??:??'}[/color][/b] — ${t('bb_pp_launch')}: ${launchWindowStr(r.window, r.travel)}${urlPart}\n`;
+    }
+    bb += '\n';
+  }
+
+  if (unassigned.length) {
+    bb += `========== ${t('bb_unassigned')} ==========\n`;
+    for (const r of unassigned) {
+      const label = r.type === 'snob' ? t('type_snob') : t('tier_' + r.type);
+      bb += `${label} → ${r.tCoord}\n`;
+    }
+    bb += '\n';
+  }
 
   document.getElementById('bb-output').value = bb.trimEnd() + '\n';
   document.getElementById('bb-modal').classList.add('open');
@@ -2407,6 +2551,8 @@ const IDB = {
 
 let villageDb     = []; // [{id, name, x, y, playerId, points}]
 let playerDb      = {}; // playerId → name
+let playerAllyDb  = {}; // playerId → allyId
+let allyDb        = {}; // allyId  → {name, tag}
 let coordDb       = {}; // "x|y" → village record
 let dbDirHandle   = null;
 let dbSearchTimer = null;
@@ -2420,12 +2566,13 @@ const TW_DATA_URL = 'data/es100/';
 
 async function loadDbFromWeb() {
   try {
-    const [vText, pText, updated] = await Promise.all([
+    const [vText, pText, updated, aText] = await Promise.all([
       fetch(TW_DATA_URL + 'village.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }),
       fetch(TW_DATA_URL + 'player.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }),
       fetch(TW_DATA_URL + 'last-updated.txt').then(r => r.ok ? r.text() : '').catch(() => ''),
+      fetch(TW_DATA_URL + 'ally.txt').then(r => r.ok ? r.text() : '').catch(() => ''),
     ]);
-    setDbData(vText, pText);
+    setDbData(vText, pText, aText);
     if (updated.trim()) {
       document.getElementById('db-status').textContent += ` — ${t('db_web_updated')(updated.trim())}`;
     }
@@ -2437,12 +2584,16 @@ async function loadDbFromWeb() {
 function decodeName(s) { try { return decodeURIComponent(String(s).replace(/\+/g, ' ')); } catch { return s; } }
 
 function parsePlayerDb(text) { // id,name,tribe,villages,points,rank
-  const out = {};
+  const names = {}, allies = {};
   for (const line of text.split('\n')) {
     const p = line.trim().split(',');
-    if (p.length >= 2 && p[0]) out[p[0].trim()] = decodeName(p[1]);
+    if (p.length >= 2 && p[0]) {
+      const id = p[0].trim();
+      names[id] = decodeName(p[1]);
+      if (p.length >= 3) allies[id] = p[2].trim();
+    }
   }
-  return out;
+  return { names, allies };
 }
 
 function parseVillageDb(text) { // id,name,x,y,playerId,points,rank
@@ -2457,8 +2608,25 @@ function parseVillageDb(text) { // id,name,x,y,playerId,points,rank
   return out;
 }
 
-function setDbData(vText, pText) {
-  playerDb  = parsePlayerDb(pText);
+function parseAllyDb(text) { // id,name,tag,members,villages,points,all_points,rank
+  const out = {};
+  for (const line of text.split('\n')) {
+    const p = line.trim().split(',');
+    if (p.length >= 3 && p[0]) out[p[0].trim()] = { name: decodeName(p[1]), tag: decodeName(p[2]) };
+  }
+  return out;
+}
+
+function dbTribeTag(v) {
+  const a = allyDb[playerAllyDb[v.playerId]];
+  return a ? a.tag : '';
+}
+
+function setDbData(vText, pText, aText) {
+  const { names, allies } = parsePlayerDb(pText);
+  playerDb     = names;
+  playerAllyDb = allies;
+  allyDb       = aText ? parseAllyDb(aText) : {};
   villageDb = parseVillageDb(vText);
   coordDb   = {};
   for (const v of villageDb) coordDb[`${v.x}|${v.y}`] = v;
@@ -2468,6 +2636,7 @@ function setDbData(vText, pText) {
   renderDbTable();
   refreshTargetsFromDb();
   renderTargetTable(); // refresh owner info in Tribe Timings
+  renderPlanTable();   // materialize rally links once DB arrives
 }
 
 function dbOwnerName(coord) {
@@ -2497,11 +2666,12 @@ function refreshTargetsFromDb() {
 async function loadDbFromDir() {
   if (!dbDirHandle) return;
   try {
-    const [vFile, pFile] = await Promise.all([
+    const [vFile, pFile, aFile] = await Promise.all([
       dbDirHandle.getFileHandle('village.txt').then(h => h.getFile()),
       dbDirHandle.getFileHandle('player.txt').then(h => h.getFile()),
+      dbDirHandle.getFileHandle('ally.txt').then(h => h.getFile()).catch(() => null),
     ]);
-    setDbData(await vFile.text(), await pFile.text());
+    setDbData(await vFile.text(), await pFile.text(), aFile ? await aFile.text() : '');
   } catch (e) {
     document.getElementById('db-status').textContent = t('db_not_found');
   }
@@ -2553,21 +2723,23 @@ function loadDbFromFileInput(input) {
     r.onload = e => res({ name: f.name.toLowerCase(), text: e.target.result });
     r.readAsText(f);
   }))).then(rs => {
-    let vText = null, pText = null;
+    let vText = null, pText = null, aText = null;
     for (const r of rs) {
-      if (/village/.test(r.name)) vText = r.text;
+      if (/ally/.test(r.name)) aText = r.text;
+      else if (/village/.test(r.name)) vText = r.text;
       else if (/player/.test(r.name)) pText = r.text;
     }
     if (vText === null || pText === null) {
-      // sniff by column count: village rows have ≥7 columns
+      // sniff by column count: village rows have ≥7 columns; skip already-claimed ally file
       for (const r of rs) {
+        if (r.text === aText) continue;
         const cols = (r.text.split('\n').find(l => l.trim()) || '').split(',');
         if (cols.length >= 7 && vText === null) vText = r.text;
         else if (pText === null) pText = r.text;
       }
     }
     if (vText === null || pText === null) { alert(t('alert_select_both')); return; }
-    setDbData(vText, pText);
+    setDbData(vText, pText, aText || '');
   });
   input.value = '';
 }
@@ -2581,32 +2753,79 @@ function renderDbTable() {
   const tbody   = document.getElementById('db-tbody');
   const countEl = document.getElementById('db-count');
   if (!villageDb.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="5">${t('db_no_data')}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6">${t('db_no_data')}</td></tr>`;
     countEl.textContent = '';
     return;
   }
   const q = (document.getElementById('db-search').value || '').trim().toLowerCase();
   let results = villageDb;
-  if (q) results = villageDb.filter(v =>
-    v.name.toLowerCase().includes(q) ||
-    `${v.x}|${v.y}`.includes(q) ||
-    (playerDb[v.playerId] || '').toLowerCase().includes(q));
+  if (q) results = villageDb.filter(v => {
+    const tribe = allyDb[playerAllyDb[v.playerId]];
+    return v.name.toLowerCase().includes(q) ||
+      `${v.x}|${v.y}`.includes(q) ||
+      (playerDb[v.playerId] || '').toLowerCase().includes(q) ||
+      (tribe && (tribe.tag.toLowerCase().includes(q) || tribe.name.toLowerCase().includes(q)));
+  });
+  if (dbSort !== null) {
+    const { key, dir } = dbSort;
+    results = [...results].sort((a, b) => {
+      if (key === 'coord')  return dir * ((a.x * 1000 + a.y) - (b.x * 1000 + b.y));
+      if (key === 'name')   return dir * a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      if (key === 'player') {
+        const pa = playerDb[a.playerId] || '', pb = playerDb[b.playerId] || '';
+        if (!pa && pb) return dir; if (pa && !pb) return -dir;
+        return dir * pa.localeCompare(pb, undefined, { sensitivity: 'base' });
+      }
+      if (key === 'tribe') {
+        const ta = dbTribeTag(a), tb = dbTribeTag(b);
+        if (!ta && tb) return dir; if (ta && !tb) return -dir;
+        return dir * ta.localeCompare(tb, undefined, { sensitivity: 'base' });
+      }
+      if (key === 'points') return dir * (a.points - b.points);
+      return 0;
+    });
+    const dbTable = document.getElementById('db-table');
+    if (dbTable) {
+      const theadRow = dbTable.querySelectorAll('thead tr th');
+      for (const th of theadRow) {
+        th.classList.remove('sort-asc', 'sort-desc');
+        const m = (th.getAttribute('onclick') || '').match(/sortDb\('(\w+)'\)/);
+        if (m && m[1] === key) th.classList.add(dir === -1 ? 'sort-desc' : 'sort-asc');
+      }
+    }
+  }
   const capped = results.slice(0, 200);
   countEl.textContent = results.length > capped.length
     ? t('db_showing')(capped.length, results.length.toLocaleString())
     : results.length ? results.length.toLocaleString() : '';
   if (!capped.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="5">${t('empty_no_results')}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6">${t('empty_no_results')}</td></tr>`;
     return;
   }
-  tbody.innerHTML = capped.map(v => `
+  tbody.innerHTML = capped.map(v => {
+    const tag = dbTribeTag(v);
+    const tribeEntry = allyDb[playerAllyDb[v.playerId]];
+    const tribeCell = tag
+      ? `<span class="player-tag" title="${esc(tribeEntry ? tribeEntry.name : '')}">${esc(tag)}</span>`
+      : '<span class="num-zero">—</span>';
+    return `
     <tr>
       <td class="left" style="font-family:monospace;">${v.x}|${v.y}</td>
       <td class="left">${esc(v.name)}</td>
       <td class="left">${playerDb[v.playerId] ? `<span class="player-tag">${esc(playerDb[v.playerId])}</span>` : '<span class="num-zero">—</span>'}</td>
+      <td class="left">${tribeCell}</td>
       <td>${v.points.toLocaleString()}</td>
       <td><button class="btn btn-primary btn-sm" onclick="addTargetFromDb('${v.x}|${v.y}', this)">${t('btn_add_target_short')}</button></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
+}
+
+let dbSort = null;
+
+function sortDb(key) {
+  if (dbSort && dbSort.key === key) dbSort.dir *= -1;
+  else dbSort = { key, dir: key === 'points' ? -1 : 1 };
+  renderDbTable();
 }
 
 function addTargetFromDb(coord, btn) {
@@ -2791,7 +3010,7 @@ document.addEventListener('drop', e => {
 <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 1.4.0 &nbsp;·&nbsp; 2026-06-11</span>
+  <span><span data-i18n="footer_version">Version</span> 1.6.0 &nbsp;·&nbsp; 2026-06-12</span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
