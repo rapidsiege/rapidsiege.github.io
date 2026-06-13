@@ -164,7 +164,7 @@
     /* ── Power bars ── */
     .power-bar-wrap { margin-bottom: 24px; }
     .power-bar-label { display: flex; justify-content: space-between; font-size: 12px; color: #906838; margin-bottom: 5px; }
-    .power-bar-track { height: 10px; background: #2e1e08; border-radius: 5px; overflow: hidden; }
+    .power-bar-track { height: 10px; background: #2e1e08; border-radius: 5px; overflow: hidden; display: flex; }
     .power-bar-fill { height: 100%; border-radius: 5px; transition: width 0.4s; }
     .bar-off  { background: linear-gradient(90deg, #c03010, #e05020); }
     .bar-def  { background: linear-gradient(90deg, #1060a0, #2080d0); }
@@ -188,6 +188,10 @@
     }
     .unit-name  { font-size: 11px; color: #806030; text-transform: uppercase; letter-spacing: 0.4px; }
     .unit-count { font-size: 18px; font-weight: 700; color: #d4b483; }
+    /* Unit/stat icons (icons/ folder) */
+    .tw-ic    { width: 16px; height: 16px; vertical-align: -3px; margin-right: 3px; image-rendering: -webkit-optimize-contrast; }
+    .tw-ic-lg { width: 26px; height: 26px; vertical-align: middle; margin-right: 0; }
+    th .tw-ic { margin-right: 4px; }
     .unit-type-off  { border-left: 3px solid #c04020; }
     .unit-type-def  { border-left: 3px solid #2070c0; }
     .unit-type-misc { border-left: 3px solid #706030; }
@@ -524,8 +528,8 @@
           <th onclick="sortTable('players',9)" data-i18n-th="th_cat">Cat <span class="sort-arrow"></span></th>
           <th onclick="sortTable('players',10)" data-i18n-th="th_knight">Knight <span class="sort-arrow"></span></th>
           <th onclick="sortTable('players',11)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('players',12)" data-i18n-th="th_off_power">⚔ Off Power <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('players',13)" data-i18n-th="th_def_power">🛡 Def Power <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',12)" data-i18n-th="th_off_power">Off Power <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',13)" data-i18n-th="th_def_power">Total Def Power <span class="sort-arrow"></span></th>
           <th onclick="sortTable('players',14)" title="Villages with Complete Off offensive power"><span class="badge badge-complete" style="cursor:pointer;">Complete</span> <span class="sort-arrow"></span></th>
           <th onclick="sortTable('players',15)" title="Villages with 3/4 offensive power"><span class="badge badge-tq" style="cursor:pointer;">3/4</span> <span class="sort-arrow"></span></th>
           <th onclick="sortTable('players',16)" title="Villages with 1/2 offensive power"><span class="badge badge-half" style="cursor:pointer;">1/2</span> <span class="sort-arrow"></span></th>
@@ -573,7 +577,7 @@
         <tr>
           <th class="left" onclick="sortByVillages(0)" data-i18n-th="th_coord">Coord <span class="sort-arrow"></span></th>
           <th class="left" onclick="sortByVillages(1)" data-i18n-th="th_player">Player <span class="sort-arrow"></span></th>
-          <th onclick="sortByVillages(2)" data-i18n-th="th_off_power">⚔ Off Power <span class="sort-arrow"></span></th>
+          <th onclick="sortByVillages(2)" data-i18n-th="th_off_power">Off Power <span class="sort-arrow"></span></th>
           <th data-i18n="th_tier">Tier</th>
           <th onclick="sortByVillages(4)" data-i18n-th="th_axe">Axe <span class="sort-arrow"></span></th>
           <th onclick="sortByVillages(5)" data-i18n-th="th_light">Light <span class="sort-arrow"></span></th>
@@ -607,33 +611,26 @@
       <option value="mixed" data-i18n="opt_mixed">Mixed</option>
       <option value="empty" data-i18n="opt_empty">Empty</option>
     </select>
-    <label data-i18n="lbl_sort">Sort:</label>
-    <select id="village-sort" onchange="renderVillagesTable()">
-      <option value="player" data-i18n="opt_player_sort">Player</option>
-      <option value="off" data-i18n="opt_off_desc">Off Power ↓</option>
-      <option value="def" data-i18n="opt_def_desc">Def Power ↓</option>
-      <option value="coord" data-i18n="opt_coord">Coord</option>
-    </select>
   </div>
   <div class="table-wrap">
     <table id="villages-table">
       <thead>
         <tr>
-          <th class="left" data-i18n="th_coord">Coord</th>
-          <th class="left" data-i18n="th_player">Player</th>
-          <th data-i18n="th_type">Type</th>
-          <th data-i18n="th_spear">Spear</th>
-          <th data-i18n="th_sword">Sword</th>
-          <th data-i18n="th_axe">Axe</th>
-          <th data-i18n="th_spy">Spy</th>
-          <th data-i18n="th_light">Light</th>
-          <th data-i18n="th_heavy">Heavy</th>
-          <th data-i18n="th_ram">Ram</th>
-          <th data-i18n="th_cat">Cat</th>
-          <th data-i18n="th_knight">Knight</th>
-          <th data-i18n="th_snob">Snob</th>
-          <th data-i18n="th_off">⚔ Off</th>
-          <th data-i18n="th_def">🛡 Def</th>
+          <th class="left" onclick="sortTable('villages',0)" data-i18n-th="th_coord">Coord <span class="sort-arrow"></span></th>
+          <th class="left" onclick="sortTable('villages',1)" data-i18n-th="th_player">Player <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',2)" data-i18n-th="th_type">Type <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',3)" data-i18n-th="th_spear">Spear <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',4)" data-i18n-th="th_sword">Sword <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',5)" data-i18n-th="th_axe">Axe <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',6)" data-i18n-th="th_spy">Spy <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',7)" data-i18n-th="th_light">Light <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',8)" data-i18n-th="th_heavy">Heavy <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',9)" data-i18n-th="th_ram">Ram <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',10)" data-i18n-th="th_cat">Cat <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',11)" data-i18n-th="th_knight">Knight <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',12)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',13)" data-i18n-th="th_off">Off <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',14)" data-i18n-th="th_def">Total Def <span class="sort-arrow"></span></th>
         </tr>
       </thead>
       <tbody id="villages-tbody">
@@ -910,8 +907,8 @@ const UNIT_LABELS = ['Spear','Sword','Axe','Spy','Light','Heavy','Ram','Cat','Kn
 
 // Attack / Def-inf / Def-cav values (standard TW)
 const ATT  = { spear:10,  sword:25,  axe:40,  spy:35,  light:130, heavy:150, ram:2,   catapult:100, knight:150, snob:30  };
-const DINF = { spear:15,  sword:45,  axe:10,  spy:200, light:30,  heavy:200, ram:20,  catapult:100, knight:250, snob:100 };
-const DCAV = { spear:45,  sword:50,  axe:10,  spy:200, light:40,  heavy:80,  ram:50,  catapult:50,  knight:400, snob:100 };
+const DINF = { spear:15,  sword:50,  axe:10,  spy:200, light:30,  heavy:200, ram:20,  catapult:100, knight:250, snob:100 };
+const DCAV = { spear:45,  sword:25,  axe:10,  spy:200, light:40,  heavy:80,  ram:50,  catapult:50,  knight:400, snob:100 };
 
 const UNIT_TYPE = { // off / def / misc
   spear:'def', sword:'def', axe:'off', spy:'misc',
@@ -964,17 +961,17 @@ const T = {
     th_spear:'Spear', th_sword:'Sword', th_axe:'Axe', th_spy:'Spy',
     th_light:'Light', th_heavy:'Heavy', th_ram:'Ram', th_cat:'Cat',
     th_knight:'Knight', th_snob:'Snob',
-    th_off_power:'⚔ Off Power', th_def_power:'🛡 Def Power', th_off:'⚔ Off', th_def:'🛡 Def', th_tier:'Tier',
+    th_off_power:'Off Power', th_def_power:'Total Def Power', th_off:'Off', th_def:'Total Def', th_tier:'Tier',
     drop_title:'Drop your tribe info .txt here', drop_sub:'or click to browse',
     status_no_file:'No file loaded — drag & drop a tribe info .txt file or use Load File',
     stat_players:'Players', stat_villages:'Villages', stat_avg:'Avg Villages/Player',
     stat_nobles:'Total Nobles (Snobs)', stat_rams:'Total Rams',
-    stat_off_power:'⚔ Total Off Power', stat_def_inf:'🛡 Def vs Infantry', stat_def_cav:'🛡 Def vs Cavalry',
-    bar_off:'⚔ Offensive Power', bar_def:'🛡 Defensive Power (vs Infantry)',
-    rank_off:'⚔ Off Power', rank_def:'🛡 Def Power', rank_villages:'🏘 Villages',
-    rank_spear:'🗡 Spears', rank_sword:'⚔ Swords', rank_axe:'🪓 Axes',
-    rank_spy:'🔍 Spies', rank_light:'🏹 Light Cav', rank_heavy:'🐴 Heavy Cav',
-    rank_rams:'🐏 Rams', rank_cat:'💣 Catapults', rank_knight:'🐴 Knights', rank_nobles:'👑 Nobles',
+    stat_off_power:'Total Off Power', stat_def_inf:'Def vs Infantry', stat_def_cav:'Def vs Cavalry',
+    bar_off:'Offensive Power', bar_def:'Defensive Power',
+    rank_off:'Off Power', rank_def:'Total Def Power', rank_villages:'🏘 Villages',
+    rank_spear:'Spears', rank_sword:'Swords', rank_axe:'Axes',
+    rank_spy:'Spies', rank_light:'Light Cav', rank_heavy:'Heavy Cav',
+    rank_rams:'Rams', rank_cat:'Catapults', rank_knight:'Knights', rank_nobles:'Nobles',
     unit_spear:'Spear', unit_sword:'Sword', unit_axe:'Axe', unit_spy:'Spy',
     unit_light:'Light', unit_heavy:'Heavy', unit_ram:'Ram', unit_catapult:'Cat',
     unit_knight:'Knight', unit_snob:'Snob',
@@ -1094,17 +1091,17 @@ const T = {
     th_spear:'Lanza', th_sword:'Espada', th_axe:'Hacha', th_spy:'Espía',
     th_light:'C. Ligera', th_heavy:'C. Pesada', th_ram:'Ariete', th_cat:'Catap.',
     th_knight:'Paladín', th_snob:'Noble',
-    th_off_power:'⚔ Pod. Ofens.', th_def_power:'🛡 Pod. Def.', th_off:'⚔ Ofens.', th_def:'🛡 Def.', th_tier:'Nivel',
+    th_off_power:'Pod. Ofens.', th_def_power:'Pod. Def. Total', th_off:'Ofens.', th_def:'Def. Total', th_tier:'Nivel',
     drop_title:'Suelta tu archivo .txt de tribu aquí', drop_sub:'o haz clic para buscar',
     status_no_file:'Sin archivo — arrastra el .txt de tu tribu o usa Cargar',
     stat_players:'Jugadores', stat_villages:'Aldeas', stat_avg:'Aldeas/Jugador (media)',
     stat_nobles:'Total Nobles', stat_rams:'Total Arietes',
-    stat_off_power:'⚔ Pod. Ofensivo Total', stat_def_inf:'🛡 Def vs Infantería', stat_def_cav:'🛡 Def vs Caballería',
-    bar_off:'⚔ Poder Ofensivo', bar_def:'🛡 Poder Defensivo (vs Infantería)',
-    rank_off:'⚔ Pod. Ofensivo', rank_def:'🛡 Pod. Defensivo', rank_villages:'🏘 Aldeas',
-    rank_spear:'🗡 Lanzas', rank_sword:'⚔ Espadas', rank_axe:'🪓 Hachas',
-    rank_spy:'🔍 Espías', rank_light:'🏹 C. Ligera', rank_heavy:'🐴 C. Pesada',
-    rank_rams:'🐏 Arietes', rank_cat:'💣 Catapultas', rank_knight:'🐴 Paladines', rank_nobles:'👑 Nobles',
+    stat_off_power:'Pod. Ofensivo Total', stat_def_inf:'Def vs Infantería', stat_def_cav:'Def vs Caballería',
+    bar_off:'Poder Ofensivo', bar_def:'Poder Defensivo',
+    rank_off:'Pod. Ofensivo', rank_def:'Pod. Def. Total', rank_villages:'🏘 Aldeas',
+    rank_spear:'Lanzas', rank_sword:'Espadas', rank_axe:'Hachas',
+    rank_spy:'Espías', rank_light:'C. Ligera', rank_heavy:'C. Pesada',
+    rank_rams:'Arietes', rank_cat:'Catapultas', rank_knight:'Paladines', rank_nobles:'Nobles',
     unit_spear:'Lanza', unit_sword:'Espada', unit_axe:'Hacha', unit_spy:'Espía',
     unit_light:'C. Ligera', unit_heavy:'C. Pesada', unit_ram:'Ariete', unit_catapult:'Catapulta',
     unit_knight:'Paladín', unit_snob:'Noble',
@@ -1227,6 +1224,29 @@ function changeLang(l) {
   updateDbConnectBtn();
 }
 
+// ── Unit/stat icons (icons/ folder; see .claude/PLAN.md for the deploy note) ──
+const ICON_KEYS = new Set(['spear','sword','axe','spy','light','heavy','ram','catapult','knight','snob','off','def','def_cav']);
+function twIcon(key, cls) {
+  return ICON_KEYS.has(key) ? `<img class="tw-ic${cls ? ' ' + cls : ''}" src="icons/${key}.png" alt="">` : '';
+}
+// Map data-i18n-th header keys → icon file key
+const TH_ICON = {
+  th_spear:'spear', th_sword:'sword', th_axe:'axe', th_spy:'spy', th_light:'light',
+  th_heavy:'heavy', th_ram:'ram', th_cat:'catapult', th_knight:'knight', th_snob:'snob',
+  th_off_power:'off', th_def_power:'def', th_off:'off', th_def:'def',
+};
+// Prepend the matching icon to every static table header once (idempotent, DOM-safe for the test sandbox)
+function injectThIcons() {
+  if (typeof document === 'undefined' || !document.querySelectorAll) return;
+  try {
+    document.querySelectorAll('[data-i18n-th]').forEach(el => {
+      const ic = TH_ICON[el.dataset && el.dataset.i18nTh];
+      if (ic && el.insertAdjacentHTML && !(el.querySelector && el.querySelector('.tw-ic')))
+        el.insertAdjacentHTML('afterbegin', twIcon(ic));
+    });
+  } catch (e) {}
+}
+
 function applyLang() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const v = t(el.dataset.i18n);
@@ -1234,7 +1254,11 @@ function applyLang() {
   });
   document.querySelectorAll('[data-i18n-th]').forEach(el => {
     const v = t(el.dataset.i18nTh);
-    if (v && el.childNodes[0]) el.childNodes[0].textContent = v + ' ';
+    if (!v) return;
+    // Update the label text node, leaving any prepended .tw-ic <img> and the trailing sort-arrow span intact
+    const tn = [...el.childNodes].find(n => n.nodeType === 3 && n.textContent.trim()) || [...el.childNodes].find(n => n.nodeType === 3);
+    if (tn) tn.textContent = v + ' ';
+    else if (el.childNodes[0]) el.childNodes[0].textContent = v + ' ';
   });
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
     const v = t(el.dataset.i18nPlaceholder);
@@ -1397,22 +1421,19 @@ function renderOverview() {
     <div class="stat-card"><div class="stat-label">${t('stat_avg')}</div><div class="stat-value">${(villages.length/playerCount).toFixed(1)}</div></div>
     <div class="stat-card"><div class="stat-label">${t('stat_nobles')}</div><div class="stat-value">${fmt(totalSnobs)}</div></div>
     <div class="stat-card"><div class="stat-label">${t('stat_rams')}</div><div class="stat-value">${fmt(totalRams)}</div></div>
-    <div class="stat-card"><div class="stat-label">${t('stat_off_power')}</div><div class="stat-value" style="color:#e06040;">${fmtM(totalOff)}</div></div>
-    <div class="stat-card"><div class="stat-label">${t('stat_def_inf')}</div><div class="stat-value" style="color:#60a0e0;">${fmtM(totalDefInf)}</div></div>
-    <div class="stat-card"><div class="stat-label">${t('stat_def_cav')}</div><div class="stat-value" style="color:#40c080;">${fmtM(totalDefCav)}</div></div>
+    <div class="stat-card"><div class="stat-label">${twIcon('off')}${t('stat_off_power')}</div><div class="stat-value" style="color:#e06040;">${fmtM(totalOff)}</div></div>
+    <div class="stat-card"><div class="stat-label">${twIcon('def')}${t('stat_def_inf')}</div><div class="stat-value" style="color:#60a0e0;">${fmtM(totalDefInf)}</div></div>
+    <div class="stat-card"><div class="stat-label">${twIcon('def_cav')}${t('stat_def_cav')}</div><div class="stat-value" style="color:#40c080;">${fmtM(totalDefCav)}</div></div>
   `;
 
   // Power bars
-  const maxOff = Math.max(...Object.values(players).map(p => p.offPow));
-  const maxDef = Math.max(...Object.values(players).map(p => p.defInf));
-  const maxCav = Math.max(...Object.values(players).map(p => p.defCav));
+  const maxOff      = Math.max(...Object.values(players).map(p => p.offPow));
+  const maxDefTotal = Math.max(...Object.values(players).map(p => p.defInf + p.defCav));
   const topOffPlayer = Object.entries(players).sort((a,b) => b[1].offPow - a[1].offPow)[0];
-  const topDefPlayer = Object.entries(players).sort((a,b) => b[1].defInf - a[1].defInf)[0];
-  const topCavPlayer = Object.entries(players).sort((a,b) => b[1].defCav - a[1].defCav)[0];
 
   document.getElementById('power-bars').innerHTML = `
     <div style="margin-bottom:16px;">
-      <div class="power-bar-label"><span>${t('bar_off')}</span><span style="color:#e06040;">${fmtM(totalOff)} pts</span></div>
+      <div class="power-bar-label"><span>${twIcon('off')}${t('bar_off')}</span><span style="color:#e06040;">${fmtM(totalOff)} pts</span></div>
       <div style="display:grid;gap:5px;">
         ${Object.entries(players).sort((a,b)=>b[1].offPow-a[1].offPow).slice(0,8).map(([name,p]) => `
           <div>
@@ -1425,16 +1446,21 @@ function renderOverview() {
       </div>
     </div>
     <div style="margin-bottom:16px;">
-      <div class="power-bar-label"><span>${t('bar_def')}</span><span style="color:#60a0e0;">${fmtM(totalDefInf)} pts</span></div>
+      <div class="power-bar-label"><span>${twIcon('def')}${t('bar_def')}</span><span style="color:#60a0e0;">${fmtM(totalDefInf + totalDefCav)} pts</span></div>
       <div style="display:grid;gap:5px;">
-        ${Object.entries(players).sort((a,b)=>b[1].defInf-a[1].defInf).slice(0,8).map(([name,p]) => `
-          <div>
+        ${Object.entries(players).sort((a,b)=>(b[1].defInf+b[1].defCav)-(a[1].defInf+a[1].defCav)).slice(0,8).map(([name,p]) => {
+          const infW = maxDefTotal > 0 ? Math.round(p.defInf / maxDefTotal * 100) : 0;
+          const cavW = maxDefTotal > 0 ? Math.round(p.defCav / maxDefTotal * 100) : 0;
+          return `<div>
             <div style="display:flex;justify-content:space-between;font-size:11px;color:#806030;margin-bottom:2px;">
-              <span>${decode(name)}</span><span style="color:#d0a870;">${fmtM(p.defInf)}</span>
+              <span>${decode(name)}</span><span style="color:#d0a870;">${fmtM(p.defInf + p.defCav)}</span>
             </div>
-            <div class="power-bar-track"><div class="power-bar-fill bar-def" style="width:${maxDef>0?Math.round(p.defInf/maxDef*100):0}%"></div></div>
-          </div>
-        `).join('')}
+            <div class="power-bar-track">
+              <div class="power-bar-fill bar-def" style="width:${infW}%" title="vs Infantry: ${fmtM(p.defInf)}"></div>
+              <div class="power-bar-fill bar-cav" style="width:${cavW}%" title="vs Cavalry: ${fmtM(p.defCav)}"></div>
+            </div>
+          </div>`;
+        }).join('')}
       </div>
     </div>
   `;
@@ -1451,7 +1477,7 @@ function renderOverview() {
     else if (u === 'catapult')    statLine = `Att: ${ATT[u]} | Def: ${DINF[u]}/${DCAV[u]}`;
     else                          statLine = '—';
     return `<div class="unit-card ${cls}">
-      <div class="unit-name">${t('unit_' + UNITS[i])}</div>
+      <div class="unit-name">${twIcon(u)}${t('unit_' + UNITS[i])}</div>
       <div class="unit-count">${fmt(total)}</div>
       <div class="stat-sub">${statLine}</div>
     </div>`;
@@ -1471,7 +1497,7 @@ function renderPlayersTable() {
     const tierComplete = p.villages.filter(v => getOffTier(v.offPow) === 'complete').length;
     const tierTq       = p.villages.filter(v => getOffTier(v.offPow) === 'tq').length;
     const tierHalf     = p.villages.filter(v => getOffTier(v.offPow) === 'half').length;
-    return { name, vilCount: p.villages.length, offVilCount, defVilCount, ...p.totals, offPow: p.offPow, defInf: p.defInf, tierComplete, tierTq, tierHalf };
+    return { name, vilCount: p.villages.length, offVilCount, defVilCount, ...p.totals, offPow: p.offPow, defInf: p.defInf, defCav: p.defCav, tierComplete, tierTq, tierHalf };
   });
 
   if (search) data = data.filter(r => r.name.toLowerCase().includes(search));
@@ -1482,8 +1508,8 @@ function renderPlayersTable() {
   const { col, dir } = sortState.players;
   if (col >= 0) {
     data.sort((a,b) => {
-      const vals = [a.name, a.vilCount, ...UNITS.map(u=>a[u]), a.offPow, a.defInf, a.tierComplete, a.tierTq, a.tierHalf];
-      const bvals= [b.name, b.vilCount, ...UNITS.map(u=>b[u]), b.offPow, b.defInf, b.tierComplete, b.tierTq, b.tierHalf];
+      const vals = [a.name, a.vilCount, ...UNITS.map(u=>a[u]), a.offPow, a.defInf + a.defCav, a.tierComplete, a.tierTq, a.tierHalf];
+      const bvals= [b.name, b.vilCount, ...UNITS.map(u=>b[u]), b.offPow, b.defInf + b.defCav, b.tierComplete, b.tierTq, b.tierHalf];
       const av = vals[col], bv = bvals[col];
       if (typeof av === 'string') return dir * av.localeCompare(bv);
       return dir * (bv - av);
@@ -1493,7 +1519,7 @@ function renderPlayersTable() {
   // Tribe totals
   const tribeTotals = Object.fromEntries(UNITS.map(u => [u, villages.reduce((s,v)=>s+v[u],0)]));
   const tribeOff = villages.reduce((s,v)=>s+v.offPow,0);
-  const tribeDef = villages.reduce((s,v)=>s+v.defInf,0);
+  const tribeDef = villages.reduce((s,v)=>s+v.defInf+v.defCav,0);
 
   const rows = data.map(r => `
     <tr>
@@ -1501,7 +1527,7 @@ function renderPlayersTable() {
       <td>${r.vilCount}</td>
       ${UNITS.map(u => numCell(r[u])).join('')}
       <td style="color:#e06040;font-weight:600;">${fmtM(r.offPow)}</td>
-      <td style="color:#60a0e0;font-weight:600;">${fmtM(r.defInf)}</td>
+      <td style="color:#60a0e0;font-weight:600;" title="${fmtM(r.defInf)} inf + ${fmtM(r.defCav)} cav">${fmtM(r.defInf + r.defCav)}</td>
       <td style="color:#ff6040;font-weight:${r.tierComplete>0?'700':'400'};${r.tierComplete===0?'color:#4a3010;':''}">${r.tierComplete||'—'}</td>
       <td style="color:#f0a030;font-weight:${r.tierTq>0?'700':'400'};${r.tierTq===0?'color:#4a3010;':''}">${r.tierTq||'—'}</td>
       <td style="color:#d8d030;font-weight:${r.tierHalf>0?'700':'400'};${r.tierHalf===0?'color:#4a3010;':''}">${r.tierHalf||'—'}</td>
@@ -1617,17 +1643,23 @@ function sortByVillages(col) {
 function renderVillagesTable() {
   const search     = (document.getElementById('village-search').value || '').toLowerCase();
   const typeFilter = document.getElementById('village-filter-type').value;
-  const sortBy     = document.getElementById('village-sort').value;
 
   let data = [...villages];
 
   if (search) data = data.filter(v => v.player.toLowerCase().includes(search) || v.coord.includes(search));
   if (typeFilter !== 'all') data = data.filter(v => v.type === typeFilter);
 
-  if (sortBy === 'off')    data.sort((a,b) => b.offPow - a.offPow);
-  else if (sortBy === 'def') data.sort((a,b) => b.defInf - a.defInf);
-  else if (sortBy === 'coord') data.sort((a,b) => a.coord.localeCompare(b.coord));
-  else data.sort((a,b) => a.player.localeCompare(b.player) || a.coord.localeCompare(b.coord));
+  const { col, dir } = sortState.villages;
+  if (col >= 0) {
+    data.sort((a, b) => {
+      const vilVals = v => [v.coord, v.player, v.type, ...UNITS.map(u => v[u]), v.offPow, v.defInf + v.defCav];
+      const av = vilVals(a)[col], bv = vilVals(b)[col];
+      if (typeof av === 'string') return dir * av.localeCompare(bv);
+      return dir * (bv - av);
+    });
+  } else {
+    data.sort((a,b) => a.player.localeCompare(b.player) || a.coord.localeCompare(b.coord));
+  }
 
   const typeBadge = {
     off: '<span class="badge badge-off">OFF</span>',
@@ -1643,35 +1675,42 @@ function renderVillagesTable() {
       <td>${typeBadge[v.type]}</td>
       ${UNITS.map(u => numCell(v[u])).join('')}
       <td style="color:#e06040;">${fmtM(v.offPow)}</td>
-      <td style="color:#60a0e0;">${fmtM(v.defInf)}</td>
+      <td style="color:#60a0e0;" title="${fmtM(v.defInf)} inf + ${fmtM(v.defCav)} cav">${fmtM(v.defInf + v.defCav)}</td>
     </tr>
   `).join('');
 
   document.getElementById('villages-tbody').innerHTML = rows ||
     `<tr class="empty-row"><td colspan="15">${t('empty_no_villages')}</td></tr>`;
+
+  const { col: vcol, dir: vdir } = sortState.villages;
+  document.getElementById('villages-table').querySelectorAll('th').forEach((th, i) => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (i === vcol) th.classList.add(vdir === -1 ? 'sort-desc' : 'sort-asc');
+  });
 }
 
 // ══════════════════════════════════════════════════════════════
 // RANKINGS
 // ══════════════════════════════════════════════════════════════
 function renderRankings() {
-  const playerList = Object.entries(players).map(([name, p]) => ({ name, ...p.totals, offPow: p.offPow, defInf: p.defInf, defCav: p.defCav, vilCount: p.villages.length }));
+  const playerList = Object.entries(players).map(([name, p]) => ({ name, ...p.totals, offPow: p.offPow, defInf: p.defInf, defCav: p.defCav, defPow: p.defInf + p.defCav, vilCount: p.villages.length }));
 
-  const rankSection = (title, sorted, valueKey, fmt_fn, color) => {
+  const rankSection = (title, sorted, valueKey, fmt_fn, color, tooltipFn, iconKey) => {
+    const ttl = (iconKey ? twIcon(iconKey) : '') + title;
     const top = sorted.slice(0, 10);
     const rows = top.map((r, i) => `
       <tr>
         <td class="left" style="color:#806030;">${i+1}</td>
         <td class="left"><span class="player-tag">${decode(r.name)}</span></td>
-        <td style="color:${color};font-weight:600;">${fmt_fn(r[valueKey])}</td>
+        <td style="color:${color};font-weight:600;"${tooltipFn ? ` title="${tooltipFn(r)}"` : ''}>${fmt_fn(r[valueKey])}</td>
       </tr>
     `).join('');
     return `
       <div style="margin-bottom:28px;">
-        <div class="section-header"><h2>${title}</h2></div>
+        <div class="section-header"><h2>${ttl}</h2></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th class="left">#</th><th class="left">Player</th><th>${title}</th></tr></thead>
+            <thead><tr><th class="left">#</th><th class="left">Player</th><th>${ttl}</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -1681,18 +1720,18 @@ function renderRankings() {
 
   const grid = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px;">`;
   let html = grid;
-  html += rankSection(t('rank_off'),      [...playerList].sort((a,b)=>b.offPow-a.offPow),   'offPow',   fmtM, '#e06040');
-  html += rankSection(t('rank_def'),      [...playerList].sort((a,b)=>b.defInf-a.defInf),   'defInf',   fmtM, '#60a0e0');
+  html += rankSection(t('rank_off'),      [...playerList].sort((a,b)=>b.offPow-a.offPow),   'offPow',   fmtM, '#e06040', null, 'off');
+  html += rankSection(t('rank_def'),      [...playerList].sort((a,b)=>b.defPow-a.defPow),   'defPow',   fmtM, '#60a0e0', r => `${fmtM(r.defInf)} inf + ${fmtM(r.defCav)} cav`, 'def');
   html += rankSection(t('rank_villages'), [...playerList].sort((a,b)=>b.vilCount-a.vilCount),'vilCount', fmt,  '#f0c040');
-  html += rankSection(t('rank_spear'),    [...playerList].sort((a,b)=>b.spear-a.spear),      'spear',    fmt,  '#60a0e0');
-  html += rankSection(t('rank_sword'),    [...playerList].sort((a,b)=>b.sword-a.sword),      'sword',    fmt,  '#4090d0');
-  html += rankSection(t('rank_axe'),      [...playerList].sort((a,b)=>b.axe-a.axe),          'axe',      fmt,  '#c04020');
-  html += rankSection(t('rank_spy'),      [...playerList].sort((a,b)=>b.spy-a.spy),           'spy',      fmt,  '#a0a060');
-  html += rankSection(t('rank_light'),    [...playerList].sort((a,b)=>b.light-a.light),       'light',    fmt,  '#d4b483');
-  html += rankSection(t('rank_heavy'),    [...playerList].sort((a,b)=>b.heavy-a.heavy),       'heavy',    fmt,  '#2080c0');
-  html += rankSection(t('rank_rams'),     [...playerList].sort((a,b)=>b.ram-a.ram),           'ram',      fmt,  '#c08020');
-  html += rankSection(t('rank_cat'),      [...playerList].sort((a,b)=>b.catapult-a.catapult), 'catapult', fmt,  '#c06030');
-  html += rankSection(t('rank_nobles'),   [...playerList].sort((a,b)=>b.snob-a.snob),         'snob',     fmt,  '#f0c040');
+  html += rankSection(t('rank_spear'),    [...playerList].sort((a,b)=>b.spear-a.spear),      'spear',    fmt,  '#60a0e0', null, 'spear');
+  html += rankSection(t('rank_sword'),    [...playerList].sort((a,b)=>b.sword-a.sword),      'sword',    fmt,  '#4090d0', null, 'sword');
+  html += rankSection(t('rank_axe'),      [...playerList].sort((a,b)=>b.axe-a.axe),          'axe',      fmt,  '#c04020', null, 'axe');
+  html += rankSection(t('rank_spy'),      [...playerList].sort((a,b)=>b.spy-a.spy),           'spy',      fmt,  '#a0a060', null, 'spy');
+  html += rankSection(t('rank_light'),    [...playerList].sort((a,b)=>b.light-a.light),       'light',    fmt,  '#d4b483', null, 'light');
+  html += rankSection(t('rank_heavy'),    [...playerList].sort((a,b)=>b.heavy-a.heavy),       'heavy',    fmt,  '#2080c0', null, 'heavy');
+  html += rankSection(t('rank_rams'),     [...playerList].sort((a,b)=>b.ram-a.ram),           'ram',      fmt,  '#c08020', null, 'ram');
+  html += rankSection(t('rank_cat'),      [...playerList].sort((a,b)=>b.catapult-a.catapult), 'catapult', fmt,  '#c06030', null, 'catapult');
+  html += rankSection(t('rank_nobles'),   [...playerList].sort((a,b)=>b.snob-a.snob),         'snob',     fmt,  '#f0c040', null, 'snob');
   html += '</div>';
 
   document.getElementById('rankings-content').innerHTML = html;
@@ -1739,8 +1778,8 @@ function targetCols() {
     { key:'coord',  label:t('th_coord'),    left:true, str:true, defDir:1 },
     { key:'player', label:t('th_player'),   left:true, str:true, defDir:1 },
     { key:'dist',   label:t('th_distance'), defDir:1 },
-    { key:m.power,  label: mode === 'off' ? t('th_off_power') : t('th_def_power'), defDir:-1 },
-    ...m.units.map(u => ({ key:u, label:t('th_' + (u === 'catapult' ? 'cat' : u)), defDir:-1 })),
+    { key:m.power,  label: twIcon(mode === 'off' ? 'off' : 'def') + (mode === 'off' ? t('th_off_power') : t('th_def_power')), defDir:-1 },
+    ...m.units.map(u => ({ key:u, label:twIcon(u) + t('th_' + (u === 'catapult' ? 'cat' : u)), defDir:-1 })),
     ...m.travel.map(u => ({ key:'tt_'+u, label:`${TRAVEL_ICON[u]} ${t('unit_'+u)}`, defDir:1, travel:true })),
     { key:'order', label:t('th_order'), noSort:true },
   ];
@@ -2990,6 +3029,7 @@ function sortTable(tableId, col) {
   });
 
   if (tableId === 'players') renderPlayersTable();
+  else if (tableId === 'villages') renderVillagesTable();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -3112,6 +3152,9 @@ function copyBBTable() {
   setTimeout(() => { btn.textContent = t('bb_copy_btn'); }, 2000);
 }
 
+// Prepend unit/stat icons to the static table headers (once)
+injectThIcons();
+
 // Initial render of the Tribe Timings tab (builds its header + empty state)
 renderTargetTable();
 
@@ -3150,7 +3193,7 @@ document.addEventListener('drop', e => {
 <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 1.6.3 &nbsp;·&nbsp; 2026-06-13</span>
+  <span><span data-i18n="footer_version">Version</span> 1.7.0 &nbsp;·&nbsp; 2026-06-14</span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
