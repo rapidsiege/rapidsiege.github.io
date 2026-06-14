@@ -916,9 +916,18 @@
 </div>
 
 <!-- ═══════════════════════════ CHANGELOG ═══════════════════════════ -->
+<!-- MAINTENANCE: add a new .cl-entry card at the TOP of this list on every version
+     bump (keep newest first), and update the footer version number to match. -->
 <div class="tab-content" id="tab-changelog">
   <div class="section-header"><h2 data-i18n="sec_changelog">Changelog</h2></div>
   <p style="font-size:12px;color:#5a3a18;margin-top:6px;margin-bottom:16px;" data-i18n="changelog_intro">Feature and change history for the Tribe Calculator, per version bump.</p>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v1.7.3</span><span class="cl-date">2026-06-14</span></div>
+    <ul class="cl-list">
+      <li><b>Corrected morale formula:</b> now <code>morale = 3 × defender points ÷ attacker points + 0.3</code>, clamped between 30% and 100% — fitted exactly to in-game battle simulations (the previous <code>+ 0.25</code> was off by ~5 points across the mid-range).</li>
+    </ul>
+  </div>
 
   <div class="cl-entry">
     <div class="cl-head"><span class="cl-ver">v1.7.2</span><span class="cl-date">2026-06-14</span></div>
@@ -1192,7 +1201,7 @@ const T = {
     lbl_send_with:'Send with:', th_tribe:'Tribe',
     unit_any:'Any', lbl_arrive_by:'Arrive by:',
     th_morale:'Morale',
-    morale_title:'Morale = 3 × defender points ÷ attacker points + 0.25, capped at 100%. Uses each player\'s total village points from the loaded map database.',
+    morale_title:'Morale = 3 × defender points ÷ attacker points + 0.3, clamped between 30% and 100%. Uses each player\'s total village points from the loaded map database.',
     morale_tip:(d, a) => `Defender ${d} pts · attacker ${a} pts`,
     morale_barb:'Barbarian village — no morale penalty (100%)',
     warn_tier_bumped: (from, to, coord) => `No ${from} off left for ${coord} — upgraded to a ${to} off`,
@@ -1327,7 +1336,7 @@ const T = {
     lbl_send_with:'Enviar con:', th_tribe:'Tribu',
     unit_any:'Cualquiera', lbl_arrive_by:'Llegar antes de:',
     th_morale:'Moral',
-    morale_title:'Moral = 3 × puntos del defensor ÷ puntos del atacante + 0.25, máximo 100%. Usa los puntos totales de aldeas de cada jugador de la base de datos del mapa.',
+    morale_title:'Moral = 3 × puntos del defensor ÷ puntos del atacante + 0.3, limitada entre 30% y 100%. Usa los puntos totales de aldeas de cada jugador de la base de datos del mapa.',
     morale_tip:(d, a) => `Defensor ${d} ptos · atacante ${a} ptos`,
     morale_barb:'Aldea bárbara — sin penalización de moral (100%)',
     warn_tier_bumped: (from, to, coord) => `Sin off ${from} disponible para ${coord} — mejorado a un off ${to}`,
@@ -1901,11 +1910,12 @@ function playerPointsAtCoord(coord) {
   const v = coordDb[coord];
   return v ? (playerPointsDb[v.playerId] || 0) : 0;
 }
-// morale = 3 · defenderPoints / attackerPoints + 0.25, capped at 100%.
+// morale = 3 · defenderPoints / attackerPoints + 0.3, clamped to [30%, 100%].
+// Fitted exactly (to the integer %) against in-game simulations in morale_simulations.csv.
 // null when either side's points are unknown (DB not loaded / village not in map).
 function moraleValue(defPts, attPts) {
   if (!defPts || !attPts) return null;
-  return Math.min(1, 3 * defPts / attPts + 0.25);
+  return Math.min(1, Math.max(0.3, 3 * defPts / attPts + 0.3));
 }
 // Barbarian / abandoned villages (playerId 0) have no owner → no morale penalty (always 100%).
 function isBarbarian(coord) {
@@ -3366,9 +3376,11 @@ document.addEventListener('drop', e => {
 </script>
 
 <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
+<!-- ON EVERY VERSION BUMP: update this version number AND add a matching .cl-entry
+     card at the top of the Changelog tab (search "id=\"tab-changelog\""). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 1.7.2 &nbsp;·&nbsp; 2026-06-14</span>
+  <span><span data-i18n="footer_version">Version</span> 1.7.3 &nbsp;·&nbsp; 2026-06-14</span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
