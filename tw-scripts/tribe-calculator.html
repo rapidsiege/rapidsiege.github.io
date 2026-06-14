@@ -257,6 +257,22 @@
     .badge-mixed { background: rgba(160,120,32,0.25); color: #d0a040; border: 1px solid #806020; }
     .badge-empty { background: rgba(80,60,30,0.2); color: #706050; border: 1px solid #4a3010; }
 
+    /* ── Changelog ── */
+    .cl-entry {
+      background: #160f04;
+      border: 1px solid #3a2808;
+      border-radius: 6px;
+      padding: 12px 18px 14px;
+      margin-bottom: 14px;
+      max-width: 760px;
+    }
+    .cl-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+    .cl-ver  { color: #f0c040; font-weight: 700; font-size: 15px; }
+    .cl-date { color: #806030; font-size: 12px; }
+    .cl-list { margin: 0; padding-left: 20px; color: #c9a87a; font-size: 13px; line-height: 1.65; }
+    .cl-list b { color: #e8c87a; }
+    .cl-list code { color: #d4b483; background: rgba(0,0,0,0.3); padding: 1px 4px; border-radius: 3px; }
+
     /* ── Number formatting ── */
     .num-zero { color: #4a3010; }
     .num-high { color: #f0c040; font-weight: 600; }
@@ -468,6 +484,7 @@
   <div class="tab"         data-tab="plan"        onclick="switchTab('plan')"       data-i18n="tab_plan">⚔ Plan Offensive</div>
   <div class="tab"         data-tab="db"          onclick="switchTab('db')"         data-i18n="tab_db">🗃 Database</div>
   <div class="tab"         data-tab="settings"    onclick="switchTab('settings')"   data-i18n="tab_settings">⚙ Settings</div>
+  <div class="tab"         data-tab="changelog"   onclick="switchTab('changelog')"  data-i18n="tab_changelog">📋 Changelog</div>
 </div>
 
 <!-- ═══════════════════════════ OVERVIEW ═══════════════════════════ -->
@@ -529,7 +546,7 @@
           <th onclick="sortTable('players',10)" data-i18n-th="th_knight">Knight <span class="sort-arrow"></span></th>
           <th onclick="sortTable('players',11)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
           <th onclick="sortTable('players',12)" data-i18n-th="th_off_power">Off Power <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('players',13)" data-i18n-th="th_def_power">Total Def Power <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',13)" data-i18n-th="th_def_power">Def Power <span class="sort-arrow"></span></th>
           <th onclick="sortTable('players',14)" title="Villages with Complete Off offensive power"><span class="badge badge-complete" style="cursor:pointer;">Complete</span> <span class="sort-arrow"></span></th>
           <th onclick="sortTable('players',15)" title="Villages with 3/4 offensive power"><span class="badge badge-tq" style="cursor:pointer;">3/4</span> <span class="sort-arrow"></span></th>
           <th onclick="sortTable('players',16)" title="Villages with 1/2 offensive power"><span class="badge badge-half" style="cursor:pointer;">1/2</span> <span class="sort-arrow"></span></th>
@@ -630,7 +647,7 @@
           <th onclick="sortTable('villages',11)" data-i18n-th="th_knight">Knight <span class="sort-arrow"></span></th>
           <th onclick="sortTable('villages',12)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
           <th onclick="sortTable('villages',13)" data-i18n-th="th_off">Off <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('villages',14)" data-i18n-th="th_def">Total Def <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',14)" data-i18n-th="th_def">Def Power <span class="sort-arrow"></span></th>
         </tr>
       </thead>
       <tbody id="villages-tbody">
@@ -898,6 +915,111 @@
   <p style="font-size:12px;color:#5a3a18;margin-top:10px;" data-i18n="server_note">Used to build rally-point links in the plan table. The UTC offset converts your local clock to server time for the launch-feasibility check (guerrastribales.es runs on UTC+2 in summer, UTC+1 in winter).</p>
 </div>
 
+<!-- ═══════════════════════════ CHANGELOG ═══════════════════════════ -->
+<div class="tab-content" id="tab-changelog">
+  <div class="section-header"><h2 data-i18n="sec_changelog">Changelog</h2></div>
+  <p style="font-size:12px;color:#5a3a18;margin-top:6px;margin-bottom:16px;" data-i18n="changelog_intro">Feature and change history for the Tribe Calculator, per version bump.</p>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v1.7.2</span><span class="cl-date">2026-06-14</span></div>
+    <ul class="cl-list">
+      <li><b>Morale column in Tribe Timings (Offensive mode):</b> shows each attacker’s morale against the target, using <code>morale = 3 × defender points ÷ attacker points + 0.25</code> (capped at 100%). Points are each player’s total village points aggregated from the loaded map database; shows “—” until the DB is loaded.</li>
+    </ul>
+  </div>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v1.7.1</span><span class="cl-date">2026-06-14</span></div>
+    <ul class="cl-list">
+      <li>Shortened the <b>“Total Def Power”</b> header to <b>“Def Power”</b> across the Rankings, By&nbsp;Player and Villages tables (fixes the Rankings horizontal scrollbar).</li>
+      <li>Added this <b>Changelog</b> tab.</li>
+    </ul>
+  </div>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v1.7.0</span><span class="cl-date">2026-06-14</span></div>
+    <ul class="cl-list">
+      <li><b>Swordsman defense fix:</b> corrected the data (50 vs infantry / 25 vs cavalry). Every Defensive Power figure for armies containing swords was previously wrong.</li>
+      <li><b>Combined Defensive Power:</b> infantry + cavalry defense are now shown as one value (with an “X inf + Y cav” tooltip) on Overview, By&nbsp;Player, By&nbsp;Villages and Rankings; the Overview bar splits into infantry and cavalry segments.</li>
+      <li><b>Sortable Villages table:</b> click any column header to sort (the old Sort dropdown was removed).</li>
+      <li>Wired unit/stat <b>icons</b> throughout the Overview, both data tables, Tribe Timings and Rankings.</li>
+      <li>Banked the full reverse-engineered TW battle-combat formula spec for a future Battle Simulator.</li>
+    </ul>
+  </div>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v1.6.3</span><span class="cl-date">2026-06-13</span></div>
+    <ul class="cl-list">
+      <li><b>Tribe Timings “Arrive by” deadline</b> (date + time): hides villages that can’t land in time, adds an “Any” pace option, and shows arrivals in server time.</li>
+      <li>Tier <b>badges</b> replace plain text for off tiers in Offensive Targets and Settings.</li>
+      <li><b>Off tier auto-bump:</b> when a requested off tier has no candidates left, the planner upgrades to the nearest stronger tier and warns.</li>
+    </ul>
+  </div>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v1.6.2</span><span class="cl-date">2026-06-12</span></div>
+    <ul class="cl-list">
+      <li>New targets default their <b>Snob Mode</b> to Solo.</li>
+    </ul>
+  </div>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v1.6.1</span><span class="cl-date">2026-06-12</span></div>
+    <ul class="cl-list">
+      <li><b>Off min/max distance band</b> — keep close offs free for a quick second round.</li>
+      <li><b>Server time</b> setting (UTC offset) with a live server clock.</li>
+      <li><b>Launch dates</b> on plan windows + a past-launch feasibility guard that drops or flags offs that would have to launch in the past.</li>
+    </ul>
+  </div>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v1.6.0</span><span class="cl-date">2026-06-12</span></div>
+    <ul class="cl-list">
+      <li><b>Server URL</b> setting and <b>rally-point links</b> in the Plan table.</li>
+      <li>Configurable <b>default off counts</b> per new target.</li>
+      <li><b>Export Per-Player BB</b> — one forum block per sender.</li>
+      <li>Split-off snob icon in the BB exports.</li>
+      <li>Light cavalry &amp; spies now counted in defensive power.</li>
+      <li>“Send with” <b>pace-unit order links</b> in Tribe Timings.</li>
+      <li>Tribe names from <code>ally.txt</code> + a sortable Database table with a Tribe column.</li>
+    </ul>
+  </div>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v1.5.2</span><span class="cl-date">2026-06-12</span></div>
+    <ul class="cl-list">
+      <li><b>Snob travel range</b> limit (default 70 fields).</li>
+      <li>“Escorted” renamed to <b>“Split Off”</b>.</li>
+      <li>Fix-time button glyph changed to “=”.</li>
+    </ul>
+  </div>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v1.5.1</span><span class="cl-date">2026-06-12</span></div>
+    <ul class="cl-list">
+      <li>Allow <b>multiple noble trains</b> from the same village.</li>
+    </ul>
+  </div>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v1.5.0</span><span class="cl-date">2026-06-12</span></div>
+    <ul class="cl-list">
+      <li>Start/end <b>time-input window editor</b> for off and snob windows.</li>
+      <li>Per-target <b>multiple off windows</b> with counts.</li>
+      <li>Per-sender <b>noble counts</b>.</li>
+      <li><b>Tier-ordered landings</b> — Completes land earliest, then 3/4, then 1/2.</li>
+    </ul>
+  </div>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v1.4.0</span><span class="cl-date">2026-06-12</span></div>
+    <ul class="cl-list">
+      <li>Added the offensive-planning tabs: <b>Tribe Timings</b>, <b>Offensive Targets</b>, <b>Plan Offensive</b> and <b>Database</b>.</li>
+    </ul>
+  </div>
+
+  <p style="font-size:12px;color:#5a3a18;margin-top:6px;">v1.0.x – v1.3.x — initial releases (predate version tracking).</p>
+</div>
+
 <script>
 // ══════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -944,6 +1066,7 @@ const T = {
   en: {
     tab_overview:'Overview', tab_players:'By Player', tab_byvillages:'By Villages',
     tab_villages:'Villages', tab_rankings:'Rankings', tab_settings:'⚙ Settings',
+    tab_changelog:'📋 Changelog', sec_changelog:'Changelog', changelog_intro:'Feature and change history for the Tribe Calculator, per version bump.',
     sec_tribe_power:'Tribe Power', sec_total_units:'Total Units',
     sec_player_summary:'Player Summary', sec_village_detail:'Village Detail',
     sec_off_by_village:'Offensive Power by Village', sec_off_thresholds:'Offensive Power Thresholds',
@@ -961,14 +1084,14 @@ const T = {
     th_spear:'Spear', th_sword:'Sword', th_axe:'Axe', th_spy:'Spy',
     th_light:'Light', th_heavy:'Heavy', th_ram:'Ram', th_cat:'Cat',
     th_knight:'Knight', th_snob:'Snob',
-    th_off_power:'Off Power', th_def_power:'Total Def Power', th_off:'Off', th_def:'Total Def', th_tier:'Tier',
+    th_off_power:'Off Power', th_def_power:'Def Power', th_off:'Off', th_def:'Def Power', th_tier:'Tier',
     drop_title:'Drop your tribe info .txt here', drop_sub:'or click to browse',
     status_no_file:'No file loaded — drag & drop a tribe info .txt file or use Load File',
     stat_players:'Players', stat_villages:'Villages', stat_avg:'Avg Villages/Player',
     stat_nobles:'Total Nobles (Snobs)', stat_rams:'Total Rams',
     stat_off_power:'Total Off Power', stat_def_inf:'Def vs Infantry', stat_def_cav:'Def vs Cavalry',
     bar_off:'Offensive Power', bar_def:'Defensive Power',
-    rank_off:'Off Power', rank_def:'Total Def Power', rank_villages:'🏘 Villages',
+    rank_off:'Off Power', rank_def:'Def Power', rank_villages:'🏘 Villages',
     rank_spear:'Spears', rank_sword:'Swords', rank_axe:'Axes',
     rank_spy:'Spies', rank_light:'Light Cav', rank_heavy:'Heavy Cav',
     rank_rams:'Rams', rank_cat:'Catapults', rank_knight:'Knights', rank_nobles:'Nobles',
@@ -1068,12 +1191,17 @@ const T = {
     bb_pp_launch:'launch', bb_legend_split: n => `noble train (${n} nobles) with split-off escort`,
     lbl_send_with:'Send with:', th_tribe:'Tribe',
     unit_any:'Any', lbl_arrive_by:'Arrive by:',
+    th_morale:'Morale',
+    morale_title:'Morale = 3 × defender points ÷ attacker points + 0.25, capped at 100%. Uses each player\'s total village points from the loaded map database.',
+    morale_tip:(d, a) => `Defender ${d} pts · attacker ${a} pts`,
+    morale_barb:'Barbarian village — no morale penalty (100%)',
     warn_tier_bumped: (from, to, coord) => `No ${from} off left for ${coord} — upgraded to a ${to} off`,
     footer_dev_by: 'Developed by', footer_version: 'Version',
   },
   es: {
     tab_overview:'Resumen', tab_players:'Por Jugador', tab_byvillages:'Por Aldea',
     tab_villages:'Aldeas', tab_rankings:'Rankings', tab_settings:'⚙ Config.',
+    tab_changelog:'📋 Cambios', sec_changelog:'Registro de Cambios', changelog_intro:'Historial de funciones y cambios de la Calculadora de Tribu, por versión.',
     sec_tribe_power:'Poder de Tribu', sec_total_units:'Unidades Totales',
     sec_player_summary:'Resumen por Jugador', sec_village_detail:'Detalle de Aldeas',
     sec_off_by_village:'Poder Ofensivo por Aldea', sec_off_thresholds:'Umbrales de Poder Ofensivo',
@@ -1091,14 +1219,14 @@ const T = {
     th_spear:'Lanza', th_sword:'Espada', th_axe:'Hacha', th_spy:'Espía',
     th_light:'C. Ligera', th_heavy:'C. Pesada', th_ram:'Ariete', th_cat:'Catap.',
     th_knight:'Paladín', th_snob:'Noble',
-    th_off_power:'Pod. Ofens.', th_def_power:'Pod. Def. Total', th_off:'Ofens.', th_def:'Def. Total', th_tier:'Nivel',
+    th_off_power:'Pod. Ofens.', th_def_power:'Pod. Def.', th_off:'Ofens.', th_def:'Pod. Def.', th_tier:'Nivel',
     drop_title:'Suelta tu archivo .txt de tribu aquí', drop_sub:'o haz clic para buscar',
     status_no_file:'Sin archivo — arrastra el .txt de tu tribu o usa Cargar',
     stat_players:'Jugadores', stat_villages:'Aldeas', stat_avg:'Aldeas/Jugador (media)',
     stat_nobles:'Total Nobles', stat_rams:'Total Arietes',
     stat_off_power:'Pod. Ofensivo Total', stat_def_inf:'Def vs Infantería', stat_def_cav:'Def vs Caballería',
-    bar_off:'Poder Ofensivo', bar_def:'Poder Defensivo',
-    rank_off:'Pod. Ofensivo', rank_def:'Pod. Def. Total', rank_villages:'🏘 Aldeas',
+    bar_off:'Pod. Off', bar_def:'Pod. Def',
+    rank_off:'Pod. Ofensivo', rank_def:'Pod. Def.', rank_villages:'🏘 Aldeas',
     rank_spear:'Lanzas', rank_sword:'Espadas', rank_axe:'Hachas',
     rank_spy:'Espías', rank_light:'C. Ligera', rank_heavy:'C. Pesada',
     rank_rams:'Arietes', rank_cat:'Catapultas', rank_knight:'Paladines', rank_nobles:'Nobles',
@@ -1198,6 +1326,10 @@ const T = {
     bb_pp_launch:'salida', bb_legend_split: n => `tren de nobles (${n} nobles) con off partida`,
     lbl_send_with:'Enviar con:', th_tribe:'Tribu',
     unit_any:'Cualquiera', lbl_arrive_by:'Llegar antes de:',
+    th_morale:'Moral',
+    morale_title:'Moral = 3 × puntos del defensor ÷ puntos del atacante + 0.25, máximo 100%. Usa los puntos totales de aldeas de cada jugador de la base de datos del mapa.',
+    morale_tip:(d, a) => `Defensor ${d} ptos · atacante ${a} ptos`,
+    morale_barb:'Aldea bárbara — sin penalización de moral (100%)',
     warn_tier_bumped: (from, to, coord) => `Sin off ${from} disponible para ${coord} — mejorado a un off ${to}`,
     footer_dev_by: 'Desarrollado por', footer_version: 'Versión',
   }
@@ -1763,6 +1895,29 @@ function fmtArrivalTime(travelMinutes) {
   return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
 
+// ── Morale (points-based, offensive only) ──
+// Total village points of the player owning the village at `coord` (0 if unknown).
+function playerPointsAtCoord(coord) {
+  const v = coordDb[coord];
+  return v ? (playerPointsDb[v.playerId] || 0) : 0;
+}
+// morale = 3 · defenderPoints / attackerPoints + 0.25, capped at 100%.
+// null when either side's points are unknown (DB not loaded / village not in map).
+function moraleValue(defPts, attPts) {
+  if (!defPts || !attPts) return null;
+  return Math.min(1, 3 * defPts / attPts + 0.25);
+}
+// Barbarian / abandoned villages (playerId 0) have no owner → no morale penalty (always 100%).
+function isBarbarian(coord) {
+  const v = coordDb[coord];
+  return !!v && (!v.playerId || v.playerId === '0');
+}
+function fmtMorale(m) { return m == null ? '—' : Math.round(m * 100) + '%'; }
+function moraleColor(m) {
+  if (m == null) return '#806030';
+  return m >= 1 ? '#6cc070' : m >= 0.75 ? '#d0c040' : m >= 0.5 ? '#d0a040' : '#e06040';
+}
+
 // "Arrive by" deadline (Day + HH:MM:SS, server time) → epoch ms, or null when unset
 function targetArrivalMs() {
   const day = document.getElementById('target-arrival-date')?.value;
@@ -1779,6 +1934,7 @@ function targetCols() {
     { key:'player', label:t('th_player'),   left:true, str:true, defDir:1 },
     { key:'dist',   label:t('th_distance'), defDir:1 },
     { key:m.power,  label: twIcon(mode === 'off' ? 'off' : 'def') + (mode === 'off' ? t('th_off_power') : t('th_def_power')), defDir:-1 },
+    ...(mode === 'off' ? [{ key:'morale', label:t('th_morale'), title:t('morale_title'), defDir:-1 }] : []),
     ...m.units.map(u => ({ key:u, label:twIcon(u) + t('th_' + (u === 'catapult' ? 'cat' : u)), defDir:-1 })),
     ...m.travel.map(u => ({ key:'tt_'+u, label:`${TRAVEL_ICON[u]} ${t('unit_'+u)}`, defDir:1, travel:true })),
     { key:'order', label:t('th_order'), noSort:true },
@@ -1803,7 +1959,8 @@ function renderTargetTable() {
   document.getElementById('target-thead-row').innerHTML = cols.map(c => {
     if (c.noSort) return `<th class="${c.left ? 'left' : ''}">${c.label}</th>`;
     const sortCls = targetSort.key === c.key ? (targetSort.dir === -1 ? ' sort-desc' : ' sort-asc') : '';
-    return `<th class="${c.left ? 'left' : ''}${sortCls}"${c.travel ? ` title="${t('tt_title')}"` : ''} onclick="sortTarget('${c.key}')">${c.label} <span class="sort-arrow"></span></th>`;
+    const titleAttr = c.travel ? ` title="${t('tt_title')}"` : (c.title ? ` title="${esc(c.title)}"` : '');
+    return `<th class="${c.left ? 'left' : ''}${sortCls}"${titleAttr} onclick="sortTarget('${c.key}')">${c.label} <span class="sort-arrow"></span></th>`;
   }).join('');
 
   const tbody = document.getElementById('target-tbody');
@@ -1825,10 +1982,15 @@ function renderTargetTable() {
   const search = (document.getElementById('target-search').value || '').toLowerCase();
   const minPow = parseInt(document.getElementById('target-min-power').value) || 0;
 
+  const tgtCoord = `${target.x}|${target.y}`;
+  const tgtPts   = playerPointsAtCoord(tgtCoord); // defender's aggregated points (off mode morale)
+  const tgtBarb  = isBarbarian(tgtCoord);         // barbarian target → morale always 100%
+
   let data = villages.map(v => {
     const c = parseCoordStr(v.coord);
     const row = { ...v, dist: c ? distXY(c, target) : Infinity };
     m.travel.forEach(u => { row['tt_'+u] = travelTimeMin(row.dist, UNIT_BASE_MIN[u], ws, us); });
+    if (mode === 'off') row.morale = tgtBarb ? 1 : moraleValue(tgtPts, playerPointsAtCoord(v.coord));
     return row;
   });
 
@@ -1855,17 +2017,25 @@ function renderTargetTable() {
   });
 
   const powColor = mode === 'off' ? '#e06040' : '#60a0e0';
-  const tgtCoord = `${target.x}|${target.y}`;
   const rows = data.map(v => {
     const units = orderUnitsFor(mode, pace, v);
     const orderUrl = units && rallyUrl(v.coord, tgtCoord, units);
     const orderCell = orderUrl ? `<a href="${esc(orderUrl)}" target="_blank" rel="noopener">${mode === 'off' ? '⚔' : '🛡'}</a>` : '—';
+    const attPts = mode === 'off' ? playerPointsAtCoord(v.coord) : 0;
+    const moraleTip = mode !== 'off' ? ''
+      : tgtBarb ? t('morale_barb')
+      : (tgtPts && attPts) ? t('morale_tip')(tgtPts.toLocaleString(), attPts.toLocaleString())
+      : '';
+    const moraleCell = mode === 'off'
+      ? `<td style="color:${moraleColor(v.morale)};font-weight:600;"${moraleTip ? ` title="${esc(moraleTip)}"` : ''}>${fmtMorale(v.morale)}</td>`
+      : '';
     return `
     <tr>
       <td class="left" style="font-family:monospace;">${v.coord}</td>
       <td class="left"><span class="player-tag">${decode(v.player)}</span></td>
       <td style="color:#f0c040;font-weight:600;">${isFinite(v.dist) ? v.dist.toFixed(1) : '—'}</td>
       <td style="color:${powColor};font-weight:600;">${fmtM(v[m.power])}</td>
+      ${moraleCell}
       ${m.units.map(u => numCell(v[u])).join('')}
       ${m.travel.map(u => isFinite(v['tt_'+u])
         ? `<td>${fmtTime(v['tt_'+u])}<br><span style="font-size:11px;color:#a08850;">${fmtArrivalTime(v['tt_'+u])}</span></td>`
@@ -2729,6 +2899,7 @@ let playerDb      = {}; // playerId → name
 let playerAllyDb  = {}; // playerId → allyId
 let allyDb        = {}; // allyId  → {name, tag}
 let coordDb       = {}; // "x|y" → village record
+let playerPointsDb = {}; // playerId → total village points (for offensive morale)
 let dbDirHandle   = null;
 let dbSearchTimer = null;
 
@@ -2804,7 +2975,11 @@ function setDbData(vText, pText, aText) {
   allyDb       = aText ? parseAllyDb(aText) : {};
   villageDb = parseVillageDb(vText);
   coordDb   = {};
-  for (const v of villageDb) coordDb[`${v.x}|${v.y}`] = v;
+  playerPointsDb = {};
+  for (const v of villageDb) {
+    coordDb[`${v.x}|${v.y}`] = v;
+    playerPointsDb[v.playerId] = (playerPointsDb[v.playerId] || 0) + v.points;
+  }
   document.getElementById('db-dot').className = 'file-status-dot dot-ok';
   document.getElementById('db-status').textContent =
     t('db_status_loaded')(villageDb.length.toLocaleString(), Object.keys(playerDb).length.toLocaleString());
@@ -3193,7 +3368,7 @@ document.addEventListener('drop', e => {
 <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 1.7.0 &nbsp;·&nbsp; 2026-06-14</span>
+  <span><span data-i18n="footer_version">Version</span> 1.7.2 &nbsp;·&nbsp; 2026-06-14</span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
