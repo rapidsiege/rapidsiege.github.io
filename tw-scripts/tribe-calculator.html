@@ -276,6 +276,8 @@
     /* ── Number formatting ── */
     .num-zero { color: #4a3010; }
     .num-high { color: #f0c040; font-weight: 600; }
+    /* Tribe Timings: a travel/arrival cell whose unit can't land by the "Arrive by" deadline */
+    .tt-late { opacity: 0.32; }
 
     /* ── Responsive ── */
     @media (max-width: 600px) {
@@ -669,6 +671,7 @@
   <div class="section-header">
     <h2 data-i18n="sec_target">Distance to Target</h2>
     <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="showTargetTimingBB()" data-i18n="btn_export_player_bb">⬇ Export Per-Player BB</button>
       <button class="btn btn-ghost btn-sm" onclick="exportTable('target-table','tribe_target.csv')">⬇ Export CSV</button>
       <button class="btn btn-ghost btn-sm" onclick="showBBTable('target-table')">⬇ Export BB Table</button>
     </div>
@@ -923,6 +926,17 @@
   <p style="font-size:12px;color:#5a3a18;margin-top:6px;margin-bottom:16px;" data-i18n="changelog_intro">Feature and change history for the Tribe Calculator, per version bump.</p>
 
   <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v1.7.4</span><span class="cl-date">2026-06-14</span></div>
+    <ul class="cl-list">
+      <li><b>Tribe Timings — grey out cells that miss the deadline:</b> with an “Arrive by” deadline set, each per-unit travel/arrival cell whose unit can’t land in time is dimmed (in addition to hiding villages where nothing makes it), so you can see at a glance which units of a kept village still arrive.</li>
+      <li><b>Tribe Timings — Export Per-Player BB:</b> new button that groups the shown rows by player (like Plan Offensive’s per-player export), so each member can be told exactly which of their villages reach the target and when (arrival time, pace unit, rally link).</li>
+      <li><b>Tribe Timings — target village excluded:</b> a village sitting on the target coordinate is no longer listed as a sender to itself.</li>
+      <li><b>Tribe Timings — off-power tier badge:</b> the Off Power column now shows the Complete Off / 3/4 / 1/2 tier badge next to the value (offensive mode).</li>
+      <li><b>Database updated time in three clocks:</b> the web-mirror “updated” line now shows the timestamp in UTC, your browser’s local time, and game-server time (UTC + the configured offset).</li>
+    </ul>
+  </div>
+
+  <div class="cl-entry">
     <div class="cl-head"><span class="cl-ver">v1.7.3</span><span class="cl-date">2026-06-14</span></div>
     <ul class="cl-list">
       <li><b>Corrected morale formula:</b> now <code>morale = 3 × defender points ÷ attacker points + 0.3</code>, clamped between 30% and 100% — fitted exactly to in-game battle simulations (the previous <code>+ 0.25</code> was off by ~5 points across the mid-range).</li>
@@ -1120,7 +1134,7 @@ const T = {
     opt_mode_off:'⚔ Offensive', opt_mode_def:'🛡 Defensive',
     lbl_world_speed:'World speed:', lbl_unit_speed:'Unit speed:',
     lbl_min_power:'Min power:', th_distance:'Distance',
-    target_note:'Travel times assume launch now — server-time arrival shown below each duration. Set "Arrive by" to hide villages that can\'t make it.',
+    target_note:'Travel times assume launch now — server-time arrival shown below each duration. Set "Arrive by" to hide villages that can\'t make it and grey out the units that arrive too late.',
     empty_no_target:'Enter target coordinates (e.g. 500|500) to calculate distances',
     tt_title:'Travel time and arrival if launched now',
     tab_offtargets:'📌 Offensive Targets', tab_plan:'⚔ Plan Offensive',
@@ -1197,6 +1211,8 @@ const T = {
     server_note:'Used to build rally-point links in the plan table. The UTC offset converts your local clock to server time for the launch-feasibility check (guerrastribales.es runs on UTC+2 in summer, UTC+1 in winter).',
     lbl_server_offset:'Server time: UTC+', server_now: s => `Server time now: ${s}`,
     lbl_def_offs:'Default offs:', th_order:'Order', btn_export_player_bb:'⬇ Export Per-Player BB',
+    bb_tt_target:'Target', alert_no_tt_rows:'No villages to export — adjust the filters or target coordinate.',
+    upd_local:'local', upd_server:'server',
     bb_pp_launch:'launch', bb_legend_split: n => `noble train (${n} nobles) with split-off escort`,
     lbl_send_with:'Send with:', th_tribe:'Tribe',
     unit_any:'Any', lbl_arrive_by:'Arrive by:',
@@ -1255,7 +1271,7 @@ const T = {
     opt_mode_off:'⚔ Ofensivo', opt_mode_def:'🛡 Defensivo',
     lbl_world_speed:'Vel. mundo:', lbl_unit_speed:'Vel. unidades:',
     lbl_min_power:'Poder mín.:', th_distance:'Distancia',
-    target_note:'Los tiempos de viaje asumen salida ahora — llegada (hora del servidor) bajo cada duración. Fija "Llegar antes de" para ocultar aldeas que no llegan.',
+    target_note:'Los tiempos de viaje asumen salida ahora — llegada (hora del servidor) bajo cada duración. Fija "Llegar antes de" para ocultar aldeas que no llegan y atenuar las unidades que llegan tarde.',
     empty_no_target:'Introduce las coordenadas del objetivo (ej. 500|500) para calcular distancias',
     tt_title:'Tiempo de viaje y llegada si se lanza ahora',
     tab_offtargets:'📌 Objetivos Ofensivos', tab_plan:'⚔ Planear Ofensiva',
@@ -1332,6 +1348,8 @@ const T = {
     server_note:'Se usa para generar enlaces al punto de reunión en la tabla del plan. El desfase UTC convierte tu reloj local a la hora del servidor para comprobar la viabilidad de los envíos (guerrastribales.es usa UTC+2 en verano y UTC+1 en invierno).',
     lbl_server_offset:'Hora del servidor: UTC+', server_now: s => `Hora actual del servidor: ${s}`,
     lbl_def_offs:'Offs por defecto:', th_order:'Orden', btn_export_player_bb:'⬇ Exportar BB por Jugador',
+    bb_tt_target:'Objetivo', alert_no_tt_rows:'No hay pueblos para exportar — ajusta los filtros o la coordenada objetivo.',
+    upd_local:'local', upd_server:'servidor',
     bb_pp_launch:'salida', bb_legend_split: n => `tren de nobles (${n} nobles) con off partida`,
     lbl_send_with:'Enviar con:', th_tribe:'Tribu',
     unit_any:'Cualquiera', lbl_arrive_by:'Llegar antes de:',
@@ -1951,42 +1969,21 @@ function targetCols() {
   ];
 }
 
-function renderTargetTable() {
+// Shared data pipeline for Tribe Timings — used by both renderTargetTable and the
+// per-player BB export so they always show exactly the same (filtered, sorted) rows.
+// Returns { ..., data: null } when there's nothing to render (no villages / no target).
+function targetTimingData() {
   const mode = document.getElementById('target-mode')?.value || 'off';
+  const m    = TARGET_MODES[mode];
+  const target = parseCoordStr(document.getElementById('target-coord').value);
 
-  // Rebuild pace-unit select options, preserving current selection when still valid
   const paceOpts = mode === 'off' ? ['any','light','axe','sword','ram'] : ['any','spy','light','heavy','spear','sword','knight'];
   const paceEl = document.getElementById('target-pace-unit');
-  if (paceEl) {
-    const curPace = paceEl.value;
-    paceEl.innerHTML = paceOpts.map(u => `<option value="${u}">${t('unit_'+u)}</option>`).join('');
-    paceEl.value = paceOpts.includes(curPace) ? curPace : 'any';
-  }
   let pace = paceEl ? paceEl.value : 'any';
   if (!paceOpts.includes(pace)) pace = 'any';
 
-  const cols = targetCols();
-  document.getElementById('target-thead-row').innerHTML = cols.map(c => {
-    if (c.noSort) return `<th class="${c.left ? 'left' : ''}">${c.label}</th>`;
-    const sortCls = targetSort.key === c.key ? (targetSort.dir === -1 ? ' sort-desc' : ' sort-asc') : '';
-    const titleAttr = c.travel ? ` title="${t('tt_title')}"` : (c.title ? ` title="${esc(c.title)}"` : '');
-    return `<th class="${c.left ? 'left' : ''}${sortCls}"${titleAttr} onclick="sortTarget('${c.key}')">${c.label} <span class="sort-arrow"></span></th>`;
-  }).join('');
+  if (!villages.length || !target) return { mode, m, pace, target, data: null };
 
-  const tbody = document.getElementById('target-tbody');
-  const target = parseCoordStr(document.getElementById('target-coord').value);
-  const ownerEl = document.getElementById('target-owner-info');
-  if (ownerEl) ownerEl.textContent = target ? dbOwnerLabel(`${target.x}|${target.y}`) : '';
-  if (!villages.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="${cols.length}">${t('empty_load_byvillages')}</td></tr>`;
-    return;
-  }
-  if (!target) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="${cols.length}">${t('empty_no_target')}</td></tr>`;
-    return;
-  }
-
-  const m      = TARGET_MODES[mode];
   const ws     = parseFloat(document.getElementById('target-world-speed').value) || 1;
   const us     = parseFloat(document.getElementById('target-unit-speed').value) || 1;
   const search = (document.getElementById('target-search').value || '').toLowerCase();
@@ -2004,6 +2001,9 @@ function renderTargetTable() {
     return row;
   });
 
+  // Exclude the target village itself (distance 0, not a sender).
+  data = data.filter(v => v.coord !== tgtCoord);
+
   if (search) data = data.filter(v =>
     decode(v.player).toLowerCase().includes(search) || v.coord.includes(search));
   if (minPow > 0) data = data.filter(v => v[m.power] >= minPow);
@@ -2013,12 +2013,12 @@ function renderTargetTable() {
   // knight overrides the pace check (it carries all the village's units along).
   const deadlineMs = targetArrivalMs();
   if (deadlineMs !== null) {
-    const makesIt = (row, u) => row[u] > 0 && isFinite(row['tt_'+u]) && serverNowMs() + row['tt_'+u] * 60000 <= deadlineMs;
     data = data.filter(row => pace === 'any'
-      ? m.travel.some(u => makesIt(row, u))
-      : makesIt(row, pace) || (mode === 'def' && makesIt(row, 'knight')));
+      ? m.travel.some(u => unitMakesDeadline(row, u, deadlineMs))
+      : unitMakesDeadline(row, pace, deadlineMs) || (mode === 'def' && unitMakesDeadline(row, 'knight', deadlineMs)));
   }
 
+  const cols   = targetCols();
   const colDef = cols.find(c => c.key === targetSort.key) || cols[2];
   data.sort((a, b) => {
     const av = a[colDef.key], bv = b[colDef.key];
@@ -2026,6 +2026,58 @@ function renderTargetTable() {
     return targetSort.dir * (av - bv);
   });
 
+  return { mode, m, pace, target, tgtCoord, tgtPts, tgtBarb, deadlineMs, data };
+}
+
+// A village's unit lands by the deadline: owns the unit, finite travel, arrives in time (launch = now).
+function unitMakesDeadline(row, u, deadlineMs) {
+  return row[u] > 0 && isFinite(row['tt_'+u]) && serverNowMs() + row['tt_'+u] * 60000 <= deadlineMs;
+}
+// A unit's arrival time only exceeds the deadline (used to grey out a cell; ignores ownership).
+function unitLateForDeadline(row, u, deadlineMs) {
+  return deadlineMs !== null && isFinite(row['tt_'+u]) && serverNowMs() + row['tt_'+u] * 60000 > deadlineMs;
+}
+// Off-power tier badge (off mode Tribe Timings), matching the By Villages tier styling.
+function offTierBadge(tier) {
+  const cls = { complete:'badge-complete', tq:'badge-tq', half:'badge-half', none:'badge-empty' }[tier] || 'badge-empty';
+  const lbl = tier === 'none' ? '—' : t(tier === 'complete' ? 'opt_complete' : tier === 'tq' ? 'opt_tq' : 'opt_half');
+  return `<span class="badge ${cls}">${lbl}</span>`;
+}
+
+function renderTargetTable() {
+  const mode = document.getElementById('target-mode')?.value || 'off';
+
+  // Rebuild pace-unit select options, preserving current selection when still valid
+  const paceOpts = mode === 'off' ? ['any','light','axe','sword','ram'] : ['any','spy','light','heavy','spear','sword','knight'];
+  const paceEl = document.getElementById('target-pace-unit');
+  if (paceEl) {
+    const curPace = paceEl.value;
+    paceEl.innerHTML = paceOpts.map(u => `<option value="${u}">${t('unit_'+u)}</option>`).join('');
+    paceEl.value = paceOpts.includes(curPace) ? curPace : 'any';
+  }
+
+  const cols = targetCols();
+  document.getElementById('target-thead-row').innerHTML = cols.map(c => {
+    if (c.noSort) return `<th class="${c.left ? 'left' : ''}">${c.label}</th>`;
+    const sortCls = targetSort.key === c.key ? (targetSort.dir === -1 ? ' sort-desc' : ' sort-asc') : '';
+    const titleAttr = c.travel ? ` title="${t('tt_title')}"` : (c.title ? ` title="${esc(c.title)}"` : '');
+    return `<th class="${c.left ? 'left' : ''}${sortCls}"${titleAttr} onclick="sortTarget('${c.key}')">${c.label} <span class="sort-arrow"></span></th>`;
+  }).join('');
+
+  const tbody = document.getElementById('target-tbody');
+  const ctx = targetTimingData();
+  const ownerEl = document.getElementById('target-owner-info');
+  if (ownerEl) ownerEl.textContent = ctx.target ? dbOwnerLabel(`${ctx.target.x}|${ctx.target.y}`) : '';
+  if (!villages.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="${cols.length}">${t('empty_load_byvillages')}</td></tr>`;
+    return;
+  }
+  if (!ctx.target) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="${cols.length}">${t('empty_no_target')}</td></tr>`;
+    return;
+  }
+
+  const { m, pace, tgtCoord, tgtPts, tgtBarb, deadlineMs, data } = ctx;
   const powColor = mode === 'off' ? '#e06040' : '#60a0e0';
   const rows = data.map(v => {
     const units = orderUnitsFor(mode, pace, v);
@@ -2044,11 +2096,11 @@ function renderTargetTable() {
       <td class="left" style="font-family:monospace;">${v.coord}</td>
       <td class="left"><span class="player-tag">${decode(v.player)}</span></td>
       <td style="color:#f0c040;font-weight:600;">${isFinite(v.dist) ? v.dist.toFixed(1) : '—'}</td>
-      <td style="color:${powColor};font-weight:600;">${fmtM(v[m.power])}</td>
+      <td style="color:${powColor};font-weight:600;">${fmtM(v[m.power])}${mode === 'off' ? ` ${offTierBadge(getOffTier(v.offPow))}` : ''}</td>
       ${moraleCell}
       ${m.units.map(u => numCell(v[u])).join('')}
       ${m.travel.map(u => isFinite(v['tt_'+u])
-        ? `<td>${fmtTime(v['tt_'+u])}<br><span style="font-size:11px;color:#a08850;">${fmtArrivalTime(v['tt_'+u])}</span></td>`
+        ? `<td${unitLateForDeadline(v, u, deadlineMs) ? ' class="tt-late"' : ''}>${fmtTime(v['tt_'+u])}<br><span style="font-size:11px;color:#a08850;">${fmtArrivalTime(v['tt_'+u])}</span></td>`
         : '<td class="num-zero">—</td>').join('')}
       <td>${orderCell}</td>
     </tr>
@@ -2066,6 +2118,59 @@ function sortTarget(key) {
     targetSort = { key, dir: c ? c.defDir : 1 };
   }
   renderTargetTable();
+}
+
+// ── Per-player BB export for Tribe Timings ──
+// Groups the currently-shown rows by player so each member can be told which of their
+// villages reach the target (and when). Honors the same filters as the table.
+function showTargetTimingBB() {
+  const ctx = targetTimingData();
+  if (!ctx.target) { alert(t('empty_no_target')); return; }
+  if (!ctx.data || !ctx.data.length) { alert(t('alert_no_tt_rows')); return; }
+  const { mode, m, pace, tgtCoord, deadlineMs, data } = ctx;
+  const defender = dbOwnerName(tgtCoord);
+
+  // For "Any" pace, name a concrete unit per village so the line is actionable: the
+  // fastest owned unit that still lands in time, else the fastest owned, else the fastest.
+  const pickUnit = v => {
+    // Honor the chosen pace when the village actually owns it.
+    if (pace !== 'any' && v[pace] > 0) return pace;
+    // Otherwise ("Any", or a specific pace the village lacks but was kept by the def-mode
+    // knight override) name a real owned unit: fastest owned in-time, else fastest owned.
+    const owned = m.travel.filter(u => v[u] > 0);
+    if (deadlineMs !== null) {
+      const inTime = owned.find(u => unitMakesDeadline(v, u, deadlineMs));
+      if (inTime) return inTime;
+    }
+    return owned[0] || (pace !== 'any' ? pace : m.travel[0]);
+  };
+
+  const byPlayer = {};
+  for (const v of data) {
+    const name = decode(v.player) || '—';
+    (byPlayer[name] = byPlayer[name] || []).push(v);
+  }
+  const names = Object.keys(byPlayer).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+  let bb = '';
+  for (const name of names) {
+    const rows = byPlayer[name];
+    bb += `========== ${name} (${rows.length}) ==========\n`;
+    bb += `[b]${t('bb_tt_target')}:[/b] [coord]${tgtCoord}[/coord]${defender ? ` ([player]${defender}[/player])` : ''}\n\n`;
+    for (const v of rows) {
+      const u   = pickUnit(v);
+      const tt  = v['tt_'+u];
+      const arr = isFinite(tt) ? fmtArrivalTime(tt) : '—';
+      const dur = isFinite(tt) ? fmtTime(tt) : '—';
+      const url = rallyUrl(v.coord, tgtCoord, orderUnitsFor(mode, pace, v));
+      const urlPart = url ? ` — [url=${url}]▶[/url]` : '';
+      bb += `${v.coord} [b][color=#0000a5]${arr}[/color][/b] (${t('unit_'+u)} · ${dur})${urlPart}\n`;
+    }
+    bb += '\n';
+  }
+
+  document.getElementById('bb-output').value = bb.trimEnd() + '\n';
+  document.getElementById('bb-modal').classList.add('open');
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -2920,6 +3025,20 @@ const TW_ENV = (typeof location !== 'undefined' && /^https?:$/.test(location.pro
   ? 'production' : 'development';
 const TW_DATA_URL = 'data/es100/';
 
+// Format the mirror's last-updated ISO timestamp as UTC + browser-local + game-server clocks.
+// Falls back to the raw text if it doesn't parse.
+function fmtUpdatedStamp(raw) {
+  const d = new Date(String(raw).trim());
+  if (isNaN(d)) return String(raw).trim();
+  const p = n => String(n).padStart(2, '0');
+  const utc = `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
+  const local = `${p(d.getHours())}:${p(d.getMinutes())} ${t('upd_local')}`;
+  const off = parseFloat(otCfg.serverUtcOffset);
+  const s = new Date(d.getTime() + (isNaN(off) ? 2 : off) * 3600000);
+  const server = `${p(s.getUTCHours())}:${p(s.getUTCMinutes())} ${t('upd_server')} (UTC+${isNaN(off) ? 2 : off})`;
+  return `${utc} · ${local} · ${server}`;
+}
+
 async function loadDbFromWeb() {
   try {
     const [vText, pText, updated, aText] = await Promise.all([
@@ -2930,7 +3049,7 @@ async function loadDbFromWeb() {
     ]);
     setDbData(vText, pText, aText);
     if (updated.trim()) {
-      document.getElementById('db-status').textContent += ` — ${t('db_web_updated')(updated.trim())}`;
+      document.getElementById('db-status').textContent += ` — ${t('db_web_updated')(fmtUpdatedStamp(updated))}`;
     }
   } catch (e) {
     document.getElementById('db-status').textContent = t('db_web_failed');
@@ -3380,7 +3499,7 @@ document.addEventListener('drop', e => {
      card at the top of the Changelog tab (search "id=\"tab-changelog\""). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 1.7.3 &nbsp;·&nbsp; 2026-06-14</span>
+  <span><span data-i18n="footer_version">Version</span> 1.7.4 &nbsp;·&nbsp; 2026-06-14</span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
