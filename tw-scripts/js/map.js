@@ -78,6 +78,77 @@ const MAP_BONUS = {
 };
 function bonusLabel(id) { const k = MAP_BONUS[id]; return k ? t(k) : ''; }
 
+// ── Phase 2: coloring + tribe legend (pure, harness-tested) ──────────────────
+// Color the village dots by tribe / player / points so tribes can be picked out
+// at overview zoom. Sprite (close) zoom keeps the realistic terrain art — coloring
+// is an overview-zoom feature; the render shell only dims sprites for highlight/filter.
+
+// Distinct, saturated palette cycled by a stable hash of the ally/player id, so the
+// same tribe always gets the same color across renders (stability is tested).
+const MAP_PALETTE = [
+  '#e6194b','#3cb44b','#4363d8','#f58231','#911eb4','#42d4f4','#f032e6',
+  '#bfef45','#fa8072','#469990','#c8a2ff','#9a6324','#d8c23a','#a05028',
+  '#7fd6a0','#9aa000','#e0843a','#5878d8','#d04fa0','#52b0c0',
+];
+const MAP_COLOR_BARB    = '#5a4a2a';  // barbarian / abandoned
+const MAP_COLOR_OWNED   = '#e0b04a';  // owned but no tribe, and the "none" color mode
+const MAP_COLOR_NEUTRAL = '#c8a85a';
+
+// FNV-1a → non-negative int; deterministic across runs (no Math.random / Date).
+function mapHash(str) {
+  let h = 2166136261;
+  str = String(str);
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function mapPaletteColor(key) { return MAP_PALETTE[mapHash(key) % MAP_PALETTE.length]; }
+
+// Points → green→amber→red ramp (visual buckets, easy to retune). Endpoints tested.
+function mapPointsColor(points) {
+  if (points >= 9000) return '#e0403a';
+  if (points >= 6000) return '#e07a30';
+  if (points >= 3000) return '#e0b040';
+  if (points >= 1000) return '#b0c040';
+  return '#6cc070';
+}
+
+// Single source of truth for a village's fill color in dot mode.
+// modes: 'tribe' (default) | 'player' | 'points' | 'none'.
+function colorForVillage(v, mode) {
+  if (!v) return MAP_COLOR_NEUTRAL;
+  const barb = !v.playerId || v.playerId === '0';
+  switch (mode) {
+    case 'player':
+      return barb ? MAP_COLOR_BARB : mapPaletteColor('p' + v.playerId);
+    case 'points':
+      return mapPointsColor(v.points);
+    case 'none':
+      return barb ? MAP_COLOR_BARB : MAP_COLOR_OWNED;
+    case 'tribe':
+    default: {
+      if (barb) return MAP_COLOR_BARB;
+      const ally = (typeof playerAllyDb !== 'undefined') ? playerAllyDb[v.playerId] : null;
+      return ally ? mapPaletteColor('a' + ally) : MAP_COLOR_OWNED; // tribeless owned = gold
+    }
+  }
+}
+
+// Tribes present in the world DB, with village counts, sorted by count desc.
+// Drives the legend / tribe-highlight panel. Pure: reads villageDb/playerAllyDb/allyDb.
+function mapTribeList() {
+  if (typeof villageDb === 'undefined') return [];
+  const counts = {};
+  for (const v of villageDb) {
+    const ally = playerAllyDb[v.playerId];
+    if (!ally) continue; // barbarian / tribeless
+    counts[ally] = (counts[ally] || 0) + 1;
+  }
+  return Object.keys(counts).map(a => {
+    const info = (typeof allyDb !== 'undefined' && allyDb[a]) || {};
+    return { allyId: a, tag: info.tag || ('#' + a), name: info.name || '', count: counts[a], color: mapPaletteColor('a' + a) };
+  }).sort((x, y) => y.count - x.count || (x.tag < y.tag ? -1 : 1));
+}
+
 // Tooltip HTML for a village coord. Pure: reads the loaded DB; names are already
 // decoded (decodeName at parse time), so no decode here — just esc for safety.
 function villageTooltipHtml(coord) {

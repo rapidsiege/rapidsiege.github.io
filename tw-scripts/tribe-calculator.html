@@ -178,11 +178,28 @@
     <button class="btn btn-ghost btn-sm" onclick="mapZoom(1.2)" data-i18n="map_zoom_in" title="Zoom in">＋</button>
     <button class="btn btn-ghost btn-sm" onclick="mapZoom(1/1.2)" data-i18n="map_zoom_out" title="Zoom out">－</button>
     <button class="btn btn-ghost btn-sm" onclick="mapResetView()" data-i18n="map_reset_view">Reset view</button>
-    <span style="font-size:12px;color:#5a3a18;" data-i18n="map_hint">Drag to pan · scroll to zoom · hover a village for details</span>
+    <span class="map-tb-sep"></span>
+    <label class="map-tb-lbl" for="map-color-mode" data-i18n="map_color_by">Color by</label>
+    <select id="map-color-mode" onchange="setMapColorMode(this.value)">
+      <option value="tribe" data-i18n="map_color_tribe">Tribe</option>
+      <option value="player" data-i18n="map_color_player">Player</option>
+      <option value="points" data-i18n="map_color_points">Points</option>
+      <option value="none" data-i18n="map_color_none">None</option>
+    </select>
+    <label class="map-tb-check"><input type="checkbox" id="map-bonus-only" onchange="setMapBonusOnly(this.checked)"><span data-i18n="map_bonus_only">Bonus only</span></label>
+    <span style="font-size:12px;color:#5a3a18;" data-i18n="map_hint">Drag to pan · scroll to zoom · hover for details · click a tribe to highlight</span>
   </div>
   <div id="map-wrap">
     <canvas id="map-canvas"></canvas>
     <div id="map-tooltip"></div>
+    <div id="map-legend" style="display:none;">
+      <div class="map-legend-head">
+        <span data-i18n="map_tribes">Tribes</span>
+        <button id="map-legend-clear" class="map-legend-clear" onclick="clearMapHighlight()" data-i18n="map_clear_hl" title="Clear highlight" style="visibility:hidden;">✕</button>
+      </div>
+      <input id="map-legend-search" class="map-legend-search" oninput="renderMapLegend()" data-i18n-placeholder="map_filter_tribe" placeholder="Filter tribe…">
+      <div id="map-legend-list" class="map-legend-list"></div>
+    </div>
     <div id="map-empty">
       <p data-i18n="map_need_db">Load the village database to see the map.</p>
       <button class="btn btn-ghost btn-sm" style="margin-top:10px;" onclick="switchTab('db')" data-i18n="map_open_db">Open Database</button>
@@ -500,6 +517,17 @@
 <div class="tab-content" id="tab-changelog">
   <div class="section-header"><h2 data-i18n="sec_changelog">Changelog</h2></div>
   <p style="font-size:12px;color:#5a3a18;margin-top:6px;margin-bottom:16px;" data-i18n="changelog_intro">Feature and change history for the Tribe Calculator, per version bump.</p>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v2.0.0-b</span><span class="cl-date">2026-06-15 · beta</span></div>
+    <ul class="cl-list">
+      <li><b>🎨 Color the map:</b> new “Color by” selector — paint villages by <b>tribe</b> (default), <b>player</b>, <b>points</b> (green→red heatmap), or <b>none</b>. Barbarians stay grey.</li>
+      <li><b>Tribe highlight:</b> a legend panel lists every tribe on the map by village count — click one (or several) to spotlight them while the rest dim out, so you can pin down a tribe’s spread at a glance. Filter box to find a tribe by tag/name; “Clear” resets.</li>
+      <li><b>Bonus-only filter:</b> a checkbox dims every non-bonus village, leaving just the bonus villages lit.</li>
+      <li><i>Remembered between sessions:</i> your color mode, highlighted tribes, and bonus filter are saved.</li>
+      <li><i>Coming next:</i> multi-select to export coordinates into the attack planner, and tribemate troop overlays.</li>
+    </ul>
+  </div>
 
   <div class="cl-entry">
     <div class="cl-head"><span class="cl-ver">v2.0.0-a</span><span class="cl-date">2026-06-14 · alpha</span></div>
@@ -2783,7 +2811,7 @@ document.addEventListener('drop', e => {
      card at the top of the Changelog tab (search "id=\"tab-changelog\""). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 2.0.0-a &nbsp;·&nbsp; 2026-06-14</span>
+  <span><span data-i18n="footer_version">Version</span> 2.0.0-b &nbsp;·&nbsp; 2026-06-15</span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

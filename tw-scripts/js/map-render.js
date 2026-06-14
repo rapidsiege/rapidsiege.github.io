@@ -12,6 +12,45 @@ let mapOffscreen = null, mapOffCtx = null;
 let mapHoverCoord = null;
 let mapDrag = null; // { x, y, panX0, panY0, moved }
 
+// ── Phase 2 state: color mode + tribe highlight + bonus filter ──
+let mapColorMode = 'tribe';          // 'tribe' | 'player' | 'points' | 'none'
+let mapHighlight = new Set();        // allyIds to emphasize (others dimmed); empty = all shown
+let mapBonusOnly = false;            // dim non-bonus villages when true
+let mapPrefsLoaded = false;
+const MAP_DIM_ALPHA = 0.12;          // alpha for villages filtered out by highlight/bonus
+
+const MAP_PREFS_KEY = 'tw_tribe_map';
+function loadMapPrefs() {
+  if (mapPrefsLoaded || typeof localStorage === 'undefined') { mapPrefsLoaded = true; return; }
+  mapPrefsLoaded = true;
+  try {
+    const p = JSON.parse(localStorage.getItem(MAP_PREFS_KEY) || '{}');
+    if (['tribe','player','points','none'].includes(p.colorMode)) mapColorMode = p.colorMode;
+    if (Array.isArray(p.highlightedAllies)) mapHighlight = new Set(p.highlightedAllies.map(String));
+    mapBonusOnly = !!p.bonusOnly;
+  } catch (e) { /* corrupt prefs never break the map */ }
+}
+function saveMapPrefs() {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({
+      colorMode: mapColorMode, highlightedAllies: [...mapHighlight], bonusOnly: mapBonusOnly,
+    }));
+  } catch (e) { /* ignore quota/serialization errors */ }
+}
+
+// One predicate for both highlight and bonus-filter; villages that fail are dimmed
+// (not hidden) so the highlight interaction stays visually consistent. Used in dot
+// AND sprite rendering.
+function isEmphasized(v) {
+  if (mapBonusOnly && !v.bonus) return false;
+  if (mapHighlight.size) {
+    const ally = (typeof playerAllyDb !== 'undefined') ? playerAllyDb[v.playerId] : null;
+    if (!ally || !mapHighlight.has(String(ally))) return false;
+  }
+  return true;
+}
+
 // ── Village sprites (map_new graphics, downloaded locally to icons/map/) ──
 const MAP_SPRITE_KEYS = ['v1','v2','v3','v4','v5','v6','b1','b2','b3','b4','b5','b6'];
 const MAP_GRASS = '#5c701b';   // the sprites' baked-in grass background (exact)
@@ -73,6 +112,8 @@ function initMap() {
     });
 
   mapInited = true;
+  loadMapPrefs();
+  syncMapToolbar();
   loadMapSprites();
   resizeMapCanvas();
 }
@@ -97,19 +138,21 @@ function renderMapOffscreen() {
   if (spriteMode) { mapOffCtx.fillStyle = MAP_GRASS; mapOffCtx.fillRect(0, 0, w, h); } // continuous terrain
   drawMapGrid(mapOffCtx, w, h);
   const dw = mapView.scale, dh = dw * 38 / 53; // one sprite ≈ one field
+  const dimming = mapHighlight.size > 0 || mapBonusOnly;
   for (const v of villageDb) {
     const s = worldToScreen(v.x, v.y);
     if (s.px < -margin || s.py < -margin || s.px > w + margin || s.py > h + margin) continue; // cull
+    mapOffCtx.globalAlpha = (dimming && !isEmphasized(v)) ? MAP_DIM_ALPHA : 1;
     if (spriteMode) {
       const img = mapSprites[mapSpriteKey(v)];
       if (img && img.complete && img.naturalWidth) mapOffCtx.drawImage(img, s.px - dw / 2, s.py - dh / 2, dw, dh);
     } else {
       const sz = mapDotSize(v.points) + (v.bonus ? 1 : 0);
-      // bonus villages pop in cyan; else barbarian grey / owned gold
-      mapOffCtx.fillStyle = v.bonus ? '#46d6e6' : (!v.playerId || v.playerId === '0') ? '#5a4a2a' : '#e0b04a';
+      mapOffCtx.fillStyle = colorForVillage(v, mapColorMode); // tribe/player/points/none
       mapOffCtx.fillRect(s.px - sz / 2, s.py - sz / 2, sz, sz);
     }
   }
+  mapOffCtx.globalAlpha = 1;
   const count = document.getElementById('map-count');
   if (count) count.textContent = t('map_villages_shown')(villageDb.length);
 }
@@ -156,6 +199,7 @@ function onMapTabShown() {
   if (!has) return;
   resizeMapCanvas();
   if (!mapFitted) { fitMapView(mapCanvas.width, mapCanvas.height); mapFitted = true; }
+  renderMapLegend();
   renderMapOffscreen();
   paintMap();
 }
@@ -167,6 +211,7 @@ function mapRefresh() {
   if (isMapTabActive() && villageDb.length) {
     resizeMapCanvas();
     if (!mapFitted) { fitMapView(mapCanvas.width, mapCanvas.height); mapFitted = true; }
+    renderMapLegend();
     renderMapOffscreen();
     paintMap();
   }
@@ -246,4 +291,66 @@ function mapResetView() {
   if (!mapInited) return;
   fitMapView(mapCanvas.width, mapCanvas.height);
   renderMapOffscreen(); paintMap();
+}
+
+// ── Phase 2: color-mode / bonus-filter / tribe-highlight controls ──
+function repaintMapData() { if (mapInited) { renderMapOffscreen(); paintMap(); } }
+
+function setMapColorMode(mode) {
+  mapColorMode = ['tribe','player','points','none'].includes(mode) ? mode : 'tribe';
+  saveMapPrefs();
+  repaintMapData();
+}
+
+function setMapBonusOnly(on) {
+  mapBonusOnly = !!on;
+  saveMapPrefs();
+  repaintMapData();
+}
+
+function toggleTribeHighlight(allyId) {
+  allyId = String(allyId);
+  if (mapHighlight.has(allyId)) mapHighlight.delete(allyId); else mapHighlight.add(allyId);
+  saveMapPrefs();
+  renderMapLegend();
+  repaintMapData();
+}
+
+function clearMapHighlight() {
+  if (!mapHighlight.size) return;
+  mapHighlight.clear();
+  saveMapPrefs();
+  renderMapLegend();
+  repaintMapData();
+}
+
+// Reflect persisted state into the toolbar controls (called after prefs load).
+function syncMapToolbar() {
+  const sel = document.getElementById('map-color-mode');
+  if (sel) sel.value = mapColorMode;
+  const cb = document.getElementById('map-bonus-only');
+  if (cb) cb.checked = mapBonusOnly;
+}
+
+// Build the tribe legend / highlight panel from mapTribeList(). DOM-only (browser).
+function renderMapLegend() {
+  const list = document.getElementById('map-legend-list');
+  const panel = document.getElementById('map-legend');
+  if (!list || !panel) return;
+  const tribes = mapTribeList();
+  if (!tribes.length) { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+  const filter = (document.getElementById('map-legend-search')?.value || '').toLowerCase();
+  const clearBtn = document.getElementById('map-legend-clear');
+  if (clearBtn) clearBtn.style.visibility = mapHighlight.size ? 'visible' : 'hidden';
+  const shown = filter
+    ? tribes.filter(tr => tr.tag.toLowerCase().includes(filter) || tr.name.toLowerCase().includes(filter))
+    : tribes;
+  list.innerHTML = shown.slice(0, 60).map(tr => {
+    const on = mapHighlight.has(String(tr.allyId));
+    return `<div class="map-lg-item${on ? ' on' : ''}" onclick="toggleTribeHighlight('${esc(tr.allyId)}')" title="${esc(tr.name)}">`
+      + `<span class="map-lg-sw" style="background:${tr.color}"></span>`
+      + `<span class="map-lg-tag">${esc(tr.tag)}</span>`
+      + `<span class="map-lg-cnt">${tr.count}</span></div>`;
+  }).join('');
 }
