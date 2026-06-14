@@ -2040,7 +2040,7 @@ function unitLateForDeadline(row, u, deadlineMs) {
 // Off-power tier badge (off mode Tribe Timings), matching the By Villages tier styling.
 function offTierBadge(tier) {
   const cls = { complete:'badge-complete', tq:'badge-tq', half:'badge-half', none:'badge-empty' }[tier] || 'badge-empty';
-  const lbl = tier === 'none' ? '—' : t(tier === 'complete' ? 'opt_complete' : tier === 'tq' ? 'opt_tq' : 'opt_half');
+  const lbl = tier === 'none' ? '—' : t(tier === 'complete' ? 'tier_complete' : tier === 'tq' ? 'tier_tq' : 'tier_half');
   return `<span class="badge ${cls}">${lbl}</span>`;
 }
 
