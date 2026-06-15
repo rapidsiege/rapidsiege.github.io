@@ -166,8 +166,17 @@ function readData() {
         i = 0;
         let pageNumber = 1;
         (function loop() {
+            // In sitter mode (someone operates the account in vacation mode) the game needs a
+            // t=<owner_id> param so requests act on behalf of the sat account. game_data.player.sitter
+            // is 0 when you run your own account, the sitter's id otherwise.
+            let URLReq;
+            if (game_data.player.sitter > 0) {
+                URLReq = "https://" + window.location.host + "/game.php?t=" + game_data.player.id + "&screen=ally&mode=" + mode + "&player_id=" + playerInfoList[i].playerId + "&page=" + pageNumber;
+            } else {
+                URLReq = "https://" + window.location.host + "/game.php?screen=ally&mode=" + mode + "&player_id=" + playerInfoList[i].playerId + "&page=" + pageNumber;
+            }
             page = $.ajax({
-                url: "https://" + window.location.host + "/game.php?screen=ally&mode=" + mode + "&player_id=" + playerInfoList[i].playerId + "&page=" + pageNumber,
+                url: URLReq,
                 async: false,
                 function(result) {
                     return result.responseText;
