@@ -159,10 +159,11 @@
           <th onclick="sortByVillages(8)" data-i18n-th="th_ram">Ram <span class="sort-arrow"></span></th>
           <th onclick="sortByVillages(9)" data-i18n-th="th_cat">Cat <span class="sort-arrow"></span></th>
           <th onclick="sortByVillages(10)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
+          <th data-i18n="th_edit">Edit</th>
         </tr>
       </thead>
       <tbody id="byvillages-tbody">
-        <tr class="empty-row"><td colspan="11">Load a file to see data</td></tr>
+        <tr class="empty-row"><td colspan="12">Load a file to see data</td></tr>
       </tbody>
     </table>
   </div>
@@ -377,6 +378,7 @@
           <th><span class="badge badge-complete" data-i18n="th_complete">Complete</span></th>
           <th><span class="badge badge-tq" data-i18n="th_tq">3/4</span></th>
           <th><span class="badge badge-half" data-i18n="th_half">1/2</span></th>
+          <th data-i18n="th_power" data-i18n-title="ot_power_title">POWER</th>
           <th class="left" data-i18n="th_off_senders">Off Senders</th>
           <th data-i18n="th_snob_players">Snob Players</th>
           <th data-i18n="th_nobles">Nobles</th>
@@ -390,6 +392,7 @@
       <tbody id="offtargets-tbody"></tbody>
     </table>
   </div>
+  <div id="ot-offs-summary" style="font-size:13px;color:#a08050;margin-top:10px;font-weight:600;"></div>
 </div>
 
 <!-- ═══════════════════════════ PLAN OFFENSIVE ═══════════════════════════ -->
@@ -426,11 +429,7 @@
     <input type="number" id="plan-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited">
     <label data-i18n="lbl_snob_max">Snob max distance:</label>
     <input type="number" id="plan-snob-max" value="70" min="0" style="width:70px;" title="0 = unlimited">
-    <label data-i18n="lbl_prefer">Prioritize:</label>
-    <select id="plan-prefer">
-      <option value="dist" data-i18n="opt_pref_dist">Distance</option>
-      <option value="power" data-i18n="opt_pref_power">Power</option>
-    </select>
+    <span style="font-size:12px;color:#5a3a18;" data-i18n="plan_optimize_note">Auto-optimizes by morale × off power vs. distance. Pin senders per target or tag a target POWER in Offensive Targets.</span>
     <button class="btn btn-primary btn-sm" onclick="generatePlan()" data-i18n="btn_generate">⚡ Generate Plan</button>
   </div>
   <div id="plan-warnings" style="margin-top:12px;"></div>
@@ -445,6 +444,7 @@
           <th data-i18n="th_type">Type</th>
           <th class="left" data-i18n="th_source">Source</th>
           <th class="left" data-i18n="th_player">Player</th>
+          <th data-i18n="th_morale" data-i18n-title="morale_title">Morale</th>
           <th data-i18n="th_window">Window</th>
           <th data-i18n="th_distance">Distance</th>
           <th data-i18n="th_travel">Travel</th>
@@ -526,6 +526,26 @@
 <div class="tab-content" id="tab-changelog">
   <div class="section-header"><h2 data-i18n="sec_changelog">Changelog</h2></div>
   <p style="font-size:12px;color:#5a3a18;margin-top:6px;margin-bottom:16px;" data-i18n="changelog_intro">Feature and change history for the Tribe Calculator, per version bump.</p>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v2.1.0</span><span class="cl-date">2026-06-16</span></div>
+    <ul class="cl-list">
+      <li><b>⚡ Morale-aware “Optimize” plan:</b> the <b>Prioritize</b> dropdown is gone — <b>Generate Plan</b> now auto-optimizes. For each off it maximizes <b>effective off power = morale × off power</b> against travel distance, so a slightly lower-morale but much closer village beats a far one (95% @ 7h beats 100% @ 50h). Morale uses the same points-based formula as Tribe Timings; with no world DB loaded it falls back to plain distance. Manually-pinned senders still go by distance only.</li>
+      <li><b>⚖️ Balanced off load:</b> Optimize now also spreads offs across players in <b>proportion to how many each owns</b>, so a small-roster player isn’t drained while a big one sits idle — e.g. a 13-off and a 6-off player split a 13-off job closer to 9+4 than 7+6, instead of maxing out the small one. It still respects morale/distance; this only breaks near-ties.</li>
+      <li><b>👑 Split-off escort reserved:</b> when a snob sender is in <b>split off</b> mode, the planner now <b>holds back one of that player’s offs</b> (the closest Complete/3-4 to the target) so it’s free to escort the noble — even if the player hasn’t recruited the noble yet. So a player with 4 offs + a pending split-off train is planned as 3 offs now, 1 reserved for when the noble lands.</li>
+      <li><b>📊 Morale column in Plan Offensive:</b> every planned attack now shows its morale (between Player and Window), color-coded.</li>
+      <li><b>⚡ POWER tag per target:</b> a new checkbox in Offensive Targets. Tag a target <b>POWER</b> and it’s filled with your <b>strongest offs</b> (regardless of tier). With several POWER targets, the strongest offs are <b>balanced</b> across them.</li>
+      <li><b>👑 Noble senders never disappear:</b> all tribe players now show in the snob-sender picker, including those with <b>(0)</b> nobles. Pin a player who has no noble yet and they <b>stay on the plan</b> — the origin shows UNASSIGNED and a warning tells them to recruit a noble so the train arrives in time.</li>
+      <li><b>🧮 Offs committed counter:</b> Offensive Targets now shows <b>N / Total offs assigned</b> at the bottom — how many offs you’ve allocated vs. how many off villages your tribe has.</li>
+    </ul>
+  </div>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v2.0.2</span><span class="cl-date">2026-06-15</span></div>
+    <ul class="cl-list">
+      <li><b>✎ Edit villages in “By Villages”:</b> each row now has an <b>Edit</b> button — adjust a village’s troops by hand (axe, light, heavy, knight, ram, catapult, snob) and the off power, tier, and player totals recalculate instantly. Handy for planning around villages you <i>know</i> will have nobles in a few days: bump their snob count and the planner treats them as senders. <i>Edits apply for the current session only</i> — reloading or re-pasting the troop file resets them.</li>
+    </ul>
+  </div>
 
   <div class="cl-entry">
     <div class="cl-head"><span class="cl-ver">v2.0.1</span><span class="cl-date">2026-06-15</span></div>
@@ -766,6 +786,10 @@ function applyLang() {
     const v = t(el.dataset.i18nPlaceholder);
     if (v) el.placeholder = v;
   });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const v = t(el.dataset.i18nTitle);
+    if (v) el.title = v;
+  });
   if (!villages.length) {
     const txt = document.getElementById('file-status-text');
     if (txt && !txt.classList.contains('connected')) txt.textContent = t('status_no_file');
@@ -822,7 +846,7 @@ function clearData() {
   document.getElementById('overview-drop').style.display = '';
   document.getElementById('overview-content').style.display = 'none';
   document.getElementById('players-tbody').innerHTML = `<tr class="empty-row"><td colspan="17">${t('empty_load_players')}</td></tr>`;
-  document.getElementById('byvillages-tbody').innerHTML = `<tr class="empty-row"><td colspan="11">${t('empty_load_byvillages')}</td></tr>`;
+  document.getElementById('byvillages-tbody').innerHTML = `<tr class="empty-row"><td colspan="12">${t('empty_load_byvillages')}</td></tr>`;
   document.getElementById('villages-tbody').innerHTML = `<tr class="empty-row"><td colspan="15">${t('empty_load_villages')}</td></tr>`;
   document.getElementById('rankings-content').innerHTML = `<div style="color:#5a3a18;padding:36px;text-align:center;">${t('empty_load_rankings')}</div>`;
   renderTargetTable();
@@ -831,6 +855,39 @@ function clearData() {
 // ══════════════════════════════════════════════════════════════
 // PARSING
 // ══════════════════════════════════════════════════════════════
+// Off/def power + type classification for a troop-village row, derived from its unit
+// counts. Used by parseData (initial parse) AND the By-Villages manual edit, so the two
+// never diverge. Mutates vil in place (sets offPow / defInf / defCav / type).
+const OFF_UNITS = ['axe','light','ram','catapult'];
+const DEF_UNITS = ['spear','sword','heavy','catapult','knight','light','spy'];
+function applyVilDerived(vil) {
+  vil.offPow = OFF_UNITS.reduce((s,u) => s + (vil[u] || 0) * ATT[u],  0);
+  vil.defInf = DEF_UNITS.reduce((s,u) => s + (vil[u] || 0) * DINF[u], 0);
+  vil.defCav = DEF_UNITS.reduce((s,u) => s + (vil[u] || 0) * DCAV[u], 0);
+  const totalUnits = UNITS.reduce((s,u) => s + (vil[u] || 0), 0);
+  let type = 'empty';
+  if (totalUnits > 0) {
+    const offScore = vil.axe + vil.light + vil.ram;
+    const defScore = vil.spear + vil.sword + vil.heavy + vil.knight;
+    if (offScore > defScore * 2)      type = 'off';
+    else if (defScore > offScore * 2) type = 'def';
+    else                              type = 'mixed';
+  }
+  vil.type = type;
+}
+// Re-sum a player's aggregate (totals + off/def power) from its villages — called after a
+// manual edit changes one of them. Idempotent.
+function recomputePlayerAggregate(name) {
+  const p = players[name];
+  if (!p) return;
+  p.totals = Object.fromEntries(UNITS.map(u => [u, 0]));
+  p.offPow = 0; p.defInf = 0; p.defCav = 0;
+  for (const v of p.villages) {
+    UNITS.forEach(u => { p.totals[u] += (v[u] || 0); });
+    p.offPow += v.offPow; p.defInf += v.defInf; p.defCav += v.defCav;
+  }
+}
+
 function parseData(text, filename) {
   villages = [];
   players  = {};
@@ -849,24 +906,8 @@ function parseData(text, filename) {
     const units  = {};
     UNITS.forEach((u, i) => { units[u] = parseInt(cols[2 + i]) || 0; });
 
-    const OFF_UNITS = ['axe','light','ram','catapult'];
-    const DEF_UNITS = ['spear','sword','heavy','catapult','knight','light','spy'];
-    const offPow = OFF_UNITS.reduce((s,u) => s + units[u] * ATT[u],  0);
-    const defInf = DEF_UNITS.reduce((s,u) => s + units[u] * DINF[u], 0);
-    const defCav = DEF_UNITS.reduce((s,u) => s + units[u] * DCAV[u], 0);
-
-    // Classify village
-    const totalUnits = UNITS.reduce((s,u) => s + units[u], 0);
-    let type = 'empty';
-    if (totalUnits > 0) {
-      const offScore = units.axe + units.light + units.ram;
-      const defScore = units.spear + units.sword + units.heavy + units.knight;
-      if (offScore > defScore * 2)      type = 'off';
-      else if (defScore > offScore * 2) type = 'def';
-      else                              type = 'mixed';
-    }
-
-    const vil = { coord, player, ...units, offPow, defInf, defCav, type };
+    const vil = { coord, player, ...units };
+    applyVilDerived(vil); // offPow / defInf / defCav / type
     villages.push(vil);
     troopByCoord[coord] = vil; // index for the map hover/badges
 
@@ -875,9 +916,9 @@ function parseData(text, filename) {
     }
     players[player].villages.push(vil);
     UNITS.forEach(u => { players[player].totals[u] += units[u]; });
-    players[player].offPow += offPow;
-    players[player].defInf += defInf;
-    players[player].defCav += defCav;
+    players[player].offPow += vil.offPow;
+    players[player].defInf += vil.defInf;
+    players[player].defCav += vil.defCav;
   }
 
   // Status bar
@@ -1124,11 +1165,12 @@ function renderByVillagesTable() {
       ${numCellAccent(v.ram)}
       ${numCellAccent(v.catapult)}
       ${numCellAccent(v.snob)}
+      <td><button class="btn btn-edit btn-sm" onclick="editByVillage('${v.coord}')">✎ ${t('btn_edit')}</button></td>
     </tr>
   `).join('');
 
   document.getElementById('byvillages-tbody').innerHTML = rows ||
-    `<tr class="empty-row"><td colspan="11">${t('empty_no_byvillages')}</td></tr>`;
+    `<tr class="empty-row"><td colspan="12">${t('empty_no_byvillages')}</td></tr>`;
 
   // sync sort arrows
   document.getElementById('byvillages-table').querySelectorAll('th').forEach((th, i) => {
@@ -1141,6 +1183,43 @@ function sortByVillages(col) {
   if (sortStateByVil.col === col) sortStateByVil.dir *= -1;
   else { sortStateByVil.col = col; sortStateByVil.dir = -1; }
   renderByVillagesTable();
+}
+
+// ── Manual edit of a village's troops (By Villages "Edit") ──────────────────
+// Lets you adjust a village's units in place — e.g. add snobs you know will be
+// recruited soon — so the plan accounts for them. SESSION-ONLY: the edit lives on
+// the in-memory village object; reloading or re-pasting the troop file resets it.
+const BV_EDIT_UNITS = ['axe','light','heavy','knight','ram','catapult','snob'];
+function editByVillage(coord) {
+  const v = troopByCoord[coord];
+  if (!v) return;
+  document.getElementById('bvm-coord').value = coord;
+  document.getElementById('bvm-where').textContent = coord + ' · ' + decode(v.player);
+  BV_EDIT_UNITS.forEach(u => { document.getElementById('bvm-' + u).value = v[u] || 0; });
+  document.getElementById('byvillage-modal').classList.add('open');
+}
+function closeByVillageModal() {
+  document.getElementById('byvillage-modal').classList.remove('open');
+}
+function saveByVillage() {
+  const coord = document.getElementById('bvm-coord').value;
+  const v = troopByCoord[coord];
+  if (!v) { closeByVillageModal(); return; }
+  BV_EDIT_UNITS.forEach(u => { v[u] = Math.max(0, parseInt(document.getElementById('bvm-' + u).value) || 0); });
+  applyVilDerived(v);              // recompute offPow / def / type from the new counts
+  recomputePlayerAggregate(v.player); // re-sum the owner's totals
+  closeByVillageModal();
+  // Re-render everything parseData refreshes (minus the status bar) so nothing is stale:
+  // By Villages + Villages tables, Players, Overview, Rankings, Tribe Timings off badge,
+  // the off/snob sender pickers (counts depend on tier/snobs), and the map.
+  renderOverview();
+  renderPlayersTable();
+  renderByVillagesTable();
+  renderVillagesTable();
+  renderRankings();
+  renderTargetTable();
+  renderOffTargets();
+  if (typeof mapRefresh === 'function') mapRefresh();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1291,6 +1370,13 @@ function fmtMorale(m) { return m == null ? '—' : Math.round(m * 100) + '%'; }
 function moraleColor(m) {
   if (m == null) return '#806030';
   return m >= 1 ? '#6cc070' : m >= 0.75 ? '#d0c040' : m >= 0.5 ? '#d0a040' : '#e06040';
+}
+// Morale of an offensive from srcCoord's owner against tgtCoord's owner. Mirrors Tribe
+// Timings exactly: barbarian target → 100% (no penalty), else moraleValue on the two
+// players' aggregated points. null when the world DB can't resolve either side's points.
+function planAttackMorale(srcCoord, tgtCoord) {
+  if (isBarbarian(tgtCoord)) return 1;
+  return moraleValue(playerPointsAtCoord(tgtCoord), playerPointsAtCoord(srcCoord));
 }
 
 // "Arrive by" deadline (Day + HH:MM:SS, server time) → epoch ms, or null when unset
@@ -1615,6 +1701,7 @@ function fixDefWin(key) {
 // Normalize a target saved by (or pasted from) older versions:
 // winOff string → offWindows list, assignee names → {name, count} objects
 function normalizeOffTarget(tg) {
+  if (typeof tg.power !== 'boolean') tg.power = false;
   if (!tg.snobMode) tg.snobMode = 'solo';
   if (!Array.isArray(tg.snobAssignees)) tg.snobAssignees = [];
   tg.snobAssignees = tg.snobAssignees.filter(Boolean).map(a => typeof a === 'string'
@@ -1636,7 +1723,7 @@ function normalizeOffTarget(tg) {
 
 function newOffTarget(coord, player) {
   return {
-    id: otNextId++, coord, player,
+    id: otNextId++, coord, player, power: false,
     nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0, snobPlayers: 1, nobles: 4,
     snobMode: 'solo', snobAssignees: [], offAssignees: [],
     offWindows: [{ win: otCfg.defWinOff, count: 0 }], winSnob: otCfg.defWinSnob,
@@ -1690,18 +1777,27 @@ function delOffTarget(id) {
   saveOffensive(); renderOffTargets();
 }
 
+// POWER tag (per target): send the strongest offs here, balanced across all POWER targets
+function setOTPower(id, val) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg) return;
+  tg.power = !!val;
+  saveOffensive(); renderOffTargets();
+}
+
 function clearOffTargets() {
   if (offTargets.length && !confirm(t('confirm_clear_targets'))) return;
   offTargets = [];
   saveOffensive(); renderOffTargets();
 }
 
-// Players from the loaded tribe troop file that own snobs (potential train senders)
+// All players from the loaded tribe troop file as potential train senders. Players with
+// no nobles yet are still listed (shown as "(0)") so they can be pinned — generatePlan
+// then flags them to recruit a noble in time, which is exactly the intended signal.
 function snobSenderOptions() {
   return Object.entries(players)
     .map(([name, p]) => ({ name, snob: p.totals.snob }))
-    .filter(x => x.snob > 0)
-    .sort((a, b) => b.snob - a.snob);
+    .sort((a, b) => (b.snob - a.snob) || decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
 }
 
 function addSnobAssignee(id, name) {
@@ -1899,9 +1995,23 @@ function renderOffTargets() {
   if (warnEl) warnEl.innerHTML = warns.length
     ? `<div class="warn-box">${warns.map(esc).join('<br>')}</div>` : '';
 
+  // Offs committed across all targets vs. the tribe's off villages, PER TIER
+  // (Complete / 3-4 / 1-2): how many of each you've assigned out of how many exist.
+  const offsSummaryEl = document.getElementById('ot-offs-summary');
+  if (offsSummaryEl) {
+    const tierMeta = [['complete', 'badge-complete', 'th_complete'], ['tq', 'badge-tq', 'th_tq'], ['half', 'badge-half', 'th_half']];
+    const parts = tierMeta.map(([tier, cls, label]) => {
+      const used = offTargets.reduce((s, tg) => s + (tg[TIER_FIELD[tier]] || 0), 0);
+      const total = villages.filter(v => getOffTier(v.offPow) === tier).length;
+      return `<span class="badge ${cls}">${t(label)}</span> ${used} / ${total}`;
+    });
+    offsSummaryEl.innerHTML = (offTargets.length || villages.length)
+      ? `${t('offs_assigned_label')} ${parts.join('&nbsp;&nbsp;·&nbsp;&nbsp;')}` : '';
+  }
+
   const tbody = document.getElementById('offtargets-tbody');
   if (!offTargets.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="14">${t('empty_no_targets')}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="15">${t('empty_no_targets')}</td></tr>`;
     return;
   }
   const senders = snobSenderOptions();
@@ -1961,6 +2071,7 @@ function renderOffTargets() {
       <td><input type="number" min="0" class="cell-input num" value="${tg.nComplete}" onchange="updOT(${tg.id},'nComplete',this.value)"></td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.nTq}" onchange="updOT(${tg.id},'nTq',this.value)"></td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.nHalf}" onchange="updOT(${tg.id},'nHalf',this.value)"></td>
+      <td title="${esc(t('ot_power_title'))}"><label class="ot-power"><input type="checkbox" ${tg.power ? 'checked' : ''} onchange="setOTPower(${tg.id},this.checked)">⚡</label></td>
       <td class="left"><div style="max-width:280px;">${offSenderCell}</div></td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.snobPlayers}" onchange="updOT(${tg.id},'snobPlayers',this.value)"></td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.nobles}" onchange="updOT(${tg.id},'nobles',this.value)"></td>
@@ -2075,12 +2186,19 @@ function generatePlan() {
   const maxDist = parseFloat(document.getElementById('plan-max-dist').value) || 0;
   const minDistRaw = parseFloat((document.getElementById('plan-min-dist') || {}).value);
   const minDist = isNaN(minDistRaw) ? 0 : minDistRaw;
-  const prefer  = document.getElementById('plan-prefer').value;
 
   const pool = villages.map(v => ({
     v, c: parseCoordStr(v.coord), tier: getOffTier(v.offPow),
     snobLeft: v.snob, usedOff: false, usedSnob: false,
   })).filter(p => p.c);
+
+  // Off-load fairness (auto pass only): how many off villages each player owns, and how
+  // many have been committed so far. Used to spread offs in PROPORTION to roster size, so
+  // a small-roster player isn't drained while a big one sits idle (e.g. 9+4, not 7+6).
+  const offCapacity = {};
+  for (const p of pool) if (p.tier !== 'none') offCapacity[p.v.player] = (offCapacity[p.v.player] || 0) + 1;
+  const offUsedByPlayer = {};
+  const noteOffUsed = name => { offUsedByPlayer[name] = (offUsedByPlayer[name] || 0) + 1; };
 
   planRows = []; planWarnings = [];
 
@@ -2122,9 +2240,38 @@ function generatePlan() {
   };
   const okOffTime  = (p, T) => okTime(p, T, T.offEndMin,  PLAN_BASE_MIN.off);
   const okSnobTime = (p, T) => okTime(p, T, T.snobEndMin, PLAN_BASE_MIN.snob);
-  const byPref = tc => (a, b) => prefer === 'power'
-    ? (b.v.offPow - a.v.offPow) || (distXY(a.c, tc) - distXY(b.c, tc))
-    : (distXY(a.c, tc) - distXY(b.c, tc)) || (b.v.offPow - a.v.offPow);
+
+  // ── Sorting: named pins go by distance, auto picks "optimize" ──────────────
+  // Morale only helps when the target's defender points are actually known (world
+  // DB loaded, non-barbarian); otherwise there's no morale signal and we fall back
+  // to plain distance — which also preserves the pre-morale behaviour with no DB.
+  const dbReady = villageDb.length > 0;
+  const moraleUsable = T => dbReady && !isBarbarian(T.tg.coord) && playerPointsAtCoord(T.tg.coord) > 0;
+  // Effective offensive power = morale × off power (the user's metric). A candidate
+  // whose own morale can't be resolved counts as 1.0 so it's never zeroed out.
+  const effPow = (p, T) => {
+    const m = planAttackMorale(p.v.coord, T.tg.coord);
+    return (m == null ? 1 : m) * p.v.offPow;
+  };
+  // Manually-pinned senders: distance only (closest of their own villages first; no
+  // morale, no fairness — the pin is the user's explicit choice).
+  const byDist = T => (a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (b.v.offPow - a.v.offPow);
+  // Fraction of a player's off roster still unused (1 = untouched, →0 = drained).
+  const remOffFrac = name => {
+    const cap = offCapacity[name] || 0;
+    return cap > 0 ? Math.max(0, (cap - (offUsedByPlayer[name] || 0)) / cap) : 1;
+  };
+  // Auto "optimize" score for a candidate: effective power per field of travel (so a small
+  // morale loss for a much closer village wins — 95% @ 7h beats 100% @ 50h), or pure
+  // closeness when there's no morale signal. Then DAMPED by the sender's remaining fraction
+  // (0.5–1.0) so already-used players slide down — pulling the split toward equal fractions
+  // of each player's roster (≈ proportional balancing) without overriding a real edge.
+  const optScore = (p, T) => {
+    const d = Math.max(0.1, distXY(p.c, T.c));
+    const base = moraleUsable(T) ? effPow(p, T) / d : 1 / d;
+    return base * (0.5 + 0.5 * remOffFrac(p.v.player));
+  };
+  const byOptimize = T => (a, b) => (optScore(b, T) - optScore(a, T)) || (distXY(a.c, T.c) - distXY(b.c, T.c));
 
   // Named off senders fill FIRST (before the auto pass below claims villages globally),
   // so a manual pin can't be stolen by another target's auto-pick. They draw only from
@@ -2144,11 +2291,11 @@ function generatePlan() {
         const want = Math.min(a.count, Math.max(0, N - placed)); // never exceed the tier request
         if (want <= 0) continue;
         const cands = pool.filter(p => !p.usedOff && p.v.player === a.name && p.tier === tier
-          && okOffDist(p, T.c) && okOffTime(p, T)).sort(byPref(T.c));
+          && okOffDist(p, T.c) && okOffTime(p, T)).sort(byDist(T));
         let got = 0;
         for (const p of cands) {
           if (got >= want) break;
-          p.usedOff = true; got++; placed++;
+          p.usedOff = true; got++; placed++; noteOffUsed(p.v.player);
           const d = distXY(p.c, T.c);
           T.offRows.push({ type: tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
             dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
@@ -2168,6 +2315,65 @@ function generatePlan() {
     }
   }
 
+  // Escort reservation (split-off / "escorted" mode): the noble rides WITH one of the
+  // sender's offs to the same target, so hold one noble-capable off village out of the
+  // off passes per escorted train — the closest Complete/3-4 off to that target (noble
+  // range + pace govern, since the off travels with the noble). Reserved up front so the
+  // POWER/auto passes leave it free for the split-off. Applies even to pinned senders
+  // who don't own the noble yet (needNobles): the slot is held until they recruit one.
+  const escortReserved = new Set();
+  for (const T of targets) {
+    if (!T.c || (T.tg.snobMode || 'solo') !== 'escorted') continue;
+    for (const { name: want } of targetTrainSpec(T.tg)) {
+      const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p)
+        && tiers.includes(p.tier) && okSnobDist(p, T.c) && okSnobTime(p, T)
+        && (!want || p.v.player === want))
+        .sort((a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (b.v.offPow - a.v.offPow))[0];
+      const p = pick(['complete', 'tq']) || pick(['half']);
+      if (p) escortReserved.add(p);
+    }
+  }
+
+  // POWER targets (per-target tag): ignore the per-tier split and fill each one's
+  // remaining off slots with the globally strongest available offs, balancing total
+  // raw off power across all POWER targets — the next-strongest off goes to whichever
+  // POWER target currently has the lowest assigned power and still has an open slot it
+  // can reach (range + launch time). Runs before the auto pass so it isn't starved.
+  const powerTargets = targets.filter(T => T.c && T.tg.power);
+  if (powerTargets.length) {
+    const remaining = {}, powSum = {}, warned = new Set();
+    let totalSlots = 0;
+    for (const T of powerTargets) {
+      const total = ['complete', 'tq', 'half'].reduce((s, tr) => s + (T.tg[TIER_FIELD[tr]] || 0), 0);
+      const named = ['complete', 'tq', 'half'].reduce((s, tr) => s + (namedOffReserved[T.i + '|' + tr] || 0), 0);
+      remaining[T.i] = Math.max(0, total - named); powSum[T.i] = 0; totalSlots += remaining[T.i];
+    }
+    for (let s = 0; s < totalSlots; s++) {
+      const open = powerTargets.filter(T => remaining[T.i] > 0).sort((a, b) => powSum[a.i] - powSum[b.i]);
+      if (!open.length) break;
+      const T = open[0];
+      const cands = pool.filter(p => !p.usedOff && !escortReserved.has(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T))
+        .sort((a, b) => b.v.offPow - a.v.offPow);
+      remaining[T.i]--;
+      if (!cands.length) {
+        if (!warned.has(T.i)) {
+          const inBand = pool.filter(p => !p.usedOff && !escortReserved.has(p) && p.tier !== 'none' && okOffDist(p, T.c));
+          planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T))
+            ? t('warn_off_too_late')(t('tier_complete'), T.tg.coord)
+            : t('warn_missed_off')(t('tier_complete'), T.tg.coord));
+          warned.add(T.i);
+        }
+        T.offRows.push({ type: 'complete', unassigned: true });
+        continue;
+      }
+      const p = cands[0];
+      p.usedOff = true; powSum[T.i] += p.v.offPow; noteOffUsed(p.v.player);
+      const d = distXY(p.c, T.c);
+      T.offRows.push({ type: p.tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+        dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
+    }
+  }
+
   // Offs: strongest requests claim villages first (complete → 3/4 → 1/2);
   // an exhausted tier auto-bumps to the nearest stronger off (1/2 → 3/4 → Complete)
   // and the row is relabeled to what is actually sent, with a warning. Slots already
@@ -2175,10 +2381,10 @@ function generatePlan() {
   const TIER_UP = { half: ['tq', 'complete'], tq: ['complete'], complete: [] };
   for (const tier of ['complete', 'tq', 'half']) {
     for (const T of targets) {
-      if (!T.c) continue;
+      if (!T.c || T.tg.power) continue; // POWER targets are filled by the balanced pass above
       const autoNeed = Math.max(0, (T.tg[TIER_FIELD[tier]] || 0) - (namedOffReserved[T.i + '|' + tier] || 0));
       for (let k = 0; k < autoNeed; k++) {
-        const tierCands = tt => pool.filter(p => !p.usedOff && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T));
+        const tierCands = tt => pool.filter(p => !p.usedOff && !escortReserved.has(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T));
         let sent = tier, cands = tierCands(tier);
         for (const up of TIER_UP[tier]) {
           if (cands.length) break;
@@ -2186,7 +2392,7 @@ function generatePlan() {
           if (cands.length) sent = up;
         }
         if (!cands.length) {
-          const inBand = pool.filter(p => !p.usedOff && okOffDist(p, T.c));
+          const inBand = pool.filter(p => !p.usedOff && !escortReserved.has(p) && okOffDist(p, T.c));
           planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T))
             ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
             : t('warn_missed_off')(t('tier_' + tier), T.tg.coord));
@@ -2194,8 +2400,8 @@ function generatePlan() {
           continue;
         }
         if (sent !== tier) planWarnings.push(t('warn_tier_bumped')(t('tier_' + tier), t('tier_' + sent), T.tg.coord));
-        const p = cands.sort(byPref(T.c))[0];
-        p.usedOff = true;
+        const p = cands.sort(byOptimize(T))[0];
+        p.usedOff = true; noteOffUsed(p.v.player);
         const d = distXY(p.c, T.c);
         T.offRows.push({
           type: sent, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
@@ -2237,13 +2443,22 @@ function generatePlan() {
         if (strong.length) cands = strong;
       }
       const enough = cands.filter(p => p.snobLeft >= nc);
+      // A pinned sender whose villages can't field a FULL train (some nobles, but fewer
+      // than this train needs) is treated like the no-noble case: kept on the plan by
+      // name, origin UNASSIGNED, warned to recruit more — never assigned a short village.
+      if (want && cands.length && !enough.length) {
+        planWarnings.push(t('warn_need_nobles')(decode(want), nc, T.tg.coord));
+        T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true,
+          srcPlayer: decode(want), needNobles: true });
+        return;
+      }
       if (enough.length) cands = enough;
       const fresh = cands.filter(p => !p.usedSnob);
       if (fresh.length) cands = fresh;
       if (!cands.length) {
         // pinpoint the blocker: out of noble range / launch in the past /
         // off already split / no snobs
-        let msg;
+        let msg, needNobles = false;
         if (want) {
           const mine = pool.filter(p => p.snobLeft > 0 && p.v.player === want);
           const inRange = mine.filter(p => okSnobDist(p, T.c));
@@ -2265,8 +2480,12 @@ function generatePlan() {
             msg = t('warn_snob_too_late')(T.tg.coord);
           else if (mode === 'escorted' && inRange.length)
             msg = t('warn_escort_used')(decode(want), T.tg.coord);
-          else
-            msg = t('warn_missed_snob_player')(decode(want), T.tg.coord);
+          else {
+            // the pinned player simply owns no (free) nobles → keep them on the plan
+            // as the sender, flag the origin UNASSIGNED, and tell them to recruit one
+            msg = t('warn_need_nobles')(decode(want), nc, T.tg.coord);
+            needNobles = true;
+          }
         } else {
           const any = pool.filter(p => p.snobLeft > 0 && okSnobDist(p, T.c));
           msg = any.length && !any.some(p => okSnobTime(p, T))
@@ -2274,7 +2493,10 @@ function generatePlan() {
             : t('warn_missed_snob')(T.tg.coord);
         }
         planWarnings.push(msg);
-        T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true });
+        // A manually-pinned sender stays named on the plan even when unplaced (so they
+        // see their assignment); an auto train that couldn't be filled has no name.
+        T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true,
+          srcPlayer: want ? decode(want) : undefined, needNobles });
         return;
       }
       // escorted: strongest escort wins; solo: nearest village, weakest off stays home
@@ -2309,6 +2531,8 @@ function generatePlan() {
     }
     T.snobRows.forEach(r => { r.window = T.tg.winSnob || (wins[wins.length - 1].win || ''); });
     [...T.offRows, ...T.snobRows].forEach(r => {
+      // Morale of the assigned attack (shown in the plan column); needs the world DB.
+      if (r.srcCoord && dbReady) r.morale = planAttackMorale(r.srcCoord, T.tg.coord);
       planRows.push({ tIdx: T.i + 1, tCoord: T.tg.coord, tPlayer: T.tg.player, ...r });
     });
   }
@@ -2340,7 +2564,7 @@ function renderPlanTable() {
 
   const tbody = document.getElementById('plan-tbody');
   if (!planRows.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="12">${t('empty_no_plan')}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="13">${t('empty_no_plan')}</td></tr>`;
     return;
   }
   let lastIdx = null;
@@ -2360,8 +2584,9 @@ function renderPlanTable() {
       <td class="left" style="font-family:monospace;">${first ? esc(r.tCoord) : ''}</td>
       <td class="left">${first && r.tPlayer ? `<span class="player-tag">${esc(r.tPlayer)}</span>` : ''}</td>
       <td>${badge}</td>
-      <td class="left" style="font-family:monospace;">${r.unassigned ? `<span style="color:#e06040;">${t('bb_unassigned')}</span>` : esc(r.srcCoord)}</td>
-      <td class="left">${r.unassigned ? '—' : `<span class="player-tag">${esc(r.srcPlayer)}</span>`}</td>
+      <td class="left" style="font-family:monospace;">${r.unassigned ? `<span style="color:#e06040;">${t('bb_unassigned')}${r.needNobles ? ' 👑' : ''}</span>` : esc(r.srcCoord)}</td>
+      <td class="left">${r.srcPlayer ? `<span class="player-tag">${esc(r.srcPlayer)}</span>` : '—'}</td>
+      <td style="color:${moraleColor(r.morale)};font-weight:600;">${fmtMorale(r.morale)}</td>
       <td style="color:#60a0e0;font-weight:600;font-family:monospace;">${esc(fmtWindow(r.window) || '—')}</td>
       <td style="color:#f0c040;">${r.unassigned ? '—' : r.dist.toFixed(1)}</td>
       <td>${r.unassigned ? '—' : fmtTime(r.travel)}</td>
@@ -2404,7 +2629,11 @@ function showPlanBB() {
     for (const r of g.rows) {
       const iconBB = planRowIconBB(r);
       const prefix = r.type === 'snob' && multiSnob ? `${r.count}x ` : '';
-      const who    = r.unassigned ? t('bb_unassigned') : `[player]${r.srcPlayer}[/player]`;
+      // A pinned-but-unplaced sender keeps their name (with a "needs nobles" note);
+      // a truly anonymous unassigned row falls back to the UNASSIGNED label.
+      const who    = r.srcPlayer
+        ? `[player]${r.srcPlayer}[/player]${r.needNobles ? ` (${t('bb_need_nobles')})` : ''}`
+        : t('bb_unassigned');
       bb += `${prefix}${iconBB} ${who} [b][color=#0000a5]${fmtWindow(r.window) || '??:??'}[/color][/b]\n`;
     }
     bb += '\n';
@@ -2421,11 +2650,13 @@ function showPlayerPlanBB() {
   const nobleCounts = [...new Set(offTargets.map(x => x.nobles).filter(Boolean))].sort((a, b) => a - b);
   const noblesLabel = nobleCounts.length ? nobleCounts.join(' ó ') : '4';
 
-  const assigned   = planRows.filter(r => !r.unassigned);
-  const unassigned = planRows.filter(r => r.unassigned);
+  // Rows with a sender (incl. pinned-but-unplaced "needs nobles") group under that
+  // player; only truly anonymous unassigned rows go to the bottom section.
+  const named      = planRows.filter(r => r.srcPlayer);
+  const unassigned = planRows.filter(r => !r.srcPlayer);
 
   const byPlayer = {};
-  for (const r of assigned) {
+  for (const r of named) {
     if (!byPlayer[r.srcPlayer]) byPlayer[r.srcPlayer] = [];
     byPlayer[r.srcPlayer].push(r);
   }
@@ -2439,6 +2670,10 @@ function showPlayerPlanBB() {
     for (const r of rows) {
       const iconBB  = planRowIconBB(r);
       const prefix  = r.type === 'snob' && r.count > 1 ? `${r.count}x ` : '';
+      if (r.unassigned) { // pinned sender with no noble yet — flag it, no origin/link
+        bb += `${prefix}${iconBB} ⚠ [coord]${r.tCoord}[/coord] — ${t('bb_need_nobles')}\n`;
+        continue;
+      }
       const defender = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
       const url     = rallyUrl(r.srcCoord, r.tCoord);
       const urlPart = url ? ` — [url=${url}]▶[/url]` : '';
@@ -2985,7 +3220,7 @@ document.addEventListener('drop', e => {
      card at the top of the Changelog tab (search "id=\"tab-changelog\""). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 2.0.1 &nbsp;·&nbsp; 2026-06-15</span>
+  <span><span data-i18n="footer_version">Version</span> 2.1.0 &nbsp;·&nbsp; 2026-06-16</span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
@@ -3001,6 +3236,34 @@ document.addEventListener('drop', e => {
     <div class="modal-footer">
       <button class="btn btn-ghost btn-sm" onclick="closeBBModal()" data-i18n="btn_close">Close</button>
       <button class="btn btn-primary btn-sm" id="bb-copy-btn" onclick="copyBBTable()" data-i18n="bb_copy_btn">Copy to Clipboard</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ EDIT VILLAGE MODAL (By Villages) ═══════════════════════ -->
+<div class="modal-overlay" id="byvillage-modal" onclick="if(event.target===this)closeByVillageModal()">
+  <div class="modal" style="width:min(460px,95vw);">
+    <div class="modal-header">
+      <h3 data-i18n="modal_edit_village">Edit Village</h3>
+      <button class="modal-close" onclick="closeByVillageModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="bvm-coord">
+      <div id="bvm-where" class="bvm-where"></div>
+      <div class="bvm-grid">
+        <label><span data-i18n="th_axe">Axe</span><input type="number" min="0" id="bvm-axe"></label>
+        <label><span data-i18n="th_light">Light</span><input type="number" min="0" id="bvm-light"></label>
+        <label><span data-i18n="th_heavy">Heavy</span><input type="number" min="0" id="bvm-heavy"></label>
+        <label><span data-i18n="th_knight">Knight</span><input type="number" min="0" id="bvm-knight"></label>
+        <label><span data-i18n="th_ram">Ram</span><input type="number" min="0" id="bvm-ram"></label>
+        <label><span data-i18n="th_cat">Cat</span><input type="number" min="0" id="bvm-catapult"></label>
+        <label><span data-i18n="th_snob">Snob</span><input type="number" min="0" id="bvm-snob"></label>
+      </div>
+      <p class="bvm-note" data-i18n="mv_note">Edits apply for this session only — reloading or re-pasting the troop file resets them.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeByVillageModal()" data-i18n="btn_cancel">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveByVillage()" data-i18n="btn_save">Save</button>
     </div>
   </div>
 </div>

@@ -395,6 +395,23 @@
       gap: 8px;
     }
 
+    /* ── POWER tag (Offensive Targets) ── */
+    .ot-power { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; user-select: none; font-size: 13px; }
+    .ot-power input { cursor: pointer; accent-color: #f0c040; }
+
+    /* ── Edit button + By-Villages edit modal ── */
+    .btn-edit { background: #0e2a40; color: #60a8e0; border-color: #2060a0; }
+    .btn-edit:hover { background: #123450; color: #8cc4f0; }
+    .bvm-where { font-family: 'Consolas','Courier New',monospace; color: #d0a870; font-size: 13px; margin-bottom: 12px; }
+    .bvm-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 12px; }
+    .bvm-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: #a08050; }
+    .bvm-grid input {
+      background: #120d03; border: 1px solid #3a2808; color: #e8d0a0;
+      padding: 5px 7px; border-radius: 4px; font-size: 13px; outline: none; width: 100%;
+    }
+    .bvm-grid input:focus { border-color: #7a5c10; }
+    .bvm-note { font-size: 11px; color: #6a4a20; margin-top: 12px; font-style: italic; }
+
     /* ── Lang buttons ── */
     .lang-btn { padding: 3px 8px; background: #1e1408; border-color: #4a3010; color: #a08050; display:inline-flex; align-items:center; gap:5px; }
     .lang-btn.lang-active { border-color: #f0c040; color: #f0c040; background: #2a1c08; }
