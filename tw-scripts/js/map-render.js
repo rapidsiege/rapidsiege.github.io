@@ -23,6 +23,14 @@ let mapMineSeeded = false;           // have we auto-created the "My tribe" grou
 const MINE_GROUP_ID = '__mine__';    // stable id of the auto-seeded "My tribe" group
 const MAP_DIM_ALPHA = 0.12;          // alpha for villages filtered out by the bonus filter
 const MAP_GROUP_PRESETS = ['#e0403a','#9b59b6','#1abc9c','#f39c12','#e91e63','#2ecc71','#16a0d0','#d35400'];
+// Off-power tier tag drawn under the color orb (zoomed-in only). Tier ids + colors mirror
+// the By-Villages / Players table badges (.badge-complete/-tq/-half in tribe-calculator.css).
+// 'none' (below the 1/2 threshold) has no entry → no tag.
+const MAP_OFF_TIER_TAG = {
+  complete: { txt: '[F]', color: '#ff6040' }, // red
+  tq:       { txt: '[3/4]',  color: '#f0a030' }, // orange
+  half:     { txt: '[1/2]',  color: '#d8d030' }, // yellow
+};
 
 const MAP_PREFS_KEY = 'tw_tribe_map';
 function loadMapPrefs() {
@@ -213,6 +221,10 @@ function renderMapOffscreen() {
       if (img && img.complete && img.naturalWidth) mapOffCtx.drawImage(img, s.px - dw / 2, s.py - dh / 2, dw, dh);
       // zoomed-in: a small group-color dot on the top-left of each NON-barbarian village
       if (v.playerId && v.playerId !== '0') drawMapColorDot(mapOffCtx, s.px - dw / 2, s.py - dh / 2, dw, dh, colorForVillage(v));
+      // zoomed-in: off-power tier tag under the orb (only where this village's troops are loaded)
+      const tt = (typeof troopByCoord !== 'undefined') ? troopByCoord[v.x + '|' + v.y] : null;
+      if (tt && typeof getOffTier === 'function')
+        drawMapOffTag(mapOffCtx, s.px - dw / 2, s.py - dh / 2, dw, dh, getOffTier(tt.offPow));
       // zoomed-in: off/def + snob badges for villages whose troops we've loaded
       const badge = villageTroopBadge(v.x + '|' + v.y);
       if (badge) drawMapTroopBadges(mapOffCtx, s.px - dw / 2, s.py - dh / 2, dw, dh, badge);
@@ -239,6 +251,29 @@ function drawMapColorDot(ctx, left, top, dw, dh, color) {
   ctx.lineWidth = Math.max(1, r * 0.4);
   ctx.strokeStyle = 'rgba(0,0,0,0.7)';
   ctx.stroke();
+}
+
+// Small off-power tier tag ([F]/[3/4]/[1/2], colored red/orange/yellow) centered just
+// under a village's color orb. Drawn only where we've loaded the village's troops and it
+// reaches at least the 1/2 threshold (tier 'none' → no tag). left/top/dw/dh = the sprite
+// origin + size, the SAME frame drawMapColorDot uses, so the tag sits directly below the orb.
+function drawMapOffTag(ctx, left, top, dw, dh, tier) {
+  const spec = MAP_OFF_TIER_TAG[tier];
+  if (!spec) return;
+  const fs = Math.max(7, Math.min(13, dw * 0.22));
+  const orbR = Math.max(2.5, Math.min(7, dw * 0.16));     // matches drawMapColorDot's radius
+  const cx = left + dw * 0.30;                            // orb center x
+  const ty = top + dh * 0.22 + orbR + fs * 0.5 + 2;       // baseline just below the orb
+  ctx.font = `bold ${fs}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = Math.max(2, fs * 0.3);                  // dark halo for legibility over sprites
+  ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+  ctx.strokeText(spec.txt, cx, ty);
+  ctx.fillStyle = spec.color;
+  ctx.fillText(spec.txt, cx, ty);
+  ctx.textAlign = 'start';                                // restore canvas text defaults
+  ctx.textBaseline = 'alphabetic';
 }
 
 // Grid: continent boundaries every 100 cells (thicker) and 5×5 "block" boundaries
