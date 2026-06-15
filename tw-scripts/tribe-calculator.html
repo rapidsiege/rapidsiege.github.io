@@ -181,6 +181,7 @@
     <span class="map-tb-sep"></span>
     <label class="map-tb-check"><input type="checkbox" id="map-bonus-only" onchange="setMapBonusOnly(this.checked)"><span data-i18n="map_bonus_only">Bonus only</span></label>
     <button id="map-extract-btn" class="btn btn-ghost btn-sm" onclick="toggleExtractMode()" data-i18n="map_extract">Extract Coordinates</button>
+    <button id="map-barb-btn" class="btn btn-ghost btn-sm" onclick="toggleBarbFinder()" data-i18n="barb_finder">Barb Finder</button>
     <span style="font-size:12px;color:#5a3a18;" data-i18n="map_hint">Drag to pan · scroll to zoom · hover for details</span>
   </div>
   <div id="map-wrap">
@@ -199,6 +200,13 @@
       <div id="map-groups-body" class="map-groups-body"></div>
     </div>
     <datalist id="map-tribe-list"></datalist>
+    <div id="map-barb-finder" style="display:none;">
+      <div class="map-barb-head">
+        <span data-i18n="barb_finder">Barb Finder</span>
+        <button class="map-barb-close" onclick="toggleBarbFinder()" title="Close">✕</button>
+      </div>
+      <div id="map-barb-body" class="map-barb-body"></div>
+    </div>
     <div id="map-empty">
       <p data-i18n="map_need_db">Load the village database to see the map.</p>
       <button class="btn btn-ghost btn-sm" style="margin-top:10px;" onclick="switchTab('db')" data-i18n="map_open_db">Open Database</button>
@@ -516,6 +524,16 @@
 <div class="tab-content" id="tab-changelog">
   <div class="section-header"><h2 data-i18n="sec_changelog">Changelog</h2></div>
   <p style="font-size:12px;color:#5a3a18;margin-top:6px;margin-bottom:16px;" data-i18n="changelog_intro">Feature and change history for the Tribe Calculator, per version bump.</p>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v2.0.0-rc1</span><span class="cl-date">2026-06-15 · release candidate</span></div>
+    <ul class="cl-list">
+      <li><b>🐗 Barb Finder:</b> a new map toolbar button — pick one of your tribe’s players who owns nobles, and it lists the barbarian villages closest to that player’s noble villages (the fastest to conquer), ranked by distance. Filter by bonus / no bonus and narrow to a bonus type. Candidate barbs get an orange ring, the player’s noble villages a blue ring; click a result to center the map, or Copy the whole list.</li>
+      <li><b>Square overview:</b> zoomed out, the map now keeps a true square shape (no more vertical flattening) so the world looks like its real circular self; it only switches to the tighter in-game vertical packing once you zoom in far enough to see the village graphics.</li>
+      <li><b>Bigger dots when zoomed out:</b> village dots now fill their cell and touch edge-to-edge, so tribe colors read as solid blocks from a distance.</li>
+      <li><b>Default view frames your world:</b> opening the map (and Reset view) now frames the village cloud — northernmost village at the top, southernmost at the bottom — instead of the empty grid.</li>
+    </ul>
+  </div>
 
   <div class="cl-entry">
     <div class="cl-head"><span class="cl-ver">v2.0.0-b</span><span class="cl-date">2026-06-15 · beta</span></div>
@@ -2821,7 +2839,7 @@ document.addEventListener('drop', e => {
      card at the top of the Changelog tab (search "id=\"tab-changelog\""). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 2.0.0-b &nbsp;·&nbsp; 2026-06-15</span>
+  <span><span data-i18n="footer_version">Version</span> 2.0.0-rc1 &nbsp;·&nbsp; 2026-06-15</span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

@@ -6,31 +6,74 @@
 // Reads the already-loaded world DB globals (coordDb / villageDb / playerDb /
 // allyDb / playerAllyDb / playerPointsDb) defined by the inline app script.
 
-// The TW world is a fixed 0..999 integer grid. mapView maps world↔screen:
-//   screen = world * scale + pan ;  world = (screen - pan) / scale
+// The TW world is a fixed 0..999 integer grid. mapView maps world↔screen.
+// `mapView.scale` is the canonical HORIZONTAL scale; the vertical scale is DERIVED
+// (mapScaleY = scale · mapYRatio()).  The vertical:horizontal aspect depends on zoom:
+//   • Zoomed OUT (dot mode, scale < MAP_SPRITE_MIN_SCALE) → ratio 1 (true SQUARE), so the
+//     overview keeps the world's real circular shape instead of looking flattened.
+//   • Zoomed IN (sprite mode) → ratio 38/53, the native aspect of the in-game 53×38 tile
+//     (TWMap.tileSize), so the sprites tile edge-to-edge both ways like the real map.
+// The aspect switch is keyed to the SAME threshold as the dot→sprite switch, so it flips
+// exactly when the .png sprites start rendering (a small vertical "snap" there is intended).
+//   px = x*scale + panX ;  py = y*scaleY + panY
 let mapView = { scale: 0.8, panX: 40, panY: 40 };
 
-const MAP_WORLD = 1000;      // grid extent (coords 0..999)
+const MAP_WORLD = 1000;          // grid extent (coords 0..999)
 const MAP_MIN_SCALE = 0.3;
-const MAP_MAX_SCALE = 80;    // allow a couple more zoom-in steps (was 40)
+const MAP_MAX_SCALE = 80;        // allow a couple more zoom-in steps (was 40)
+const MAP_SPRITE_MIN_SCALE = 12; // ≥ this scale → sprite mode + the squished (38/53) view
+const MAP_Y_RATIO = 38 / 53;     // sprite-mode vertical:horizontal aspect (in-game tile 53×38)
 
+// Vertical:horizontal ratio for the CURRENT zoom (square when zoomed out, 38/53 in sprite mode).
+function mapYRatio() { return mapView.scale >= MAP_SPRITE_MIN_SCALE ? MAP_Y_RATIO : 1; }
+function mapScaleY() { return mapView.scale * mapYRatio(); }
 function worldToScreen(x, y) {
-  return { px: x * mapView.scale + mapView.panX, py: y * mapView.scale + mapView.panY };
+  return { px: x * mapView.scale + mapView.panX, py: y * mapScaleY() + mapView.panY };
 }
 function screenToWorld(px, py) {
-  return { x: (px - mapView.panX) / mapView.scale, y: (py - mapView.panY) / mapView.scale };
+  return { x: (px - mapView.panX) / mapView.scale, y: (py - mapView.panY) / mapScaleY() };
 }
 
-// Set scale+pan so the whole 0..1000 world fits centered in a w×h canvas.
+// Min/max occupied coords across the loaded villages (null when none). Pure.
+function villageBounds() {
+  if (typeof villageDb === 'undefined' || !villageDb.length) return null;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const v of villageDb) {
+    if (v.x < minX) minX = v.x; if (v.x > maxX) maxX = v.x;
+    if (v.y < minY) minY = v.y; if (v.y > maxY) maxY = v.y;
+  }
+  return { minX, maxX, minY, maxY };
+}
+
+// Default / "Reset view": frame the actual village cloud so the northernmost village sits at
+// the top and the southernmost at the bottom (not the empty 0..999 grid). Centers the village
+// bounding box and fits it to the canvas. This is always a zoomed-out overview → SQUARE aspect
+// (ratio 1), so the cloud keeps its real circular shape. Falls back to the full grid if no DB.
 function fitMapView(w, h) {
-  const s = Math.min(w, h) / MAP_WORLD;
+  const pad = 8;
+  const b = villageBounds();
+  const minX = b ? b.minX : 0, maxX = b ? b.maxX : MAP_WORLD;
+  const minY = b ? b.minY : 0, maxY = b ? b.maxY : MAP_WORLD;
+  const wWorld = (maxX - minX) || 1, hWorld = (maxY - minY) || 1;
+  // ratio 1 here (overview is below MAP_SPRITE_MIN_SCALE); clamp keeps us in range
+  const s = clampMapScale(Math.min((w - 2 * pad) / wWorld, (h - 2 * pad) / hWorld));
   mapView.scale = s;
-  mapView.panX = (w - MAP_WORLD * s) / 2;
-  mapView.panY = (h - MAP_WORLD * s) / 2;
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  mapView.panX = w / 2 - cx * mapView.scale;
+  mapView.panY = h / 2 - cy * mapScaleY();
   return mapView;
 }
 
 function clampMapScale(s) { return Math.max(MAP_MIN_SCALE, Math.min(MAP_MAX_SCALE, s)); }
+
+// Dot-mode square (zoomed out): fill the village's field so adjacent villages tile
+// edge-to-edge and colors read as solid blocks from a distance. Dot mode always runs at the
+// SQUARE aspect (ratio 1), so width = height = the field size; a small minimum keeps a lone
+// village visible at extreme zoom-out. Pure (harness-tested).
+function mapDotRectSize(scaleX) {
+  const s = Math.max(2, scaleX);
+  return { dw: s, dh: s };
+}
 
 // Continent label, e.g. (523,487) → "K45".
 function continentOf(x, y) {
@@ -251,4 +294,57 @@ function extractCoords(coords) {
     return (pa[1] - pb[1]) || (pa[0] - pb[0]);
   });
   return arr.join('\n');
+}
+
+// ── Barb Finder (pure, harness-tested) ───────────────────────────────────────
+// Pick a loaded tribe-troop player who owns snobs, then rank barbarian villages by how
+// close they are to that player's nearest snob village (= fastest to conquer). Reads the
+// troop globals (`players` from the troop file) + `villageDb` (world map). Optional bonus
+// filter (all / bonus-only / no-bonus) + a bonus-type narrow (0 = any) using MAP_BONUS ids.
+
+// Loaded troop-file players that own at least one snob-bearing village, sorted A→Z.
+function playersWithSnobs() {
+  if (typeof players === 'undefined') return [];
+  return Object.keys(players)
+    .filter(name => players[name].villages.some(v => (v.snob || 0) > 0))
+    .sort((a, b) => a.toLowerCase() < b.toLowerCase() ? -1 : 1);
+}
+
+// A player's snob-bearing villages as {coord, x, y, snob} (coords parsed from the troop row).
+function snobVillagesOf(playerName) {
+  const p = (typeof players !== 'undefined') ? players[playerName] : null;
+  if (!p) return [];
+  const out = [];
+  for (const v of p.villages) {
+    if ((v.snob || 0) <= 0) continue;
+    const c = parseCoordStr(v.coord);
+    if (c) out.push({ coord: v.coord, x: c.x, y: c.y, snob: v.snob });
+  }
+  return out;
+}
+
+// Barbarian villages ranked by smallest distance to any of the player's snob villages.
+// bonusMode: 'all' | 'bonus' | 'nobonus'. bonusType: 0 = any bonus, else a MAP_BONUS id
+// (only applied when bonusMode === 'bonus'). Returns ascending-by-distance
+// [{coord, x, y, points, bonus, dist, fromCoord}], capped at `limit` (0/undefined = all).
+function barbFinderResults(playerName, bonusMode, bonusType, limit) {
+  const snobVils = snobVillagesOf(playerName);
+  if (!snobVils.length || typeof villageDb === 'undefined') return [];
+  bonusMode = bonusMode || 'all';
+  bonusType = parseInt(bonusType) || 0;
+  const out = [];
+  for (const v of villageDb) {
+    if (v.playerId && v.playerId !== '0') continue;      // barbarians only
+    if (bonusMode === 'bonus'   && !v.bonus) continue;
+    if (bonusMode === 'nobonus' &&  v.bonus) continue;
+    if (bonusMode === 'bonus'   && bonusType && v.bonus !== bonusType) continue;
+    let best = Infinity, from = null;
+    for (const s of snobVils) {
+      const d = Math.sqrt((v.x - s.x) ** 2 + (v.y - s.y) ** 2);
+      if (d < best) { best = d; from = s.coord; }
+    }
+    out.push({ coord: v.x + '|' + v.y, x: v.x, y: v.y, points: v.points, bonus: v.bonus, dist: best, fromCoord: from });
+  }
+  out.sort((a, b) => a.dist - b.dist);
+  return limit ? out.slice(0, limit) : out;
 }

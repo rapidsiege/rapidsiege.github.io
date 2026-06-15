@@ -84,7 +84,7 @@ const MAP_SPRITE_KEYS = [
   'b1_left','b2_left','b3_left','b4_left','b5_left','b6_left',                          // barbarian (bonus)
 ];
 const MAP_GRASS = '#5c701b';   // the sprites' baked-in grass background (exact)
-const MAP_SPRITE_MIN_SCALE = 12; // show sprites once a field is ≥12px; dots below
+// MAP_SPRITE_MIN_SCALE (= 12) lives in map.js — it also gates the square↔38/53 aspect switch.
 let mapSprites = {};
 let mapSpritesReady = false;
 
@@ -179,11 +179,12 @@ function renderMapOffscreen() {
   if (!mapOffCtx || !mapOffscreen) return;
   const w = mapOffscreen.width, h = mapOffscreen.height;
   const spriteMode = mapSpritesReady && mapView.scale >= MAP_SPRITE_MIN_SCALE;
-  const margin = spriteMode ? mapView.scale : 6;
+  const margin = Math.max(6, mapView.scale); // field-filling dots/sprites can be ~scale wide
   mapOffCtx.clearRect(0, 0, w, h);
   if (spriteMode) { mapOffCtx.fillStyle = MAP_GRASS; mapOffCtx.fillRect(0, 0, w, h); } // continuous terrain
   drawMapGrid(mapOffCtx, w, h, spriteMode);
-  const dw = mapView.scale, dh = dw * 38 / 53; // one sprite ≈ one field
+  const dw = mapView.scale, dh = dw * MAP_Y_RATIO; // one sprite = one (anisotropic) field
+  const dot = mapDotRectSize(mapView.scale);       // dot-mode field rectangle (tiles edge-to-edge)
   for (const v of villageDb) {
     const s = worldToScreen(v.x, v.y);
     if (s.px < -margin || s.py < -margin || s.px > w + margin || s.py > h + margin) continue; // cull
@@ -197,9 +198,9 @@ function renderMapOffscreen() {
       const badge = villageTroopBadge(v.x + '|' + v.y);
       if (badge) drawMapTroopBadges(mapOffCtx, s.px - dw / 2, s.py - dh / 2, dw, dh, badge);
     } else {
-      const sz = mapDotSize(v.points) + (v.bonus ? 1 : 0);
+      // zoomed out: fill the field so dots tile edge-to-edge → colors read from a distance
       mapOffCtx.fillStyle = colorForVillage(v); // group → barb → other
-      mapOffCtx.fillRect(s.px - sz / 2, s.py - sz / 2, sz, sz);
+      mapOffCtx.fillRect(s.px - dot.dw / 2, s.py - dot.dh / 2, dot.dw, dot.dh);
     }
   }
   mapOffCtx.globalAlpha = 1;
@@ -234,7 +235,7 @@ function drawGridLines(ctx, w, h, step) {
   }
   const ky0 = Math.floor((wl.y + 0.5) / step), ky1 = Math.ceil((wr.y + 0.5) / step);
   for (let k = ky0; k <= ky1; k++) {
-    const py = (step * k - 0.5) * mapView.scale + mapView.panY;
+    const py = (step * k - 0.5) * mapScaleY() + mapView.panY; // vertical axis is compressed
     if (py < 0 || py > h) continue;
     ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(w, py); ctx.stroke();
   }
@@ -301,6 +302,11 @@ function paintMap() {
       mapCtx.stroke();
     }
   }
+  // Barb Finder overlay: orange rings on candidate barbs, blue rings on the snob origins.
+  if (barbFinderActive) {
+    for (const r of barbResults) drawMapRing(r.coord, w, h, '#ff9d2e', 2);
+    for (const c of barbSnobCoords) drawMapRing(c, w, h, '#3f7fe0', 2.5);
+  }
   if (mapHoverCoord && coordDb[mapHoverCoord]) {
     const v = coordDb[mapHoverCoord];
     const s = worldToScreen(v.x, v.y);
@@ -328,6 +334,7 @@ function onMapTabShown() {
   renderMapOffscreen();
   paintMap();
   renderMapGroups(); // panel AFTER the canvas paints — a panel error can't blank the map
+  if (barbFinderActive) renderBarbFinder();
 }
 
 // Called by setDbData() (world DB load) and parseData() (troop file load). Guarded:
@@ -341,6 +348,7 @@ function mapRefresh() {
     renderMapOffscreen();
     paintMap();
     renderMapGroups();
+    if (barbFinderActive) renderBarbFinder();
   }
 }
 
@@ -392,7 +400,7 @@ function onMapWheel(e) {
   const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
   mapView.scale = clampMapScale(mapView.scale * factor);
   mapView.panX = p.x - wpt.x * mapView.scale; // keep world point under cursor fixed
-  mapView.panY = p.y - wpt.y * mapView.scale;
+  mapView.panY = p.y - wpt.y * mapScaleY();   // (vertical uses the compressed scale)
   hideMapTip();
   renderMapOffscreen();
   paintMap();
@@ -421,7 +429,7 @@ function mapZoom(factor) {
   const wpt = screenToWorld(cx, cy);
   mapView.scale = clampMapScale(mapView.scale * factor);
   mapView.panX = cx - wpt.x * mapView.scale;
-  mapView.panY = cy - wpt.y * mapView.scale;
+  mapView.panY = cy - wpt.y * mapScaleY();
   renderMapOffscreen(); paintMap();
 }
 
@@ -449,6 +457,7 @@ function syncMapToolbar() {
 // ── Extract Coordinates: click villages to collect coords, then copy them ──
 function toggleExtractMode() {
   mapExtractMode = !mapExtractMode;
+  if (mapExtractMode && barbFinderActive) closeBarbFinder(); // one click-panel at a time
   const btn = document.getElementById('map-extract-btn');
   if (btn) btn.classList.toggle('active', mapExtractMode);
   const bar = document.getElementById('map-extract-bar');
@@ -487,6 +496,131 @@ function mapFallbackCopy(txt, done) {
     document.execCommand('copy'); document.body.removeChild(ta);
     done();
   } catch (e) { alert(txt); }
+}
+
+// ── Barb Finder: pick a player who owns snobs → rank nearby barbarians by distance ──
+// Pure ranking lives in map.js (barbFinderResults). This shell drives the panel + draws
+// origin/candidate rings on the canvas. Mutually exclusive with Extract mode (both are
+// click-driven panels). Browser-only — never runs in the test sandbox.
+let barbFinderActive = false;
+let barbPlayer = '';
+let barbBonusMode = 'all';     // 'all' | 'bonus' | 'nobonus'
+let barbBonusType = 0;         // 0 = any bonus, else a MAP_BONUS id
+let barbResults = [];          // current ranked list (also drawn as candidate rings)
+let barbSnobCoords = [];       // the selected player's snob villages (origin rings)
+const BARB_LIMIT = 50;         // cap the list (visible count, no silent truncation)
+
+function toggleBarbFinder() {
+  barbFinderActive = !barbFinderActive;
+  if (barbFinderActive && mapExtractMode) toggleExtractMode(); // one click-panel at a time
+  const btn = document.getElementById('map-barb-btn');
+  if (btn) btn.classList.toggle('active', barbFinderActive);
+  const panel = document.getElementById('map-barb-finder');
+  if (panel) panel.style.display = barbFinderActive ? '' : 'none';
+  if (barbFinderActive) renderBarbFinder();
+  else { barbResults = []; barbSnobCoords = []; }
+  paintMap();
+}
+function closeBarbFinder() {
+  barbFinderActive = false;
+  const btn = document.getElementById('map-barb-btn'); if (btn) btn.classList.remove('active');
+  const panel = document.getElementById('map-barb-finder'); if (panel) panel.style.display = 'none';
+  barbResults = []; barbSnobCoords = [];
+}
+function setBarbPlayer(v) { barbPlayer = v; updateBarbResults(); }
+function setBarbBonusMode(v) {
+  barbBonusMode = v;
+  const ts = document.getElementById('map-barb-type');
+  if (ts) ts.disabled = (v !== 'bonus'); // bonus-type only narrows when filtering to bonus villages
+  updateBarbResults();
+}
+function setBarbBonusType(v) { barbBonusType = parseInt(v) || 0; updateBarbResults(); }
+
+// Build the panel controls (player + bonus filters), then fill the list via updateBarbResults.
+function renderBarbFinder() {
+  const body = document.getElementById('map-barb-body');
+  if (!body) return;
+  const snobPlayers = playersWithSnobs();
+  if (!snobPlayers.length) {
+    body.innerHTML = `<div class="map-barb-empty">${esc(t('barb_need_troops'))}</div>`;
+    barbResults = []; barbSnobCoords = []; paintMap();
+    return;
+  }
+  if (!snobPlayers.includes(barbPlayer)) barbPlayer = snobPlayers[0];
+  const playerOpts = snobPlayers.map(p => `<option value="${esc(p)}"${p === barbPlayer ? ' selected' : ''}>${esc(p)}</option>`).join('');
+  const modeOpts = [['all', 'barb_bonus_all'], ['bonus', 'barb_bonus_only'], ['nobonus', 'barb_bonus_none']]
+    .map(([v, k]) => `<option value="${v}"${v === barbBonusMode ? ' selected' : ''}>${esc(t(k))}</option>`).join('');
+  let typeOpts = `<option value="0"${!barbBonusType ? ' selected' : ''}>${esc(t('barb_type_all'))}</option>`;
+  for (const id in MAP_BONUS) typeOpts += `<option value="${id}"${+id === barbBonusType ? ' selected' : ''}>${esc(bonusLabel(+id))}</option>`;
+  body.innerHTML =
+      `<label class="map-barb-lbl">${esc(t('barb_player'))}</label>`
+    + `<select class="map-barb-sel" onchange="setBarbPlayer(this.value)">${playerOpts}</select>`
+    + `<div class="map-barb-filters">`
+    +   `<select class="map-barb-sel" onchange="setBarbBonusMode(this.value)">${modeOpts}</select>`
+    +   `<select id="map-barb-type" class="map-barb-sel" onchange="setBarbBonusType(this.value)"${barbBonusMode !== 'bonus' ? ' disabled' : ''}>${typeOpts}</select>`
+    + `</div>`
+    + `<div id="map-barb-count" class="map-barb-count"></div>`
+    + `<div id="map-barb-list" class="map-barb-list"></div>`
+    + `<button class="btn btn-ghost btn-sm map-barb-copy" onclick="copyBarbCoords()">${esc(t('barb_copy'))}</button>`;
+  updateBarbResults();
+}
+
+// Recompute the ranked list from the current selections; refresh list + count + map rings.
+function updateBarbResults() {
+  barbSnobCoords = snobVillagesOf(barbPlayer).map(s => s.coord);
+  barbResults = barbFinderResults(barbPlayer, barbBonusMode, barbBonusType, BARB_LIMIT);
+  const list = document.getElementById('map-barb-list');
+  if (list) {
+    if (!barbResults.length) {
+      list.innerHTML = `<div class="map-barb-empty">${esc(t('barb_no_results'))}</div>`;
+    } else {
+      list.innerHTML = barbResults.map(r => {
+        const bonus = r.bonus ? ` · <span class="map-barb-bonus">🎁 ${esc(bonusLabel(r.bonus))}</span>` : '';
+        return `<div class="map-barb-row" onclick="focusBarb('${r.coord}')" title="${esc(t('barb_from'))} ${r.fromCoord}">`
+          + `<span class="map-barb-coord">${r.coord}</span>`
+          + `<span class="map-barb-dist">${r.dist.toFixed(1)}</span>`
+          + `<span class="map-barb-meta">${r.points.toLocaleString()} ${esc(t('map_pts'))}${bonus}</span>`
+          + `</div>`;
+      }).join('');
+    }
+  }
+  const cnt = document.getElementById('map-barb-count');
+  if (cnt) cnt.textContent = t('barb_count')(barbResults.length, barbSnobCoords.length);
+  paintMap();
+}
+
+// Center the view on a barb and flash its hover ring (does not change zoom).
+function focusBarb(coord) {
+  const v = coordDb[coord];
+  if (!v || !mapCanvas) return;
+  mapView.panX = mapCanvas.width / 2 - v.x * mapView.scale;
+  mapView.panY = mapCanvas.height / 2 - v.y * mapScaleY();
+  mapHoverCoord = coord;
+  renderMapOffscreen();
+  paintMap();
+}
+
+function copyBarbCoords() {
+  const txt = extractCoords(barbResults.map(r => r.coord));
+  if (!txt) { alert(t('map_no_sel')); return; }
+  const done = () => alert(t('map_copied')(barbResults.length));
+  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(txt).then(done).catch(() => mapFallbackCopy(txt, done));
+  else mapFallbackCopy(txt, done);
+}
+
+// Stroke a ring around a village coord (used for barb-finder origin/candidate markers).
+function drawMapRing(coord, w, h, color, lw) {
+  const v = coordDb[coord];
+  if (!v) return;
+  const s = worldToScreen(v.x, v.y);
+  const r = Math.max(5, mapView.scale * 0.5);
+  if (s.px < -r || s.py < -r || s.px > w + r || s.py > h + r) return;
+  mapCtx.beginPath();
+  mapCtx.arc(s.px, s.py, r, 0, Math.PI * 2);
+  mapCtx.lineWidth = lw;
+  mapCtx.strokeStyle = color;
+  mapCtx.stroke();
 }
 
 // Commit a group change: rebuild the fast index, persist, recolor, re-render the panel.
