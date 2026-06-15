@@ -179,27 +179,26 @@
     <button class="btn btn-ghost btn-sm" onclick="mapZoom(1/1.2)" data-i18n="map_zoom_out" title="Zoom out">－</button>
     <button class="btn btn-ghost btn-sm" onclick="mapResetView()" data-i18n="map_reset_view">Reset view</button>
     <span class="map-tb-sep"></span>
-    <label class="map-tb-lbl" for="map-color-mode" data-i18n="map_color_by">Color by</label>
-    <select id="map-color-mode" onchange="setMapColorMode(this.value)">
-      <option value="tribe" data-i18n="map_color_tribe">Tribe</option>
-      <option value="player" data-i18n="map_color_player">Player</option>
-      <option value="points" data-i18n="map_color_points">Points</option>
-      <option value="none" data-i18n="map_color_none">None</option>
-    </select>
     <label class="map-tb-check"><input type="checkbox" id="map-bonus-only" onchange="setMapBonusOnly(this.checked)"><span data-i18n="map_bonus_only">Bonus only</span></label>
-    <span style="font-size:12px;color:#5a3a18;" data-i18n="map_hint">Drag to pan · scroll to zoom · hover for details · click a tribe to highlight</span>
+    <button id="map-extract-btn" class="btn btn-ghost btn-sm" onclick="toggleExtractMode()" data-i18n="map_extract">Extract Coordinates</button>
+    <span style="font-size:12px;color:#5a3a18;" data-i18n="map_hint">Drag to pan · scroll to zoom · hover for details</span>
   </div>
   <div id="map-wrap">
     <canvas id="map-canvas"></canvas>
     <div id="map-tooltip"></div>
-    <div id="map-legend" style="display:none;">
-      <div class="map-legend-head">
-        <span data-i18n="map_tribes">Tribes</span>
-        <button id="map-legend-clear" class="map-legend-clear" onclick="clearMapHighlight()" data-i18n="map_clear_hl" title="Clear highlight" style="visibility:hidden;">✕</button>
-      </div>
-      <input id="map-legend-search" class="map-legend-search" oninput="renderMapLegend()" data-i18n-placeholder="map_filter_tribe" placeholder="Filter tribe…">
-      <div id="map-legend-list" class="map-legend-list"></div>
+    <div id="map-extract-bar" style="display:none;">
+      <span id="map-extract-count" class="map-extract-count">0</span>
+      <button class="btn btn-ghost btn-sm" onclick="copyMapExtract()" data-i18n="map_copy_coords">Copy</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearMapExtract()" data-i18n="map_clear_sel">Clear</button>
     </div>
+    <div id="map-groups" style="display:none;">
+      <div class="map-groups-head">
+        <span data-i18n="map_color_groups">Color groups</span>
+        <button class="map-grp-new" onclick="addMapGroup()" title="New color group">＋</button>
+      </div>
+      <div id="map-groups-body" class="map-groups-body"></div>
+    </div>
+    <datalist id="map-tribe-list"></datalist>
     <div id="map-empty">
       <p data-i18n="map_need_db">Load the village database to see the map.</p>
       <button class="btn btn-ghost btn-sm" style="margin-top:10px;" onclick="switchTab('db')" data-i18n="map_open_db">Open Database</button>
@@ -521,11 +520,16 @@
   <div class="cl-entry">
     <div class="cl-head"><span class="cl-ver">v2.0.0-b</span><span class="cl-date">2026-06-15 · beta</span></div>
     <ul class="cl-list">
-      <li><b>🎨 Color the map:</b> new “Color by” selector — paint villages by <b>tribe</b> (default), <b>player</b>, <b>points</b> (green→red heatmap), or <b>none</b>. Barbarians stay grey.</li>
-      <li><b>Tribe highlight:</b> a legend panel lists every tribe on the map by village count — click one (or several) to spotlight them while the rest dim out, so you can pin down a tribe’s spread at a glance. Filter box to find a tribe by tag/name; “Clear” resets.</li>
+      <li><b>🎨 Map colors:</b> barbarian villages are grey, every other player is brown, and <b>your own tribe is blue</b> — auto-detected from the tribe-troop file you load. It seeds an editable “My tribe” group you can rename and add more tribes to (handy for a multi-tribe alliance).</li>
+      <li><b>Custom color groups:</b> create your own named groups, pick a color for each, and add members — individual villages (<code>X|Y</code>), players, or whole tribes (by tag). Grouped villages take the group’s color, overriding the defaults (a single village beats a player, which beats a tribe).</li>
+      <li><b>Zoomed-in color markers:</b> when zoomed in, each village shows a small colored dot (its group color) on the top-left, so you can tell who’s who at a glance. Barbarians get no dot.</li>
+      <li><b>Barbarian village art:</b> abandoned/barbarian villages now use their own sprites, distinct from owned ones.</li>
+      <li><b>More zoom:</b> you can now zoom in closer on the map.</li>
+      <li><b>Continent & block grid:</b> thicker lines mark the 100×100 continents and thinner lines the in-game 5×5 blocks (shown when zoomed in), so you can tell where you are.</li>
+      <li><b>Extract Coordinates:</b> a toolbar button — click villages to collect them, then Copy to paste straight into Offensive Targets / the planner. Selected villages get a ring.</li>
+      <li><b>Troop overlay:</b> for villages whose troops you’ve loaded (from the tribe info file), hovering shows off/def power and unit counts. Zoomed in, each shows a badge: <b>axe on red</b> for offensive, <b>sword on blue</b> for defensive, plus a <b>snob on yellow</b> if it has nobles.</li>
       <li><b>Bonus-only filter:</b> a checkbox dims every non-bonus village, leaving just the bonus villages lit.</li>
-      <li><i>Remembered between sessions:</i> your color mode, highlighted tribes, and bonus filter are saved.</li>
-      <li><i>Coming next:</i> multi-select to export coordinates into the attack planner, and tribemate troop overlays.</li>
+      <li><i>Remembered between sessions:</i> your color groups and the bonus filter are saved.</li>
     </ul>
   </div>
 
@@ -667,6 +671,7 @@
 // STATE
 // ══════════════════════════════════════════════════════════════
 let villages = [];   // [{coord, player, spear, sword, axe, spy, light, heavy, ram, catapult, knight, snob, offPow, defInf, defCav, type}]
+let troopByCoord = {};  // 'x|y' → troop row (map hover/badges); rebuilt in parseData
 let players  = {};   // {playerName: {villages:[], totals:{...}, offPow, defInf, defCav}}
 let sortState = { players: {col:0,dir:1}, villages: {col:-1,dir:1} };
 let sortStateByVil = { col: 2, dir: 1 }; // default: off power desc
@@ -800,6 +805,7 @@ function clearData() {
 function parseData(text, filename) {
   villages = [];
   players  = {};
+  troopByCoord = {};
   const lines = text.split('\n').map(l => l.trim()).filter(l => l);
 
   for (const line of lines) {
@@ -833,6 +839,7 @@ function parseData(text, filename) {
 
     const vil = { coord, player, ...units, offPow, defInf, defCav, type };
     villages.push(vil);
+    troopByCoord[coord] = vil; // index for the map hover/badges
 
     if (!players[player]) {
       players[player] = { villages: [], totals: Object.fromEntries(UNITS.map(u => [u,0])), offPow:0, defInf:0, defCav:0 };
@@ -860,6 +867,8 @@ function parseData(text, filename) {
   renderRankings();
   renderTargetTable();
   renderOffTargets(); // sender picker depends on the troop data
+  if (typeof mapDetectAndSeed === 'function') mapDetectAndSeed(); // map: detect uploading tribe + seed My-tribe group
+  if (typeof mapRefresh === 'function') mapRefresh();             // recolor map if it's open
 
   document.getElementById('overview-drop').style.display = 'none';
   document.getElementById('overview-content').style.display = '';
@@ -2426,6 +2435,7 @@ function setDbData(vText, pText, aText) {
   refreshTargetsFromDb();
   renderTargetTable(); // refresh owner info in Tribe Timings
   renderPlanTable();   // materialize rally links once DB arrives
+  if (typeof mapDetectAndSeed === 'function') mapDetectAndSeed(); // detect my tribe now the DB resolves coords
   if (typeof mapRefresh === 'function') mapRefresh(); // repaint map if it's open
 }
 

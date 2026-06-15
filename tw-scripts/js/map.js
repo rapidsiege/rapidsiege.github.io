@@ -12,7 +12,7 @@ let mapView = { scale: 0.8, panX: 40, panY: 40 };
 
 const MAP_WORLD = 1000;      // grid extent (coords 0..999)
 const MAP_MIN_SCALE = 0.3;
-const MAP_MAX_SCALE = 40;
+const MAP_MAX_SCALE = 80;    // allow a couple more zoom-in steps (was 40)
 
 function worldToScreen(x, y) {
   return { px: x * mapView.scale + mapView.panX, py: y * mapView.scale + mapView.panY };
@@ -57,18 +57,21 @@ function mapDotSize(points) {
 }
 
 // Village graphic tier 1..6 by points → picks the map_new sprite (v1-v6 / b1-b6).
-// First-pass breakpoints tuned to the es100 point spread; purely visual, easy to retune.
-const MAP_TIER_BREAKS = [200, 1000, 3000, 6000, 9000];
+// Breakpoints = the upper bound of each tier (user-set 2026-06-15):
+//   t1 ≤299 · t2 300-999 · t3 1000-2999 · t4 3000-8999 · t5 9000-10999 · t6 11000+
+const MAP_TIER_BREAKS = [299, 999, 2999, 8999, 10999];
 function mapVillageTier(points) {
   let tier = 1;
   for (const b of MAP_TIER_BREAKS) { if (points > b) tier++; else break; }
   return tier;
 }
-// Sprite key for a village: bonus villages use the b* "shine" sprites, all others
-// the regular v* sprites; tier 1..6 by points. `v.bonus` (1..9) comes from village.txt's
-// 7th column (0 = none); see MAP_BONUS for the type mapping.
+// Sprite key for a village: prefix b* (bonus, "shine") / v* (regular), tier 1..6 by
+// points, and a `_left` suffix for BARBARIAN villages (the abandoned-village art).
+// So an owned bonus village of tier 4 = b4; a barbarian regular tier 3 = v3_left;
+// a barbarian bonus tier 1 = b1_left. `v.bonus` (1..9) is village.txt's 7th column.
 function mapSpriteKey(v) {
-  return (v.bonus ? 'b' : 'v') + mapVillageTier(v.points);
+  const barb = !v.playerId || v.playerId === '0';
+  return (v.bonus ? 'b' : 'v') + mapVillageTier(v.points) + (barb ? '_left' : '');
 }
 
 // Bonus-village type (village.txt 7th column) → i18n key. es100 mapping confirmed by the user.
@@ -78,63 +81,99 @@ const MAP_BONUS = {
 };
 function bonusLabel(id) { const k = MAP_BONUS[id]; return k ? t(k) : ''; }
 
-// ── Phase 2: coloring + tribe legend (pure, harness-tested) ──────────────────
-// Color the village dots by tribe / player / points so tribes can be picked out
-// at overview zoom. Sprite (close) zoom keeps the realistic terrain art — coloring
-// is an overview-zoom feature; the render shell only dims sprites for highlight/filter.
+// ── Phase 2: coloring + custom color groups (pure, harness-tested) ────────────
+// Default scheme: barbarians grey, all other players brown, and the villages of
+// YOUR tribe (auto-detected from the loaded tribe-troop file) blue. On top of that,
+// the user defines named "color groups" — each a color plus a set of members
+// (individual coords, players, or tribe tags) — which override the defaults.
+// Sprite (close) zoom keeps the realistic terrain art; coloring is an overview-zoom
+// feature, so the render shell only dims sprites for the bonus filter.
 
-// Distinct, saturated palette cycled by a stable hash of the ally/player id, so the
-// same tribe always gets the same color across renders (stability is tested).
-const MAP_PALETTE = [
-  '#e6194b','#3cb44b','#4363d8','#f58231','#911eb4','#42d4f4','#f032e6',
-  '#bfef45','#fa8072','#469990','#c8a2ff','#9a6324','#d8c23a','#a05028',
-  '#7fd6a0','#9aa000','#e0843a','#5878d8','#d04fa0','#52b0c0',
-];
-const MAP_COLOR_BARB    = '#5a4a2a';  // barbarian / abandoned
-const MAP_COLOR_OWNED   = '#e0b04a';  // owned but no tribe, and the "none" color mode
-const MAP_COLOR_NEUTRAL = '#c8a85a';
+const MAP_COLOR_BARB  = '#8d8d8d';  // barbarian / abandoned → grey
+const MAP_COLOR_OWNED = '#a06a2c';  // any other player → brown
+const MAP_COLOR_MINE  = '#3f7fe0';  // default colour of the auto-seeded "My tribe" group
 
-// FNV-1a → non-negative int; deterministic across runs (no Math.random / Date).
-function mapHash(str) {
-  let h = 2166136261;
-  str = String(str);
-  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
-  return h >>> 0;
+// ── "My tribe" auto-detection (from the loaded tribe-troop file `villages[]`) ──
+// The troop file lists my tribemates' villages by coord (no ids). Join coord→DB to find
+// the dominant ally = my tribe; the render shell seeds an editable "My tribe" color group
+// with that tribe's tag (see seedMineGroup). Detection only identifies which tribe — the
+// actual blue colouring then flows through the normal custom-group path, so the user can
+// add/remove tribes (e.g. a multi-tribe alliance) or recolour it like any other group.
+let myAllyId = null;             // dominant allyId among troop-file villages (or null)
+function detectMyTribe() {
+  myAllyId = null;
+  if (typeof villages === 'undefined' || !villages.length) return;
+  const allyCount = {};
+  for (const tv of villages) {
+    if (!tv.coord) continue;
+    const dbv = (typeof coordDb !== 'undefined') ? coordDb[tv.coord] : null;
+    if (!dbv) continue;
+    const a = (typeof playerAllyDb !== 'undefined') ? playerAllyDb[dbv.playerId] : null;
+    if (a) allyCount[a] = (allyCount[a] || 0) + 1;
+  }
+  let best = null, bestN = 0;
+  for (const a in allyCount) if (allyCount[a] > bestN) { bestN = allyCount[a]; best = a; }
+  myAllyId = best;
 }
-function mapPaletteColor(key) { return MAP_PALETTE[mapHash(key) % MAP_PALETTE.length]; }
 
-// Points → green→amber→red ramp (visual buckets, easy to retune). Endpoints tested.
-function mapPointsColor(points) {
-  if (points >= 9000) return '#e0403a';
-  if (points >= 6000) return '#e07a30';
-  if (points >= 3000) return '#e0b040';
-  if (points >= 1000) return '#b0c040';
-  return '#6cc070';
+// ── Custom color groups ──
+// mapGroups: [{ id, name, color, coords:[], players:[], tribes:[] }] (persisted in prefs).
+// For speed (re-coloured every pan frame over 12k villages) we precompute lowercase
+// lookup maps once via rebuildGroupIndex(); colorForVillage reads the index, not the
+// raw arrays. Precedence within the index = coord > player > tribe; first group wins.
+let mapGroups = [];
+let mapGroupIndex = { coords: {}, playersLc: {}, tribesLc: {} };
+function rebuildGroupIndex() {
+  const ix = { coords: {}, playersLc: {}, tribesLc: {} };
+  for (const g of mapGroups) {
+    (g.coords  || []).forEach(c  => { if (ix.coords[c]            == null) ix.coords[c]            = g.color; });
+    (g.players || []).forEach(p  => { const k = String(p).toLowerCase();  if (ix.playersLc[k] == null) ix.playersLc[k] = g.color; });
+    (g.tribes  || []).forEach(tt => { const k = String(tt).toLowerCase(); if (ix.tribesLc[k]  == null) ix.tribesLc[k]  = g.color; });
+  }
+  mapGroupIndex = ix;
 }
 
-// Single source of truth for a village's fill color in dot mode.
-// modes: 'tribe' (default) | 'player' | 'points' | 'none'.
-function colorForVillage(v, mode) {
-  if (!v) return MAP_COLOR_NEUTRAL;
-  const barb = !v.playerId || v.playerId === '0';
-  switch (mode) {
-    case 'player':
-      return barb ? MAP_COLOR_BARB : mapPaletteColor('p' + v.playerId);
-    case 'points':
-      return mapPointsColor(v.points);
-    case 'none':
-      return barb ? MAP_COLOR_BARB : MAP_COLOR_OWNED;
-    case 'tribe':
-    default: {
-      if (barb) return MAP_COLOR_BARB;
-      const ally = (typeof playerAllyDb !== 'undefined') ? playerAllyDb[v.playerId] : null;
-      return ally ? mapPaletteColor('a' + ally) : MAP_COLOR_OWNED; // tribeless owned = gold
+// Single source of truth for a village's fill colour: custom group (coord→player→tribe,
+// which includes the auto-seeded "My tribe" group) → barbarian grey → other player brown.
+function colorForVillage(v) {
+  if (!v) return MAP_COLOR_OWNED;
+  const coord = v.x + '|' + v.y;
+  if (mapGroupIndex.coords[coord] != null) return mapGroupIndex.coords[coord];
+  const pname = (typeof playerDb !== 'undefined' && playerDb[v.playerId]) || '';
+  if (pname && mapGroupIndex.playersLc[pname.toLowerCase()] != null) return mapGroupIndex.playersLc[pname.toLowerCase()];
+  const tag = (typeof dbTribeTag === 'function') ? dbTribeTag(v) : '';
+  if (tag && mapGroupIndex.tribesLc[tag.toLowerCase()] != null) return mapGroupIndex.tribesLc[tag.toLowerCase()];
+  return (!v.playerId || v.playerId === '0') ? MAP_COLOR_BARB : MAP_COLOR_OWNED;
+}
+
+// Is a village coloured by a custom group (used to decide whether to draw the
+// zoomed-in color circle for non-barbarian villages)? Pure: reads mapGroupIndex.
+function villageGroupColor(v) {
+  if (!v) return null;
+  const coord = v.x + '|' + v.y;
+  if (mapGroupIndex.coords[coord] != null) return mapGroupIndex.coords[coord];
+  const pname = (typeof playerDb !== 'undefined' && playerDb[v.playerId]) || '';
+  if (pname && mapGroupIndex.playersLc[pname.toLowerCase()] != null) return mapGroupIndex.playersLc[pname.toLowerCase()];
+  const tag = (typeof dbTribeTag === 'function') ? dbTribeTag(v) : '';
+  if (tag && mapGroupIndex.tribesLc[tag.toLowerCase()] != null) return mapGroupIndex.tribesLc[tag.toLowerCase()];
+  return null;
+}
+
+// Classify a user-typed group-member token: a coord (x|y), a known tribe tag, else a player.
+function classifyGroupToken(tok) {
+  tok = String(tok || '').trim();
+  if (!tok) return null;
+  if (/^\d{1,3}\|\d{1,3}$/.test(tok)) return { type: 'coords', val: tok };
+  if (typeof allyDb !== 'undefined') {
+    for (const a in allyDb) {
+      if (allyDb[a].tag && allyDb[a].tag.toLowerCase() === tok.toLowerCase()) return { type: 'tribes', val: allyDb[a].tag };
     }
   }
+  return { type: 'players', val: tok };
 }
 
 // Tribes present in the world DB, with village counts, sorted by count desc.
-// Drives the legend / tribe-highlight panel. Pure: reads villageDb/playerAllyDb/allyDb.
+// Feeds a tribe-tag suggestion list for the group editor. Pure.
 function mapTribeList() {
   if (typeof villageDb === 'undefined') return [];
   const counts = {};
@@ -145,7 +184,7 @@ function mapTribeList() {
   }
   return Object.keys(counts).map(a => {
     const info = (typeof allyDb !== 'undefined' && allyDb[a]) || {};
-    return { allyId: a, tag: info.tag || ('#' + a), name: info.name || '', count: counts[a], color: mapPaletteColor('a' + a) };
+    return { allyId: a, tag: info.tag || ('#' + a), name: info.name || '', count: counts[a] };
   }).sort((x, y) => y.count - x.count || (x.tag < y.tag ? -1 : 1));
 }
 
@@ -166,5 +205,50 @@ function villageTooltipHtml(coord) {
   html += row(t('map_tt_points'), v.points.toLocaleString() + ' ' + t('map_pts'));
   if (!barb) html += row(t('map_tt_total'), totalPts.toLocaleString() + ' ' + t('map_pts'));
   if (v.bonus) html += row(t('map_tt_bonus'), `<span class="map-tt-bonus">${esc(bonusLabel(v.bonus))}</span>`);
+  html += troopTooltipHtml(coord); // our tribe's loaded troops, if any
   return html;
+}
+
+// ── Phase 3: loaded-troop overlay (from the tribe info.txt → troopByCoord) ──────
+// troopByCoord (built in parseData) maps 'x|y' → the parsed troop row. These are pure
+// reads of that global, so the harness can exercise them by setting troopByCoord.
+
+// Troop block appended to the hover tooltip when we have this village's troops loaded:
+// off power, total def, and the per-unit counts (with icons when twIcon is available).
+function troopTooltipHtml(coord) {
+  const tt = (typeof troopByCoord !== 'undefined') ? troopByCoord[coord] : null;
+  if (!tt) return '';
+  const ic = (typeof twIcon === 'function') ? twIcon : () => '';
+  const totalDef = (tt.defInf || 0) + (tt.defCav || 0);
+  const units = (typeof UNITS !== 'undefined' ? UNITS : []).filter(u => (tt[u] || 0) > 0);
+  let h = `<div class="map-tt-troops"><div class="map-tt-troops-h">${t('map_tt_troops')}</div>`;
+  h += `<div class="map-tt-row"><span class="map-tt-k">${ic('off')}${t('map_tt_off')}</span><span class="map-tt-v">${(tt.offPow || 0).toLocaleString()}</span></div>`;
+  h += `<div class="map-tt-row"><span class="map-tt-k">${ic('def')}${t('map_tt_def')}</span><span class="map-tt-v">${totalDef.toLocaleString()}</span></div>`;
+  if (units.length)
+    h += `<div class="map-tt-units">` + units.map(u => `<span class="map-tt-unit">${ic(u)}${tt[u].toLocaleString()}</span>`).join('') + `</div>`;
+  return h + `</div>`;
+}
+
+// Off/def/snob classification for the zoomed-in village badges. Returns null when we
+// have no troop data for the coord. offdef is mutually exclusive (off OR def); snob is
+// independent. 'mixed' troop villages fall to whichever power dominates. Pure.
+function villageTroopBadge(coord) {
+  const tt = (typeof troopByCoord !== 'undefined') ? troopByCoord[coord] : null;
+  if (!tt) return null;
+  let offdef = null;
+  if (tt.type === 'off') offdef = 'off';
+  else if (tt.type === 'def') offdef = 'def';
+  else if (tt.type === 'mixed') offdef = (tt.offPow || 0) >= ((tt.defInf || 0) + (tt.defCav || 0)) ? 'off' : 'def';
+  return { offdef, snob: (tt.snob || 0) > 0 };
+}
+
+// Selected map coords → newline-joined 'x|y' string (row-major sorted, stable) for the
+// Extract Coordinates button. Output pastes straight into Offensive Targets / the planner.
+function extractCoords(coords) {
+  const arr = Array.from(coords || []);
+  arr.sort((a, b) => {
+    const pa = String(a).split('|').map(Number), pb = String(b).split('|').map(Number);
+    return (pa[1] - pb[1]) || (pa[0] - pb[0]);
+  });
+  return arr.join('\n');
 }
