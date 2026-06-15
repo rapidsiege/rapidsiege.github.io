@@ -2860,7 +2860,9 @@ function runAutoGenerate() {
     return;
   }
 
-  DATA.attacks = DATA.attacks.filter(a => a.type !== 'unassigned');
+  // Replace any previously generated attacks (re-generating is the common action; appending
+  // would stack duplicates). Manual one-off attacks are preserved.
+  DATA.attacks = DATA.attacks.filter(a => a.manual);
   DATA.attacks.push(...attacks, ...unassigned);
   saveData();
   renderVillages();   // pinned per-player attacks may have created stub source villages
@@ -2904,6 +2906,7 @@ function addAttack() {
     type,
     nobleCount:  type === 'snob' ? nobleCount : 1,
     landingTime: new Date(landingVal).toISOString(),
+    manual:      true,   // survives Auto-Generate (which replaces generated attacks)
     sent:        false
   });
 
@@ -3573,7 +3576,7 @@ function renderAll() {
 })();
 </script>
 <div class="footer">
-  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.0.0 &nbsp;·&nbsp; 2026-06-09 01:30
+  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.1.0 &nbsp;·&nbsp; 2026-06-15
 </div>
 </body>
 </html>
