@@ -15,6 +15,7 @@ let mapDrag = null; // { x, y, panX0, panY0, moved }
 // ── Phase 2 state: custom color groups + bonus filter ──
 // (Color model lives in map.js: mapGroups / mapGroupIndex / colorForVillage / detectMyTribe.)
 let mapBonusOnly = false;            // dim non-bonus villages when true
+let mapBarbsOnly = false;            // dim player (non-barbarian) villages when true
 let mapExtractMode = false;          // "Extract Coordinates": click villages to collect coords
 let mapSelection = new Set();        // selected 'x|y' coords (rings on the map)
 let mapPrefsLoaded = false;
@@ -30,6 +31,7 @@ function loadMapPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem(MAP_PREFS_KEY) || '{}');
     mapBonusOnly = !!p.bonusOnly;
+    mapBarbsOnly = !!p.barbsOnly;
     mapMineSeeded = !!p.mineSeeded;
     if (Array.isArray(p.groups)) mapGroups = p.groups.filter(g => g && g.color).map(g => ({
       id: String(g.id || ''), name: String(g.name || ''), color: String(g.color),
@@ -43,12 +45,29 @@ function loadMapPrefs() {
 function saveMapPrefs() {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ bonusOnly: mapBonusOnly, mineSeeded: mapMineSeeded, groups: mapGroups }));
+    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ bonusOnly: mapBonusOnly, barbsOnly: mapBarbsOnly, mineSeeded: mapMineSeeded, groups: mapGroups }));
   } catch (e) { /* ignore quota/serialization errors */ }
 }
 
-// Bonus filter: villages that fail are dimmed (not hidden). Used in dot AND sprite render.
-function isEmphasized(v) { return !(mapBonusOnly && !v.bonus); }
+// Should this village be dimmed (faded, not hidden)? Combines every filter that fades
+// villages, used in both dot AND sprite render. Three independent sources, OR'd together:
+//   • Bonus only  → fade non-bonus villages.
+//   • Barbs only  → fade player (non-barbarian) villages.
+//   • Barb Finder → "isolation": once a player is selected, fade everything that is neither
+//                   one of THAT player's villages nor a barbarian matching the bonus filter
+//                   (so the candidate barbs + the chosen player's villages stand alone).
+// The barb-finder clause only kicks in once a player is actually selected (barbPlayerCoords
+// non-empty) — toggling the button before troops load must not grey the whole map.
+function isDimmed(v) {
+  if (mapBonusOnly && !v.bonus) return true;
+  const isBarb = !v.playerId || v.playerId === '0';
+  if (mapBarbsOnly && !isBarb) return true;
+  if (barbFinderActive && barbPlayerCoords.size) {
+    const coord = v.x + '|' + v.y;
+    if (!barbPlayerCoords.has(coord) && !barbVillageMatches(v, barbBonusMode, barbBonusType)) return true;
+  }
+  return false;
+}
 
 // Auto-create the editable "My tribe" group ONCE, seeded with the detected tribe's tag.
 // After that it's fully user-controlled (add/remove tribes for a multi-tribe alliance,
@@ -188,7 +207,7 @@ function renderMapOffscreen() {
   for (const v of villageDb) {
     const s = worldToScreen(v.x, v.y);
     if (s.px < -margin || s.py < -margin || s.px > w + margin || s.py > h + margin) continue; // cull
-    mapOffCtx.globalAlpha = (mapBonusOnly && !v.bonus) ? MAP_DIM_ALPHA : 1;
+    mapOffCtx.globalAlpha = isDimmed(v) ? MAP_DIM_ALPHA : 1;
     if (spriteMode) {
       const img = mapSprites[mapSpriteKey(v)];
       if (img && img.complete && img.naturalWidth) mapOffCtx.drawImage(img, s.px - dw / 2, s.py - dh / 2, dw, dh);
@@ -448,10 +467,18 @@ function setMapBonusOnly(on) {
   repaintMapData();
 }
 
+function setMapBarbsOnly(on) {
+  mapBarbsOnly = !!on;
+  saveMapPrefs();
+  repaintMapData();
+}
+
 // Reflect persisted state into the toolbar controls (called after prefs load).
 function syncMapToolbar() {
   const cb = document.getElementById('map-bonus-only');
   if (cb) cb.checked = mapBonusOnly;
+  const bb = document.getElementById('map-barbs-only');
+  if (bb) bb.checked = mapBarbsOnly;
 }
 
 // ── Extract Coordinates: click villages to collect coords, then copy them ──
@@ -464,7 +491,7 @@ function toggleExtractMode() {
   if (bar) bar.style.display = mapExtractMode ? '' : 'none';
   if (mapCanvas) mapCanvas.style.cursor = mapExtractMode ? 'crosshair' : '';
   updateExtractBar();
-  paintMap();
+  repaintMapData(); // closing the barb finder here must clear its isolation dimming
 }
 function toggleExtractCoord(coord) {
   if (mapSelection.has(coord)) mapSelection.delete(coord); else mapSelection.add(coord);
@@ -508,6 +535,7 @@ let barbBonusMode = 'all';     // 'all' | 'bonus' | 'nobonus'
 let barbBonusType = 0;         // 0 = any bonus, else a MAP_BONUS id
 let barbResults = [];          // current ranked list (also drawn as candidate rings)
 let barbSnobCoords = [];       // the selected player's snob villages (origin rings)
+let barbPlayerCoords = new Set(); // ALL of the selected player's village coords (kept lit during isolation)
 const BARB_LIMIT = 50;         // cap the list (visible count, no silent truncation)
 
 function toggleBarbFinder() {
@@ -518,14 +546,14 @@ function toggleBarbFinder() {
   const panel = document.getElementById('map-barb-finder');
   if (panel) panel.style.display = barbFinderActive ? '' : 'none';
   if (barbFinderActive) renderBarbFinder();
-  else { barbResults = []; barbSnobCoords = []; }
-  paintMap();
+  else { barbResults = []; barbSnobCoords = []; barbPlayerCoords = new Set(); }
+  repaintMapData(); // re-render the offscreen so isolation dimming applies / clears
 }
 function closeBarbFinder() {
   barbFinderActive = false;
   const btn = document.getElementById('map-barb-btn'); if (btn) btn.classList.remove('active');
   const panel = document.getElementById('map-barb-finder'); if (panel) panel.style.display = 'none';
-  barbResults = []; barbSnobCoords = [];
+  barbResults = []; barbSnobCoords = []; barbPlayerCoords = new Set();
 }
 function setBarbPlayer(v) { barbPlayer = v; updateBarbResults(); }
 function setBarbBonusMode(v) {
@@ -543,7 +571,7 @@ function renderBarbFinder() {
   const snobPlayers = playersWithSnobs();
   if (!snobPlayers.length) {
     body.innerHTML = `<div class="map-barb-empty">${esc(t('barb_need_troops'))}</div>`;
-    barbResults = []; barbSnobCoords = []; paintMap();
+    barbResults = []; barbSnobCoords = []; barbPlayerCoords = new Set(); repaintMapData();
     return;
   }
   if (!snobPlayers.includes(barbPlayer)) barbPlayer = snobPlayers[0];
@@ -568,6 +596,9 @@ function renderBarbFinder() {
 // Recompute the ranked list from the current selections; refresh list + count + map rings.
 function updateBarbResults() {
   barbSnobCoords = snobVillagesOf(barbPlayer).map(s => s.coord);
+  // ALL of the selected player's villages (not just snobs) stay lit during isolation.
+  const pv = (typeof players !== 'undefined' && players[barbPlayer]) ? players[barbPlayer].villages : [];
+  barbPlayerCoords = new Set(pv.map(v => v.coord));
   barbResults = barbFinderResults(barbPlayer, barbBonusMode, barbBonusType, BARB_LIMIT);
   const list = document.getElementById('map-barb-list');
   if (list) {
@@ -586,7 +617,7 @@ function updateBarbResults() {
   }
   const cnt = document.getElementById('map-barb-count');
   if (cnt) cnt.textContent = t('barb_count')(barbResults.length, barbSnobCoords.length);
-  paintMap();
+  repaintMapData(); // re-render offscreen so isolation dimming tracks the selected player/filter
 }
 
 // Center the view on a barb and flash its hover ring (does not change zoom).

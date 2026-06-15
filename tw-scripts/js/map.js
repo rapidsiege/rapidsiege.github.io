@@ -323,6 +323,21 @@ function snobVillagesOf(playerName) {
   return out;
 }
 
+// Does village v qualify as a Barb-Finder candidate barbarian under the bonus filter?
+// bonusMode: 'all' | 'bonus' | 'nobonus'. bonusType: 0 = any bonus, else a MAP_BONUS id
+// (only applied when bonusMode === 'bonus'). Pure — shared by barbFinderResults (the ranked
+// list) AND the map's dim logic (Barb-Finder isolation), so both agree on "matching barb".
+function barbVillageMatches(v, bonusMode, bonusType) {
+  if (!v) return false;
+  if (v.playerId && v.playerId !== '0') return false;    // barbarians only
+  bonusMode = bonusMode || 'all';
+  bonusType = parseInt(bonusType) || 0;
+  if (bonusMode === 'bonus'   && !v.bonus) return false;
+  if (bonusMode === 'nobonus' &&  v.bonus) return false;
+  if (bonusMode === 'bonus'   && bonusType && v.bonus !== bonusType) return false;
+  return true;
+}
+
 // Barbarian villages ranked by smallest distance to any of the player's snob villages.
 // bonusMode: 'all' | 'bonus' | 'nobonus'. bonusType: 0 = any bonus, else a MAP_BONUS id
 // (only applied when bonusMode === 'bonus'). Returns ascending-by-distance
@@ -330,14 +345,9 @@ function snobVillagesOf(playerName) {
 function barbFinderResults(playerName, bonusMode, bonusType, limit) {
   const snobVils = snobVillagesOf(playerName);
   if (!snobVils.length || typeof villageDb === 'undefined') return [];
-  bonusMode = bonusMode || 'all';
-  bonusType = parseInt(bonusType) || 0;
   const out = [];
   for (const v of villageDb) {
-    if (v.playerId && v.playerId !== '0') continue;      // barbarians only
-    if (bonusMode === 'bonus'   && !v.bonus) continue;
-    if (bonusMode === 'nobonus' &&  v.bonus) continue;
-    if (bonusMode === 'bonus'   && bonusType && v.bonus !== bonusType) continue;
+    if (!barbVillageMatches(v, bonusMode, bonusType)) continue;
     let best = Infinity, from = null;
     for (const s of snobVils) {
       const d = Math.sqrt((v.x - s.x) ** 2 + (v.y - s.y) ** 2);

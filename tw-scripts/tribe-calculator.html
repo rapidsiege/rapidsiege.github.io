@@ -180,6 +180,7 @@
     <button class="btn btn-ghost btn-sm" onclick="mapResetView()" data-i18n="map_reset_view">Reset view</button>
     <span class="map-tb-sep"></span>
     <label class="map-tb-check"><input type="checkbox" id="map-bonus-only" onchange="setMapBonusOnly(this.checked)"><span data-i18n="map_bonus_only">Bonus only</span></label>
+    <label class="map-tb-check"><input type="checkbox" id="map-barbs-only" onchange="setMapBarbsOnly(this.checked)"><span data-i18n="map_barbs_only">Barbs only</span></label>
     <button id="map-extract-btn" class="btn btn-ghost btn-sm" onclick="toggleExtractMode()" data-i18n="map_extract">Extract Coordinates</button>
     <button id="map-barb-btn" class="btn btn-ghost btn-sm" onclick="toggleBarbFinder()" data-i18n="barb_finder">Barb Finder</button>
     <span style="font-size:12px;color:#5a3a18;" data-i18n="map_hint">Drag to pan · scroll to zoom · hover for details</span>
@@ -528,7 +529,8 @@
   <div class="cl-entry">
     <div class="cl-head"><span class="cl-ver">v2.0.0-rc1</span><span class="cl-date">2026-06-15 · release candidate</span></div>
     <ul class="cl-list">
-      <li><b>🐗 Barb Finder:</b> a new map toolbar button — pick one of your tribe’s players who owns nobles, and it lists the barbarian villages closest to that player’s noble villages (the fastest to conquer), ranked by distance. Filter by bonus / no bonus and narrow to a bonus type. Candidate barbs get an orange ring, the player’s noble villages a blue ring; click a result to center the map, or Copy the whole list.</li>
+      <li><b>🐗 Barb Finder:</b> a new map toolbar button — pick one of your tribe’s players who owns nobles, and it lists the barbarian villages closest to that player’s noble villages (the fastest to conquer), ranked by distance. Filter by bonus / no bonus and narrow to a bonus type. Candidate barbs get an orange ring, the player’s noble villages a blue ring; click a result to center the map, or Copy the whole list. <b>While it’s open the map fades everything except that player’s villages and the matching barbarians</b>, so the targets stand out at a glance.</li>
+      <li><b>“Barbs only” filter:</b> a new map toolbar checkbox (beside “Bonus only”) that fades every player village so only barbarian villages stand out.</li>
       <li><b>Square overview:</b> zoomed out, the map now keeps a true square shape (no more vertical flattening) so the world looks like its real circular self; it only switches to the tighter in-game vertical packing once you zoom in far enough to see the village graphics.</li>
       <li><b>Bigger dots when zoomed out:</b> village dots now fill their cell and touch edge-to-edge, so tribe colors read as solid blocks from a distance.</li>
       <li><b>Default view frames your world:</b> opening the map (and Reset view) now frames the village cloud — northernmost village at the top, southernmost at the bottom — instead of the empty grid.</li>
