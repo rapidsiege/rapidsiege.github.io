@@ -1,3 +1,5 @@
+
+
 function openUI() {
     html = '<head></head><body><h1>Tribe troop counter</h1><form><fieldset><legend>Settings</legend><p><input type="radio" name="mode" id="of" value="Read troops of the village" onchange="setMode(\'members_troops\')">Read troops of the village</input></p><p><input type="radio" name="mode" id="in" value="Read defenses in the village" onchange="setMode(\'members_defense\')">Read defenses in the village</input></p></fieldset><fieldset><legend>Filters</legend><select id="variable"><option value="x">x</option><option value="y">y</option>' + createUnitOption() + '</select><select id="kind"><option value=">">\></option><option value="<">\<</option></select><input type="text" id="value"></input><input type="button" class="btn evt-confirm-btn btn-confirm-yes" onclick="addFilter()" value="Save filter"></input><p><table><tr><th>Variable filtered</th><th>Operatore</th><th>Value</th><th></th></tr>' + createFilterTable() + '</form></p></fieldset><div><p><input type="button" class="btn evt-confirm-btn btn-confirm-yes" id="run" onclick="readData()" value="Read data"></input></p></div></body>';
     Dialog.show("Troop counter", html);
@@ -16,6 +18,13 @@ function openUI() {
 
 function setMode(a) {
     localStorage.troopCounterMode = a;
+}
+
+// game_data.mode is unreliable on this world (often null even on the members
+// overview, only set when an in-game AJAX click leaves a stale value behind).
+// The URL's mode param is always correct, so gate on that instead.
+function getPageMode() {
+    return new URLSearchParams(window.location.search).get("mode");
 }
 
 function download(filename, text) {
@@ -126,7 +135,7 @@ function deleteFilter(filter, i) {
 }
 
 function readData() {
-    if (game_data.mode == "members") {
+    if (game_data.screen == "ally" && getPageMode() == "members") {
         var html = '<label> Reading...     </label><progress id="bar" max="1" value="0">  </progress>';
         Dialog.show("Progress bar", html);
         filtres = {};
@@ -225,6 +234,8 @@ function readData() {
                 showData(data, mode);
             }
         })();
+    } else {
+        UI.ErrorMessage("Open this from the tribe Members tab (screen=ally&mode=members), then run “Read data” again.", 5000);
     }
 }
 
@@ -235,3 +246,4 @@ function showData(data) {
 
 
 openUI();
+
