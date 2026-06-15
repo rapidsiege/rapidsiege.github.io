@@ -377,6 +377,7 @@
           <th><span class="badge badge-complete" data-i18n="th_complete">Complete</span></th>
           <th><span class="badge badge-tq" data-i18n="th_tq">3/4</span></th>
           <th><span class="badge badge-half" data-i18n="th_half">1/2</span></th>
+          <th class="left" data-i18n="th_off_senders">Off Senders</th>
           <th data-i18n="th_snob_players">Snob Players</th>
           <th data-i18n="th_nobles">Nobles</th>
           <th class="left" data-i18n="th_snob_senders">Senders</th>
@@ -525,6 +526,14 @@
 <div class="tab-content" id="tab-changelog">
   <div class="section-header"><h2 data-i18n="sec_changelog">Changelog</h2></div>
   <p style="font-size:12px;color:#5a3a18;margin-top:6px;margin-bottom:16px;" data-i18n="changelog_intro">Feature and change history for the Tribe Calculator, per version bump.</p>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v2.0.1</span><span class="cl-date">2026-06-15</span></div>
+    <ul class="cl-list">
+      <li><b>👤 Assign off senders per target:</b> Offensive Targets now has an <b>Off Senders</b> column with a picker for each tier (Complete / 3-4 / 1-2), just like snob senders. Each option shows <b>how many offs of that tier the player owns</b>, so you can see at a glance who can cover a request. Pinned senders are assigned first from their own villages and split a tier’s slots evenly (set an exact number per sender if you want). If a pinned sender can’t cover — none in distance range, or not enough offs free — the plan says so and leaves the slot open instead of silently using someone else.</li>
+      <li><b>🏰 Noble recruit suggestion:</b> when you pin a snob sender whose noble villages are all out of travel range, the warning now adds <i>which of that player’s villages are within range</i> — i.e. where they should recruit a noble to reach the target.</li>
+    </ul>
+  </div>
 
   <div class="cl-entry">
     <div class="cl-head"><span class="cl-ver">v2.0.0-rc1</span><span class="cl-date">2026-06-15 · release candidate</span></div>
@@ -1611,6 +1620,10 @@ function normalizeOffTarget(tg) {
   tg.snobAssignees = tg.snobAssignees.filter(Boolean).map(a => typeof a === 'string'
     ? { name: a, count: 0 }
     : { name: a.name, count: Math.max(0, parseInt(a.count) || 0) });
+  if (!Array.isArray(tg.offAssignees)) tg.offAssignees = [];
+  tg.offAssignees = tg.offAssignees
+    .filter(a => a && a.name && ['complete', 'tq', 'half'].includes(a.tier))
+    .map(a => ({ tier: a.tier, name: a.name, count: Math.max(0, parseInt(a.count) || 0) }));
   if (!Array.isArray(tg.offWindows) || !tg.offWindows.length) {
     tg.offWindows = [{ win: tg.winOff !== undefined ? tg.winOff : (otCfg.defWinOff || ''), count: 0 }];
   }
@@ -1625,7 +1638,7 @@ function newOffTarget(coord, player) {
   return {
     id: otNextId++, coord, player,
     nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0, snobPlayers: 1, nobles: 4,
-    snobMode: 'solo', snobAssignees: [],
+    snobMode: 'solo', snobAssignees: [], offAssignees: [],
     offWindows: [{ win: otCfg.defWinOff, count: 0 }], winSnob: otCfg.defWinSnob,
   };
 }
@@ -1711,6 +1724,60 @@ function updSnobCount(id, idx, val) {
   const tg = offTargets.find(x => x.id === id);
   if (!tg || !tg.snobAssignees[idx]) return;
   tg.snobAssignees[idx].count = Math.max(0, parseInt(val) || 0);
+  saveOffensive(); renderOffTargets();
+}
+
+// ── Off senders (per tier): manually pin who sends each target's offs ──
+// How many off villages of each tier a player owns (drives the picker counts)
+function playerOffTierCounts(name) {
+  const out = { complete: 0, tq: 0, half: 0 };
+  const p = players[name];
+  if (!p) return out;
+  for (const v of p.villages) { const tr = getOffTier(v.offPow); if (tr in out) out[tr]++; }
+  return out;
+}
+// Loaded troop-file players that own ≥1 off of `tier`, richest first (label shows the count)
+function offSenderOptions(tier) {
+  return Object.keys(players)
+    .map(name => ({ name, count: playerOffTierCounts(name)[tier] }))
+    .filter(x => x.count > 0)
+    .sort((a, b) => b.count - a.count);
+}
+// Resolve a target tier's named off senders to [{name, count}] (explicit counts honored;
+// count-0 senders auto-share the tier's remaining slots evenly, like snob trains).
+function targetOffAssign(tg, tier) {
+  const N = tg[TIER_FIELD[tier]] || 0;
+  const assignees = (tg.offAssignees || []).filter(a => a && a.name && a.tier === tier);
+  if (!N || !assignees.length) return [];
+  const explicitSum = assignees.reduce((s, a) => s + (a.count > 0 ? a.count : 0), 0);
+  const auto = assignees.filter(a => !(a.count > 0));
+  const shares = auto.length ? splitNobles(Math.max(0, N - explicitSum), auto.length) : [];
+  let ai = 0;
+  return assignees
+    .map(a => ({ name: a.name, count: a.count > 0 ? a.count : (shares[ai++] || 0) }))
+    .filter(x => x.count > 0);
+}
+function addOffAssignee(id, tier, name) {
+  if (!name) return;
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg) return;
+  if (!Array.isArray(tg.offAssignees)) tg.offAssignees = [];
+  tg.offAssignees.push({ tier, name, count: 0 });
+  // assigning a sender implies at least one off of that tier is wanted
+  const cnt = tg.offAssignees.filter(a => a.tier === tier).length;
+  if ((tg[TIER_FIELD[tier]] || 0) < cnt) tg[TIER_FIELD[tier]] = cnt;
+  saveOffensive(); renderOffTargets();
+}
+function removeOffAssignee(id, idx) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg || !tg.offAssignees[idx]) return;
+  tg.offAssignees.splice(idx, 1);
+  saveOffensive(); renderOffTargets();
+}
+function updOffCount(id, idx, val) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg || !tg.offAssignees[idx]) return;
+  tg.offAssignees[idx].count = Math.max(0, parseInt(val) || 0);
   saveOffensive(); renderOffTargets();
 }
 
@@ -1834,7 +1901,7 @@ function renderOffTargets() {
 
   const tbody = document.getElementById('offtargets-tbody');
   if (!offTargets.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="13">${t('empty_no_targets')}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="14">${t('empty_no_targets')}</td></tr>`;
     return;
   }
   const senders = snobSenderOptions();
@@ -1848,6 +1915,26 @@ function renderOffTargets() {
            <option value="">${t('opt_pick_sender')}</option>
            ${senders.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.snob})</option>`).join('')}
          </select>`
+      : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+    // Off senders: one labeled picker per tier (Complete / 3-4 / 1-2); option labels show
+    // how many offs of THAT tier the player owns. Chips = assignees of that tier (editable count).
+    const TIER_BADGE_CLS = { complete: 'badge-complete', tq: 'badge-tq', half: 'badge-half' };
+    const TIER_TH = { complete: 'th_complete', tq: 'th_tq', half: 'th_half' };
+    const offSenderCell = Object.keys(players).length
+      ? ['complete', 'tq', 'half'].map(tier => {
+          const opts = offSenderOptions(tier);
+          const tierChips = tg.offAssignees.map((a, j) => a.tier !== tier ? '' :
+            `<span class="chip">${esc(decode(a.name))} ×<input type="number" min="0" value="${a.count || 0}" title="${esc(t('off_count_title'))}" style="width:30px;background:transparent;border:none;border-bottom:1px solid #7a5c10;color:inherit;font-size:11px;text-align:center;" onchange="updOffCount(${tg.id},${j},this.value)"><span class="chip-x" onclick="removeOffAssignee(${tg.id},${j})">✕</span></span>`).join('');
+          const picker = opts.length
+            ? `<select class="cell-input" style="width:104px;" onchange="addOffAssignee(${tg.id},'${tier}',this.value)">
+                 <option value="">${t('opt_pick_sender')}</option>
+                 ${opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.count})</option>`).join('')}
+               </select>`
+            : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+          return `<div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;margin:1px 0;">
+                    <span class="badge ${TIER_BADGE_CLS[tier]}" style="font-size:9px;padding:0 4px;">${t(TIER_TH[tier])}</span>${picker}${tierChips}
+                  </div>`;
+        }).join('')
       : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
     const winEditor = (prefix, winStr, chgJs, fixJs) => {
       const [ws, we] = winParts(winStr);
@@ -1874,6 +1961,7 @@ function renderOffTargets() {
       <td><input type="number" min="0" class="cell-input num" value="${tg.nComplete}" onchange="updOT(${tg.id},'nComplete',this.value)"></td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.nTq}" onchange="updOT(${tg.id},'nTq',this.value)"></td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.nHalf}" onchange="updOT(${tg.id},'nHalf',this.value)"></td>
+      <td class="left"><div style="max-width:280px;">${offSenderCell}</div></td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.snobPlayers}" onchange="updOT(${tg.id},'snobPlayers',this.value)"></td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.nobles}" onchange="updOT(${tg.id},'nobles',this.value)"></td>
       <td class="left"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;max-width:250px;">${chips}${senderPicker}</div></td>
@@ -2038,14 +2126,58 @@ function generatePlan() {
     ? (b.v.offPow - a.v.offPow) || (distXY(a.c, tc) - distXY(b.c, tc))
     : (distXY(a.c, tc) - distXY(b.c, tc)) || (b.v.offPow - a.v.offPow);
 
+  // Named off senders fill FIRST (before the auto pass below claims villages globally),
+  // so a manual pin can't be stolen by another target's auto-pick. They draw only from
+  // their OWN tier-matching villages and never tier-bump — a shortfall is warned and left
+  // unassigned (mirrors the snob trains), reserving those slots so auto doesn't backfill.
+  const namedOffReserved = {}; // 'tIdx|tier' → reserved slots (assigned + shortfall)
+  for (const tier of ['complete', 'tq', 'half']) {
+    for (const T of targets) {
+      if (!T.c) continue;
+      const N = T.tg[TIER_FIELD[tier]] || 0;
+      const assign = targetOffAssign(T.tg, tier);
+      if (!assign.length) continue;
+      const reqSum = assign.reduce((s, a) => s + a.count, 0);
+      if (reqSum > N) planWarnings.push(t('warn_offs_mismatch')(t('tier_' + tier), T.tg.coord, reqSum, N));
+      let placed = 0;
+      for (const a of assign) {
+        const want = Math.min(a.count, Math.max(0, N - placed)); // never exceed the tier request
+        if (want <= 0) continue;
+        const cands = pool.filter(p => !p.usedOff && p.v.player === a.name && p.tier === tier
+          && okOffDist(p, T.c) && okOffTime(p, T)).sort(byPref(T.c));
+        let got = 0;
+        for (const p of cands) {
+          if (got >= want) break;
+          p.usedOff = true; got++; placed++;
+          const d = distXY(p.c, T.c);
+          T.offRows.push({ type: tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+            dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
+        }
+        if (got < want) {
+          placed += want - got; // reserve the shortfall so the auto pass won't backfill it
+          const owned = pool.filter(p => p.v.player === a.name && p.tier === tier);
+          const inRange = owned.filter(p => okOffDist(p, T.c));
+          planWarnings.push(
+            owned.length && !inRange.length ? t('warn_off_range')(decode(a.name), t('tier_' + tier), T.tg.coord)
+            : inRange.length && !inRange.some(p => okOffTime(p, T)) ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
+            : t('warn_sender_short_off')(decode(a.name), t('tier_' + tier), T.tg.coord));
+          for (let z = 0; z < want - got; z++) T.offRows.push({ type: tier, unassigned: true });
+        }
+      }
+      namedOffReserved[T.i + '|' + tier] = placed;
+    }
+  }
+
   // Offs: strongest requests claim villages first (complete → 3/4 → 1/2);
   // an exhausted tier auto-bumps to the nearest stronger off (1/2 → 3/4 → Complete)
-  // and the row is relabeled to what is actually sent, with a warning
+  // and the row is relabeled to what is actually sent, with a warning. Slots already
+  // reserved by named senders above are subtracted so each tier isn't double-filled.
   const TIER_UP = { half: ['tq', 'complete'], tq: ['complete'], complete: [] };
   for (const tier of ['complete', 'tq', 'half']) {
     for (const T of targets) {
       if (!T.c) continue;
-      for (let k = 0; k < (T.tg[TIER_FIELD[tier]] || 0); k++) {
+      const autoNeed = Math.max(0, (T.tg[TIER_FIELD[tier]] || 0) - (namedOffReserved[T.i + '|' + tier] || 0));
+      for (let k = 0; k < autoNeed; k++) {
         const tierCands = tt => pool.filter(p => !p.usedOff && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T));
         let sent = tier, cands = tierCands(tier);
         for (const up of TIER_UP[tier]) {
@@ -2115,8 +2247,20 @@ function generatePlan() {
         if (want) {
           const mine = pool.filter(p => p.snobLeft > 0 && p.v.player === want);
           const inRange = mine.filter(p => okSnobDist(p, T.c));
-          if (mine.length && !inRange.length)
+          if (mine.length && !inRange.length) {
             msg = t('warn_snob_range')(decode(want), T.tg.coord);
+            // None of their snob villages reach — recommend the player's OWN villages
+            // that ARE within snob range (closest first), where recruiting a noble would
+            // put a train in range. By this branch's premise none of these hold snobs yet.
+            const recruit = pool.filter(p => p.v.player === want && okSnobDist(p, T.c))
+              .sort((a, b) => distXY(a.c, T.c) - distXY(b.c, T.c));
+            if (recruit.length) {
+              const CAP = 6;
+              let coords = recruit.slice(0, CAP).map(p => p.v.coord).join(', ');
+              if (recruit.length > CAP) coords += t('warn_snob_range_more')(recruit.length - CAP);
+              msg += '. ' + t('warn_snob_range_hint')(decode(want), coords);
+            }
+          }
           else if (inRange.length && !inRange.some(p => okSnobTime(p, T)))
             msg = t('warn_snob_too_late')(T.tg.coord);
           else if (mode === 'escorted' && inRange.length)
@@ -2841,7 +2985,7 @@ document.addEventListener('drop', e => {
      card at the top of the Changelog tab (search "id=\"tab-changelog\""). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 2.0.0-rc1 &nbsp;·&nbsp; 2026-06-15</span>
+  <span><span data-i18n="footer_version">Version</span> 2.0.1 &nbsp;·&nbsp; 2026-06-15</span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
