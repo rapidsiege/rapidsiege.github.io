@@ -668,6 +668,31 @@ function planRowIconBB(r) {
   return `[unit]${r.type === 'half' ? 'axe' : 'ram'}[/unit]`;
 }
 
+// ── Build objective groups from the plan (one per target, in plan order) ──
+function planGroups() {
+  const groups = [];
+  for (const r of planRows) {
+    let g = groups.find(x => x.idx === r.tIdx);
+    if (!g) { g = { idx: r.tIdx, coord: r.tCoord, player: r.tPlayer, rows: [] }; groups.push(g); }
+    g.rows.push(r);
+  }
+  return groups;
+}
+
+// ── Forum-style BB row (shared by the Forum export and the per-player objective context) ──
+// A pinned-but-unplaced sender keeps their name (with a "needs nobles" note); a truly
+// anonymous unassigned row falls back to the UNASSIGNED label. Snob trains never name an
+// origin — just the "Prepare Snob Train" call-out (the target is the group header above).
+function planRowForumBB(r, multiSnob) {
+  const iconBB = planRowIconBB(r);
+  const prefix = r.type === 'snob' && multiSnob ? `${r.count}x ` : '';
+  const who    = r.srcPlayer
+    ? `[player]${r.srcPlayer}[/player]${r.needNobles ? ` (${t('bb_need_nobles')})` : ''}`
+    : t('bb_unassigned');
+  const prep   = r.type === 'snob' ? ` ${t('plan_prepare_snob')(r.escorted)}` : '';
+  return `${prefix}${iconBB} ${who}${prep} [b][color=#0000a5]${fmtWindow(r.window) || '??:??'}[/color][/b]`;
+}
+
 // ── Forum BB export (matches the tribe's offensive post format) ──
 function showPlanBB() {
   if (!planRows.length) { alert(t('empty_no_plan')); return; }
@@ -682,28 +707,11 @@ function showPlanBB() {
   if (planRows.some(r => r.type === 'snob' && r.escorted)) bb += `[unit]axe[/unit][unit]snob[/unit] --> ${t('bb_legend_split')(noblesLabel)}\n`;
   bb += '\n';
 
-  const groups = [];
-  for (const r of planRows) {
-    let g = groups.find(x => x.idx === r.tIdx);
-    if (!g) { g = { idx: r.tIdx, coord: r.tCoord, player: r.tPlayer, rows: [] }; groups.push(g); }
-    g.rows.push(r);
-  }
+  const groups = planGroups();
   groups.forEach((g, gi) => {
     bb += `${gi + 1}. ${g.coord}${g.player ? ` - [player]${g.player}[/player]` : ''}\n`;
     const multiSnob = g.rows.filter(x => x.type === 'snob').length > 1;
-    for (const r of g.rows) {
-      const iconBB = planRowIconBB(r);
-      const prefix = r.type === 'snob' && multiSnob ? `${r.count}x ` : '';
-      // A pinned-but-unplaced sender keeps their name (with a "needs nobles" note);
-      // a truly anonymous unassigned row falls back to the UNASSIGNED label.
-      const who    = r.srcPlayer
-        ? `[player]${r.srcPlayer}[/player]${r.needNobles ? ` (${t('bb_need_nobles')})` : ''}`
-        : t('bb_unassigned');
-      // Snob trains never name an origin — just the "Prepare Snob Train" call-out (the
-      // target is the group header above); offs keep the plain player + arrival window.
-      const prep = r.type === 'snob' ? ` ${t('plan_prepare_snob')(r.escorted)}` : '';
-      bb += `${prefix}${iconBB} ${who}${prep} [b][color=#0000a5]${fmtWindow(r.window) || '??:??'}[/color][/b]\n`;
-    }
+    for (const r of g.rows) bb += planRowForumBB(r, multiSnob) + '\n';
     bb += '\n';
   });
 
@@ -730,6 +738,8 @@ function showPlayerPlanBB() {
   }
   const names = Object.keys(byPlayer).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
+  const allGroups = planGroups(); // for the per-player "objective context" dump below
+
   let bb = '';
   for (const name of names) {
     const rows = byPlayer[name];
@@ -745,8 +755,9 @@ function showPlayerPlanBB() {
         // <target>" call-out (the player picks their own send village). No "src →",
         // no rally URL — so the attack-planner import correctly skips these lines.
         const prep = t('plan_prepare_snob')(r.escorted, `[coord]${r.tCoord}[/coord]`);
-        if (r.needNobles) { // pinned sender with no noble yet → recruit first, no timing
-          bb += `${prefix}${iconBB} [b][color=#ff0e0e]${t('snobs_need_recruiting')}[/color][/b] ${prep}\n`;
+        if (r.needNobles) { // pinned sender with no noble yet → recruit first; still show the arrival window
+          const win = (fmtWindow(r.window) || '??:??').replace('/', '-');
+          bb += `${prefix}${iconBB} [b][color=#ff0e0e]${t('snobs_need_recruiting')}[/color][/b] ${prep} [b][color=#2e2eff]${win}[/color][/b]\n`;
         } else {
           const win = (fmtWindow(r.window) || '??:??').replace('/', '-');
           bb += `${prefix}${iconBB} ${prep}${defender} [b][color=#2e2eff]${win}[/color][/b]\n`;
@@ -766,6 +777,24 @@ function showPlayerPlanBB() {
         ? `\n${t('bb_pp_launchline')(lp.day, `[color=#ff0e0e]${lp.span}[/color]`, lp.single)}${urlPart}[/b]`
         : `${urlPart}[/b]`;
       bb += `${prefix}${iconBB} ${r.srcCoord} → [coord]${r.tCoord}[/coord]${defender} [b][color=#2e2eff]${win}[/color]${launch}\n`;
+    }
+
+    // ── Objective context: paste the full objective(s) this player sends a snob to, so
+    //    they see the whole train (who else hits it + arrival windows). Forum-BB format,
+    //    numbered per-player (1..N). None of these lines carry "→"/[url=], so the
+    //    attack-planner per-player import skips every one — no phantom attacks. ──
+    const snobTIdx = [];
+    for (const r of rows) if (r.type === 'snob' && !snobTIdx.includes(r.tIdx)) snobTIdx.push(r.tIdx);
+    if (snobTIdx.length) {
+      bb += '\n\n'; // two blank lines separate the player's instructions from the context dump
+      snobTIdx.forEach((tIdx, oi) => {
+        const g = allGroups.find(x => x.idx === tIdx);
+        if (!g) return;
+        const multiSnob = g.rows.filter(x => x.type === 'snob').length > 1;
+        bb += `${t('bb_objective')} ${oi + 1}. ${g.coord}${g.player ? ` - [player]${g.player}[/player]` : ''}\n`;
+        for (const gr of g.rows) bb += planRowForumBB(gr, multiSnob) + '\n';
+        bb += '\n';
+      });
     }
     bb += '\n';
   }

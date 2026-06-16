@@ -12,6 +12,16 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.1.0', date: '2026-06-17',
+    en: [
+      `<b>👑 Per-player plan — nobles-needed lines now show the arrival time.</b> When a player is assigned a noble train but doesn't own the nobles yet, their <b>“Prepare Snob Train”</b> line in the per-player export now carries the same <b>arrival window</b> as the forum plan, so they know exactly when the train has to land.`,
+      `<b>📋 Each player now gets the full objective for context.</b> Under their personal orders, the per-player export pastes the <b>complete objective(s) they're nobling</b> — every attacker hitting that target and its arrival times, numbered <b>Objective 1, 2, …</b> — so each member sees the whole plan for their target, not just their own line.`,
+    ],
+    es: [
+      `<b>👑 Plan por jugador — las líneas de nobles pendientes ahora muestran la hora de llegada.</b> Cuando a un jugador se le asigna un tren de nobles pero aún no tiene los nobles, su línea <b>“Prepara el Tren de Nobles”</b> en la exportación por jugador ahora incluye la misma <b>ventana de llegada</b> que el plan del foro, para que sepa exactamente cuándo debe aterrizar el tren.`,
+      `<b>📋 Cada jugador recibe ahora el objetivo completo como contexto.</b> Bajo sus órdenes personales, la exportación por jugador pega el <b>objetivo (u objetivos) completo que va a noblear</b> — todos los atacantes que golpean ese objetivo y sus horas de llegada, numerados <b>Objetivo 1, 2, …</b> — para que cada miembro vea el plan completo de su objetivo, no solo su propia línea.`,
+    ],
+  },
   { ver: 'v3.0.0', date: '2026-06-17',
     en: [
       `<b>🛡 New: Defensive support planning.</b> Two new tabs. In <b>Defensive Targets</b> you list allied villages that need defense and set a per-village objective — how many <b>spears, swords, spies and heavy cavalry</b> each should hold — with the defender and tribe auto-filled from the database and an optional <b>arrival deadline</b> per village.`,

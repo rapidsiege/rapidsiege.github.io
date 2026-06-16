@@ -140,6 +140,7 @@ const T = {
     // train from a village of their choosing and only the arrival window is coordinated.
     plan_prepare_snob: (split, coordBB) => `⚠ Prepare Snob Train${coordBB ? ` for ${coordBB}` : ''}${split ? ' (Split Off)' : ''} ⚠`,
     bb_arrival_date:'ARRIVAL DATE',
+    bb_objective:'Objective',
     bb_legend_ram:'FULL OFF.', bb_legend_axe:'HALF OFF (with Rams and Light Cav too).',
     bb_legend_snob: n => `NOBLE TRAIN (${n} Nobles).`,
     bb_unassigned:'⚠ UNASSIGNED',
@@ -363,6 +364,7 @@ const T = {
     plan_warnings_toggle: n => `⚠ ${n} ${n === 1 ? 'aviso' : 'avisos'} — clic para expandir`,
     plan_prepare_snob: (split, coordBB) => `⚠ Prepara el Tren de Nobles${coordBB ? ` para ${coordBB}` : ''}${split ? ' (Partir Off)' : ''} ⚠`,
     bb_arrival_date:'FECHA DE LLEGADA',
+    bb_objective:'Objetivo',
     bb_legend_ram:'OFF COMPLETO.', bb_legend_axe:'MEDIO OFF (Con Arietes y Ligeros también).',
     bb_legend_snob: n => `TREN DE NOBLES (${n} Nobles).`,
     bb_unassigned:'⚠ SIN ASIGNAR',
