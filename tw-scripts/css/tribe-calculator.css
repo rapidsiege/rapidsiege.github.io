@@ -458,6 +458,19 @@
       margin-bottom: 12px;
       line-height: 1.6;
     }
+    /* Collapsible warnings: summary is the always-visible header, list reveals on open */
+    details.warn-box > summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: #e8a070;
+      list-style: none;
+      user-select: none;
+    }
+    details.warn-box > summary::-webkit-details-marker { display: none; }
+    details.warn-box > summary::before { content: '▸ '; color: #c08060; }
+    details.warn-box[open] > summary::before { content: '▾ '; }
+    details.warn-box[open] > summary { margin-bottom: 6px; }
+    .warn-list { color: #e08060; }
 
     /* ── Hidden file input ── */
     #file-input { display: none; }

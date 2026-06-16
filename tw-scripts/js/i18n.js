@@ -135,6 +135,10 @@ const T = {
     warn_snob_too_late: coord => `No snob train can reach ${coord} in time — the launch would already be in the past`,
     warn_row_late: (src, tgt) => `${src} → ${tgt} would have to launch in the past — move it to a later window or regenerate`,
     plan_summary: (a, u) => `${a} attacks assigned · ${u} unassigned`,
+    plan_warnings_toggle: n => `⚠ ${n} ${n === 1 ? 'warning' : 'warnings'} — click to expand`,
+    // Snob trains are never assigned a fixed origin village — the player prepares the
+    // train from a village of their choosing and only the arrival window is coordinated.
+    plan_prepare_snob: (split, coordBB) => `⚠ Prepare Snob Train${coordBB ? ` for ${coordBB}` : ''}${split ? ' (Split Off)' : ''} ⚠`,
     bb_arrival_date:'ARRIVAL DATE',
     bb_legend_ram:'FULL OFF.', bb_legend_axe:'HALF OFF (with Rams and Light Cav too).',
     bb_legend_snob: n => `NOBLE TRAIN (${n} Nobles).`,
@@ -329,6 +333,8 @@ const T = {
     warn_row_late: (src, tgt) => `${src} → ${tgt} tendría que salir en el pasado — muévelo a una ventana más tardía o regenera el plan`,
     warn_missed_snob: coord => `Faltan jugadores con nobles para ${coord}`,
     plan_summary: (a, u) => `${a} ataques asignados · ${u} sin asignar`,
+    plan_warnings_toggle: n => `⚠ ${n} ${n === 1 ? 'aviso' : 'avisos'} — clic para expandir`,
+    plan_prepare_snob: (split, coordBB) => `⚠ Prepara el Tren de Nobles${coordBB ? ` para ${coordBB}` : ''}${split ? ' (Partir Off)' : ''} ⚠`,
     bb_arrival_date:'FECHA DE LLEGADA',
     bb_legend_ram:'OFF COMPLETO.', bb_legend_axe:'MEDIO OFF (Con Arietes y Ligeros también).',
     bb_legend_snob: n => `TREN DE NOBLES (${n} Nobles).`,
