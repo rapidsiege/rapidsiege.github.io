@@ -530,232 +530,18 @@
 </div>
 
 <!-- ═══════════════════════════ CHANGELOG ═══════════════════════════ -->
-<!-- MAINTENANCE: add a new .cl-entry card at the TOP of this list on every version
-     bump (keep newest first), and update the footer version number to match. -->
+<!-- Changelog content lives in js/changelog.js (the CHANGELOG array + renderChangelog).
+     On a version bump, add ONE entry at the TOP of CHANGELOG there and bump #app-version
+     in the footer below — no need to edit this file. -->
 <div class="tab-content" id="tab-changelog">
   <div class="section-header"><h2 data-i18n="sec_changelog">Changelog</h2></div>
   <p style="font-size:12px;color:#5a3a18;margin-top:6px;margin-bottom:16px;" data-i18n="changelog_intro">Feature and change history for the Tribe Calculator, per version bump.</p>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v2.5.0</span><span class="cl-date">2026-06-16</span></div>
-    <ul class="cl-list">
-      <li><b>📏 “Off min distance” is now tribe-wide:</b> a value here (e.g. 10) keeps any offensive village within that many fields of <b>any</b> objective free for a quick second round — it’s held back from <b>every</b> target, not just the one being filled. Previously an off sitting right next to objective A could still be flung at a far objective B; now it stays home.</li>
-      <li><b>🤝 The conqueror gets one of its target’s offs:</b> when a player is set to take a village (nobles), the planner now tries to also send <b>one of that player’s offs to the same target</b>, so they can self-coordinate their timings. (Split-off trains already ride with the player’s own off, so this is unchanged for them.)</li>
-      <li><b>🔽 Collapsible plan warnings:</b> the alerts/errors under <b>Plan Offensive</b> now start collapsed with a count (“⚠ 3 warnings — click to expand”) so they don’t bury the plan table — click to expand.</li>
-      <li><b>👑 Noble trains never show an origin village:</b> a snob train isn’t tied to a specific village any more — the plan table and both BB exports show <b>⚠ Prepare Snob Train for [target] (Split Off) ⚠</b> with only the arrival time, so you prepare the train from whichever of your villages you like and just match the landing window. (The split-off escort off is still reserved per objective behind the scenes — see v2.4.0 — it’s only the displayed origin that’s gone.)</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v2.4.0</span><span class="cl-date">2026-06-16</span></div>
-    <ul class="cl-list">
-      <li><b>👑 "Snobs need recruiting" — show where:</b> when a player is set as a <b>split-off</b> snob sender but hasn’t recruited the noble(s) yet, the plan now shows the <b>coordinates of the off village reserved for the escort</b> — i.e. exactly where to recruit the noble so it can ride out with that off. The Plan table’s origin cell and the <b>Per-Player BB</b> export show that village + the target, tagged <b>[SNOBS NEED RECRUITING]</b> (ES: <b>[NECESITAS RECLUTAR NOBLES]</b>) instead of a bare “UNASSIGNED”. This now also covers the case where the sender owns a stray noble elsewhere but is short for the train (it points at the reserved off to recruit there); when they have <i>enough</i> nobles and only the escort off is busy, it still suggests Solo. The plan table and Per-Player BB also show the <b>launch time</b> and a <b>rally link</b> for that reserved off (origin → target), so you know exactly when and from where to send the split-off once the noble is in. (These pending lines are still display-only — pasting the Per-Player BB into the Attack Planner imports just the ready attacks.)</li>
-      <li><b>⬇ Export Unused Offs:</b> new button in <b>Plan Offensive</b> that exports a forum <b>[table]</b> of every offensive village <b>not committed</b> by the current plan (i.e. its off wasn’t sent, isn’t a split-off escort, and isn’t reserved for one) — columns: #, Coord, Player, Type, [unit]axe[/unit], [unit]light[/unit], [unit]ram[/unit], [unit]catapult[/unit], Off Power, sorted by off power (strongest first). A <i>solo</i> noble train leaves its village’s off free, so that village still appears.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v2.3.0</span><span class="cl-date">2026-06-16</span></div>
-    <ul class="cl-list">
-      <li><b>🚀 Clearer Per-Player BB launch line:</b> the <b>Export Per-Player BB</b> output now puts the launch instructions on their own highlighted second line — <i>LAUNCH TIME: on the 17th between 03:16–04:16 — ATTACK URL▶</i> (Spanish: <i>HORA DE LANZAMIENTO: día 17 entre …</i>) — naming the launch day and wrapping the time and rally link in red so senders can’t miss when to launch. The arrival window stays on the first line. Pasting this into the Attack Planner’s per-player import still works (the planner reads both the old and new formats).</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v2.2.0</span><span class="cl-date">2026-06-16</span></div>
-    <ul class="cl-list">
-      <li><b>💾 Backup &amp; Debug export/import:</b> a new section in <b>Settings</b> exports everything saved locally — offensive targets, the generated plan, settings, language, the loaded troop data, and the morale inputs for it (the world-DB records for your villages and targets, so morale still reproduces even after the daily map mirror changes) — into one JSON file. Import it on another machine to reproduce a tribemate’s exact situation when debugging. Importing replaces your current saved targets/plan/settings/map prefs (your previous state is backed up in the browser first).</li>
-      <li><b>Split-off counts as a Complete:</b> the offs-assigned counter now adds <b>+1 Complete</b> per split-off (escorted) noble train — since each one rides with a Complete off — so the count reflects what’s really committed.</li>
-      <li><b>Troop data stays loaded:</b> the troop file you upload (or paste) is now remembered across sessions — reopen the calculator and your last-loaded troops are back automatically. Uploading new file(s) replaces it; <b>✕ Clear</b> removes it.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v2.1.0</span><span class="cl-date">2026-06-16</span></div>
-    <ul class="cl-list">
-      <li><b>⚡ Morale-aware “Optimize” plan:</b> the <b>Prioritize</b> dropdown is gone — <b>Generate Plan</b> now auto-optimizes. For each off it maximizes <b>effective off power = morale × off power</b> against travel distance, so a slightly lower-morale but much closer village beats a far one (95% @ 7h beats 100% @ 50h). Morale uses the same points-based formula as Tribe Timings; with no world DB loaded it falls back to plain distance. Manually-pinned senders still go by distance only.</li>
-      <li><b>⚖️ Balanced off load:</b> Optimize now also spreads offs across players in <b>proportion to how many each owns</b>, so a small-roster player isn’t drained while a big one sits idle — e.g. a 13-off and a 6-off player split a 13-off job closer to 9+4 than 7+6, instead of maxing out the small one. It still respects morale/distance; this only breaks near-ties.</li>
-      <li><b>👑 Split-off escort reserved:</b> when a snob sender is in <b>split off</b> mode, the planner now <b>holds back one of that player’s offs</b> (the closest Complete/3-4 to the target) so it’s free to escort the noble — even if the player hasn’t recruited the noble yet. So a player with 4 offs + a pending split-off train is planned as 3 offs now, 1 reserved for when the noble lands.</li>
-      <li><b>📊 Morale column in Plan Offensive:</b> every planned attack now shows its morale (between Player and Window), color-coded.</li>
-      <li><b>⚡ POWER tag per target:</b> a new checkbox in Offensive Targets. Tag a target <b>POWER</b> and it’s filled with your <b>strongest offs</b> (regardless of tier). With several POWER targets, the strongest offs are <b>balanced</b> across them.</li>
-      <li><b>👑 Noble senders never disappear:</b> all tribe players now show in the snob-sender picker, including those with <b>(0)</b> nobles. Pin a player who has no noble yet and they <b>stay on the plan</b> — the origin shows UNASSIGNED and a warning tells them to recruit a noble so the train arrives in time.</li>
-      <li><b>🧮 Offs committed counter:</b> Offensive Targets now shows <b>N / Total offs assigned</b> at the bottom — how many offs you’ve allocated vs. how many off villages your tribe has.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v2.0.2</span><span class="cl-date">2026-06-15</span></div>
-    <ul class="cl-list">
-      <li><b>✎ Edit villages in “By Villages”:</b> each row now has an <b>Edit</b> button — adjust a village’s troops by hand (axe, light, heavy, knight, ram, catapult, snob) and the off power, tier, and player totals recalculate instantly. Handy for planning around villages you <i>know</i> will have nobles in a few days: bump their snob count and the planner treats them as senders. <i>Edits apply for the current session only</i> — reloading or re-pasting the troop file resets them.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v2.0.1</span><span class="cl-date">2026-06-15</span></div>
-    <ul class="cl-list">
-      <li><b>👤 Assign off senders per target:</b> Offensive Targets now has an <b>Off Senders</b> column with a picker for each tier (Complete / 3-4 / 1-2), just like snob senders. Each option shows <b>how many offs of that tier the player owns</b>, so you can see at a glance who can cover a request. Pinned senders are assigned first from their own villages and split a tier’s slots evenly (set an exact number per sender if you want). If a pinned sender can’t cover — none in distance range, or not enough offs free — the plan says so and leaves the slot open instead of silently using someone else.</li>
-      <li><b>🏰 Noble recruit suggestion:</b> when you pin a snob sender whose noble villages are all out of travel range, the warning now adds <i>which of that player’s villages are within range</i> — i.e. where they should recruit a noble to reach the target.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v2.0.0-rc1</span><span class="cl-date">2026-06-15 · release candidate</span></div>
-    <ul class="cl-list">
-      <li><b>🐗 Barb Finder:</b> a new map toolbar button — pick one of your tribe’s players who owns nobles, and it lists the barbarian villages closest to that player’s noble villages (the fastest to conquer), ranked by distance. Filter by bonus / no bonus and narrow to a bonus type. Candidate barbs get an orange ring, the player’s noble villages a blue ring; click a result to center the map, or Copy the whole list. <b>While it’s open the map fades everything except that player’s villages and the matching barbarians</b>, so the targets stand out at a glance.</li>
-      <li><b>“Barbs only” filter:</b> a new map toolbar checkbox (beside “Bonus only”) that fades every player village so only barbarian villages stand out.</li>
-      <li><b>Square overview:</b> zoomed out, the map now keeps a true square shape (no more vertical flattening) so the world looks like its real circular self; it only switches to the tighter in-game vertical packing once you zoom in far enough to see the village graphics.</li>
-      <li><b>Bigger dots when zoomed out:</b> village dots now fill their cell and touch edge-to-edge, so tribe colors read as solid blocks from a distance.</li>
-      <li><b>Default view frames your world:</b> opening the map (and Reset view) now frames the village cloud — northernmost village at the top, southernmost at the bottom — instead of the empty grid.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v2.0.0-b</span><span class="cl-date">2026-06-15 · beta</span></div>
-    <ul class="cl-list">
-      <li><b>🎨 Map colors:</b> barbarian villages are grey, every other player is brown, and <b>your own tribe is blue</b> — auto-detected from the tribe-troop file you load. It seeds an editable “My tribe” group you can rename and add more tribes to (handy for a multi-tribe alliance).</li>
-      <li><b>Custom color groups:</b> create your own named groups, pick a color for each, and add members — individual villages (<code>X|Y</code>), players, or whole tribes (by tag). Grouped villages take the group’s color, overriding the defaults (a single village beats a player, which beats a tribe).</li>
-      <li><b>Zoomed-in color markers:</b> when zoomed in, each village shows a small colored dot (its group color) on the top-left, so you can tell who’s who at a glance. Barbarians get no dot.</li>
-      <li><b>Barbarian village art:</b> abandoned/barbarian villages now use their own sprites, distinct from owned ones.</li>
-      <li><b>More zoom:</b> you can now zoom in closer on the map.</li>
-      <li><b>Continent & block grid:</b> thicker lines mark the 100×100 continents and thinner lines the in-game 5×5 blocks (shown when zoomed in), so you can tell where you are.</li>
-      <li><b>Extract Coordinates:</b> a toolbar button — click villages to collect them, then Copy to paste straight into Offensive Targets / the planner. Selected villages get a ring.</li>
-      <li><b>Troop overlay:</b> for villages whose troops you’ve loaded (from the tribe info file), hovering shows off/def power and unit counts. Zoomed in, each shows a badge: <b>axe on red</b> for offensive, <b>sword on blue</b> for defensive, plus a <b>snob on yellow</b> if it has nobles.</li>
-      <li><b>Bonus-only filter:</b> a checkbox dims every non-bonus village, leaving just the bonus villages lit.</li>
-      <li><i>Remembered between sessions:</i> your color groups and the bonus filter are saved.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v2.0.0-a</span><span class="cl-date">2026-06-14 · alpha</span></div>
-    <ul class="cl-list">
-      <li><b>🗺 New Map tab (alpha):</b> an interactive world map rendered from the loaded village database — drag to pan, scroll to zoom, hover any village for its name, coordinate, continent, player, tribe, and points.</li>
-      <li><b>Real village graphics:</b> zoom in and villages become the in-game map sprites, sized by points; zoom out for a fast colored-dot overview.</li>
-      <li><b>Bonus villages identified:</b> bonus villages (e.g. +100% iron, +30% all resources) are detected straight from the map data — shown in cyan on the overview, with the bonus type in the hover tooltip and the “shine” bonus sprite when zoomed in.</li>
-      <li><i>Under the hood:</i> the calculator was split into separate <code>css/</code> and <code>js/</code> files (no behaviour change) to keep it maintainable as the map grows.</li>
-      <li><i>Coming next:</i> colour villages by tribe/player, multi-select to export coordinates into the attack planner, a bonus-village filter, and tribemate troop overlays.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v1.7.4</span><span class="cl-date">2026-06-14</span></div>
-    <ul class="cl-list">
-      <li><b>Tribe Timings — grey out cells that miss the deadline:</b> with an “Arrive by” deadline set, each per-unit travel/arrival cell whose unit can’t land in time is dimmed (in addition to hiding villages where nothing makes it), so you can see at a glance which units of a kept village still arrive.</li>
-      <li><b>Tribe Timings — Export Per-Player BB:</b> new button that groups the shown rows by player (like Plan Offensive’s per-player export), so each member can be told exactly which of their villages reach the target and when (arrival time, pace unit, rally link).</li>
-      <li><b>Tribe Timings — target village excluded:</b> a village sitting on the target coordinate is no longer listed as a sender to itself.</li>
-      <li><b>Tribe Timings — off-power tier badge:</b> the Off Power column now shows the Complete Off / 3/4 / 1/2 tier badge next to the value (offensive mode).</li>
-      <li><b>Database updated time in three clocks:</b> the web-mirror “updated” line now shows the timestamp in UTC, your browser’s local time, and game-server time (UTC + the configured offset).</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v1.7.3</span><span class="cl-date">2026-06-14</span></div>
-    <ul class="cl-list">
-      <li><b>Corrected morale formula:</b> now <code>morale = 3 × defender points ÷ attacker points + 0.3</code>, clamped between 30% and 100% — fitted exactly to in-game battle simulations (the previous <code>+ 0.25</code> was off by ~5 points across the mid-range).</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v1.7.2</span><span class="cl-date">2026-06-14</span></div>
-    <ul class="cl-list">
-      <li><b>Morale column in Tribe Timings (Offensive mode):</b> shows each attacker’s morale against the target, using <code>morale = 3 × defender points ÷ attacker points + 0.25</code> (capped at 100%). Points are each player’s total village points aggregated from the loaded map database; shows “—” until the DB is loaded.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v1.7.1</span><span class="cl-date">2026-06-14</span></div>
-    <ul class="cl-list">
-      <li>Shortened the <b>“Total Def Power”</b> header to <b>“Def Power”</b> across the Rankings, By&nbsp;Player and Villages tables (fixes the Rankings horizontal scrollbar).</li>
-      <li>Added this <b>Changelog</b> tab.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v1.7.0</span><span class="cl-date">2026-06-14</span></div>
-    <ul class="cl-list">
-      <li><b>Swordsman defense fix:</b> corrected the data (50 vs infantry / 25 vs cavalry). Every Defensive Power figure for armies containing swords was previously wrong.</li>
-      <li><b>Combined Defensive Power:</b> infantry + cavalry defense are now shown as one value (with an “X inf + Y cav” tooltip) on Overview, By&nbsp;Player, By&nbsp;Villages and Rankings; the Overview bar splits into infantry and cavalry segments.</li>
-      <li><b>Sortable Villages table:</b> click any column header to sort (the old Sort dropdown was removed).</li>
-      <li>Wired unit/stat <b>icons</b> throughout the Overview, both data tables, Tribe Timings and Rankings.</li>
-      <li>Banked the full reverse-engineered TW battle-combat formula spec for a future Battle Simulator.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v1.6.3</span><span class="cl-date">2026-06-13</span></div>
-    <ul class="cl-list">
-      <li><b>Tribe Timings “Arrive by” deadline</b> (date + time): hides villages that can’t land in time, adds an “Any” pace option, and shows arrivals in server time.</li>
-      <li>Tier <b>badges</b> replace plain text for off tiers in Offensive Targets and Settings.</li>
-      <li><b>Off tier auto-bump:</b> when a requested off tier has no candidates left, the planner upgrades to the nearest stronger tier and warns.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v1.6.2</span><span class="cl-date">2026-06-12</span></div>
-    <ul class="cl-list">
-      <li>New targets default their <b>Snob Mode</b> to Solo.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v1.6.1</span><span class="cl-date">2026-06-12</span></div>
-    <ul class="cl-list">
-      <li><b>Off min/max distance band</b> — keep close offs free for a quick second round.</li>
-      <li><b>Server time</b> setting (UTC offset) with a live server clock.</li>
-      <li><b>Launch dates</b> on plan windows + a past-launch feasibility guard that drops or flags offs that would have to launch in the past.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v1.6.0</span><span class="cl-date">2026-06-12</span></div>
-    <ul class="cl-list">
-      <li><b>Server URL</b> setting and <b>rally-point links</b> in the Plan table.</li>
-      <li>Configurable <b>default off counts</b> per new target.</li>
-      <li><b>Export Per-Player BB</b> — one forum block per sender.</li>
-      <li>Split-off snob icon in the BB exports.</li>
-      <li>Light cavalry &amp; spies now counted in defensive power.</li>
-      <li>“Send with” <b>pace-unit order links</b> in Tribe Timings.</li>
-      <li>Tribe names from <code>ally.txt</code> + a sortable Database table with a Tribe column.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v1.5.2</span><span class="cl-date">2026-06-12</span></div>
-    <ul class="cl-list">
-      <li><b>Snob travel range</b> limit (default 70 fields).</li>
-      <li>“Escorted” renamed to <b>“Split Off”</b>.</li>
-      <li>Fix-time button glyph changed to “=”.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v1.5.1</span><span class="cl-date">2026-06-12</span></div>
-    <ul class="cl-list">
-      <li>Allow <b>multiple noble trains</b> from the same village.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v1.5.0</span><span class="cl-date">2026-06-12</span></div>
-    <ul class="cl-list">
-      <li>Start/end <b>time-input window editor</b> for off and snob windows.</li>
-      <li>Per-target <b>multiple off windows</b> with counts.</li>
-      <li>Per-sender <b>noble counts</b>.</li>
-      <li><b>Tier-ordered landings</b> — Completes land earliest, then 3/4, then 1/2.</li>
-    </ul>
-  </div>
-
-  <div class="cl-entry">
-    <div class="cl-head"><span class="cl-ver">v1.4.0</span><span class="cl-date">2026-06-12</span></div>
-    <ul class="cl-list">
-      <li>Added the offensive-planning tabs: <b>Tribe Timings</b>, <b>Offensive Targets</b>, <b>Plan Offensive</b> and <b>Database</b>.</li>
-    </ul>
-  </div>
-
-  <p style="font-size:12px;color:#5a3a18;margin-top:6px;">v1.0.x – v1.3.x — initial releases (predate version tracking).</p>
+  <div id="cl-list-host"></div>
 </div>
 
 <script src="js/constants.js"></script>
 <script src="js/i18n.js"></script>
+<script src="js/changelog.js"></script>
 <script src="js/map.js"></script>
 <script src="js/map-render.js"></script>
 <script>
@@ -787,6 +573,7 @@ function changeLang(l) {
   renderPlanTable();
   renderDbTable();
   updateDbConnectBtn();
+  if (typeof renderChangelog === 'function') renderChangelog();
 }
 
 // ── Unit/stat icons (icons/ folder; see .claude/PLAN.md for the deploy note) ──
@@ -3560,6 +3347,9 @@ function copyBBTable() {
 // Prepend unit/stat icons to the static table headers (once)
 injectThIcons();
 
+// Build the Changelog tab from js/changelog.js (re-rendered by changeLang on switch)
+if (typeof renderChangelog === 'function') renderChangelog();
+
 // Initial render of the Tribe Timings tab (builds its header + empty state)
 renderTargetTable();
 
@@ -3600,11 +3390,11 @@ document.addEventListener('drop', e => {
 </script>
 
 <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
-<!-- ON EVERY VERSION BUMP: update this version number AND add a matching .cl-entry
-     card at the top of the Changelog tab (search "id=\"tab-changelog\""). -->
+<!-- ON EVERY VERSION BUMP: update this version number AND add a matching entry at the
+     TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">2.5.0 &nbsp;·&nbsp; 2026-06-16</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">2.5.1 &nbsp;·&nbsp; 2026-06-16</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
