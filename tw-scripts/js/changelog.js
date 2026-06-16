@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v2.5.2', date: '2026-06-16',
+    en: [
+      `<b>🧹 Under-the-hood tidy-up:</b> the tool's code was split out of the one giant HTML file into smaller per-feature files (planner, timings, database, map, etc.). <b>Nothing changed for you</b> — every feature works exactly as before; the page is just lighter and easier to maintain.`,
+    ],
+    es: [
+      `<b>🧹 Limpieza interna:</b> el código de la herramienta se dividió, sacándolo del enorme archivo HTML único, en archivos más pequeños por función (planificador, tiempos, base de datos, mapa, etc.). <b>Para ti no cambia nada</b> — todas las funciones siguen igual que antes; la página es solo más ligera y fácil de mantener.`,
+    ],
+  },
   { ver: 'v2.5.1', date: '2026-06-16',
     en: [
       `<b>🌐 Changelog now in Spanish too:</b> switch the language to <b>ES</b> and the whole change history reads in Spanish. <i>(Under the hood the changelog moved into its own <code>js/changelog.js</code> file, so the main page stays lighter.)</i>`,
