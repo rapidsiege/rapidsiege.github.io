@@ -135,6 +135,7 @@ function setDbData(vText, pText, aText) {
     t('db_status_loaded')(villageDb.length.toLocaleString(), Object.keys(playerDb).length.toLocaleString());
   renderDbTable();
   refreshTargetsFromDb();
+  if (typeof refreshDefTargetsFromDb === 'function') refreshDefTargetsFromDb(); // defenders + tribe on defensive targets
   renderTargetTable(); // refresh owner info in Tribe Timings
   renderPlanTable();   // materialize rally links once DB arrives
   if (typeof mapDetectAndSeed === 'function') mapDetectAndSeed(); // detect my tribe now the DB resolves coords

@@ -90,7 +90,8 @@ function buildDebugDump() {
   // enough to reproduce morale, defenders and tooltips after the live mirror has moved on.
   let db = null;
   if (villageDb.length) {
-    const coords = new Set([...villages.map(v => v.coord), ...offTargets.map(tg => tg.coord)]);
+    const coords = new Set([...villages.map(v => v.coord), ...offTargets.map(tg => tg.coord),
+      ...(typeof defTargets !== 'undefined' ? defTargets.map(tg => tg.coord) : [])]);
     const coord = {}, names = {};
     for (const c of coords) {
       const v = coordDb[c];
@@ -168,8 +169,9 @@ function importDebugDataFromText(text) {
   }
   // troop data (rebuild via the shared helpers); left untouched when the dump has none
   if (dump.troops && Array.isArray(dump.troops.villages)) rebuildTroopsFromVillages(dump.troops.villages);
-  // re-init the offensive state from the freshly written localStorage, then repaint
+  // re-init the offensive + defensive state from the freshly written localStorage, then repaint
   loadOffensive();
+  if (typeof loadDefensive === 'function') loadDefensive();
   if (typeof loadMapPrefs === 'function') loadMapPrefs();
   if (typeof syncMapToolbar === 'function') syncMapToolbar();
   changeLang((s.lang === 'es' || s.lang === 'en') ? s.lang : lang); // applyLang + full re-render

@@ -38,6 +38,8 @@
   <div class="tab"         data-tab="target"      onclick="switchTab('target')"     data-i18n="tab_target">⏱ Tribe Timings</div>
   <div class="tab"         data-tab="offtargets"  onclick="switchTab('offtargets')" data-i18n="tab_offtargets">📌 Offensive Targets</div>
   <div class="tab"         data-tab="plan"        onclick="switchTab('plan')"       data-i18n="tab_plan">⚔ Plan Offensive</div>
+  <div class="tab"         data-tab="deftargets"  onclick="switchTab('deftargets')" data-i18n="tab_deftargets">🛡 Defensive Targets</div>
+  <div class="tab"         data-tab="defplan"     onclick="switchTab('defplan')"    data-i18n="tab_defplan">🛡 Plan Defense</div>
   <div class="tab"         data-tab="db"          onclick="switchTab('db')"         data-i18n="tab_db">🗃 Database</div>
   <div class="tab"         data-tab="settings"    onclick="switchTab('settings')"   data-i18n="tab_settings">⚙ Settings</div>
   <div class="tab"         data-tab="changelog"   onclick="switchTab('changelog')"  data-i18n="tab_changelog">📋 Changelog</div>
@@ -464,6 +466,119 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════ DEFENSIVE TARGETS (v3.0.0) ═══════════════════════════ -->
+<div class="tab-content" id="tab-deftargets">
+  <div class="section-header">
+    <h2 data-i18n="sec_deftargets">Defensive Targets</h2>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="toggleDefBulkAdd()" data-i18n="btn_bulk_add">📋 Bulk Add</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearDefTargets()" data-i18n="btn_clear_targets">✕ Clear All</button>
+    </div>
+  </div>
+  <div class="filter-row" style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <label data-i18n="lbl_def_objectives">Default objectives:</label>
+    <span style="display:inline-flex;gap:4px;align-items:center;"><img class="tw-ic" src="icons/spear.png" alt=""><input type="number" id="dt-def-spear" min="0" style="width:80px;" oninput="updDTCfgInt('defSpear',this.value)"></span>
+    <span style="display:inline-flex;gap:4px;align-items:center;"><img class="tw-ic" src="icons/sword.png" alt=""><input type="number" id="dt-def-sword" min="0" style="width:80px;" oninput="updDTCfgInt('defSword',this.value)"></span>
+    <span style="display:inline-flex;gap:4px;align-items:center;"><img class="tw-ic" src="icons/spy.png" alt=""><input type="number" id="dt-def-spy" min="0" style="width:80px;" oninput="updDTCfgInt('defSpy',this.value)"></span>
+    <span style="display:inline-flex;gap:4px;align-items:center;"><img class="tw-ic" src="icons/heavy.png" alt=""><input type="number" id="dt-def-heavy" min="0" style="width:80px;" oninput="updDTCfgInt('defHeavy',this.value)"></span>
+    <span style="font-size:12px;color:#5a3a18;" data-i18n="dt_objectives_note">New targets inherit these objectives — adjust each row as needed.</span>
+  </div>
+  <div class="filter-row" style="margin-top:10px;">
+    <input type="text" id="dt-add-coord" placeholder="500|500" style="width:90px;font-family:'Consolas','Courier New',monospace;" onkeydown="if(event.key==='Enter')addDefTarget()">
+    <button class="btn btn-primary btn-sm" onclick="addDefTarget()" data-i18n="btn_add_target">+ Add Target</button>
+    <span style="font-size:12px;color:#5a3a18;" data-i18n="dt_defender_note">Defender &amp; tribe auto-fill from the village database.</span>
+  </div>
+  <div id="dt-bulk-wrap" style="display:none;margin-bottom:12px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="bulk_hint">Paste coordinates (one per line, optionally followed by the defender name) and click Add.</div>
+    <textarea id="dt-bulk-input" style="width:100%;height:90px;background:#120d03;border:1px solid #3a2808;color:#d4b483;font-family:'Consolas','Courier New',monospace;font-size:12px;padding:8px 10px;border-radius:4px;resize:vertical;" placeholder="546|571 Vene&#10;545|570 Vene"></textarea>
+    <button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="bulkAddDefTargets()" data-i18n="btn_bulk_parse">Add Pasted Targets</button>
+  </div>
+  <div id="dt-warnings"></div>
+  <div class="table-wrap">
+    <table id="deftargets-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th class="left" data-i18n="th_coord">Coord</th>
+          <th class="left" data-i18n="th_def_player">Defender</th>
+          <th class="left" data-i18n="th_tribe">Tribe</th>
+          <th data-i18n-th="th_spear">Spear</th>
+          <th data-i18n-th="th_sword">Sword</th>
+          <th data-i18n-th="th_spy">Spy</th>
+          <th data-i18n-th="th_heavy">Heavy</th>
+          <th data-i18n="th_arrival">Arrival (optional)</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="deftargets-tbody"></tbody>
+    </table>
+  </div>
+  <div id="dt-demand-summary" style="font-size:13px;color:#a08050;margin-top:10px;font-weight:600;"></div>
+</div>
+
+<!-- ═══════════════════════════ PLAN DEFENSE (v3.0.0) ═══════════════════════════ -->
+<div class="tab-content" id="tab-defplan">
+  <div class="section-header">
+    <h2 data-i18n="sec_defplan">Defensive Plan</h2>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="showDefPlayerBB()" data-i18n="btn_export_player_bb">⬇ Export Per-Player BB</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportTable('defplan-table','tribe_def_plan.csv')">⬇ Export CSV</button>
+    </div>
+  </div>
+  <div class="filter-row" style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <label data-i18n="lbl_world_speed">World speed:</label>
+    <select id="plan-def-world-speed">
+      <option value="0.5">0.5×</option>
+      <option value="1">1×</option>
+      <option value="2" selected>2×</option>
+      <option value="3">3×</option>
+      <option value="5">5×</option>
+      <option value="10">10×</option>
+    </select>
+    <label data-i18n="lbl_unit_speed">Unit speed:</label>
+    <select id="plan-def-unit-speed">
+      <option value="0.25">0.25×</option>
+      <option value="0.5" selected>0.5×</option>
+      <option value="1">1×</option>
+      <option value="2">2×</option>
+      <option value="3">3×</option>
+    </select>
+    <label data-i18n="lbl_def_min_dist">Def min distance:</label>
+    <input type="number" id="plan-def-min-dist" value="0" min="0" style="width:70px;" title="0 = no minimum">
+    <label data-i18n="lbl_def_max_dist">Def max distance:</label>
+    <input type="number" id="plan-def-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited">
+    <button class="btn btn-ghost btn-sm" onclick="toggleDefIgnore()" data-i18n="btn_ignore_coords">🚫 Ignore Coordinates</button>
+    <span style="font-size:12px;color:#5a3a18;" data-i18n="defplan_note">Support is intra-tribe only. Bigger defenders send more; each player's troops are spread evenly across their villages.</span>
+    <button class="btn btn-primary btn-sm" onclick="generateDefPlan()" data-i18n="btn_def_generate">🛡 Generate Defense</button>
+  </div>
+  <div id="dp-ignore-wrap" style="display:none;margin-top:10px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="def_ignore_hint">Paste coordinates (one per line) that must keep their defense at home — front-line villages near the enemy. These are never used as senders.</div>
+    <textarea id="dp-ignore-input" style="width:100%;height:80px;background:#120d03;border:1px solid #3a2808;color:#d4b483;font-family:'Consolas','Courier New',monospace;font-size:12px;padding:8px 10px;border-radius:4px;resize:vertical;" placeholder="500|500&#10;501|499" oninput="updDefIgnore()"></textarea>
+  </div>
+  <div id="defplan-warnings" style="margin-top:12px;"></div>
+  <div id="defplan-summary" style="font-size:12px;color:#806030;margin:10px 0;"></div>
+  <div class="table-wrap">
+    <table id="defplan-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th class="left" data-i18n="th_target">Target</th>
+          <th class="left" data-i18n="th_def_player">Defender</th>
+          <th class="left" data-i18n="th_tribe">Tribe</th>
+          <th class="left" data-i18n="th_source">Source</th>
+          <th class="left" data-i18n="th_player">Player</th>
+          <th class="left" data-i18n="th_troops">Troops</th>
+          <th data-i18n="th_distance">Distance</th>
+          <th data-i18n="th_travel">Travel</th>
+          <th data-i18n="th_depart_arrive">Depart / Arrive</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="defplan-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- ═══════════════════════════ DATABASE ═══════════════════════════ -->
 <div class="tab-content" id="tab-db">
   <div class="section-header">
@@ -555,6 +670,8 @@
 <script src="js/timings.js"></script>
 <script src="js/offensive-targets.js"></script>
 <script src="js/plan.js"></script>
+<script src="js/defensive-targets.js"></script>
+<script src="js/defense-plan.js"></script>
 <script src="js/db.js"></script>
 <script src="js/util.js"></script>
 <script>
@@ -571,6 +688,11 @@ renderTargetTable();
 loadOffensive();
 renderOffTargets();
 renderPlanTable();
+
+// Restore defensive targets + defensive plan from localStorage and render their tabs
+loadDefensive();
+renderDefTargets();
+renderDefPlanTable();
 
 // Restore the troop data uploaded in a previous session (re-parses the stored text;
 // a fresh upload/paste this session replaces it, ✕ Clear removes it)
@@ -608,7 +730,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">2.6.0 &nbsp;·&nbsp; 2026-06-16</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.0.0 &nbsp;·&nbsp; 2026-06-17</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

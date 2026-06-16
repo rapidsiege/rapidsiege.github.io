@@ -24,6 +24,8 @@ function changeLang(l) {
   renderTargetTable();
   renderOffTargets();
   renderPlanTable();
+  if (typeof renderDefTargets === 'function') renderDefTargets();
+  if (typeof renderDefPlanTable === 'function') renderDefPlanTable();
   renderDbTable();
   updateDbConnectBtn();
   if (typeof renderChangelog === 'function') renderChangelog();

@@ -24,6 +24,13 @@ const POP = { spear:1, sword:1, axe:1, spy:2, light:4, heavy:6, ram:5, catapult:
 const RESERVE_MIN_POINTS = 4000;
 const RESERVE_MIN_POP    = 4000;
 
+// Plan Defense: a village only sends support if it has at least this much farm pop in
+// defensive troops (spear/sword/spy/heavy) — small garrisons are left alone. And every
+// emitted support order carries at least this much farm pop, so a player's contribution
+// is consolidated into a few meaningful trips rather than dribbled across many villages.
+const DEF_SENDER_MIN_POP = 4000;
+const DEF_MIN_PACKET_POP = 400;
+
 // Base travel speed in minutes per field (at world speed 1, unit speed 1)
 const UNIT_BASE_MIN = { spear:18, sword:22, axe:18, spy:9, light:10, heavy:11, ram:30, catapult:30, knight:10, snob:35 };
 const TRAVEL_ICON = { spear:'🗡', sword:'⚔', axe:'🪓', spy:'🔍', light:'🏹', heavy:'🐴', ram:'🐏', catapult:'💣', knight:'🐴', snob:'👑' };

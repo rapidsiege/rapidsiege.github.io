@@ -12,6 +12,18 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.0.0', date: '2026-06-17',
+    en: [
+      `<b>🛡 New: Defensive support planning.</b> Two new tabs. In <b>Defensive Targets</b> you list allied villages that need defense and set a per-village objective — how many <b>spears, swords, spies and heavy cavalry</b> each should hold — with the defender and tribe auto-filled from the database and an optional <b>arrival deadline</b> per village.`,
+      `<b>🛡 Plan Defense builds the support orders for you.</b> It spreads your tribe's defense to meet those objectives, following real rules: support stays <b>within the same tribe</b> (WC→WC, WC.→WC.), <b>front-line villages you list under “Ignore Coordinates” stay home</b>, players with <b>more defense send more</b>, and each player's troops are <b>spread evenly across their villages</b> so losses re-train fast. Only villages with <b>≥4,000 defensive population</b> are tapped, and every order carries <b>≥400 population</b> (no tiny dribbles).`,
+      `<b>One-click sending:</b> export a <b>per-player BB list</b> where each line is an <b>origin → destination</b> with a rally-point link that <b>pre-fills the exact troops</b> — your members just open it and hit Support. When a target has a deadline, the line also shows <b>when to send</b> and <b>when it arrives</b>.`,
+    ],
+    es: [
+      `<b>🛡 Nuevo: planificación de apoyo defensivo.</b> Dos pestañas nuevas. En <b>Objetivos Defensivos</b> listas las aldeas aliadas que necesitan defensa y fijas un objetivo por aldea — cuántas <b>lanzas, espadas, exploradores y caballería pesada</b> debe tener cada una — con el defensor y la tribu rellenados desde la base de datos y una <b>hora de llegada</b> opcional por aldea.`,
+      `<b>🛡 Planear Defensa crea las órdenes de apoyo por ti.</b> Reparte la defensa de tu tribu para cumplir esos objetivos siguiendo reglas reales: el apoyo se queda <b>dentro de la misma tribu</b> (WC→WC, WC.→WC.), las <b>aldeas de primera línea que pongas en “Ignorar Coordenadas” se quedan en casa</b>, los jugadores con <b>más defensa envían más</b>, y las tropas de cada jugador se <b>reparten equitativamente entre sus aldeas</b> para que las pérdidas se recluten rápido. Solo se usan aldeas con <b>≥4.000 de población defensiva</b>, y cada orden lleva <b>≥400 de población</b> (sin envíos minúsculos).`,
+      `<b>Envío en un clic:</b> exporta una <b>lista BB por jugador</b> donde cada línea es un <b>origen → destino</b> con un enlace al punto de reunión que <b>rellena las tropas exactas</b> — tus miembros solo lo abren y pulsan Apoyar. Si un objetivo tiene fecha límite, la línea también muestra <b>cuándo enviar</b> y <b>cuándo llega</b>.`,
+    ],
+  },
   { ver: 'v2.6.0', date: '2026-06-16',
     en: [
       `<b>👑 Noble launch villages are now protected:</b> when a player is set to send nobles to a target, their <b>two villages closest to that target are held back from the attack plan</b> — they're never given a regular off, no matter the distance, so they stay free to launch the noble train (and they no longer show up in <i>Export Unused Offs</i>). Only real villages qualify — a held village must have <b>at least 4,000 points and 4,000 farm population in troops</b>, so a tiny or near-empty village next to the target won't eat a slot (the next-closest qualifying village is held instead). A player nobling several targets still keeps only their two nearest. Works in both <b>Solo</b> and <b>Split-Off</b> modes (in Split-Off the closest of the two is the escort that rides the noble).`,
