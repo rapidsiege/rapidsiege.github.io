@@ -7,7 +7,7 @@ const TIER_RANK = { complete: 3, tq: 2, half: 1, none: 0 };
 const PLAN_BASE_MIN = { off: 30, snob: 35 };
 const TIER_FIELD = { complete: 'nComplete', tq: 'nTq', half: 'nHalf' };
 
-let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30', serverUrl: 'es100.guerrastribales.es', serverUtcOffset: 2, defComplete: 1, defTq: 0, defHalf: 0 };
+let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30', serverUrl: 'es100.guerrastribales.es', serverUtcOffset: 2, defComplete: 1, defTq: 0, defHalf: 0, defSnobMode: 'solo' };
 let offTargets   = []; // [{id, coord, player, nComplete, nTq, nHalf, snobPlayers, nobles, offWindows:[{win,count}], winSnob, snobMode, snobAssignees:[{name,count}]}]
 let planRows     = []; // denormalized so a saved plan renders without the troop file loaded
 let planWarnings = [];
@@ -51,6 +51,8 @@ function loadOffensive() {
   if (dt) dt.value = otCfg.defTq ?? 0;
   const dh = document.getElementById('ot-def-half');
   if (dh) dh.value = otCfg.defHalf ?? 0;
+  const dsm = document.getElementById('ot-def-snobmode');
+  if (dsm) dsm.value = otCfg.defSnobMode || 'solo';
 }
 
 function updOTCfg(k, v) { otCfg[k] = v.trim(); saveOffensive(); }
@@ -116,8 +118,8 @@ function normalizeOffTarget(tg) {
 function newOffTarget(coord, player) {
   return {
     id: otNextId++, coord, player, power: false,
-    nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0, snobPlayers: 1, nobles: 4,
-    snobMode: 'solo', snobAssignees: [], offAssignees: [],
+    nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0, snobPlayers: 0, nobles: 4,
+    snobMode: otCfg.defSnobMode || 'solo', snobAssignees: [], offAssignees: [],
     offWindows: [{ win: otCfg.defWinOff, count: 0 }], winSnob: otCfg.defWinSnob,
   };
 }
@@ -205,6 +207,9 @@ function removeSnobAssignee(id, idx) {
   const tg = offTargets.find(x => x.id === id);
   if (!tg) return;
   tg.snobAssignees.splice(idx, 1);
+  // mirror the +1-per-sender bump: removing a sender drops the train count by one
+  // (floored at the remaining assignee count, and at 0), so the count tracks senders
+  tg.snobPlayers = Math.max(tg.snobAssignees.length, (tg.snobPlayers || 0) - 1);
   saveOffensive(); renderOffTargets();
 }
 
@@ -384,8 +389,10 @@ function renderOffTargets() {
       if (used > have) warns.push(t('warn_sender_capacity')(decode(nm), used, have));
     }
   }
+  // collapsible alert box (native <details>, collapsed by default) — same as Plan Offensive
   if (warnEl) warnEl.innerHTML = warns.length
-    ? `<div class="warn-box">${warns.map(esc).join('<br>')}</div>` : '';
+    ? `<details class="warn-box"><summary>${t('plan_warnings_toggle')(warns.length)}</summary>`
+      + `<div class="warn-list">${warns.map(esc).join('<br>')}</div></details>` : '';
 
   // Offs committed across all targets vs. the tribe's off villages, PER TIER
   // (Complete / 3-4 / 1-2): how many of each you've assigned out of how many exist.

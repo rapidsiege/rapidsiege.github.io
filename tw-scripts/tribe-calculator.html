@@ -356,6 +356,11 @@
     <input type="number" id="ot-def-tq" min="0" max="99" style="width:55px;" oninput="updOTCfgInt('defTq',this.value)">
     <span class="badge badge-half" data-i18n="opt_half">1/2</span>
     <input type="number" id="ot-def-half" min="0" max="99" style="width:55px;" oninput="updOTCfgInt('defHalf',this.value)">
+    <label data-i18n="lbl_def_snobmode">Default snob mode:</label>
+    <select id="ot-def-snobmode" class="cell-input" onchange="updOTCfg('defSnobMode',this.value)">
+      <option value="solo" data-i18n="opt_escort_no">👑 Solo</option>
+      <option value="escorted" data-i18n="opt_escort_yes">⚔ Split Off</option>
+    </select>
   </div>
   <div class="filter-row" style="margin-top:10px;">
     <input type="text" id="ot-add-coord" placeholder="500|500" style="width:90px;font-family:'Consolas','Courier New',monospace;" onkeydown="if(event.key==='Enter')addOffTarget()">
@@ -603,7 +608,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">2.5.2 &nbsp;·&nbsp; 2026-06-16</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">2.5.3 &nbsp;·&nbsp; 2026-06-16</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

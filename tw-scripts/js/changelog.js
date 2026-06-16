@@ -12,6 +12,18 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v2.5.3', date: '2026-06-16',
+    en: [
+      `<b>📌 Offensive Targets — alerts now collapse:</b> the warning box folds into a one-line summary you can click to expand, just like Plan Offensive.`,
+      `<b>👑 Default snob mode:</b> new setting in the config bar — pick <b>Solo</b> or <b>Split Off</b> once and every target you add (including pasted coordinates) starts with it.`,
+      `<b>Snob players now counts itself:</b> targets start at <b>0</b> snob players and go up <b>+1</b> for each sender you assign (and back down when you remove one) — no more zeroing the count by hand when you don't want a train.`,
+    ],
+    es: [
+      `<b>📌 Objetivos Off — los avisos ahora se pliegan:</b> la caja de avisos se reduce a un resumen de una línea que puedes desplegar al hacer clic, igual que en Planificar Off.`,
+      `<b>👑 Modo nobles por defecto:</b> nuevo ajuste en la barra de configuración — elige <b>Solo</b> o <b>Partir Off</b> una vez y cada objetivo que añadas (incluidas las coordenadas pegadas) empieza con ese modo.`,
+      `<b>Jugadores con nobles ahora se cuenta solo:</b> los objetivos empiezan en <b>0</b> jugadores con nobles y suben <b>+1</b> por cada remitente que asignas (y bajan al quitarlo) — ya no hay que poner el número a cero a mano cuando no quieres un tren.`,
+    ],
+  },
   { ver: 'v2.5.2', date: '2026-06-16',
     en: [
       `<b>🧹 Under-the-hood tidy-up:</b> the tool's code was split out of the one giant HTML file into smaller per-feature files (planner, timings, database, map, etc.). <b>Nothing changed for you</b> — every feature works exactly as before; the page is just lighter and easier to maintain.`,
