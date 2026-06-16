@@ -90,6 +90,7 @@ function applyVilDerived(vil) {
   vil.offPow = OFF_UNITS.reduce((s,u) => s + (vil[u] || 0) * ATT[u],  0);
   vil.defInf = DEF_UNITS.reduce((s,u) => s + (vil[u] || 0) * DINF[u], 0);
   vil.defCav = DEF_UNITS.reduce((s,u) => s + (vil[u] || 0) * DCAV[u], 0);
+  vil.popUsed = UNITS.reduce((s,u) => s + (vil[u] || 0) * POP[u], 0); // farm pop used by troops
   const totalUnits = UNITS.reduce((s,u) => s + (vil[u] || 0), 0);
   let type = 'empty';
   if (totalUnits > 0) {

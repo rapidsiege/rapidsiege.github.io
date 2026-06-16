@@ -12,6 +12,16 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v2.6.0', date: '2026-06-16',
+    en: [
+      `<b>👑 Noble launch villages are now protected:</b> when a player is set to send nobles to a target, their <b>two villages closest to that target are held back from the attack plan</b> — they're never given a regular off, no matter the distance, so they stay free to launch the noble train (and they no longer show up in <i>Export Unused Offs</i>). Only real villages qualify — a held village must have <b>at least 4,000 points and 4,000 farm population in troops</b>, so a tiny or near-empty village next to the target won't eat a slot (the next-closest qualifying village is held instead). A player nobling several targets still keeps only their two nearest. Works in both <b>Solo</b> and <b>Split-Off</b> modes (in Split-Off the closest of the two is the escort that rides the noble).`,
+      `<b>Offs now build around the nobles:</b> the plan decides who sends each noble train first, then assigns the offs around them — an off still tries to come from the conqueror's own hand when they have a spare village.`,
+    ],
+    es: [
+      `<b>👑 Las aldeas de lanzamiento de nobles ahora están protegidas:</b> cuando un jugador va a enviar nobles a un objetivo, sus <b>dos aldeas más cercanas a ese objetivo se reservan del plan de ataque</b> — nunca se les asigna un off normal, sin importar la distancia, para que queden libres y puedan lanzar el tren de nobles (y ya no aparecen en <i>Exportar Offs Sin Usar</i>). Solo cuentan aldeas reales — una aldea reservada debe tener <b>al menos 4.000 puntos y 4.000 de población (granja) en tropas</b>, así una aldea pequeña o casi vacía junto al objetivo no ocupa un hueco (se reserva la siguiente más cercana que sí califique). Un jugador que noblea varios objetivos sigue reservando solo sus dos más cercanas. Funciona en modo <b>Solo</b> y <b>Partir Off</b> (en Partir Off la más cercana de las dos es la escolta que acompaña al noble).`,
+      `<b>Los offs ahora se organizan en torno a los nobles:</b> el plan decide primero quién envía cada tren de nobles y luego asigna los offs a su alrededor — un off sigue intentando salir de la propia mano del conquistador cuando le sobra una aldea.`,
+    ],
+  },
   { ver: 'v2.5.3', date: '2026-06-16',
     en: [
       `<b>📌 Offensive Targets — alerts now collapse:</b> the warning box folds into a one-line summary you can click to expand, just like Plan Offensive.`,

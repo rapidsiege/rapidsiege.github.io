@@ -131,7 +131,7 @@ function generatePlan() {
   const offUsedByPlayer = {};
   const noteOffUsed = name => { offUsedByPlayer[name] = (offUsedByPlayer[name] || 0) + 1; };
 
-  planRows = []; planWarnings = [];
+  planRows = []; planWarnings = []; planReserved = [];
 
   const targets = offTargets.map((tg, i) => ({ tg, i, c: parseCoordStr(tg.coord), offRows: [], snobRows: [] }));
   targets.filter(T => !T.c).forEach(T => planWarnings.push(t('warn_invalid_coord')(T.tg.coord)));
@@ -209,54 +209,22 @@ function generatePlan() {
   };
   const byOptimize = T => (a, b) => (optScore(b, T) - optScore(a, T)) || (distXY(a.c, T.c) - distXY(b.c, T.c));
 
-  // Named off senders fill FIRST (before the auto pass below claims villages globally),
-  // so a manual pin can't be stolen by another target's auto-pick. They draw only from
-  // their OWN tier-matching villages and never tier-bump — a shortfall is warned and left
-  // unassigned (mirrors the snob trains), reserving those slots so auto doesn't backfill.
-  const namedOffReserved = {}; // 'tIdx|tier' → reserved slots (assigned + shortfall)
-  for (const tier of ['complete', 'tq', 'half']) {
-    for (const T of targets) {
-      if (!T.c) continue;
-      const N = T.tg[TIER_FIELD[tier]] || 0;
-      const assign = targetOffAssign(T.tg, tier);
-      if (!assign.length) continue;
-      const reqSum = assign.reduce((s, a) => s + a.count, 0);
-      if (reqSum > N) planWarnings.push(t('warn_offs_mismatch')(t('tier_' + tier), T.tg.coord, reqSum, N));
-      let placed = 0;
-      for (const a of assign) {
-        const want = Math.min(a.count, Math.max(0, N - placed)); // never exceed the tier request
-        if (want <= 0) continue;
-        const cands = pool.filter(p => !p.usedOff && p.v.player === a.name && p.tier === tier
-          && okOffDist(p, T.c) && okOffTime(p, T)).sort(byDist(T));
-        let got = 0;
-        for (const p of cands) {
-          if (got >= want) break;
-          p.usedOff = true; got++; placed++; noteOffUsed(p.v.player);
-          const d = distXY(p.c, T.c);
-          T.offRows.push({ type: tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
-            dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
-        }
-        if (got < want) {
-          placed += want - got; // reserve the shortfall so the auto pass won't backfill it
-          const owned = pool.filter(p => p.v.player === a.name && p.tier === tier);
-          const inRange = owned.filter(p => okOffDist(p, T.c));
-          planWarnings.push(
-            owned.length && !inRange.length ? t('warn_off_range')(decode(a.name), t('tier_' + tier), T.tg.coord)
-            : inRange.length && !inRange.some(p => okOffTime(p, T)) ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
-            : t('warn_sender_short_off')(decode(a.name), t('tier_' + tier), T.tg.coord));
-          for (let z = 0; z < want - got; z++) T.offRows.push({ type: tier, unassigned: true });
-        }
-      }
-      namedOffReserved[T.i + '|' + tier] = placed;
-    }
-  }
+  // ════════════════════════════════════════════════════════════════════════
+  // NOBLE TRAINS ARE ASSIGNED FIRST (before the offs).
+  //
+  // A snob sender's launch villages matter more than where their off troops go,
+  // so we resolve who nobles each target up front, then hold each sender's TWO
+  // villages closest to their own objective(s) out of the off pool (snobReserved
+  // below). The offs then coordinate TO the nobles (conquerorByTarget) rather than
+  // the old reverse (nobles coordinating to off-holders).
+  // ════════════════════════════════════════════════════════════════════════
 
   // Escort reservation (split-off / "escorted" mode): the noble rides WITH one of the
   // sender's offs to the same target, so hold one noble-capable off village out of the
   // off passes per escorted train — the closest Complete/3-4 off to that target (noble
   // range + pace govern, since the off travels with the noble). Reserved up front so the
-  // POWER/auto passes leave it free for the split-off. Applies even to pinned senders
-  // who don't own the noble yet (needNobles): the slot is held until they recruit one.
+  // off passes leave it free for the split-off. Applies even to pinned senders who don't
+  // own the noble yet (needNobles): the slot is held until they recruit one.
   const escortReserved = new Set();
   for (const T of targets) {
     // One reserved escort village per train, in spec order (null = none in range).
@@ -275,117 +243,6 @@ function generatePlan() {
     }
   }
 
-  // POWER targets (per-target tag): ignore the per-tier split and fill each one's
-  // remaining off slots with the globally strongest available offs, balancing total
-  // raw off power across all POWER targets — the next-strongest off goes to whichever
-  // POWER target currently has the lowest assigned power and still has an open slot it
-  // can reach (range + launch time). Runs before the auto pass so it isn't starved.
-  const powerTargets = targets.filter(T => T.c && T.tg.power);
-  if (powerTargets.length) {
-    const remaining = {}, powSum = {}, warned = new Set();
-    let totalSlots = 0;
-    for (const T of powerTargets) {
-      const total = ['complete', 'tq', 'half'].reduce((s, tr) => s + (T.tg[TIER_FIELD[tr]] || 0), 0);
-      const named = ['complete', 'tq', 'half'].reduce((s, tr) => s + (namedOffReserved[T.i + '|' + tr] || 0), 0);
-      remaining[T.i] = Math.max(0, total - named); powSum[T.i] = 0; totalSlots += remaining[T.i];
-    }
-    for (let s = 0; s < totalSlots; s++) {
-      const open = powerTargets.filter(T => remaining[T.i] > 0).sort((a, b) => powSum[a.i] - powSum[b.i]);
-      if (!open.length) break;
-      const T = open[0];
-      const cands = pool.filter(p => !p.usedOff && !escortReserved.has(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T))
-        .sort((a, b) => b.v.offPow - a.v.offPow);
-      remaining[T.i]--;
-      if (!cands.length) {
-        if (!warned.has(T.i)) {
-          const inBand = pool.filter(p => !p.usedOff && !escortReserved.has(p) && p.tier !== 'none' && okOffDist(p, T.c));
-          planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T))
-            ? t('warn_off_too_late')(t('tier_complete'), T.tg.coord)
-            : t('warn_missed_off')(t('tier_complete'), T.tg.coord));
-          warned.add(T.i);
-        }
-        T.offRows.push({ type: 'complete', unassigned: true });
-        continue;
-      }
-      const p = cands[0];
-      p.usedOff = true; powSum[T.i] += p.v.offPow; noteOffUsed(p.v.player);
-      const d = distXY(p.c, T.c);
-      T.offRows.push({ type: p.tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
-        dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
-    }
-  }
-
-  // A conquered target coordinates its timings best when at least one of its offs
-  // comes from the SAME player who sends the noble train. We bias (never force) one
-  // auto off toward that player:
-  //   • Escort mode already rides the noble with that player's own off → no-op here.
-  //   • Pinned snob sender → known now: favour their village for one off below.
-  //   • Solo + auto sender → unknown until the snob loop; handled there by preferring
-  //     a player who already holds an off on this target (see offPlayersByTarget).
-  // conquerorOffPlaced is seeded from the named-off pass: if the user already pinned
-  // an off from the conqueror, the constraint is satisfied and we don't double up.
-  const conquerorByTarget = {}, conquerorOffPlaced = {};
-  for (const T of targets) {
-    if (!T.c || !T.tg.nobles || (T.tg.snobMode || 'solo') === 'escorted') continue;
-    const named = targetTrainSpec(T.tg).find(s => s.name);
-    if (!named) continue;
-    conquerorByTarget[T.i] = named.name;
-    if (T.offRows.some(r => !r.unassigned && r.srcPlayer === decode(named.name))) conquerorOffPlaced[T.i] = true;
-  }
-
-  // Offs: strongest requests claim villages first (complete → 3/4 → 1/2);
-  // an exhausted tier auto-bumps to the nearest stronger off (1/2 → 3/4 → Complete)
-  // and the row is relabeled to what is actually sent, with a warning. Slots already
-  // reserved by named senders above are subtracted so each tier isn't double-filled.
-  const TIER_UP = { half: ['tq', 'complete'], tq: ['complete'], complete: [] };
-  for (const tier of ['complete', 'tq', 'half']) {
-    for (const T of targets) {
-      if (!T.c || T.tg.power) continue; // POWER targets are filled by the balanced pass above
-      const autoNeed = Math.max(0, (T.tg[TIER_FIELD[tier]] || 0) - (namedOffReserved[T.i + '|' + tier] || 0));
-      for (let k = 0; k < autoNeed; k++) {
-        const tierCands = tt => pool.filter(p => !p.usedOff && !escortReserved.has(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T));
-        let sent = tier, cands = tierCands(tier);
-        for (const up of TIER_UP[tier]) {
-          if (cands.length) break;
-          cands = tierCands(up);
-          if (cands.length) sent = up;
-        }
-        if (!cands.length) {
-          const inBand = pool.filter(p => !p.usedOff && !escortReserved.has(p) && okOffDist(p, T.c));
-          planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T))
-            ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
-            : t('warn_missed_off')(t('tier_' + tier), T.tg.coord));
-          T.offRows.push({ type: tier, unassigned: true });
-          continue;
-        }
-        if (sent !== tier) planWarnings.push(t('warn_tier_bumped')(t('tier_' + tier), t('tier_' + sent), T.tg.coord));
-        // Until one off from this target's conqueror is placed, prefer the conqueror's
-        // own villages among THIS slot's feasible candidates (a reorder of cands — never
-        // widens the eligible set, so range/time/tier still hold). Closest of theirs.
-        const conq = conquerorByTarget[T.i];
-        let p;
-        if (conq && !conquerorOffPlaced[T.i]) {
-          const own = cands.filter(c => c.v.player === conq).sort(byDist(T));
-          if (own.length) p = own[0];
-        }
-        if (!p) p = cands.sort(byOptimize(T))[0];
-        if (conq && p.v.player === conq) conquerorOffPlaced[T.i] = true;
-        p.usedOff = true; noteOffUsed(p.v.player);
-        const d = distXY(p.c, T.c);
-        T.offRows.push({
-          type: sent, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
-          dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us),
-        });
-      }
-    }
-  }
-
-  // Which players already hold an off on each target (offRows store the DECODED
-  // player name). An unpinned solo train prefers a sender who owns an off here, so
-  // the noble and an off come from the same hand and can self-coordinate timings.
-  const offPlayersByTarget = {};
-  for (const T of targets) offPlayersByTarget[T.i] = new Set(T.offRows.filter(r => !r.unassigned && r.srcPlayer).map(r => r.srcPlayer));
-
   // Named senders assigned more nobles (across all targets) than they own
   {
     const agg = senderNobleTotals();
@@ -394,6 +251,25 @@ function generatePlan() {
       if (used > have) planWarnings.push(t('warn_sender_capacity')(decode(nm), used, have));
     }
   }
+
+  // Which players send a noble train, and to which targets — captured AS the snob loop runs
+  // (so it covers pinned AND auto-picked senders, in BOTH solo and escorted modes). Every
+  // noble sender gets their two closest-to-their-targets villages held out of the offs (see
+  // snobReserved below); in escort mode the closest of the two is the escort that rides the
+  // noble to its own target, the other is simply kept free. snobSenderTargets keys are RAW
+  // (encoded) player names, to match the village pool's p.v.player for the reservation.
+  // conquerorByTarget keys are DECODED names (to match offRows.srcPlayer) for the off-side
+  // coordination bias — SOLO only, because an escorted target already rides an off with its
+  // noble, so it needs no extra off biased toward the conqueror. A pinned sender kept on the
+  // plan without a noble yet (needNobles) still counts — they are intended to send.
+  const snobSenderTargets = {};  // raw player -> Set of target index (solo + escorted)
+  const conquerorByTarget = {};  // target index -> Set of decoded sender (solo trains only)
+  const noteSnobSender = (rawName, T) => {
+    if (!rawName) return;
+    (snobSenderTargets[rawName] || (snobSenderTargets[rawName] = new Set())).add(T.i);
+    if ((T.tg.snobMode || 'solo') !== 'escorted')
+      (conquerorByTarget[T.i] || (conquerorByTarget[T.i] = new Set())).add(decode(rawName));
+  };
 
   // Snob trains: pre-assigned senders fill the first trains, the rest are
   // auto-picked from distinct players; escort mode is a per-target setting
@@ -433,6 +309,7 @@ function generatePlan() {
         planWarnings.push(t('warn_need_nobles')(decode(want), nc, T.tg.coord));
         T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true,
           srcPlayer: decode(want), needNobles: true, recruitCoord, dist: recruitDist, travel: recruitTravel });
+        noteSnobSender(want, T);
         return;
       }
       if (enough.length) cands = enough;
@@ -488,17 +365,19 @@ function generatePlan() {
         T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true,
           srcPlayer: want ? decode(want) : undefined, needNobles, recruitCoord: needNobles ? recruitCoord : undefined,
           dist: needNobles ? recruitDist : undefined, travel: needNobles ? recruitTravel : undefined });
+        if (want) noteSnobSender(want, T);
         return;
       }
-      // escorted: strongest escort wins; solo: prefer a player who already holds an
-      // off on this target (self-coordination), then nearest village, weakest off stays home
-      const offHere = p => offPlayersByTarget[T.i].has(decode(p.v.player));
+      // escorted: strongest escort wins; solo: nearest village, weakest off stays home
+      // (so the strongest off is left free for off duty — coordination is handled on the
+      // off side now via conquerorByTarget)
       cands.sort(mode === 'escorted'
         ? (a, b) => (b.v.offPow - a.v.offPow) || (distXY(a.c, T.c) - distXY(b.c, T.c))
-        : (a, b) => (offHere(b) - offHere(a)) || (distXY(a.c, T.c) - distXY(b.c, T.c)) || (a.v.offPow - b.v.offPow));
+        : (a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (a.v.offPow - b.v.offPow));
       const p = cands[0];
       p.snobLeft -= nc; p.usedSnob = true; chosen.add(p.v.player);
       if (mode === 'escorted') p.usedOff = true;
+      noteSnobSender(p.v.player, T);
       const d = distXY(p.c, T.c);
       T.snobRows.push({
         type: 'snob', count: nc, escorted: mode === 'escorted',
@@ -506,6 +385,182 @@ function generatePlan() {
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.snob, ws, us),
       });
     });
+  }
+
+  // ── Launch-village reservation ──────────────────────────────────────────
+  // For every player who sends a noble train, hold their TWO villages closest to their
+  // OWN objective(s) out of all off passes — regardless of distance, and whether the
+  // village is offensive or defensive — so they stay free to launch the noble. Distance
+  // is measured to the NEAREST of that sender's targets (a sender nobling 3 targets still
+  // reserves only their 2 nearest-to-any-target villages). In escorted mode the closest of
+  // the two is the escort, which still rides to its own target (its off is the split-off);
+  // the reservation only stops these villages being flung at OTHER targets as plain offs.
+  // Only an established village with a real garrison can be a reserved launch village:
+  // ≥ RESERVE_MIN_POINTS points AND ≥ RESERVE_MIN_POP farm pop used by troops. Points come
+  // from the world DB (coordDb[coord].points); when the DB isn't loaded the points are
+  // unknown and treated as passing, so the pop gate alone applies. A close but tiny/empty
+  // village is skipped, and the next-closest qualifying village takes the slot instead.
+  const reserveEligible = p => {
+    if ((p.v.popUsed || 0) < RESERVE_MIN_POP) return false;
+    const dbv = coordDb[p.v.coord];
+    const pts = dbv && typeof dbv.points === 'number' ? dbv.points : null;
+    return pts === null || pts >= RESERVE_MIN_POINTS;
+  };
+  const snobReserved = new Set();
+  for (const [rawName, tset] of Object.entries(snobSenderTargets)) {
+    const tcs = [...tset].map(i => targets[i]).filter(T => T && T.c).map(T => T.c);
+    if (!tcs.length) continue;
+    const mine = pool.filter(p => p.v.player === rawName && reserveEligible(p));
+    const dOf = p => Math.min(...tcs.map(tc => distXY(p.c, tc)));
+    mine.sort((a, b) => (dOf(a) - dOf(b)) || (b.v.offPow - a.v.offPow) || (a.v.coord < b.v.coord ? -1 : 1));
+    for (const p of mine.slice(0, 2)) snobReserved.add(p);
+  }
+  const offBlocked = p => escortReserved.has(p) || snobReserved.has(p);
+  // Persist the reserved launch-village coords so the "Export Unused Offs" list can drop
+  // them (they're being kept for a noble, not offered as a free second-wave off).
+  planReserved = [...snobReserved].map(p => p.v.coord);
+
+  // Named off senders fill FIRST among the offs (before the auto pass below claims villages
+  // globally), so a manual pin can't be stolen by another target's auto-pick. They draw only
+  // from their OWN tier-matching villages and never tier-bump — a shortfall is warned and left
+  // unassigned (mirrors the snob trains), reserving those slots so auto doesn't backfill.
+  // Reserved launch/escort villages are off-limits to everyone, pins included.
+  const namedOffReserved = {}; // 'tIdx|tier' → reserved slots (assigned + shortfall)
+  for (const tier of ['complete', 'tq', 'half']) {
+    for (const T of targets) {
+      if (!T.c) continue;
+      const N = T.tg[TIER_FIELD[tier]] || 0;
+      const assign = targetOffAssign(T.tg, tier);
+      if (!assign.length) continue;
+      const reqSum = assign.reduce((s, a) => s + a.count, 0);
+      if (reqSum > N) planWarnings.push(t('warn_offs_mismatch')(t('tier_' + tier), T.tg.coord, reqSum, N));
+      let placed = 0;
+      for (const a of assign) {
+        const want = Math.min(a.count, Math.max(0, N - placed)); // never exceed the tier request
+        if (want <= 0) continue;
+        const cands = pool.filter(p => !p.usedOff && !offBlocked(p) && p.v.player === a.name && p.tier === tier
+          && okOffDist(p, T.c) && okOffTime(p, T)).sort(byDist(T));
+        let got = 0;
+        for (const p of cands) {
+          if (got >= want) break;
+          p.usedOff = true; got++; placed++; noteOffUsed(p.v.player);
+          const d = distXY(p.c, T.c);
+          T.offRows.push({ type: tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+            dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
+        }
+        if (got < want) {
+          placed += want - got; // reserve the shortfall so the auto pass won't backfill it
+          const owned = pool.filter(p => p.v.player === a.name && p.tier === tier);
+          const inRange = owned.filter(p => okOffDist(p, T.c));
+          planWarnings.push(
+            owned.length && !inRange.length ? t('warn_off_range')(decode(a.name), t('tier_' + tier), T.tg.coord)
+            : inRange.length && !inRange.some(p => okOffTime(p, T)) ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
+            : t('warn_sender_short_off')(decode(a.name), t('tier_' + tier), T.tg.coord));
+          for (let z = 0; z < want - got; z++) T.offRows.push({ type: tier, unassigned: true });
+        }
+      }
+      namedOffReserved[T.i + '|' + tier] = placed;
+    }
+  }
+
+  // POWER targets (per-target tag): ignore the per-tier split and fill each one's
+  // remaining off slots with the globally strongest available offs, balancing total
+  // raw off power across all POWER targets — the next-strongest off goes to whichever
+  // POWER target currently has the lowest assigned power and still has an open slot it
+  // can reach (range + launch time). Runs before the auto pass so it isn't starved.
+  const powerTargets = targets.filter(T => T.c && T.tg.power);
+  if (powerTargets.length) {
+    const remaining = {}, powSum = {}, warned = new Set();
+    let totalSlots = 0;
+    for (const T of powerTargets) {
+      const total = ['complete', 'tq', 'half'].reduce((s, tr) => s + (T.tg[TIER_FIELD[tr]] || 0), 0);
+      const named = ['complete', 'tq', 'half'].reduce((s, tr) => s + (namedOffReserved[T.i + '|' + tr] || 0), 0);
+      remaining[T.i] = Math.max(0, total - named); powSum[T.i] = 0; totalSlots += remaining[T.i];
+    }
+    for (let s = 0; s < totalSlots; s++) {
+      const open = powerTargets.filter(T => remaining[T.i] > 0).sort((a, b) => powSum[a.i] - powSum[b.i]);
+      if (!open.length) break;
+      const T = open[0];
+      const cands = pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T))
+        .sort((a, b) => b.v.offPow - a.v.offPow);
+      remaining[T.i]--;
+      if (!cands.length) {
+        if (!warned.has(T.i)) {
+          const inBand = pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c));
+          planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T))
+            ? t('warn_off_too_late')(t('tier_complete'), T.tg.coord)
+            : t('warn_missed_off')(t('tier_complete'), T.tg.coord));
+          warned.add(T.i);
+        }
+        T.offRows.push({ type: 'complete', unassigned: true });
+        continue;
+      }
+      const p = cands[0];
+      p.usedOff = true; powSum[T.i] += p.v.offPow; noteOffUsed(p.v.player);
+      const d = distXY(p.c, T.c);
+      T.offRows.push({ type: p.tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+        dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
+    }
+  }
+
+  // A conquered target coordinates its timings best when at least one of its offs comes
+  // from the SAME hand that sends the noble. We bias (never force) one auto off toward any
+  // of that target's noble senders — using their non-reserved villages (their closest are
+  // held for the noble launch). Escort mode already rides an off with the noble, so escorted
+  // targets are absent from conquerorByTarget. conquerorOffPlaced is seeded from offs placed
+  // by the named + POWER passes, so we don't double up.
+  const conquerorOffPlaced = {};
+  for (const T of targets) {
+    const conq = conquerorByTarget[T.i];
+    if (conq && T.offRows.some(r => !r.unassigned && r.srcPlayer && conq.has(r.srcPlayer)))
+      conquerorOffPlaced[T.i] = true;
+  }
+
+  // Offs: strongest requests claim villages first (complete → 3/4 → 1/2);
+  // an exhausted tier auto-bumps to the nearest stronger off (1/2 → 3/4 → Complete)
+  // and the row is relabeled to what is actually sent, with a warning. Slots already
+  // reserved by named senders above are subtracted so each tier isn't double-filled.
+  const TIER_UP = { half: ['tq', 'complete'], tq: ['complete'], complete: [] };
+  for (const tier of ['complete', 'tq', 'half']) {
+    for (const T of targets) {
+      if (!T.c || T.tg.power) continue; // POWER targets are filled by the balanced pass above
+      const autoNeed = Math.max(0, (T.tg[TIER_FIELD[tier]] || 0) - (namedOffReserved[T.i + '|' + tier] || 0));
+      for (let k = 0; k < autoNeed; k++) {
+        const tierCands = tt => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T));
+        let sent = tier, cands = tierCands(tier);
+        for (const up of TIER_UP[tier]) {
+          if (cands.length) break;
+          cands = tierCands(up);
+          if (cands.length) sent = up;
+        }
+        if (!cands.length) {
+          const inBand = pool.filter(p => !p.usedOff && !offBlocked(p) && okOffDist(p, T.c));
+          planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T))
+            ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
+            : t('warn_missed_off')(t('tier_' + tier), T.tg.coord));
+          T.offRows.push({ type: tier, unassigned: true });
+          continue;
+        }
+        if (sent !== tier) planWarnings.push(t('warn_tier_bumped')(t('tier_' + tier), t('tier_' + sent), T.tg.coord));
+        // Until one off from this target's conqueror is placed, prefer the conqueror's
+        // own villages among THIS slot's feasible candidates (a reorder of cands — never
+        // widens the eligible set, so range/time/tier still hold). Closest of theirs.
+        const conq = conquerorByTarget[T.i];
+        let p;
+        if (conq && !conquerorOffPlaced[T.i]) {
+          const own = cands.filter(c => conq.has(decode(c.v.player))).sort(byDist(T));
+          if (own.length) p = own[0];
+        }
+        if (!p) p = cands.sort(byOptimize(T))[0];
+        if (conq && conq.has(decode(p.v.player))) conquerorOffPlaced[T.i] = true;
+        p.usedOff = true; noteOffUsed(p.v.player);
+        const d = distXY(p.c, T.c);
+        T.offRows.push({
+          type: sent, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+          dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us),
+        });
+      }
+    }
   }
 
   // Windows: offs land strongest-first (complete → 3/4 → 1/2) across the
@@ -744,8 +799,9 @@ function planUsedOffCoords() {
 
 function unusedOffs() {
   const used = planUsedOffCoords();
+  const reserved = new Set(planReserved); // launch villages held for nobles — not free offs
   return villages
-    .filter(v => getOffTier(v.offPow) !== 'none' && !used.has(v.coord))
+    .filter(v => getOffTier(v.offPow) !== 'none' && !used.has(v.coord) && !reserved.has(v.coord))
     .sort((a, b) => b.offPow - a.offPow);
 }
 
@@ -766,4 +822,3 @@ function showUnusedOffsBB() {
   document.getElementById('bb-output').value = bb;
   document.getElementById('bb-modal').classList.add('open');
 }
-

@@ -11,13 +11,14 @@ let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00
 let offTargets   = []; // [{id, coord, player, nComplete, nTq, nHalf, snobPlayers, nobles, offWindows:[{win,count}], winSnob, snobMode, snobAssignees:[{name,count}]}]
 let planRows     = []; // denormalized so a saved plan renders without the troop file loaded
 let planWarnings = [];
+let planReserved = []; // coords of noble-launch villages held out of the offs (excluded from Unused Offs)
 let otNextId     = 1;
 
 function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
 function saveOffensive() {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
-    cfg: otCfg, targets: offTargets, plan: planRows, warnings: planWarnings, nextId: otNextId,
+    cfg: otCfg, targets: offTargets, plan: planRows, warnings: planWarnings, reserved: planReserved, nextId: otNextId,
   }));
 }
 
@@ -29,6 +30,7 @@ function loadOffensive() {
       offTargets   = d.targets || [];
       planRows     = d.plan || [];
       planWarnings = d.warnings || [];
+      planReserved = d.reserved || [];
       otNextId     = d.nextId || (Math.max(0, ...offTargets.map(x => x.id)) + 1);
     }
   } catch {}

@@ -15,6 +15,15 @@ const UNIT_TYPE = { // off / def / misc
   knight:'def', snob:'misc'
 };
 
+// Farm population (provisions) each unit uses — standard TW. Drives `popUsed` per village.
+const POP = { spear:1, sword:1, axe:1, spy:2, light:4, heavy:6, ram:5, catapult:8, knight:10, snob:100 };
+
+// A village is only eligible to be a reserved noble-launch village if it's an established
+// village with a real garrison: at least this many points AND this much farm pop used by
+// troops. (Points need the world DB; when it isn't loaded points are treated as unknown→ok.)
+const RESERVE_MIN_POINTS = 4000;
+const RESERVE_MIN_POP    = 4000;
+
 // Base travel speed in minutes per field (at world speed 1, unit speed 1)
 const UNIT_BASE_MIN = { spear:18, sword:22, axe:18, spy:9, light:10, heavy:11, ram:30, catapult:30, knight:10, snob:35 };
 const TRAVEL_ICON = { spear:'🗡', sword:'⚔', axe:'🪓', spy:'🔍', light:'🏹', heavy:'🐴', ram:'🐏', catapult:'💣', knight:'🐴', snob:'👑' };
