@@ -518,6 +518,14 @@
     <span id="server-now" style="font-size:12px;color:#806030;margin-left:10px;"></span>
   </div>
   <p style="font-size:12px;color:#5a3a18;margin-top:10px;" data-i18n="server_note">Used to build rally-point links in the plan table. The UTC offset converts your local clock to server time for the launch-feasibility check (guerrastribales.es runs on UTC+2 in summer, UTC+1 in winter).</p>
+
+  <div class="section-header"><h2 data-i18n="sec_debug">Backup &amp; Debug</h2></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <button class="btn btn-ghost btn-sm" onclick="exportDebugData()" data-i18n="btn_export_data">⬇ Export Data (JSON)</button>
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('debug-import-input').click()" data-i18n="btn_import_data">⬆ Import Data</button>
+    <input type="file" id="debug-import-input" accept=".json,application/json" style="display:none;" onchange="importDebugData(this)">
+  </div>
+  <p style="font-size:12px;color:#5a3a18;margin-top:10px;" data-i18n="debug_note">Exports everything saved locally — offensive targets, the generated plan, settings, language, the loaded troop data and the morale inputs for it — as one JSON file. Share it so a tribemate's exact situation can be reproduced for debugging. Importing REPLACES your current saved targets, plan, settings and map preferences.</p>
 </div>
 
 <!-- ═══════════════════════════ CHANGELOG ═══════════════════════════ -->
@@ -526,6 +534,15 @@
 <div class="tab-content" id="tab-changelog">
   <div class="section-header"><h2 data-i18n="sec_changelog">Changelog</h2></div>
   <p style="font-size:12px;color:#5a3a18;margin-top:6px;margin-bottom:16px;" data-i18n="changelog_intro">Feature and change history for the Tribe Calculator, per version bump.</p>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v2.2.0</span><span class="cl-date">2026-06-16</span></div>
+    <ul class="cl-list">
+      <li><b>💾 Backup &amp; Debug export/import:</b> a new section in <b>Settings</b> exports everything saved locally — offensive targets, the generated plan, settings, language, the loaded troop data, and the morale inputs for it (the world-DB records for your villages and targets, so morale still reproduces even after the daily map mirror changes) — into one JSON file. Import it on another machine to reproduce a tribemate’s exact situation when debugging. Importing replaces your current saved targets/plan/settings/map prefs (your previous state is backed up in the browser first).</li>
+      <li><b>Split-off counts as a Complete:</b> the offs-assigned counter now adds <b>+1 Complete</b> per split-off (escorted) noble train — since each one rides with a Complete off — so the count reflects what’s really committed.</li>
+      <li><b>Troop data stays loaded:</b> the troop file you upload (or paste) is now remembered across sessions — reopen the calculator and your last-loaded troops are back automatically. Uploading new file(s) replaces it; <b>✕ Clear</b> removes it.</li>
+    </ul>
+  </div>
 
   <div class="cl-entry">
     <div class="cl-head"><span class="cl-ver">v2.1.0</span><span class="cl-date">2026-06-16</span></div>
@@ -825,6 +842,7 @@ function loadFiles(fileList) {
         ).join('\n');
         const label = files.length === 1 ? files[0].name : `${files.length} files`;
         parseData(merged, label);
+        persistTroops(merged, label);
       }
     };
     reader.readAsText(file);
@@ -834,10 +852,33 @@ function loadFromPaste() {
   const text = document.getElementById('paste-input').value.trim();
   if (!text) return;
   parseData(text, 'pasted data');
+  persistTroops(text, 'pasted data');
+}
+
+// ── Persist the uploaded/pasted troop text so it survives across sessions ──
+// Stored as raw text (re-parsed on next load); replaced only when new files are
+// uploaded or new data pasted, and cleared by the ✕ Clear button. Wrapped so a
+// quota failure (very large troop file) never breaks the load itself.
+const TROOP_KEY = 'tw_tribe_troops';
+function persistTroops(text, filename) {
+  if (!villages.length) return; // don't persist a parse that produced nothing
+  try { localStorage.setItem(TROOP_KEY, JSON.stringify({ text, filename, savedAt: new Date().toISOString() })); } catch {}
+}
+function autoloadTroops() {
+  if (villages.length) return; // a real upload this session takes precedence
+  let d;
+  try { d = JSON.parse(localStorage.getItem(TROOP_KEY)); } catch { return; }
+  if (!d || !d.text) return;
+  parseData(d.text, d.filename || t('imported_troops'));
+  if (villages.length) {
+    const txt = document.getElementById('file-status-text');
+    if (txt) txt.textContent += ` · ${t('troops_restored')}`;
+  }
 }
 
 function clearData() {
   villages = []; players = {};
+  try { localStorage.removeItem(TROOP_KEY); } catch {} // also drop the persisted copy
   document.getElementById('file-dot').className = 'file-status-dot dot-off';
   document.getElementById('file-status-text').textContent = t('status_no_file');
   document.getElementById('file-status-text').className = '';
@@ -1999,14 +2040,19 @@ function renderOffTargets() {
   // (Complete / 3-4 / 1-2): how many of each you've assigned out of how many exist.
   const offsSummaryEl = document.getElementById('ot-offs-summary');
   if (offsSummaryEl) {
+    // Each split-off (escorted) train rides with one Complete off, so it counts as +1
+    // Complete here — same per-train count the escort reservation uses (incl. needNobles pins).
+    const escortOffs = offTargets.reduce((s, tg) =>
+      s + (tg.snobMode === 'escorted' ? targetTrainSpec(tg).length : 0), 0);
     const tierMeta = [['complete', 'badge-complete', 'th_complete'], ['tq', 'badge-tq', 'th_tq'], ['half', 'badge-half', 'th_half']];
     const parts = tierMeta.map(([tier, cls, label]) => {
-      const used = offTargets.reduce((s, tg) => s + (tg[TIER_FIELD[tier]] || 0), 0);
+      const used = offTargets.reduce((s, tg) => s + (tg[TIER_FIELD[tier]] || 0), 0) + (tier === 'complete' ? escortOffs : 0);
       const total = villages.filter(v => getOffTier(v.offPow) === tier).length;
       return `<span class="badge ${cls}">${t(label)}</span> ${used} / ${total}`;
     });
+    const note = escortOffs > 0 ? ` <span style="color:#806030;font-weight:400;">${t('offs_escort_note')(escortOffs)}</span>` : '';
     offsSummaryEl.innerHTML = (offTargets.length || villages.length)
-      ? `${t('offs_assigned_label')} ${parts.join('&nbsp;&nbsp;·&nbsp;&nbsp;')}` : '';
+      ? `${t('offs_assigned_label')} ${parts.join('&nbsp;&nbsp;·&nbsp;&nbsp;')}${note}` : '';
   }
 
   const tbody = document.getElementById('offtargets-tbody');
@@ -2847,7 +2893,8 @@ function dbOwnerLabel(coord) {
   if (!villageDb.length) return '';
   const v = coordDb[coord];
   if (!v) return t('db_unknown_village');
-  return `${v.name} · ${playerDb[v.playerId] || '—'} · ${v.points.toLocaleString()} pts`;
+  // points/name may be absent when the DB came from a debug import's trimmed subset
+  return `${v.name || '?'} · ${playerDb[v.playerId] || '—'} · ${(v.points || 0).toLocaleString()} pts`;
 }
 
 // Defenders are DB-derived: refresh every target the database knows about
@@ -3013,7 +3060,7 @@ function renderDbTable() {
       <td class="left">${esc(v.name)}</td>
       <td class="left">${playerDb[v.playerId] ? `<span class="player-tag">${esc(playerDb[v.playerId])}</span>` : '<span class="num-zero">—</span>'}</td>
       <td class="left">${tribeCell}</td>
-      <td>${v.points.toLocaleString()}</td>
+      <td>${(v.points || 0).toLocaleString()}</td>
       <td><button class="btn btn-primary btn-sm" onclick="addTargetFromDb('${v.x}|${v.y}', this)">${t('btn_add_target_short')}</button></td>
     </tr>`;
   }).join('');
@@ -3073,6 +3120,150 @@ function exportTable(tableId, filename) {
   a.href = URL.createObjectURL(blob);
   a.download = filename;
   a.click();
+}
+
+// ══════════════════════════════════════════════════════════════
+// DEBUG SNAPSHOT — export / import everything saved locally
+// ══════════════════════════════════════════════════════════════
+function downloadFile(text, filename, mime) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: mime }));
+  a.download = filename;
+  a.click();
+}
+// Footer version string, whitespace-normalized (nbsp → space) for the dump meta.
+function appVersion() {
+  const el = document.getElementById('app-version');
+  return el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
+}
+// Rebuild villages/players/troopByCoord from a flat villages array (import path),
+// reusing the same derived-field + aggregate helpers as parseData so they never diverge.
+// Data only — the caller repaints (via changeLang).
+function rebuildTroopsFromVillages(vils) {
+  villages = vils.map(v => { const u = { ...v }; applyVilDerived(u); return u; });
+  players = {}; troopByCoord = {};
+  for (const v of villages) {
+    troopByCoord[v.coord] = v;
+    if (!players[v.player]) players[v.player] = { villages: [], totals: Object.fromEntries(UNITS.map(u => [u, 0])), offPow: 0, defInf: 0, defCav: 0 };
+    players[v.player].villages.push(v);
+  }
+  Object.keys(players).forEach(recomputePlayerAggregate);
+  if (villages.length) {
+    document.getElementById('file-dot').className = 'file-status-dot dot-ok';
+    const txt = document.getElementById('file-status-text');
+    txt.textContent = t('imported_troops'); txt.className = 'connected';
+    document.getElementById('file-summary').textContent = `${villages.length} villages · ${Object.keys(players).length} players`;
+    document.getElementById('overview-drop').style.display = 'none';
+    document.getElementById('overview-content').style.display = '';
+  }
+}
+
+// Build the full debug snapshot object (separated from the download so it's unit-testable).
+function buildDebugDump() {
+  // every tw_tribe* localStorage key (forward-compatible if more are added later)
+  const storage = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.indexOf('tw_tribe') === 0 && k.indexOf('tw_tribe_backup') !== 0) {
+      try { storage[k] = JSON.parse(localStorage.getItem(k)); }
+      catch { storage[k] = localStorage.getItem(k); }
+    }
+  }
+  const val = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+  // World-DB subset: the es100 mirror changes daily and Optimize/morale depend on it, so
+  // capture the DB records for just the coords this state references (troop villages +
+  // targets) plus the points of every player and the names of the referenced ones —
+  // enough to reproduce morale, defenders and tooltips after the live mirror has moved on.
+  let db = null;
+  if (villageDb.length) {
+    const coords = new Set([...villages.map(v => v.coord), ...offTargets.map(tg => tg.coord)]);
+    const coord = {}, names = {};
+    for (const c of coords) {
+      const v = coordDb[c];
+      if (v) { coord[c] = v; if (playerDb[v.playerId] != null) names[v.playerId] = playerDb[v.playerId]; }
+    }
+    db = { coord, players: names, points: playerPointsDb, status: (document.getElementById('db-status') || {}).textContent || '' };
+  }
+  return {
+    _meta: {
+      tool: 'tribe-calculator', version: appVersion(), env: TW_ENV, lang,
+      exportedAt: new Date().toISOString(), troopVillages: villages.length, dbVillages: villageDb.length,
+    },
+    storage,
+    settings: {
+      thresholds: { complete: val('thresh-complete'), tq: val('thresh-tq'), half: val('thresh-half') },
+      plan: { worldSpeed: val('plan-world-speed'), unitSpeed: val('plan-unit-speed'),
+              minDist: val('plan-min-dist'), maxDist: val('plan-max-dist'), snobMax: val('plan-snob-max') },
+      lang,
+    },
+    troops: villages.length ? { villages } : null,
+    db,
+  };
+}
+
+function exportDebugData() {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  downloadFile(JSON.stringify(buildDebugDump(), null, 2), `tribe-calculator-debug-${stamp}.json`, 'application/json');
+}
+
+function importDebugData(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { importDebugDataFromText(String(reader.result)); input.value = ''; };
+  reader.readAsText(file);
+}
+
+// Validate BEFORE touching localStorage so a malformed/foreign file can't half-write and
+// corrupt the user's own saved state. Returns true on success (used by the test harness).
+function importDebugDataFromText(text) {
+  let dump;
+  try { dump = JSON.parse(text); }
+  catch { alert(t('import_bad_json')); return false; }
+  if (!dump || !dump._meta || dump._meta.tool !== 'tribe-calculator' || typeof dump.storage !== 'object') {
+    alert(t('import_not_ours')); return false;
+  }
+  if (!confirm(t('import_confirm'))) return false;
+  // back up the current tw_tribe* state first (recoverable from devtools if needed);
+  // a single key, overwritten each import, so backups can't accumulate
+  try {
+    const backup = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf('tw_tribe') === 0 && k.indexOf('tw_tribe_backup') !== 0) backup[k] = localStorage.getItem(k);
+    }
+    localStorage.setItem('tw_tribe_backup', JSON.stringify({ savedAt: new Date().toISOString(), keys: backup }));
+  } catch {}
+  // restore localStorage keys
+  for (const [k, v] of Object.entries(dump.storage || {})) {
+    localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+  }
+  // restore DOM-only settings (tiers + plan params)
+  const set = (id, v) => { const e = document.getElementById(id); if (e && v != null && v !== '') e.value = v; };
+  const s = dump.settings || {};
+  if (s.thresholds) { set('thresh-complete', s.thresholds.complete); set('thresh-tq', s.thresholds.tq); set('thresh-half', s.thresholds.half); }
+  if (s.plan) { set('plan-world-speed', s.plan.worldSpeed); set('plan-unit-speed', s.plan.unitSpeed);
+                set('plan-min-dist', s.plan.minDist); set('plan-max-dist', s.plan.maxDist); set('plan-snob-max', s.plan.snobMax); }
+  // world-DB subset (coord records + player names/points) so Optimize/morale, defenders
+  // and tooltips resolve for the relevant coords without the live mirror
+  if (dump.db && dump.db.coord) {
+    coordDb = dump.db.coord;
+    playerPointsDb = dump.db.points || {};
+    playerDb = { ...playerDb, ...(dump.db.players || {}) };
+    villageDb = Object.values(coordDb); // non-empty → morale "dbReady"
+  }
+  // troop data (rebuild via the shared helpers); left untouched when the dump has none
+  if (dump.troops && Array.isArray(dump.troops.villages)) rebuildTroopsFromVillages(dump.troops.villages);
+  // re-init the offensive state from the freshly written localStorage, then repaint
+  loadOffensive();
+  if (typeof loadMapPrefs === 'function') loadMapPrefs();
+  if (typeof syncMapToolbar === 'function') syncMapToolbar();
+  changeLang((s.lang === 'es' || s.lang === 'en') ? s.lang : lang); // applyLang + full re-render
+  if (typeof mapDetectAndSeed === 'function') mapDetectAndSeed();
+  if (typeof mapRefresh === 'function') mapRefresh();
+  renderTierTables();
+  alert(t('import_done'));
+  return true;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -3188,6 +3379,10 @@ loadOffensive();
 renderOffTargets();
 renderPlanTable();
 
+// Restore the troop data uploaded in a previous session (re-parses the stored text;
+// a fresh upload/paste this session replaces it, ✕ Clear removes it)
+autoloadTroops();
+
 // Live server clock in Settings (typeof guard: the headless test sandbox has no setInterval)
 updateServerNow();
 if (typeof setInterval === 'function') setInterval(updateServerNow, 1000);
@@ -3220,7 +3415,7 @@ document.addEventListener('drop', e => {
      card at the top of the Changelog tab (search "id=\"tab-changelog\""). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> 2.1.0 &nbsp;·&nbsp; 2026-06-16</span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">2.2.0 &nbsp;·&nbsp; 2026-06-16</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
