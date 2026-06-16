@@ -536,6 +536,13 @@
   <p style="font-size:12px;color:#5a3a18;margin-top:6px;margin-bottom:16px;" data-i18n="changelog_intro">Feature and change history for the Tribe Calculator, per version bump.</p>
 
   <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v2.3.0</span><span class="cl-date">2026-06-16</span></div>
+    <ul class="cl-list">
+      <li><b>🚀 Clearer Per-Player BB launch line:</b> the <b>Export Per-Player BB</b> output now puts the launch instructions on their own highlighted second line — <i>LAUNCH TIME: on the 17th between 03:16–04:16 — ATTACK URL▶</i> (Spanish: <i>HORA DE LANZAMIENTO: día 17 entre …</i>) — naming the launch day and wrapping the time and rally link in red so senders can’t miss when to launch. The arrival window stays on the first line. Pasting this into the Attack Planner’s per-player import still works (the planner reads both the old and new formats).</li>
+    </ul>
+  </div>
+
+  <div class="cl-entry">
     <div class="cl-head"><span class="cl-ver">v2.2.0</span><span class="cl-date">2026-06-16</span></div>
     <ul class="cl-list">
       <li><b>💾 Backup &amp; Debug export/import:</b> a new section in <b>Settings</b> exports everything saved locally — offensive targets, the generated plan, settings, language, the loaded troop data, and the morale inputs for it (the world-DB records for your villages and targets, so morale still reproduces even after the daily map mirror changes) — into one JSON file. Import it on another machine to reproduce a tribemate’s exact situation when debugging. Importing replaces your current saved targets/plan/settings/map prefs (your previous state is backed up in the browser first).</li>
@@ -2178,6 +2185,28 @@ function launchWindowStr(winStr, travelMin) {
   return `${span} (−${days}d${ds})`;
 }
 
+// Same launch-window math as launchWindowStr, but returns the parts the per-player BB needs
+// separately: the time span and the launch day-of-month (null when no arrival date is set).
+function launchWindowParts(winStr, travelMin) {
+  const w = parseWindowStr(winStr);
+  if (!w) return null;
+  const tr = Math.round(travelMin);
+  const p = n => String(n).padStart(2, '0');
+  const fm = m => { const x = ((m % 1440) + 1440 * 100) % 1440; return `${p(Math.floor(x / 60))}:${p(x % 60)}`; };
+  const days = w.f - tr < 0 ? Math.ceil((tr - w.f) / 1440) : 0;
+  const single = w.f === w.to;
+  const span = single ? fm(w.f - tr) : `${fm(w.f - tr)}–${fm(w.to - tr)}`;
+  const m = String(otCfg.dateISO || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]) - days * 86400000) : null;
+  return { span, single, day: d ? d.getUTCDate() : null };
+}
+
+// English ordinal for the launch day (1st, 2nd, 3rd, 4th … 11th–13th th, 21st …).
+function ordinalEn(n) {
+  const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 function orderUnitsFor(mode, pace, v) {
   if (mode === 'off') {
     if (pace === 'any') return {}; // plain rally-point link, no preset units
@@ -2722,8 +2751,15 @@ function showPlayerPlanBB() {
       }
       const defender = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
       const url     = rallyUrl(r.srcCoord, r.tCoord);
-      const urlPart = url ? ` — [url=${url}]▶[/url]` : '';
-      bb += `${prefix}${iconBB} ${r.srcCoord} → [coord]${r.tCoord}[/coord]${defender} [b][color=#0000a5]${fmtWindow(r.window) || '??:??'}[/color][/b] — ${t('bb_pp_launch')}: ${launchWindowStr(r.window, r.travel)}${urlPart}\n`;
+      const urlPart = url ? ` — [url=${url}]${t('bb_pp_attack_url')}▶[/url]` : '';
+      const win     = (fmtWindow(r.window) || '??:??').replace('/', '-');
+      const lp      = launchWindowParts(r.window, r.travel);
+      // Line 1 = village → target + arrival window; line 2 = the red launch-time call-out
+      // (carries the rally link). [b] opens on line 1 and closes after the launch line.
+      const launch  = lp
+        ? `\n${t('bb_pp_launchline')(lp.day, `[color=#ff0e0e]${lp.span}[/color]`, lp.single)}${urlPart}[/b]`
+        : `${urlPart}[/b]`;
+      bb += `${prefix}${iconBB} ${r.srcCoord} → [coord]${r.tCoord}[/coord]${defender} [b][color=#2e2eff]${win}[/color]${launch}\n`;
     }
     bb += '\n';
   }
@@ -3415,7 +3451,7 @@ document.addEventListener('drop', e => {
      card at the top of the Changelog tab (search "id=\"tab-changelog\""). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">2.2.0 &nbsp;·&nbsp; 2026-06-16</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">2.3.0 &nbsp;·&nbsp; 2026-06-16</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

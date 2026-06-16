@@ -2303,14 +2303,27 @@ function parsePlayerPlanBB(text) {
   const byKey   = {};        // coord/id key → target (merge lines that hit the same target)
   let sender = '';           // current "========== SENDER (n) ==========" block owner
 
+  // Newer per-player exports span TWO lines per attack: the "village → target + window" line
+  // followed by a "LAUNCH TIME" line that now carries the rally URL. Coalesce each attack with
+  // its continuation line(s) into one record first, so the URL still binds to its target and
+  // both the old single-line and new two-line formats parse the same way.
+  const records = [];        // [{ sender, text }]
+  let cur = null;
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     if (!line) continue;
+    const hm = line.match(/^=+\s*(.+?)\s*\(\d+\)\s*=+$/);
+    if (hm) { sender = hm[1].trim(); cur = null; continue; }
+    if (/^=+.*=+$/.test(line)) { sender = ''; cur = null; continue; } // other dividers (UNASSIGNED)
+    if (/→\s*\[coord\]\d{1,3}\|\d{1,3}\[\/coord\]/.test(line)) {
+      cur = { sender, text: line }; records.push(cur);               // start of a new attack
+    } else if (cur) {
+      cur.text += ' ' + line;                                        // continuation (LAUNCH TIME / URL)
+    }
+  }
 
-    const hm = line.match(/^=+\s*(.+?)\s*\(\d+\)\s*=+$/);   // block header → sending player
-    if (hm) { sender = hm[1].trim(); continue; }
-    if (/^=+.*=+$/.test(line)) { sender = ''; continue; }  // other dividers (e.g. UNASSIGNED)
-    if (!line.includes('→')) continue;
+  for (const rec of records) {
+    const line = rec.text, sender = rec.sender;
 
     const tm = line.match(/→\s*\[coord\](\d{1,3}\|\d{1,3})\[\/coord\]/); // target coord
     if (!tm) continue;
@@ -2329,8 +2342,9 @@ function parsePlayerPlanBB(text) {
     const pm = line.match(/\(\[player\](.+?)\[\/player\]\)/);          // target owner (defender)
     const defender = pm ? pm[1].trim() : '';
 
-    // arrival: single exact time or a window
-    const am = line.match(/\[color=#0000a5\]\s*(\d{1,2}:\d{2})(?:\s*[\/\-–]\s*(\d{1,2}:\d{2}))?\s*\[\/color\]/);
+    // arrival: single exact time or a window. Anchored to the blue arrival color (old #0000a5
+    // or new #2e2eff) so the red #ff0e0e launch span on the coalesced line 2 is never picked up.
+    const am = line.match(/\[color=#(?:0000a5|2e2eff)\]\s*(\d{1,2}:\d{2})(?:\s*[\/\-–]\s*(\d{1,2}:\d{2}))?\s*\[\/color\]/i);
     const timeFrom = am ? am[1] : '';
     const timeTo   = am && am[2] ? am[2] : '';
 
