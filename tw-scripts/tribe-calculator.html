@@ -402,6 +402,7 @@
     <div style="display:flex;gap:8px;">
       <button class="btn btn-ghost btn-sm" onclick="showPlanBB()" data-i18n="btn_export_forum">⬇ Export Forum BB</button>
       <button class="btn btn-ghost btn-sm" onclick="showPlayerPlanBB()" data-i18n="btn_export_player_bb">⬇ Export Per-Player BB</button>
+      <button class="btn btn-ghost btn-sm" onclick="showUnusedOffsBB()" data-i18n="btn_export_unused_offs">⬇ Export Unused Offs</button>
       <button class="btn btn-ghost btn-sm" onclick="exportTable('plan-table','tribe_plan.csv')">⬇ Export CSV</button>
     </div>
   </div>
@@ -534,6 +535,14 @@
 <div class="tab-content" id="tab-changelog">
   <div class="section-header"><h2 data-i18n="sec_changelog">Changelog</h2></div>
   <p style="font-size:12px;color:#5a3a18;margin-top:6px;margin-bottom:16px;" data-i18n="changelog_intro">Feature and change history for the Tribe Calculator, per version bump.</p>
+
+  <div class="cl-entry">
+    <div class="cl-head"><span class="cl-ver">v2.4.0</span><span class="cl-date">2026-06-16</span></div>
+    <ul class="cl-list">
+      <li><b>👑 "Snobs need recruiting" — show where:</b> when a player is set as a <b>split-off</b> snob sender but hasn’t recruited the noble(s) yet, the plan now shows the <b>coordinates of the off village reserved for the escort</b> — i.e. exactly where to recruit the noble so it can ride out with that off. The Plan table’s origin cell and the <b>Per-Player BB</b> export show that village + the target, tagged <b>[SNOBS NEED RECRUITING]</b> (ES: <b>[NECESITAS RECLUTAR NOBLES]</b>) instead of a bare “UNASSIGNED”. This now also covers the case where the sender owns a stray noble elsewhere but is short for the train (it points at the reserved off to recruit there); when they have <i>enough</i> nobles and only the escort off is busy, it still suggests Solo. The plan table and Per-Player BB also show the <b>launch time</b> and a <b>rally link</b> for that reserved off (origin → target), so you know exactly when and from where to send the split-off once the noble is in. (These pending lines are still display-only — pasting the Per-Player BB into the Attack Planner imports just the ready attacks.)</li>
+      <li><b>⬇ Export Unused Offs:</b> new button in <b>Plan Offensive</b> that exports a forum <b>[table]</b> of every offensive village <b>not committed</b> by the current plan (i.e. its off wasn’t sent, isn’t a split-off escort, and isn’t reserved for one) — columns: #, Coord, Player, Type, [unit]axe[/unit], [unit]light[/unit], [unit]ram[/unit], [unit]catapult[/unit], Off Power, sorted by off power (strongest first). A <i>solo</i> noble train leaves its village’s off free, so that village still appears.</li>
+    </ul>
+  </div>
 
   <div class="cl-entry">
     <div class="cl-head"><span class="cl-ver">v2.3.0</span><span class="cl-date">2026-06-16</span></div>
@@ -2398,6 +2407,10 @@ function generatePlan() {
   // who don't own the noble yet (needNobles): the slot is held until they recruit one.
   const escortReserved = new Set();
   for (const T of targets) {
+    // One reserved escort village per train, in spec order (null = none in range).
+    // The snob loop reads these by the SAME train index to tell a needNobles sender
+    // WHERE to recruit (a split-off launches off + noble from one village).
+    T.escortPicks = [];
     if (!T.c || (T.tg.snobMode || 'solo') !== 'escorted') continue;
     for (const { name: want } of targetTrainSpec(T.tg)) {
       const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p)
@@ -2406,6 +2419,7 @@ function generatePlan() {
         .sort((a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (b.v.offPow - a.v.offPow))[0];
       const p = pick(['complete', 'tq']) || pick(['half']);
       if (p) escortReserved.add(p);
+      T.escortPicks.push(p || null);
     }
   }
 
@@ -2505,7 +2519,15 @@ function generatePlan() {
     if (specSum !== T.tg.nobles) planWarnings.push(t('warn_nobles_mismatch')(T.tg.coord, specSum, T.tg.nobles));
     const mode = T.tg.snobMode || 'solo';
     const chosen = new Set();
-    spec.forEach(({ name: want, count: nc }) => {
+    spec.forEach(({ name: want, count: nc }, trainIdx) => {
+      // For escorted trains, the off held back at reservation time (same train index)
+      // is exactly where a needNobles sender should recruit — surface its coord.
+      const reservedV = mode === 'escorted' && T.escortPicks ? T.escortPicks[trainIdx] : null;
+      const recruitCoord = reservedV ? reservedV.v.coord : undefined;
+      // Distance/travel from that reserved off to the target (snob pace) so a needNobles row
+      // can still show WHEN to launch the split-off once the noble is recruited.
+      const recruitDist = reservedV ? distXY(reservedV.c, T.c) : undefined;
+      const recruitTravel = reservedV ? travelTimeMin(recruitDist, PLAN_BASE_MIN.snob, ws, us) : undefined;
       // A village may host several trains while it has snobs left; in split-off
       // mode its off can only be split once (solo trains from it stay fine)
       let cands = pool.filter(p =>
@@ -2524,7 +2546,7 @@ function generatePlan() {
       if (want && cands.length && !enough.length) {
         planWarnings.push(t('warn_need_nobles')(decode(want), nc, T.tg.coord));
         T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true,
-          srcPlayer: decode(want), needNobles: true });
+          srcPlayer: decode(want), needNobles: true, recruitCoord, dist: recruitDist, travel: recruitTravel });
         return;
       }
       if (enough.length) cands = enough;
@@ -2553,8 +2575,15 @@ function generatePlan() {
           }
           else if (inRange.length && !inRange.some(p => okSnobTime(p, T)))
             msg = t('warn_snob_too_late')(T.tg.coord);
-          else if (mode === 'escorted' && inRange.length)
-            msg = t('warn_escort_used')(decode(want), T.tg.coord);
+          else if (mode === 'escorted' && inRange.length) {
+            // The sender has noble(s) in range but no village can launch the split-off. Two
+            // different causes: (a) they're SHORT on nobles for this train — point them at the
+            // reserved escort off to recruit there (needNobles); (b) they have ENOUGH nobles
+            // but the escort off is already spent — suggest Solo / free an off.
+            const nobleSupply = inRange.reduce((s, p) => s + p.snobLeft, 0);
+            if (recruitCoord && nobleSupply < nc) { msg = t('warn_need_nobles')(decode(want), nc, T.tg.coord); needNobles = true; }
+            else msg = t('warn_escort_used')(decode(want), T.tg.coord);
+          }
           else {
             // the pinned player simply owns no (free) nobles → keep them on the plan
             // as the sender, flag the origin UNASSIGNED, and tell them to recruit one
@@ -2571,7 +2600,8 @@ function generatePlan() {
         // A manually-pinned sender stays named on the plan even when unplaced (so they
         // see their assignment); an auto train that couldn't be filled has no name.
         T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true,
-          srcPlayer: want ? decode(want) : undefined, needNobles });
+          srcPlayer: want ? decode(want) : undefined, needNobles, recruitCoord: needNobles ? recruitCoord : undefined,
+          dist: needNobles ? recruitDist : undefined, travel: needNobles ? recruitTravel : undefined });
         return;
       }
       // escorted: strongest escort wins; solo: nearest village, weakest off stays home
@@ -2653,20 +2683,29 @@ function renderPlanTable() {
       first && i > 0 ? 'border-top:2px solid #7a5c10' : '',
       r.unassigned ? 'background:rgba(192,64,32,0.08)' : '',
     ].filter(Boolean).join(';');
+    // needNobles rows are "unassigned" but still have a reserved origin + feasible window, so
+    // they can show distance/travel/launch (so you know WHEN to send once the noble is in).
+    const hasTiming = !r.unassigned || (r.recruitCoord && r.travel != null);
     return `
     <tr${trStyle ? ` style="${trStyle}"` : ''}>
       <td style="color:#806030;">${first ? r.tIdx : ''}</td>
       <td class="left" style="font-family:monospace;">${first ? esc(r.tCoord) : ''}</td>
       <td class="left">${first && r.tPlayer ? `<span class="player-tag">${esc(r.tPlayer)}</span>` : ''}</td>
       <td>${badge}</td>
-      <td class="left" style="font-family:monospace;">${r.unassigned ? `<span style="color:#e06040;">${t('bb_unassigned')}${r.needNobles ? ' 👑' : ''}</span>` : esc(r.srcCoord)}</td>
+      <td class="left" style="font-family:monospace;">${
+        r.unassigned
+          ? (r.needNobles && r.recruitCoord
+              ? `${esc(r.recruitCoord)} <span style="color:#e0a020;font-weight:600;">${t('snobs_need_recruiting')}</span>`
+              : `<span style="color:#e06040;">${t('bb_unassigned')}${r.needNobles ? ' 👑' : ''}</span>`)
+          : esc(r.srcCoord)
+      }</td>
       <td class="left">${r.srcPlayer ? `<span class="player-tag">${esc(r.srcPlayer)}</span>` : '—'}</td>
       <td style="color:${moraleColor(r.morale)};font-weight:600;">${fmtMorale(r.morale)}</td>
       <td style="color:#60a0e0;font-weight:600;font-family:monospace;">${esc(fmtWindow(r.window) || '—')}</td>
-      <td style="color:#f0c040;">${r.unassigned ? '—' : r.dist.toFixed(1)}</td>
-      <td>${r.unassigned ? '—' : fmtTime(r.travel)}</td>
-      <td style="font-family:monospace;${r.late ? 'color:#e06040;font-weight:600;' : ''}">${r.unassigned ? '—' : (r.late ? '⚠ ' : '') + launchWindowStr(r.window, r.travel)}</td>
-      <td>${(() => { const url = r.unassigned ? null : rallyUrl(r.srcCoord, r.tCoord); return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
+      <td style="color:#f0c040;">${hasTiming ? r.dist.toFixed(1) : '—'}</td>
+      <td>${hasTiming ? fmtTime(r.travel) : '—'}</td>
+      <td style="font-family:monospace;${r.late ? 'color:#e06040;font-weight:600;' : ''}">${hasTiming ? (r.late ? '⚠ ' : '') + launchWindowStr(r.window, r.travel) : '—'}</td>
+      <td>${(() => { const origin = r.unassigned ? (r.needNobles ? r.recruitCoord : null) : r.srcCoord; const url = origin ? rallyUrl(origin, r.tCoord) : null; return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
     </tr>`;
   }).join('');
@@ -2746,7 +2785,21 @@ function showPlayerPlanBB() {
       const iconBB  = planRowIconBB(r);
       const prefix  = r.type === 'snob' && r.count > 1 ? `${r.count}x ` : '';
       if (r.unassigned) { // pinned sender with no noble yet — flag it, no origin/link
-        bb += `${prefix}${iconBB} ⚠ [coord]${r.tCoord}[/coord] — ${t('bb_need_nobles')}\n`;
+        // With a reserved escort village, name WHERE to recruit + the target + WHEN to launch
+        // once the noble is in. No "→ [coord]" here on purpose: keeps the line out of the
+        // attack-planner's per-player import.
+        if (r.needNobles && r.recruitCoord) {
+          const lp = r.travel != null ? launchWindowParts(r.window, r.travel) : null;
+          // We know origin (the reserved off) + target, so build the rally link too. It lives on
+          // the launch line; the attack-planner import still skips it (parser binds a launch line
+          // only to its own → attack, and this recruiting block has no → line).
+          const url = rallyUrl(r.recruitCoord, r.tCoord);
+          const urlPart = url ? ` — [url=${url}]${t('bb_pp_attack_url')}▶[/url]` : '';
+          const launch = lp ? `\n[b]${t('bb_pp_launchline')(lp.day, `[color=#ff0e0e]${lp.span}[/color]`, lp.single)}${urlPart}[/b]` : '';
+          bb += `${prefix}${iconBB} [b][color=#ff0e0e]${t('snobs_need_recruiting')}[/color][/b] ${t('bb_pp_need_recruit')(`[coord]${r.recruitCoord}[/coord]`, `[coord]${r.tCoord}[/coord]`)}${launch}\n`;
+        } else {
+          bb += `${prefix}${iconBB} ⚠ [coord]${r.tCoord}[/coord] — ${t('bb_need_nobles')}\n`;
+        }
         continue;
       }
       const defender = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
@@ -2774,6 +2827,45 @@ function showPlayerPlanBB() {
   }
 
   document.getElementById('bb-output').value = bb.trimEnd() + '\n';
+  document.getElementById('bb-modal').classList.add('open');
+}
+
+// ── Unused offs BB table: every offensive village NOT committed by the current plan ──
+// "Committed" = sent as an off, used as a split-off escort, or held in reserve for a
+// pending split-off (needNobles recruitCoord). A SOLO snob train leaves the village's
+// off free, so it does NOT count as used. Sorted by off power, strongest first.
+function planUsedOffCoords() {
+  const used = new Set();
+  for (const r of planRows) {
+    if (r.unassigned) { if (r.needNobles && r.recruitCoord) used.add(r.recruitCoord); continue; }
+    if (r.type === 'snob') { if (r.escorted && r.srcCoord) used.add(r.srcCoord); }
+    else if (r.srcCoord) used.add(r.srcCoord);
+  }
+  return used;
+}
+
+function unusedOffs() {
+  const used = planUsedOffCoords();
+  return villages
+    .filter(v => getOffTier(v.offPow) !== 'none' && !used.has(v.coord))
+    .sort((a, b) => b.offPow - a.offPow);
+}
+
+function showUnusedOffsBB() {
+  if (!villages.length) { alert(t('plan_need_data')); return; }
+  const offs = unusedOffs();
+  if (!offs.length) { alert(t('empty_no_unused_offs')); return; }
+  const sep = '[||]', cs = '[|]';
+  let bb = '[table]\n';
+  bb += `[**]#${sep}${t('th_coord')}${sep}${t('th_player')}${sep}${t('th_type')}${sep}`
+      + `[unit]axe[/unit]${sep}[unit]light[/unit]${sep}[unit]ram[/unit]${sep}[unit]catapult[/unit]${sep}${t('th_off_power')}[/**]\n`;
+  offs.forEach((v, i) => {
+    bb += `[*]${i + 1}${cs}[coord]${v.coord}[/coord]${cs}[player]${decode(v.player)}[/player]${cs}`
+        + `${t('tier_' + getOffTier(v.offPow))}${cs}${v.axe || 0}${cs}${v.light || 0}${cs}`
+        + `${v.ram || 0}${cs}${v.catapult || 0}${cs}${(v.offPow || 0).toLocaleString()}\n`;
+  });
+  bb += '[/table]';
+  document.getElementById('bb-output').value = bb;
   document.getElementById('bb-modal').classList.add('open');
 }
 
@@ -3451,7 +3543,7 @@ document.addEventListener('drop', e => {
      card at the top of the Changelog tab (search "id=\"tab-changelog\""). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">2.3.0 &nbsp;·&nbsp; 2026-06-16</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">2.4.0 &nbsp;·&nbsp; 2026-06-16</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
