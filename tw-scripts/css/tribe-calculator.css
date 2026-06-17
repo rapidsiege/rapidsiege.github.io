@@ -488,11 +488,21 @@
     .map-tt-k { color: #806030; }
     .map-tt-v { color: #d4b483; }
     .map-tt-bonus { color: #46d6e6; font-weight: 600; }
+    .map-tt-incoming { font-weight: 700; margin-bottom: 5px; padding: 2px 6px; border-radius: 4px; text-align: center; }
+    .map-tt-inc-white  { color: #f2f2f2; background: rgba(255,255,255,.14); }
+    .map-tt-inc-yellow { color: #f5d000; background: rgba(245,205,0,.16); }
+    .map-tt-inc-orange { color: #ff9b30; background: rgba(255,140,26,.16); }
+    .map-tt-inc-red    { color: #ff5a5a; background: rgba(255,45,45,.18); }
     #map-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #806030; }
     /* Phase 2: bonus filter + custom color groups */
     .map-tb-sep { width: 1px; align-self: stretch; background: #3a2808; margin: 2px 4px; }
     .map-tb-check { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #a07810; cursor: pointer; }
     .map-tb-check input { cursor: pointer; }
+    .map-tb-inc-lbl { font-size: 12px; color: #a07810; }
+    .map-inc-input { width: 42px; font-size: 12px; padding: 2px 3px; background: #1c1306; color: #d4b483; border: 1px solid #3a2808; border-bottom-width: 3px; border-radius: 4px; text-align: center; }
+    .map-inc-yellow { border-bottom-color: #f5d000; }
+    .map-inc-orange { border-bottom-color: #ff8c1a; }
+    .map-inc-red    { border-bottom-color: #ff2d2d; }
     #map-groups { position: absolute; top: 8px; right: 8px; z-index: 4; width: 220px; max-height: calc(100% - 16px); display: flex; flex-direction: column; background: rgba(14,10,3,.93); border: 1px solid #3a2808; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }
     .map-groups-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 9px; font-size: 12px; font-weight: 600; color: #f0c040; border-bottom: 1px solid #2a1c08; }
     .map-grp-new { background: #3a2808; border: 1px solid #5a3a18; color: #f0c040; cursor: pointer; font-size: 14px; line-height: 1; border-radius: 4px; padding: 1px 7px; }

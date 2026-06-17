@@ -32,6 +32,55 @@ const MAP_OFF_TIER_TAG = {
   half:     { txt: '[1/2]',  color: '#d8d030' }, // yellow
 };
 
+// ── Incoming-attack heatmap ──────────────────────────────────────────────────────
+// Per-village incoming count comes from troopByCoord[coord].incoming (the optional
+// "Incoming" column in tribe info.txt). A count maps to a colour tier; a soft halo is
+// drawn UNDER each affected village so clusters read at any zoom. Thresholds persist in
+// the map prefs. 'white' is the floor tier (1..yellow-1) so ANY incoming is still flagged.
+const MAP_INCOMING_DEFAULTS = { yellow: 5, orange: 10, red: 20 };
+let mapIncomingThresholds = { ...MAP_INCOMING_DEFAULTS };
+const MAP_INCOMING_RGB = { white: [255,255,255], yellow: [245,205,0], orange: [255,140,26], red: [255,45,45] };
+// Halo sizing knobs (px). rZoom hugs the sprite when zoomed in; rCount blooms with the
+// attack count when zoomed out. radius = max(rZoom, rCount). Tune live in the browser.
+const MAP_INCOMING_ZOOM_HUG    = 0.6;  // halo radius as a fraction of the field/sprite width
+const MAP_INCOMING_COUNT_FLOOR = 4;    // px floor so a single incoming is still visible
+const MAP_INCOMING_COUNT_K     = 2.2;  // px per √count — sub-linear so 80 ≈ 4× of 5, not 16×
+const MAP_INCOMING_COUNT_CAP   = 38;   // px cap on the count bloom so it never swallows the screen
+
+// count → colour tier. null when there are no incoming attacks (< 1). Pure: thresholds
+// default to the global but can be passed explicitly (harness-tested that way).
+function incomingTier(count, th) {
+  th = th || mapIncomingThresholds;
+  const n = parseInt(count) || 0;
+  if (n < 1)          return null;
+  if (n >= th.red)    return 'red';
+  if (n >= th.orange) return 'orange';
+  if (n >= th.yellow) return 'yellow';
+  return 'white';
+}
+// Halo radius (px) for `n` incoming at the current zoom: sprite-hugging when zoomed in,
+// count-blooming when zoomed out. Pure given scale.
+function incomingHaloRadius(n, scale) {
+  const rZoom  = scale * MAP_INCOMING_ZOOM_HUG;
+  const rCount = Math.min(MAP_INCOMING_COUNT_CAP, MAP_INCOMING_COUNT_FLOOR + MAP_INCOMING_COUNT_K * Math.sqrt(Math.max(1, n)));
+  return Math.max(rZoom, rCount);
+}
+// Soft radial glow (heatmap) drawn UNDER a village. cx/cy = the village centre in px.
+function drawIncomingHalo(ctx, cx, cy, count) {
+  const tier = incomingTier(count);
+  if (!tier) return;
+  const [r0, g0, b0] = MAP_INCOMING_RGB[tier];
+  const r = incomingHaloRadius(count, mapView.scale);
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  grad.addColorStop(0,    `rgba(${r0},${g0},${b0},0.60)`);
+  grad.addColorStop(0.55, `rgba(${r0},${g0},${b0},0.34)`);
+  grad.addColorStop(1,    `rgba(${r0},${g0},${b0},0)`);
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+}
+
 const MAP_PREFS_KEY = 'tw_tribe_map';
 function loadMapPrefs() {
   if (mapPrefsLoaded || typeof localStorage === 'undefined') { mapPrefsLoaded = true; rebuildGroupIndex(); return; }
@@ -41,6 +90,10 @@ function loadMapPrefs() {
     mapBonusOnly = !!p.bonusOnly;
     mapBarbsOnly = !!p.barbsOnly;
     mapMineSeeded = !!p.mineSeeded;
+    if (p.incomingThresholds) ['yellow','orange','red'].forEach(k => {
+      const n = parseInt(p.incomingThresholds[k]);
+      if (Number.isFinite(n) && n >= 1) mapIncomingThresholds[k] = n;
+    });
     if (Array.isArray(p.groups)) mapGroups = p.groups.filter(g => g && g.color).map(g => ({
       id: String(g.id || ''), name: String(g.name || ''), color: String(g.color),
       coords: Array.isArray(g.coords) ? g.coords.map(String) : [],
@@ -53,7 +106,7 @@ function loadMapPrefs() {
 function saveMapPrefs() {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ bonusOnly: mapBonusOnly, barbsOnly: mapBarbsOnly, mineSeeded: mapMineSeeded, groups: mapGroups }));
+    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ bonusOnly: mapBonusOnly, barbsOnly: mapBarbsOnly, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds }));
   } catch (e) { /* ignore quota/serialization errors */ }
 }
 
@@ -235,6 +288,25 @@ function renderMapOffscreen() {
     }
   }
   mapOffCtx.globalAlpha = 1;
+  // Incoming-attack halos: a POST-PASS drawn OVER the village sprites/dots — the sprites are
+  // near-opaque so a glow underneath barely shows when zoomed in; on top, the semi-transparent
+  // gradient tints the village instead of hiding it. Iterate troopByCoord (the handful of
+  // loaded villages) rather than the whole world — this runs on every pan frame, so we must
+  // not add a second full villageDb scan. coordDb[coord] is the same village object the
+  // sprite loop / tooltip use, so isDimmed() behaves identically.
+  if (typeof troopByCoord !== 'undefined' && typeof coordDb !== 'undefined') {
+    const haloMargin = margin + MAP_INCOMING_COUNT_CAP;
+    for (const coord in troopByCoord) {
+      if ((troopByCoord[coord].incoming || 0) < 1) continue;
+      const v = coordDb[coord];
+      if (!v) continue;
+      const s = worldToScreen(v.x, v.y);
+      if (s.px < -haloMargin || s.py < -haloMargin || s.px > w + haloMargin || s.py > h + haloMargin) continue;
+      mapOffCtx.globalAlpha = isDimmed(v) ? MAP_DIM_ALPHA : 1;
+      drawIncomingHalo(mapOffCtx, s.px, s.py, troopByCoord[coord].incoming);
+    }
+    mapOffCtx.globalAlpha = 1;
+  }
   const count = document.getElementById('map-count');
   if (count) count.textContent = t('map_villages_shown')(villageDb.length);
 }
@@ -514,6 +586,23 @@ function syncMapToolbar() {
   if (cb) cb.checked = mapBonusOnly;
   const bb = document.getElementById('map-barbs-only');
   if (bb) bb.checked = mapBarbsOnly;
+  syncIncomingInputs();
+}
+
+// Reflect the persisted thresholds into the toolbar inputs (init + after normalization).
+function syncIncomingInputs() {
+  ['yellow','orange','red'].forEach(k => {
+    const el = document.getElementById('map-inc-' + k);
+    if (el) el.value = mapIncomingThresholds[k];
+  });
+}
+// Toolbar handler: validate (positive int), persist, re-render the halos.
+function setIncomingThreshold(which, val) {
+  const n = parseInt(val);
+  if (Number.isFinite(n) && n >= 1) mapIncomingThresholds[which] = n;
+  saveMapPrefs();
+  syncIncomingInputs(); // snap bad input back to the stored value
+  repaintMapData();
 }
 
 // ── Extract Coordinates: click villages to collect coords, then copy them ──

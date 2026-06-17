@@ -242,7 +242,15 @@ function villageTooltipHtml(coord) {
   const totalPts = playerPointsDb[v.playerId] || 0;
   const row = (label, val) =>
     `<div class="map-tt-row"><span class="map-tt-k">${label}</span><span class="map-tt-v">${val}</span></div>`;
-  let html = `<div class="map-tt-title">${esc(v.name)} <span class="map-tt-coord">${coord}</span> <span class="map-tt-cont">${continentOf(v.x, v.y)}</span></div>`;
+  let html = '';
+  // First row, only when this village has incoming attacks (from the loaded troop file's
+  // optional Incoming column). The name/coord/continent title still shows when there are none.
+  const inc = (typeof troopByCoord !== 'undefined' && troopByCoord[coord]) ? (troopByCoord[coord].incoming || 0) : 0;
+  if (inc >= 1) {
+    const tier = (typeof incomingTier === 'function' && incomingTier(inc)) || 'red';
+    html += `<div class="map-tt-incoming map-tt-inc-${tier}"><img class="tw-ic" src="icons/map/att.webp" alt="">${t('map_tt_incoming')(inc)}</div>`;
+  }
+  html += `<div class="map-tt-title">${esc(v.name)} <span class="map-tt-coord">${coord}</span> <span class="map-tt-cont">${continentOf(v.x, v.y)}</span></div>`;
   html += row(t('map_tt_player'), esc(playerName));
   if (tag) html += row(t('map_tt_tribe'), esc(tag));
   html += row(t('map_tt_points'), v.points.toLocaleString() + ' ' + t('map_pts'));

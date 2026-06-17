@@ -12,6 +12,16 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.3.0', date: '2026-06-17',
+    en: [
+      `<b>🚨 Incoming attacks on the map.</b> If your uploaded tribe-troop file includes the new <b>“Incoming”</b> column (from the updated troop-counter script), each of your villages under attack now shows a coloured <b>heatmap halo</b> beneath it — visible without hovering. The halo <b>blooms with the attack count when zoomed out</b> (a village taking 80 hits glows far bigger than one taking 5) so you can spot hotspots from across the map, and tucks neatly under the village when zoomed in.`,
+      `<b>Colour thresholds you control.</b> Three boxes in the map toolbar set when the halo turns <b>yellow / orange / red</b> (default <b>5 / 10 / 20</b> incoming); anything from 1 up shows a small white halo. Hovering a village under attack now puts <b>“(N) Incoming Attacks”</b> as the very first line of its tooltip.`,
+    ],
+    es: [
+      `<b>🚨 Ataques entrantes en el mapa.</b> Si tu archivo de tropas incluye la nueva columna <b>“Incoming”</b> (del script contador de tropas actualizado), cada una de tus aldeas bajo ataque muestra ahora un <b>halo tipo mapa de calor</b> debajo — visible sin pasar el ratón. El halo <b>crece con el número de ataques al alejar el zoom</b> (una aldea con 80 ataques brilla mucho más que una con 5) para localizar los puntos calientes desde lejos, y se ajusta bajo la aldea al acercar el zoom.`,
+      `<b>Umbrales de color configurables.</b> Tres casillas en la barra del mapa fijan cuándo el halo se vuelve <b>amarillo / naranja / rojo</b> (por defecto <b>5 / 10 / 20</b> ataques); desde 1 se muestra un pequeño halo blanco. Al pasar el ratón por una aldea bajo ataque, ahora aparece <b>“(N) Ataques recibidos”</b> como primera línea de la información.`,
+    ],
+  },
   { ver: 'v3.2.0', date: '2026-06-17',
     en: [
       `<b>⚔ Plan Defense — keep front-line villages off the sender list automatically.</b> New <b>“Enemy Tribes”</b> box (next to Ignore Coordinates): list enemy tribe tags or names, one per line, and set a <b>“Distance from enemy tribes”</b> in fields. Any of your villages within that distance of <b>any village owned by those tribes</b> is held home — never used to send support (just like Ignore Coordinates, but resolved automatically from the map). Tribes match by <b>tag or full name</b>; the warnings box tells you if a tribe didn't match or if the village database isn't loaded.`,

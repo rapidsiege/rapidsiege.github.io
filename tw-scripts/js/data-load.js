@@ -132,8 +132,13 @@ function parseData(text, filename) {
     const player = cols[1] || 'Unknown';
     const units  = {};
     UNITS.forEach((u, i) => { units[u] = parseInt(cols[2 + i]) || 0; });
+    // Optional "Incoming" column (incoming attacks), read positionally from the slot right
+    // after the last unit. Read per-row (NOT from the header) so a multi-file upload that
+    // mixes files WITH and WITHOUT the column works in any order: a row missing the column
+    // lands on the trailing-comma empty string → parseInt → NaN → 0. See tribeInfo.js export.
+    const incoming = parseInt(cols[2 + UNITS.length]) || 0;
 
-    const vil = { coord, player, ...units };
+    const vil = { coord, player, ...units, incoming };
     applyVilDerived(vil); // offPow / defInf / defCav / type
     villages.push(vil);
     troopByCoord[coord] = vil; // index for the map hover/badges
