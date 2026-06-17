@@ -79,16 +79,16 @@ const MAP_PLAN_DEF_RGB = [255, 30, 190];  // neon pink — support targets (more
 
 // ── Plan travel lines (origin → objective) ───────────────────────────────────────
 // One line per planned order WITH a known origin: attacks (offensive, WHITE, origin→target)
-// and support packets (defensive, BLUE, sender→supported village). Snob trains / unassigned
+// and support packets (defensive, PINK, sender→supported village). Snob trains / unassigned
 // offs have no origin → skipped. All lines are drawn faint into the offscreen buffer so a full
 // plan stays readable; the lines incident to the hovered village are repainted bold+bright as a
-// cheap paintMap() overlay. Arrowhead sits at the TARGET/destination end. WHITE/BLUE are chosen
-// to read on BOTH the dark overview (#0b0802) and the grass terrain (literal grey/black would
-// vanish on the dark overview). The accent uses a dark "casing" stroke under the bright one so
+// cheap paintMap() overlay. Arrowhead sits at the TARGET/destination end. Line colours MATCH
+// their plan halos (green offensive objectives / pink support targets) so a route reads as the
+// same colour as the village it leads to. The accent uses a dark "casing" stroke under the bright one so
 // it pops even in a crowd of faint lines. Arrowheads scale down with on-screen line length so a
 // near-zero trip (zoomed fully out) doesn't become an arrowhead blob. Knobs tunable live.
-const MAP_PLAN_LINE_OFF_RGB = [255, 255, 255]; // white — offensive attack routes
-const MAP_PLAN_LINE_DEF_RGB = [70, 160, 255];  // blue — defensive support routes
+const MAP_PLAN_LINE_OFF_RGB = [57, 255, 20];   // neon green — match the offensive objective halos
+const MAP_PLAN_LINE_DEF_RGB = [255, 30, 190];  // neon pink — match the defensive support halos
 const MAP_PLAN_LINE_BASE_A  = 0.24;   // base alpha (faint)
 const MAP_PLAN_LINE_BASE_W  = 1;      // base width (px)
 const MAP_PLAN_LINE_HOVER_A = 0.98;   // accentuated alpha
