@@ -120,22 +120,31 @@ function parseData(text, filename) {
   troopByCoord = {};
   const lines = text.split('\n').map(l => l.trim()).filter(l => l);
 
+  // tribe_everything.txt (from tribeInfo.js) inserts a "Type" column (troops/defense/
+  // incoming) at index 2, shifting the unit columns right by one. Detect it per-row
+  // (cols[2] is a type label, not a unit count) so a multi-file upload can mix the
+  // everything format with the plain tribe info.txt format in any order. For now only
+  // "troops" rows are consumed; defense/incoming rows are skipped (planned feature).
+  const TYPE_LABELS = ['troops', 'defense', 'incoming'];
+
   for (const line of lines) {
     const cols = line.split(',').map(c => c.trim());
     if (!cols[0] || cols[0].toLowerCase() === 'coords') continue; // skip header
-    if (!cols[0].includes('|') && !cols[0].match(/^\d+\|\d+$/)) {
-      // Try to handle malformed coord like "002|7" — keep as-is
-    }
+
+    const rowType = (cols[2] || '').toLowerCase();
+    const hasType = TYPE_LABELS.includes(rowType);
+    if (hasType && rowType !== 'troops') continue; // defense/incoming: not supported yet
+    const base = hasType ? 3 : 2; // index of the first unit column
 
     const coord  = cols[0];
     const player = cols[1] || 'Unknown';
     const units  = {};
-    UNITS.forEach((u, i) => { units[u] = parseInt(cols[2 + i]) || 0; });
+    UNITS.forEach((u, i) => { units[u] = parseInt(cols[base + i]) || 0; });
     // Optional "Incoming" column (incoming attacks), read positionally from the slot right
     // after the last unit. Read per-row (NOT from the header) so a multi-file upload that
     // mixes files WITH and WITHOUT the column works in any order: a row missing the column
     // lands on the trailing-comma empty string → parseInt → NaN → 0. See tribeInfo.js export.
-    const incoming = parseInt(cols[2 + UNITS.length]) || 0;
+    const incoming = parseInt(cols[base + UNITS.length]) || 0;
 
     const vil = { coord, player, ...units, incoming };
     applyVilDerived(vil); // offPow / defInf / defCav / type
