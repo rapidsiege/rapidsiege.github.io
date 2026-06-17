@@ -548,12 +548,18 @@
     <label data-i18n="lbl_def_max_dist">Def max distance:</label>
     <input type="number" id="plan-def-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited">
     <button class="btn btn-ghost btn-sm" onclick="toggleDefIgnore()" data-i18n="btn_ignore_coords">🚫 Ignore Coordinates</button>
-    <span style="font-size:12px;color:#5a3a18;" data-i18n="defplan_note">Support is intra-tribe only. Bigger defenders send more; each player's troops are spread evenly across their villages.</span>
+    <label data-i18n="lbl_enemy_dist">Distance from enemy tribes:</label>
+    <input type="number" id="plan-def-enemy-dist" value="0" min="0" style="width:70px;" title="0 = off" oninput="updDefEnemyDist()">
+    <button class="btn btn-ghost btn-sm" onclick="toggleDefEnemy()" data-i18n="btn_enemy_tribes">⚔ Enemy Tribes</button>
     <button class="btn btn-primary btn-sm" onclick="generateDefPlan()" data-i18n="btn_def_generate">🛡 Generate Defense</button>
   </div>
   <div id="dp-ignore-wrap" style="display:none;margin-top:10px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="def_ignore_hint">Paste coordinates (one per line) that must keep their defense at home — front-line villages near the enemy. These are never used as senders.</div>
     <textarea id="dp-ignore-input" style="width:100%;height:80px;background:#120d03;border:1px solid #3a2808;color:#d4b483;font-family:'Consolas','Courier New',monospace;font-size:12px;padding:8px 10px;border-radius:4px;resize:vertical;" placeholder="500|500&#10;501|499" oninput="updDefIgnore()"></textarea>
+  </div>
+  <div id="dp-enemy-wrap" style="display:none;margin-top:10px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="def_enemy_hint">Enter enemy tribe tags or names (one per line). Any village within the distance above of ANY village owned by these tribes is held home — never used as a sender. Requires the village database.</div>
+    <textarea id="dp-enemy-input" style="width:100%;height:80px;background:#120d03;border:1px solid #3a2808;color:#d4b483;font-family:'Consolas','Courier New',monospace;font-size:12px;padding:8px 10px;border-radius:4px;resize:vertical;" placeholder="WC&#10;World Conquerors" oninput="updDefEnemy()"></textarea>
   </div>
   <div id="defplan-warnings" style="margin-top:12px;"></div>
   <div id="defplan-summary" style="font-size:12px;color:#806030;margin:10px 0;"></div>
@@ -577,6 +583,7 @@
       <tbody id="defplan-tbody"></tbody>
     </table>
   </div>
+  <p style="font-size:12px;color:#5a3a18;margin-top:12px;" data-i18n="defplan_note">Intra-tribe support only, from villages with ≥4,000 def pop. Bigger defenders send more; troops are spread evenly across a player's villages, ≥400 pop per order.</p>
 </div>
 
 <!-- ═══════════════════════════ DATABASE ═══════════════════════════ -->
@@ -730,7 +737,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.1.0 &nbsp;·&nbsp; 2026-06-17</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.2.0 &nbsp;·&nbsp; 2026-06-17</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

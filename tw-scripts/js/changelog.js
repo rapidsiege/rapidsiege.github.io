@@ -12,6 +12,16 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.2.0', date: '2026-06-17',
+    en: [
+      `<b>⚔ Plan Defense — keep front-line villages off the sender list automatically.</b> New <b>“Enemy Tribes”</b> box (next to Ignore Coordinates): list enemy tribe tags or names, one per line, and set a <b>“Distance from enemy tribes”</b> in fields. Any of your villages within that distance of <b>any village owned by those tribes</b> is held home — never used to send support (just like Ignore Coordinates, but resolved automatically from the map). Tribes match by <b>tag or full name</b>; the warnings box tells you if a tribe didn't match or if the village database isn't loaded.`,
+      `<b>Tidy-up:</b> the “intra-tribe support / ≥4,000 def pop / spread evenly” explanation now sits at the bottom of the Plan Defense tab instead of crowding the controls row.`,
+    ],
+    es: [
+      `<b>⚔ Planear Defensa — mantén las aldeas de primera línea fuera de la lista de remitentes automáticamente.</b> Nueva casilla <b>“Tribus Enemigas”</b> (junto a Ignorar Coordenadas): lista tags o nombres de tribus enemigas, uno por línea, y fija una <b>“Distancia de tribus enemigas”</b> en campos. Cualquiera de tus aldeas dentro de esa distancia de <b>cualquier aldea de esas tribus</b> se queda en casa — nunca se usa para enviar apoyo (igual que Ignorar Coordenadas, pero resuelto automáticamente desde el mapa). Las tribus coinciden por <b>tag o nombre completo</b>; el cuadro de avisos te indica si una tribu no coincidió o si la base de datos de aldeas no está cargada.`,
+      `<b>Orden:</b> la explicación de “apoyo dentro de la tribu / ≥4.000 pob. def. / reparto equitativo” ahora está al final de la pestaña Planear Defensa en vez de saturar la fila de controles.`,
+    ],
+  },
   { ver: 'v3.1.0', date: '2026-06-17',
     en: [
       `<b>👑 Per-player plan — nobles-needed lines now show the arrival time.</b> When a player is assigned a noble train but doesn't own the nobles yet, their <b>“Prepare Snob Train”</b> line in the per-player export now carries the same <b>arrival window</b> as the forum plan, so they know exactly when the train has to land.`,

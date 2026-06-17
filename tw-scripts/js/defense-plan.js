@@ -68,6 +68,57 @@ function toggleDefIgnore() {
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
+// ── Enemy Tribes: bar senders too close to a hostile tribe's villages ──
+// The "Enemy Tribes" textarea holds tribe tags/names (one per line); "Distance from enemy
+// tribes" is a field radius. A sender within that radius of ANY village owned by ANY listed
+// tribe is held home (front-line), exactly like an Ignore coordinate. Needs the world DB.
+function parseDefEnemySet() {
+  const set = new Set();
+  for (const line of String(defEnemyTribes || '').split('\n')) {
+    const s = line.trim().toLowerCase();
+    if (s) set.add(s);
+  }
+  return set;
+}
+function updDefEnemy() {
+  const el = document.getElementById('dp-enemy-input');
+  defEnemyTribes = el ? el.value : '';
+  saveDefensive();
+}
+function updDefEnemyDist() {
+  const el = document.getElementById('plan-def-enemy-dist');
+  defEnemyDist = el ? Math.max(0, parseInt(el.value, 10) || 0) : 0;
+  saveDefensive();
+}
+function toggleDefEnemy() {
+  const el = document.getElementById('dp-enemy-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+// {x,y} of every village owned by a tribe in `enemySet` (matched on TAG or NAME, case-
+// insensitive). Empty when the DB isn't loaded or nothing matches.
+function enemyTribeVillageCoords(enemySet) {
+  const coords = [];
+  if (!enemySet.size || !villageDb.length) return coords;
+  for (const v of villageDb) {
+    const a = allyDb[playerAllyDb[v.playerId]];
+    if (!a) continue;
+    if (enemySet.has(String(a.tag || '').toLowerCase()) || enemySet.has(String(a.name || '').toLowerCase()))
+      coords.push({ x: v.x, y: v.y });
+  }
+  return coords;
+}
+// The set of tribe tags+names (lowercased) the DB knows — to flag unresolved Enemy Tribes entries.
+function knownTribeTokens() {
+  const set = new Set();
+  for (const id in allyDb) {
+    const a = allyDb[id];
+    if (a.tag)  set.add(String(a.tag).toLowerCase());
+    if (a.name) set.add(String(a.name).toLowerCase());
+  }
+  return set;
+}
+
 // Slowest base travel-min among the unit types present in a packet (a mixed def bundle
 // marches at its slowest unit; e.g. spear+heavy → spear pace). Empty → 0.
 function defPacketBaseMin(units) {
@@ -104,18 +155,35 @@ function generateDefPlan() {
   const minDist = parseFloat((document.getElementById('plan-def-min-dist') || {}).value) || 0;
   const maxDist = parseFloat((document.getElementById('plan-def-max-dist') || {}).value) || 0;
   const ignore  = parseDefIgnoreSet();
+  const enemyDist = parseFloat((document.getElementById('plan-def-enemy-dist') || {}).value) || 0;
+  const enemySet  = parseDefEnemySet();
 
   defPlanRows = []; defPlanWarnings = [];
 
-  // Senders: our troop villages with a parseable coord, not on the ignore list, holding
-  // at least DEF_SENDER_MIN_POP farm pop in defensive troops (small garrisons are left
-  // alone). cap = def farm-pop. Ignored / sub-threshold villages are excluded here so
-  // they inflate neither the candidate pool NOR a player's capacity weight.
+  // ── Enemy Tribes proximity bar. Needs the world DB to locate hostile villages; without
+  // it (or with a 0 distance) the filter is a no-op — warn so it doesn't fail silently. ──
+  const enemyCoords = enemyDist > 0 ? enemyTribeVillageCoords(enemySet) : [];
+  if (enemySet.size) {
+    if (enemyDist <= 0)            defPlanWarnings.push(t('warn_def_enemy_no_dist'));
+    else if (!villageDb.length)   defPlanWarnings.push(t('warn_def_enemy_no_db'));
+    else {
+      const known = knownTribeTokens();
+      const unresolved = [...enemySet].filter(x => !known.has(x));
+      if (unresolved.length) defPlanWarnings.push(t('warn_def_enemy_unresolved')(unresolved.join(', ')));
+    }
+  }
+  const nearEnemy = s => enemyCoords.length > 0 && enemyCoords.some(e => distXY(s.c, e) <= enemyDist);
+
+  // Senders: our troop villages with a parseable coord, not on the ignore list, not within
+  // the enemy-tribe radius, holding at least DEF_SENDER_MIN_POP farm pop in defensive troops
+  // (small garrisons are left alone). cap = def farm-pop. Ignored / enemy-adjacent / sub-
+  // threshold villages are excluded here so they inflate neither the candidate pool NOR a
+  // player's capacity weight.
   const senders = villages.map(v => ({
     v, c: parseCoordStr(v.coord), tag: dbTribeAt(v.coord),
     stock: { spear: v.spear || 0, sword: v.sword || 0, spy: v.spy || 0, heavy: v.heavy || 0 },
     cap: defPop(v),
-  })).filter(s => s.c && !ignore.has(s.v.coord) && s.cap >= DEF_SENDER_MIN_POP);
+  })).filter(s => s.c && !ignore.has(s.v.coord) && !nearEnemy(s) && s.cap >= DEF_SENDER_MIN_POP);
 
   const capByPlayer = {};
   for (const s of senders) capByPlayer[s.v.player] = (capByPlayer[s.v.player] || 0) + s.cap;

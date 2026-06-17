@@ -15,6 +15,8 @@ const DEF_OBJ_UNITS = ['spear', 'sword', 'spy', 'heavy'];
 let dtCfg            = { defSpear: 0, defSword: 0, defSpy: 0, defHeavy: 0 }; // default objectives for new targets
 let defTargets       = []; // [{id, coord, defender, tribe, spear, sword, spy, heavy, arriveDate, arriveTime}]
 let defIgnore        = ''; // raw "Ignore Coordinates" textarea (Plan Defense) — sender villages held home
+let defEnemyTribes   = ''; // raw "Enemy Tribes" textarea (Plan Defense) — one tribe tag/name per line
+let defEnemyDist     = 0;  // "Distance from enemy tribes" (fields); 0 = filter off
 let defPlanRows      = []; // generated support assignments (Plan Defense)
 let defPlanWarnings  = [];
 let dtNextId         = 1;
@@ -25,7 +27,8 @@ function defPop(v) { return DEF_OBJ_UNITS.reduce((s, u) => s + (v[u] || 0) * POP
 
 function saveDefensive() {
   localStorage.setItem(DT_STORE_KEY, JSON.stringify({
-    cfg: dtCfg, targets: defTargets, ignore: defIgnore, plan: defPlanRows, warnings: defPlanWarnings, nextId: dtNextId,
+    cfg: dtCfg, targets: defTargets, ignore: defIgnore, enemyTribes: defEnemyTribes, enemyDist: defEnemyDist,
+    plan: defPlanRows, warnings: defPlanWarnings, nextId: dtNextId,
   }));
 }
 
@@ -36,6 +39,8 @@ function loadDefensive() {
       dtCfg           = { ...dtCfg, ...(d.cfg || {}) };
       defTargets      = d.targets || [];
       defIgnore       = typeof d.ignore === 'string' ? d.ignore : '';
+      defEnemyTribes  = typeof d.enemyTribes === 'string' ? d.enemyTribes : '';
+      defEnemyDist    = Math.max(0, parseInt(d.enemyDist, 10) || 0);
       defPlanRows     = d.plan || [];
       defPlanWarnings = d.warnings || [];
       dtNextId        = d.nextId || (Math.max(0, ...defTargets.map(x => x.id)) + 1);
@@ -49,6 +54,9 @@ function loadDefensive() {
   setVal('dt-def-heavy', dtCfg.defHeavy ?? 0);
   const ign = document.getElementById('dp-ignore-input');
   if (ign) ign.value = defIgnore;
+  const enm = document.getElementById('dp-enemy-input');
+  if (enm) enm.value = defEnemyTribes;
+  setVal('plan-def-enemy-dist', defEnemyDist || 0);
 }
 
 function updDTCfgInt(k, v) { dtCfg[k] = Math.max(0, parseInt(v, 10) || 0); saveDefensive(); }
