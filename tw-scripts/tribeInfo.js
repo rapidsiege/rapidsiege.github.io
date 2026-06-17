@@ -161,6 +161,9 @@ function readData() {
         for (k = 0; k < unitsList.length; k++) {
             data = data + unitsList[k] + ",";
         }
+        if (mode == "members_troops") {
+            data = data + "Incoming,";
+        }
         players = getPlayerDict();
         data = data + "\n";
         i = 0;
@@ -192,6 +195,12 @@ function readData() {
                 if (mode == "members_defense") {
                     step = 2;
                 }
+                // The "incoming attacks" column (unit/att.webp) only appears when the
+                // member shares incoming attacks. When absent the table ends one column
+                // earlier on "active orders" (icons/commands_outgoing.webp), so the last
+                // <td> is NOT incoming. Detect the column from this player's header row
+                // (rows[1]) so we never mistake active-orders for incoming.
+                let hasIncoming = rows[1] && rows[1].indexOf("unit/att.webp") !== -1;
                 for (j = 2; j + step < rows.length; j = j + step) {
                     villageData = {};
 
@@ -201,6 +210,15 @@ function readData() {
                     units = rows[j].split(/<td class="">|<td class="hidden">/g);
                     for (k = 1; k < units.length; k++) {
                         villageData[unitsList[k - 1]] = units[k].split("</td>")[0].replace(/ /g, "").replace(/\n/g, "").replace(/<spanclass="grey">\.<\/span>/g, "");
+                    }
+                    if (mode == "members_troops") {
+                        // Incoming attacks = the last <td> in the row, but only when the
+                        // member shares incoming (att.webp column present). Otherwise that
+                        // last cell is "active orders" — leave Incoming blank. Same markup
+                        // as the unit cells; final tag-strip guards against a link wrapper.
+                        villageData["Incoming"] = hasIncoming
+                            ? units[units.length - 1].split("</td>")[0].replace(/ /g, "").replace(/\n/g, "").replace(/<spanclass="grey">\.<\/span>/g, "").replace(/<[^>]*>/g, "")
+                            : "";
                     }
                     filtered = true; //filtered==true ok, ==false hide
                     for (key in filtres) {
@@ -222,6 +240,9 @@ function readData() {
                         data = data + players[playerInfoList[i].playerId] + ",";
                         for (k = 0; k < unitsList.length; k++) {
                             data = data + villageData[unitsList[k]] + ",";
+                        }
+                        if (mode == "members_troops") {
+                            data = data + villageData["Incoming"] + ",";
                         }
                         data = data + "\n";
                     }
