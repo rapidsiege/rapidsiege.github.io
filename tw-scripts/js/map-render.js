@@ -415,6 +415,7 @@ function renderMapOffscreen() {
       if ((troopByCoord[coord].incoming || 0) < 1) continue;
       const v = coordDb[coord];
       if (!v) continue;
+      if (isBarbarian(coord)) continue; // barbarian/abandoned villages: don't flag their incoming
       const s = worldToScreen(v.x, v.y);
       if (s.px < -haloMargin || s.py < -haloMargin || s.px > w + haloMargin || s.py > h + haloMargin) continue;
       mapOffCtx.globalAlpha = isDimmed(v) ? MAP_DIM_ALPHA : 1;

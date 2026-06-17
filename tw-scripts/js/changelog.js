@@ -15,9 +15,11 @@ const CHANGELOG = [
   { ver: 'v3.6.0', date: '2026-06-17',
     en: [
       `<b>📥 Reads the new combined troop export.</b> The troop-file box now also accepts <b>tribe_everything.txt</b> (the combined export from the troop-counter script), reading its <b>troops</b> rows. The usual <b>tribe info.txt</b> still loads exactly as before — with or without the incoming-attacks column — and you can even drop both kinds of file together. (Defense and incoming-troop rows are recognised but not used yet — coming soon.)`,
+      `<b>🗺️ Barbarian villages no longer flagged for incoming attacks on the map.</b> The incoming-attack halo is now skipped on barbarian / abandoned villages.`,
     ],
     es: [
       `<b>📥 Lee el nuevo export combinado de tropas.</b> La caja de archivo de tropas ahora también acepta <b>tribe_everything.txt</b> (el export combinado del script contador de tropas), leyendo sus filas de <b>tropas</b>. El <b>tribe info.txt</b> de siempre se sigue cargando igual que antes — con o sin la columna de ataques entrantes — e incluso puedes soltar ambos tipos de archivo juntos. (Las filas de defensa y de tropas entrantes se reconocen pero aún no se usan — próximamente.)`,
+      `<b>🗺️ Las aldeas bárbaras ya no se marcan por ataques entrantes en el mapa.</b> El halo de ataques entrantes ahora se omite en las aldeas bárbaras / abandonadas.`,
     ],
   },
   { ver: 'v3.5.0', date: '2026-06-17',
