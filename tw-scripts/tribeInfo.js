@@ -162,7 +162,7 @@ function readData() {
             data = data + unitsList[k] + ",";
         }
         if (mode == "members_troops") {
-            data = data + "Incoming,";
+            data = data + "IncomingAttacks,";
         }
         players = getPlayerDict();
         data = data + "\n";
