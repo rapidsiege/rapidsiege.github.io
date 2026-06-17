@@ -315,6 +315,21 @@ function planAttackCountByCoord() {
   return out;
 }
 
+// Planned-attack travel segments for the map: one entry per attack order that has a KNOWN
+// origin village. Snob trains and still-unassigned offs carry no prescribed origin (no
+// srcCoord) → skipped (they show as a halo + tooltip only, never a line). Degenerate
+// src===tgt rows are dropped too. Endpoints stay as 'x|y' coords; the render layer resolves
+// them to pixels via worldToScreen. Pure read of planRows (harness-tested).
+function plannedAttackLines() {
+  if (typeof planRows === 'undefined') return [];
+  const out = [];
+  for (const r of planRows) {
+    if (!r.srcCoord || !r.tCoord || r.srcCoord === r.tCoord) continue;
+    out.push({ from: r.srcCoord, to: r.tCoord, type: r.type, player: r.srcPlayer || null });
+  }
+  return out;
+}
+
 // Planned support sent to `coord` (from Plan Defense). null when none. count = number of
 // support packets; units = summed per-unit totals across those packets.
 function plannedSupportFor(coord) {
@@ -331,6 +346,20 @@ function defSupportCountByCoord() {
   const out = {};
   if (typeof defPlanRows === 'undefined') return out;
   for (const r of defPlanRows) out[r.tCoord] = (out[r.tCoord] || 0) + 1;
+  return out;
+}
+
+// Planned-support travel segments for the map: one entry per support packet (sender village →
+// supported village). Every defPlanRows entry carries a srcCoord, so none are skipped except
+// degenerate src===tgt rows. Mirror of plannedAttackLines for the defensive plan. Pure read of
+// defPlanRows (harness-tested); endpoints stay 'x|y' coords, resolved to pixels by the renderer.
+function plannedSupportLines() {
+  if (typeof defPlanRows === 'undefined') return [];
+  const out = [];
+  for (const r of defPlanRows) {
+    if (!r.srcCoord || !r.tCoord || r.srcCoord === r.tCoord) continue;
+    out.push({ from: r.srcCoord, to: r.tCoord, player: r.srcPlayer || null });
+  }
   return out;
 }
 

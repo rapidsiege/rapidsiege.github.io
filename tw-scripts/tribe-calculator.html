@@ -140,7 +140,11 @@
     <span class="map-tb-sep"></span>
     <label class="map-tb-check"><input type="checkbox" id="map-show-offplan" checked onchange="setMapShowOffPlan(this.checked)"><span data-i18n="map_show_offplan">Show Offensive Plan</span></label>
     <span class="map-tb-sep"></span>
+    <label class="map-tb-check"><input type="checkbox" id="map-show-offlines" onchange="setMapShowOffLines(this.checked)"><span data-i18n="map_show_offlines">Show Attack Lines</span></label>
+    <span class="map-tb-sep"></span>
     <label class="map-tb-check"><input type="checkbox" id="map-show-defplan" checked onchange="setMapShowDefPlan(this.checked)"><span data-i18n="map_show_defplan">Show Defensive Plan</span></label>
+    <span class="map-tb-sep"></span>
+    <label class="map-tb-check"><input type="checkbox" id="map-show-deflines" onchange="setMapShowDefLines(this.checked)"><span data-i18n="map_show_deflines">Show Support Lines</span></label>
     <span style="font-size:12px;color:#5a3a18;" data-i18n="map_hint">Drag to pan · scroll to zoom · hover for details</span>
   </div>
   <div id="map-wrap">
@@ -697,7 +701,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.4.1 &nbsp;·&nbsp; 2026-06-17</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.5.0 &nbsp;·&nbsp; 2026-06-17</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

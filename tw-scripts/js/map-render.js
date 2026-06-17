@@ -19,6 +19,8 @@ let mapBarbsOnly = false;            // dim player (non-barbarian) villages when
 let mapShowIncoming = true;          // toggle incoming-attack halos (default on)
 let mapShowOffPlan  = true;          // toggle Plan-Offensive objective halos (default on)
 let mapShowDefPlan  = true;          // toggle Plan-Defense support halos (default on)
+let mapShowOffLines = false;         // toggle Plan-Offensive attack-travel lines (default OFF)
+let mapShowDefLines = false;         // toggle Plan-Defense support-travel lines (default OFF)
 let mapExtractMode = false;          // "Extract Coordinates": click villages to collect coords
 let mapSelection = new Set();        // selected 'x|y' coords (rings on the map)
 let mapPrefsLoaded = false;
@@ -74,6 +76,76 @@ function incomingHaloRadius(n, scale) {
 // support targets. Gated by the Show Offensive/Defensive Plan toolbar toggles.
 const MAP_PLAN_OFF_RGB = [57, 255, 20];   // neon green — offensive objectives
 const MAP_PLAN_DEF_RGB = [255, 30, 190];  // neon pink — support targets (more visible than dark blue)
+
+// ── Plan travel lines (origin → objective) ───────────────────────────────────────
+// One line per planned order WITH a known origin: attacks (offensive, WHITE, origin→target)
+// and support packets (defensive, BLUE, sender→supported village). Snob trains / unassigned
+// offs have no origin → skipped. All lines are drawn faint into the offscreen buffer so a full
+// plan stays readable; the lines incident to the hovered village are repainted bold+bright as a
+// cheap paintMap() overlay. Arrowhead sits at the TARGET/destination end. WHITE/BLUE are chosen
+// to read on BOTH the dark overview (#0b0802) and the grass terrain (literal grey/black would
+// vanish on the dark overview). The accent uses a dark "casing" stroke under the bright one so
+// it pops even in a crowd of faint lines. Arrowheads scale down with on-screen line length so a
+// near-zero trip (zoomed fully out) doesn't become an arrowhead blob. Knobs tunable live.
+const MAP_PLAN_LINE_OFF_RGB = [255, 255, 255]; // white — offensive attack routes
+const MAP_PLAN_LINE_DEF_RGB = [70, 160, 255];  // blue — defensive support routes
+const MAP_PLAN_LINE_BASE_A  = 0.24;   // base alpha (faint)
+const MAP_PLAN_LINE_BASE_W  = 1;      // base width (px)
+const MAP_PLAN_LINE_HOVER_A = 0.98;   // accentuated alpha
+const MAP_PLAN_LINE_HOVER_W = 2.6;    // accentuated width (px)
+const MAP_PLAN_LINE_CASE_W  = 4.6;    // accent dark-casing width (px, under the bright stroke)
+const MAP_PLAN_ARROW_LEN    = 9;      // arrowhead length cap (px)
+const MAP_PLAN_ARROW_W      = 5;      // arrowhead half-width cap (px)
+
+// Draw one travel line src→tgt in colour `rgb` with an arrowhead at the target. `accent` swaps
+// the faint base look for the bold cased+bright hover look. Reads coordDb directly (same village
+// objects the sprite/halo passes use); skips silently if either endpoint is unknown.
+function drawPlanLine(ctx, fromCoord, toCoord, accent, rgb) {
+  const sv = coordDb[fromCoord], tv = coordDb[toCoord];
+  if (!sv || !tv) return;
+  const a = worldToScreen(sv.x, sv.y), b = worldToScreen(tv.x, tv.y);
+  const [cr, cg, cb] = rgb;
+  const alpha = accent ? MAP_PLAN_LINE_HOVER_A : MAP_PLAN_LINE_BASE_A;
+  const width = accent ? MAP_PLAN_LINE_HOVER_W : MAP_PLAN_LINE_BASE_W;
+  ctx.lineCap = 'round';
+  if (accent) { // dark casing first so the bright line separates from neighbouring faint lines
+    ctx.strokeStyle = `rgba(0,0,0,0.7)`;
+    ctx.lineWidth = MAP_PLAN_LINE_CASE_W;
+    ctx.beginPath(); ctx.moveTo(a.px, a.py); ctx.lineTo(b.px, b.py); ctx.stroke();
+  }
+  ctx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`;
+  ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(a.px, a.py); ctx.lineTo(b.px, b.py); ctx.stroke();
+  // Arrowhead at the target, scaled to the trip so tiny lines get tiny heads (none if degenerate).
+  const dx = b.px - a.px, dy = b.py - a.py;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 2) return;
+  const al = Math.min(MAP_PLAN_ARROW_LEN, len * 0.5);
+  const aw = MAP_PLAN_ARROW_W * (al / MAP_PLAN_ARROW_LEN);
+  const ang = Math.atan2(dy, dx);
+  ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha})`;
+  ctx.beginPath();
+  ctx.moveTo(b.px, b.py);
+  ctx.lineTo(b.px - al * Math.cos(ang) + aw * Math.sin(ang), b.py - al * Math.sin(ang) - aw * Math.cos(ang));
+  ctx.lineTo(b.px - al * Math.cos(ang) - aw * Math.sin(ang), b.py - al * Math.sin(ang) + aw * Math.cos(ang));
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Faint base pass for a set of {from,to} travel segments in colour `rgb`. Culls a line only
+// when BOTH endpoints sit beyond the same edge (a line with one endpoint on-screen still
+// draws). Shared by the offensive (white) and defensive (blue) line passes.
+function drawPlanLinePass(lines, rgb, w, h, m) {
+  for (const ln of lines) {
+    const sv = coordDb[ln.from], tv = coordDb[ln.to];
+    if (!sv || !tv) continue;
+    const a = worldToScreen(sv.x, sv.y), b = worldToScreen(tv.x, tv.y);
+    if ((a.px < -m && b.px < -m) || (a.px > w + m && b.px > w + m) ||
+        (a.py < -m && b.py < -m) || (a.py > h + m && b.py > h + m)) continue;
+    drawPlanLine(mapOffCtx, ln.from, ln.to, false, rgb);
+  }
+}
+
 function drawPlanHalo(ctx, cx, cy, count, rgb) {
   const [r0, g0, b0] = rgb;
   const r = incomingHaloRadius(count, mapView.scale);
@@ -126,6 +198,9 @@ function loadMapPrefs() {
     mapShowIncoming = p.showIncoming !== false;
     mapShowOffPlan  = p.showOffPlan  !== false;
     mapShowDefPlan  = p.showDefPlan  !== false;
+    // Attack/Support lines default OFF: absent key → false (only ON when explicitly saved true).
+    mapShowOffLines = p.showOffLines === true;
+    mapShowDefLines = p.showDefLines === true;
     mapMineSeeded = !!p.mineSeeded;
     if (p.incomingThresholds) ['yellow','orange','red'].forEach(k => {
       const n = parseInt(p.incomingThresholds[k]);
@@ -143,7 +218,7 @@ function loadMapPrefs() {
 function saveMapPrefs() {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ showIncoming: mapShowIncoming, showOffPlan: mapShowOffPlan, showDefPlan: mapShowDefPlan, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds }));
+    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ showIncoming: mapShowIncoming, showOffPlan: mapShowOffPlan, showDefPlan: mapShowDefPlan, showOffLines: mapShowOffLines, showDefLines: mapShowDefLines, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds }));
   } catch (e) { /* ignore quota/serialization errors */ }
 }
 
@@ -354,6 +429,16 @@ function renderMapOffscreen() {
     drawPlanHaloPass(planAttackCountByCoord(), MAP_PLAN_OFF_RGB, w, h, margin);
   if (mapShowDefPlan && typeof coordDb !== 'undefined' && typeof defPlanRows !== 'undefined' && defPlanRows.length)
     drawPlanHaloPass(defSupportCountByCoord(), MAP_PLAN_DEF_RGB, w, h, margin);
+  // Plan attack-travel lines, faint base pass — drawn OVER the green halos so origins→targets
+  // read on top of the objective glow. globalAlpha is 1 here (reset by every prior pass); the
+  // line look comes purely from the rgba stroke. Cull a line only when BOTH ends sit beyond the
+  // same edge (a line with one endpoint on-screen still draws). The hovered village's lines are
+  // accentuated separately in paintMap() (cheap per-hover overlay), not here.
+  if (mapShowOffLines && typeof coordDb !== 'undefined' && typeof planRows !== 'undefined' && planRows.length)
+    drawPlanLinePass(plannedAttackLines(), MAP_PLAN_LINE_OFF_RGB, w, h, margin);
+  // Plan-Defense support-travel lines (blue), same faint base pass, gated by its own toggle.
+  if (mapShowDefLines && typeof coordDb !== 'undefined' && typeof defPlanRows !== 'undefined' && defPlanRows.length)
+    drawPlanLinePass(plannedSupportLines(), MAP_PLAN_LINE_DEF_RGB, w, h, margin);
   const count = document.getElementById('map-count');
   if (count) count.textContent = t('map_villages_shown')(villageDb.length);
 }
@@ -479,6 +564,24 @@ function paintMap() {
   if (barbFinderActive) {
     for (const r of barbResults) drawMapRing(r.coord, w, h, '#ff9d2e', 2);
     for (const c of barbSnobCoords) drawMapRing(c, w, h, '#3f7fe0', 2.5);
+  }
+  // Accentuate the attack lines incident to the hovered village (cased bold+bright), over the
+  // faint base lines already in the offscreen blit. Either endpoint matches → hovering a target
+  // lights up its incoming attacks, hovering an origin lights up where its attacks go. Same
+  // toggle + planRows gate as the base pass.
+  if (mapShowOffLines && mapHoverCoord && typeof coordDb !== 'undefined' &&
+      typeof planRows !== 'undefined' && planRows.length) {
+    for (const ln of plannedAttackLines()) {
+      if (ln.from !== mapHoverCoord && ln.to !== mapHoverCoord) continue;
+      drawPlanLine(mapCtx, ln.from, ln.to, true, MAP_PLAN_LINE_OFF_RGB);
+    }
+  }
+  if (mapShowDefLines && mapHoverCoord && typeof coordDb !== 'undefined' &&
+      typeof defPlanRows !== 'undefined' && defPlanRows.length) {
+    for (const ln of plannedSupportLines()) {
+      if (ln.from !== mapHoverCoord && ln.to !== mapHoverCoord) continue;
+      drawPlanLine(mapCtx, ln.from, ln.to, true, MAP_PLAN_LINE_DEF_RGB);
+    }
   }
   if (mapHoverCoord && coordDb[mapHoverCoord]) {
     const v = coordDb[mapHoverCoord];
@@ -620,6 +723,8 @@ function repaintMapData() { if (mapInited) { renderMapOffscreen(); paintMap(); }
 function setMapShowIncoming(on) { mapShowIncoming = !!on; saveMapPrefs(); repaintMapData(); }
 function setMapShowOffPlan(on)  { mapShowOffPlan  = !!on; saveMapPrefs(); repaintMapData(); }
 function setMapShowDefPlan(on)  { mapShowDefPlan  = !!on; saveMapPrefs(); repaintMapData(); }
+function setMapShowOffLines(on) { mapShowOffLines = !!on; saveMapPrefs(); repaintMapData(); }
+function setMapShowDefLines(on) { mapShowDefLines = !!on; saveMapPrefs(); repaintMapData(); }
 
 // Reflect persisted state into the toolbar controls (called after prefs load).
 function syncMapToolbar() {
@@ -629,6 +734,10 @@ function syncMapToolbar() {
   if (so) so.checked = mapShowOffPlan;
   const sd = document.getElementById('map-show-defplan');
   if (sd) sd.checked = mapShowDefPlan;
+  const sl = document.getElementById('map-show-offlines');
+  if (sl) sl.checked = mapShowOffLines;
+  const sdl = document.getElementById('map-show-deflines');
+  if (sdl) sdl.checked = mapShowDefLines;
   syncIncomingInputs();
 }
 

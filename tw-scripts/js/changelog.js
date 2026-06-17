@@ -12,6 +12,18 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.5.0', date: '2026-06-17',
+    en: [
+      `<b>➡️ Attack routes drawn on the map.</b> With a <b>Plan Offensive</b> generated, each attack with a known origin now draws a faint <b>white line from the sending village to its target</b>, arrow-tipped at the target — so you can see at a glance where every blow comes from. <b>Hover a village</b> and the lines touching it light up <b>bold and bright</b> (its incoming attacks if it's a target, or where its attacks go if it's a sender). Snob trains and still-unassigned attacks have no fixed origin, so they show no line.`,
+      `<b>🔵 Support routes too.</b> A <b>Plan Defense</b> now draws the same lines in <b>blue</b>, from each sending village to the village it reinforces — with the same hover highlight.`,
+      `<b>New “Show Attack Lines” / “Show Support Lines” toggles</b> in the map toolbar (both off by default) turn the routes on/off independently.`,
+    ],
+    es: [
+      `<b>➡️ Rutas de ataque dibujadas en el mapa.</b> Con un <b>Plan Ofensivo</b> generado, cada ataque con origen conocido dibuja ahora una <b>línea blanca tenue desde la aldea atacante hasta su objetivo</b>, con punta de flecha en el objetivo — para ver de un vistazo de dónde sale cada golpe. <b>Pasa el ratón por una aldea</b> y las líneas que la tocan se resaltan <b>en grueso y brillante</b> (sus ataques entrantes si es un objetivo, o adónde van sus ataques si es una atacante). Los trenes de noble y los ataques aún sin asignar no tienen origen fijo, así que no muestran línea.`,
+      `<b>🔵 También las rutas de apoyo.</b> Un <b>Plan Defensivo</b> dibuja ahora las mismas líneas en <b>azul</b>, desde cada aldea emisora hasta la aldea que refuerza — con el mismo resaltado al pasar el ratón.`,
+      `<b>Nuevos interruptores “Mostrar Líneas de Ataque” / “Mostrar Líneas de Apoyo”</b> en la barra del mapa (ambos desactivados por defecto) encienden/apagan las rutas de forma independiente.`,
+    ],
+  },
   { ver: 'v3.4.1', date: '2026-06-17',
     en: [
       `<b>🧹 Tidier tabs.</b> The old <b>“By Villages”</b> tab was removed — the <b>“Villages”</b> tab already showed everything it did and more, so it now carries the <b>Tier</b> column too (plus the in-place <b>✎ Edit</b> troops button) and has been renamed <b>“By Villages”</b>. The <b>🗺 Map</b> tab also moved up to sit right after Overview.`,
