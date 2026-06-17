@@ -153,6 +153,18 @@ function offTierBadge(tier) {
   return `<span class="badge ${cls}">${lbl}</span>`;
 }
 
+// Clear the Tribe Timings tab: this tab keeps no stored list (the table is derived live from
+// the target coord + filters), so "Clear All" empties the per-run inputs — target coord,
+// search, min-power and the arrival deadline — leaving the mode/speed settings. Confirms only
+// when a target is actually set. Re-renders → no target → empty table.
+function clearTimings() {
+  const coordEl = document.getElementById('target-coord');
+  if (coordEl && coordEl.value.trim() && !confirm(t('confirm_clear_timings'))) return;
+  ['target-coord', 'target-search', 'target-min-power', 'target-arrival-date', 'target-arrival-time']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  renderTargetTable();
+}
+
 function renderTargetTable() {
   const mode = document.getElementById('target-mode')?.value || 'off';
 

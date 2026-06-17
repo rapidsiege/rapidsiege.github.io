@@ -332,6 +332,14 @@ function generateDefPlan() {
 
 function delDefPlanRow(i) { defPlanRows.splice(i, 1); saveDefensive(); renderDefPlanTable(); }
 
+// Wipe the generated defensive plan (mirrors clearDefTargets). Confirms only when there's
+// a plan to lose; resets the same state generateDefPlan() rebuilds, then re-renders empty.
+function clearDefPlan() {
+  if (defPlanRows.length && !confirm(t('confirm_clear_def_plan'))) return;
+  defPlanRows = []; defPlanWarnings = [];
+  saveDefensive(); renderDefPlanTable();
+}
+
 // Compact per-row troop cell / BB fragment (only non-zero types, in objective order)
 function defUnitsCell(units) {
   return DEF_OBJ_UNITS.filter(u => (units[u] || 0) > 0)

@@ -605,6 +605,14 @@ function generatePlan() {
 
 function delPlanRow(i) { planRows.splice(i, 1); saveOffensive(); renderPlanTable(); }
 
+// Wipe the generated offensive plan (mirrors clearOffTargets). Confirms only when there's
+// a plan to lose; resets the same state generatePlan() rebuilds, then re-renders empty.
+function clearPlan() {
+  if (planRows.length && !confirm(t('confirm_clear_plan'))) return;
+  planRows = []; planWarnings = []; planReserved = [];
+  saveOffensive(); renderPlanTable();
+}
+
 function renderPlanTable() {
   // Warnings can be many; render them collapsed (count in the summary) so they
   // don't bury the plan table. Native <details> — no JS, works under file://.
