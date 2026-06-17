@@ -21,6 +21,16 @@ let mapShowOffPlan  = true;          // toggle Plan-Offensive objective halos (d
 let mapShowDefPlan  = true;          // toggle Plan-Defense support halos (default on)
 let mapShowOffLines = false;         // toggle Plan-Offensive attack-travel lines (default OFF)
 let mapShowDefLines = false;         // toggle Plan-Defense support-travel lines (default OFF)
+let mapShowSnobRes  = false;         // toggle snob-reserved (noble-launch) village halos (default OFF)
+let mapShowUnusedOff = false;        // toggle unused-off village halos (default OFF)
+let mapShowSupSenders = false;       // toggle halos on villages SENDING support (default OFF)
+let mapShowOffSenders = false;       // toggle halos on villages SENDING offs (default OFF)
+let mapShowDefVillagesOnly = false;  // fade the tribe's offensive villages (default OFF)
+let mapShowOffVillagesOnly = false;  // fade the tribe's defensive villages (default OFF)
+let mapShowBarbs = true;             // render barbarian villages (default ON)
+let mapShowTierComplete = true;      // off-tier filter: show Complete-off villages (default ON)
+let mapShowTierTq       = true;      // off-tier filter: show 3/4-off villages (default ON)
+let mapShowTierHalf     = true;      // off-tier filter: show 1/2-off villages (default ON)
 let mapExtractMode = false;          // "Extract Coordinates": click villages to collect coords
 let mapSelection = new Set();        // selected 'x|y' coords (rings on the map)
 let mapPrefsLoaded = false;
@@ -74,8 +84,33 @@ function incomingHaloRadius(n, scale) {
 // Same radial-glow + count-bloom model as incoming (reuses incomingHaloRadius), drawn as
 // post-passes OVER the village sprites: neon green over offensive objectives, dark blue over
 // support targets. Gated by the Show Offensive/Defensive Plan toolbar toggles.
-const MAP_PLAN_OFF_RGB = [57, 255, 20];   // neon green — offensive objectives
-const MAP_PLAN_DEF_RGB = [255, 30, 190];  // neon pink — support targets (more visible than dark blue)
+// ── User-configurable line/halo colours ("Config Colors") ────────────────────────
+// Every plan line/halo colour is editable from the Heatmap Config panel and persisted in the
+// map prefs. MAP_COLOR_DEFAULTS is the single source of truth (and the Reset target); mapColors
+// holds the live (possibly user-edited) hex values. Draw sites convert at the point of use via
+// mc(key) — no rgb cache to keep in sync. The incoming-heatmap tiers stay fixed (semantic scale,
+// and their colours are mirrored in CSS on the threshold inputs). Line defaults match their halo
+// defaults (off green / def pink) so the out-of-box look is unchanged, but each is its own key.
+const MAP_COLOR_DEFAULTS = {
+  offPlan:   '#39ff14', // neon green — offensive objective halos
+  defPlan:   '#ff1ebe', // neon pink — support target halos
+  offLine:   '#39ff14', // attack travel lines (match off halos)
+  defLine:   '#ff1ebe', // support travel lines (match def halos)
+  snobRes:   '#ffd300', // yellow — snob-reserved (noble-launch) villages
+  unusedOff: '#e61e1e', // red — offensive villages not committed by the plan
+  supSender: '#ffffff', // white — villages sending support
+  offSender: '#000000', // black — villages sending an off
+};
+let mapColors = { ...MAP_COLOR_DEFAULTS };
+// '#rrggbb' → [r,g,b]; null on anything malformed.
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex == null ? '' : hex).trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+// Resolve a colour key to a valid [r,g,b], falling back to the default if the live value is bad.
+function mc(key) { return hexToRgb(mapColors[key]) || hexToRgb(MAP_COLOR_DEFAULTS[key]) || [0, 0, 0]; }
 
 // ── Plan travel lines (origin → objective) ───────────────────────────────────────
 // One line per planned order WITH a known origin: attacks (offensive, WHITE, origin→target)
@@ -87,8 +122,6 @@ const MAP_PLAN_DEF_RGB = [255, 30, 190];  // neon pink — support targets (more
 // same colour as the village it leads to. The accent uses a dark "casing" stroke under the bright one so
 // it pops even in a crowd of faint lines. Arrowheads scale down with on-screen line length so a
 // near-zero trip (zoomed fully out) doesn't become an arrowhead blob. Knobs tunable live.
-const MAP_PLAN_LINE_OFF_RGB = [57, 255, 20];   // neon green — match the offensive objective halos
-const MAP_PLAN_LINE_DEF_RGB = [255, 30, 190];  // neon pink — match the defensive support halos
 const MAP_PLAN_LINE_BASE_A  = 0.24;   // base alpha (faint)
 const MAP_PLAN_LINE_BASE_W  = 1;      // base width (px)
 const MAP_PLAN_LINE_HOVER_A = 0.98;   // accentuated alpha
@@ -201,6 +234,22 @@ function loadMapPrefs() {
     // Attack/Support lines default OFF: absent key → false (only ON when explicitly saved true).
     mapShowOffLines = p.showOffLines === true;
     mapShowDefLines = p.showDefLines === true;
+    // Snob-reserved / unused-off / sender halos also default OFF.
+    mapShowSnobRes   = p.showSnobRes   === true;
+    mapShowUnusedOff = p.showUnusedOff === true;
+    mapShowSupSenders = p.showSupSenders === true;
+    mapShowOffSenders = p.showOffSenders === true;
+    mapShowDefVillagesOnly = p.showDefOnly === true;
+    mapShowOffVillagesOnly = p.showOffOnly === true;
+    mapShowBarbs = p.showBarbs !== false; // default ON
+    // Per-key colour load: keep a default for any missing/malformed entry (never NaN rgb).
+    mapColors = { ...MAP_COLOR_DEFAULTS };
+    if (p.colors && typeof p.colors === 'object')
+      for (const k in MAP_COLOR_DEFAULTS) if (hexToRgb(p.colors[k])) mapColors[k] = p.colors[k];
+    // Off-tier filters default ON (absent key → shown).
+    mapShowTierComplete = p.showTierComplete !== false;
+    mapShowTierTq       = p.showTierTq       !== false;
+    mapShowTierHalf     = p.showTierHalf     !== false;
     mapMineSeeded = !!p.mineSeeded;
     if (p.incomingThresholds) ['yellow','orange','red'].forEach(k => {
       const n = parseInt(p.incomingThresholds[k]);
@@ -218,7 +267,7 @@ function loadMapPrefs() {
 function saveMapPrefs() {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ showIncoming: mapShowIncoming, showOffPlan: mapShowOffPlan, showDefPlan: mapShowDefPlan, showOffLines: mapShowOffLines, showDefLines: mapShowDefLines, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds }));
+    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ showIncoming: mapShowIncoming, showOffPlan: mapShowOffPlan, showDefPlan: mapShowDefPlan, showOffLines: mapShowOffLines, showDefLines: mapShowDefLines, showSnobRes: mapShowSnobRes, showUnusedOff: mapShowUnusedOff, showSupSenders: mapShowSupSenders, showOffSenders: mapShowOffSenders, showDefOnly: mapShowDefVillagesOnly, showOffOnly: mapShowOffVillagesOnly, showBarbs: mapShowBarbs, showTierComplete: mapShowTierComplete, showTierTq: mapShowTierTq, showTierHalf: mapShowTierHalf, colors: mapColors, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds }));
   } catch (e) { /* ignore quota/serialization errors */ }
 }
 
@@ -239,6 +288,8 @@ function isDimmed(v) {
     const coord = v.x + '|' + v.y;
     if (!barbPlayerCoords.has(coord) && !barbVillageMatches(v, barbBonusMode, barbBonusType)) return true;
   }
+  if (offTierFiltered(v)) return true; // Heatmap Config off-tier filter (Complete / 3-4 / 1-2)
+  if (villageRoleFiltered(v)) return true; // Defensive-only / Offensive-only focus filters
   return false;
 }
 
@@ -381,6 +432,7 @@ function renderMapOffscreen() {
   const dw = mapView.scale, dh = dw * MAP_Y_RATIO; // one sprite = one (anisotropic) field
   const dot = mapDotRectSize(mapView.scale);       // dot-mode field rectangle (tiles edge-to-edge)
   for (const v of villageDb) {
+    if (!mapShowBarbs && (!v.playerId || v.playerId === '0')) continue; // "Show Barbs" off → hide barbarian villages
     const s = worldToScreen(v.x, v.y);
     if (s.px < -margin || s.py < -margin || s.px > w + margin || s.py > h + margin) continue; // cull
     mapOffCtx.globalAlpha = isDimmed(v) ? MAP_DIM_ALPHA : 1;
@@ -427,19 +479,32 @@ function renderMapOffscreen() {
   // each a post-pass like incoming, gated by its Show … toggle. Iterate the plan rows (a
   // handful of targets) → one halo per coord, NOT a second full villageDb scan.
   if (mapShowOffPlan && typeof coordDb !== 'undefined' && typeof planRows !== 'undefined' && planRows.length)
-    drawPlanHaloPass(planAttackCountByCoord(), MAP_PLAN_OFF_RGB, w, h, margin);
+    drawPlanHaloPass(planAttackCountByCoord(), mc('offPlan'), w, h, margin);
   if (mapShowDefPlan && typeof coordDb !== 'undefined' && typeof defPlanRows !== 'undefined' && defPlanRows.length)
-    drawPlanHaloPass(defSupportCountByCoord(), MAP_PLAN_DEF_RGB, w, h, margin);
+    drawPlanHaloPass(defSupportCountByCoord(), mc('defPlan'), w, h, margin);
+  // Snob-reserved (yellow) + unused-off (red) halos: one marker per village, same glow as the
+  // plan halos. Both require a generated plan (planReserved / planRows populated) — without one
+  // there's nothing "reserved" or "unused" to flag. Gated by their own toggles (OFF by default).
+  if (mapShowSnobRes && typeof coordDb !== 'undefined' && typeof planReserved !== 'undefined' && planReserved.length)
+    drawPlanHaloPass(snobReservedCountByCoord(), mc('snobRes'), w, h, margin);
+  if (mapShowUnusedOff && typeof coordDb !== 'undefined' && typeof planRows !== 'undefined' && planRows.length)
+    drawPlanHaloPass(unusedOffCountByCoord(), mc('unusedOff'), w, h, margin);
+  // Sender halos: white on villages sending support (defensive plan), black on villages
+  // sending an off (offensive plan) — the origins the plan travel-lines start from.
+  if (mapShowSupSenders && typeof coordDb !== 'undefined' && typeof defPlanRows !== 'undefined' && defPlanRows.length)
+    drawPlanHaloPass(supportSenderCountByCoord(), mc('supSender'), w, h, margin);
+  if (mapShowOffSenders && typeof coordDb !== 'undefined' && typeof planRows !== 'undefined' && planRows.length)
+    drawPlanHaloPass(offSenderCountByCoord(), mc('offSender'), w, h, margin);
   // Plan attack-travel lines, faint base pass — drawn OVER the green halos so origins→targets
   // read on top of the objective glow. globalAlpha is 1 here (reset by every prior pass); the
   // line look comes purely from the rgba stroke. Cull a line only when BOTH ends sit beyond the
   // same edge (a line with one endpoint on-screen still draws). The hovered village's lines are
   // accentuated separately in paintMap() (cheap per-hover overlay), not here.
   if (mapShowOffLines && typeof coordDb !== 'undefined' && typeof planRows !== 'undefined' && planRows.length)
-    drawPlanLinePass(plannedAttackLines(), MAP_PLAN_LINE_OFF_RGB, w, h, margin);
+    drawPlanLinePass(plannedAttackLines(), mc('offLine'), w, h, margin);
   // Plan-Defense support-travel lines (blue), same faint base pass, gated by its own toggle.
   if (mapShowDefLines && typeof coordDb !== 'undefined' && typeof defPlanRows !== 'undefined' && defPlanRows.length)
-    drawPlanLinePass(plannedSupportLines(), MAP_PLAN_LINE_DEF_RGB, w, h, margin);
+    drawPlanLinePass(plannedSupportLines(), mc('defLine'), w, h, margin);
   const count = document.getElementById('map-count');
   if (count) count.textContent = t('map_villages_shown')(villageDb.length);
 }
@@ -574,14 +639,14 @@ function paintMap() {
       typeof planRows !== 'undefined' && planRows.length) {
     for (const ln of plannedAttackLines()) {
       if (ln.from !== mapHoverCoord && ln.to !== mapHoverCoord) continue;
-      drawPlanLine(mapCtx, ln.from, ln.to, true, MAP_PLAN_LINE_OFF_RGB);
+      drawPlanLine(mapCtx, ln.from, ln.to, true, mc('offLine'));
     }
   }
   if (mapShowDefLines && mapHoverCoord && typeof coordDb !== 'undefined' &&
       typeof defPlanRows !== 'undefined' && defPlanRows.length) {
     for (const ln of plannedSupportLines()) {
       if (ln.from !== mapHoverCoord && ln.to !== mapHoverCoord) continue;
-      drawPlanLine(mapCtx, ln.from, ln.to, true, MAP_PLAN_LINE_DEF_RGB);
+      drawPlanLine(mapCtx, ln.from, ln.to, true, mc('defLine'));
     }
   }
   if (mapHoverCoord && coordDb[mapHoverCoord]) {
@@ -726,6 +791,65 @@ function setMapShowOffPlan(on)  { mapShowOffPlan  = !!on; saveMapPrefs(); repain
 function setMapShowDefPlan(on)  { mapShowDefPlan  = !!on; saveMapPrefs(); repaintMapData(); }
 function setMapShowOffLines(on) { mapShowOffLines = !!on; saveMapPrefs(); repaintMapData(); }
 function setMapShowDefLines(on) { mapShowDefLines = !!on; saveMapPrefs(); repaintMapData(); }
+function setMapShowSnobRes(on)   { mapShowSnobRes   = !!on; saveMapPrefs(); repaintMapData(); }
+function setMapShowUnusedOff(on) { mapShowUnusedOff = !!on; saveMapPrefs(); repaintMapData(); }
+function setMapShowSupSenders(on){ mapShowSupSenders = !!on; saveMapPrefs(); repaintMapData(); }
+function setMapShowOffSenders(on){ mapShowOffSenders = !!on; saveMapPrefs(); repaintMapData(); }
+// Def-only / Off-only are mutually exclusive: turning one ON forces the other OFF.
+function setMapShowDefOnly(on) {
+  mapShowDefVillagesOnly = !!on;
+  if (mapShowDefVillagesOnly) { mapShowOffVillagesOnly = false; const o = document.getElementById('map-show-offonly'); if (o) o.checked = false; }
+  saveMapPrefs(); repaintMapData();
+}
+function setMapShowOffOnly(on) {
+  mapShowOffVillagesOnly = !!on;
+  if (mapShowOffVillagesOnly) { mapShowDefVillagesOnly = false; const d = document.getElementById('map-show-defonly'); if (d) d.checked = false; }
+  saveMapPrefs(); repaintMapData();
+}
+function setMapShowBarbs(on) { mapShowBarbs = !!on; saveMapPrefs(); repaintMapData(); }
+
+// "All" header button: flip every SHOW overlay in a category on/off at once (the Villages-Only
+// focus filter and the tier chips are intentionally excluded — they're not "show" overlays).
+function toggleAllCategory(cat, btn) {
+  const on = !(btn && btn.classList.contains('active'));
+  if (btn) btn.classList.toggle('active', on);
+  if (cat === 'def') { mapShowDefPlan = on; mapShowDefLines = on; mapShowSupSenders = on; }
+  else               { mapShowOffPlan = on; mapShowOffLines = on; mapShowOffSenders = on; mapShowSnobRes = on; mapShowUnusedOff = on; }
+  saveMapPrefs(); syncMapToolbar(); repaintMapData();
+}
+// Off-tier filter chips (Complete / 3-4 / 1-2): click toggles the tier's visibility. Full
+// colour = shown; faded (.off) = its villages are dimmed on the map (via offTierFiltered).
+function toggleMapTier(tier) {
+  if (tier === 'complete')  mapShowTierComplete = !mapShowTierComplete;
+  else if (tier === 'tq')   mapShowTierTq       = !mapShowTierTq;
+  else if (tier === 'half') mapShowTierHalf     = !mapShowTierHalf;
+  else return;
+  saveMapPrefs(); syncTierChips(); repaintMapData();
+}
+// Reflect each tier's on/off state into its chip (.off = faded). Called on prefs load + toggle.
+function syncTierChips() {
+  const set = (id, on) => { const e = document.getElementById(id); if (e) e.classList.toggle('off', !on); };
+  set('map-tier-complete', mapShowTierComplete);
+  set('map-tier-tq',       mapShowTierTq);
+  set('map-tier-half',     mapShowTierHalf);
+}
+
+// ── Config Colors: edit any line/halo colour, persist, repaint ──
+function setMapColor(key, hex) {
+  if (!(key in MAP_COLOR_DEFAULTS) || !hexToRgb(hex)) return;
+  mapColors[key] = hex; saveMapPrefs(); repaintMapData();
+}
+function resetMapColors() {
+  mapColors = { ...MAP_COLOR_DEFAULTS };
+  saveMapPrefs(); syncMapColorInputs(); repaintMapData();
+}
+// Reflect the live colours into the <input type=color> controls (called on prefs load + reset).
+function syncMapColorInputs() {
+  for (const k in MAP_COLOR_DEFAULTS) {
+    const e = document.getElementById('map-color-' + k.toLowerCase());
+    if (e) e.value = mapColors[k];
+  }
+}
 
 // Reflect persisted state into the toolbar controls (called after prefs load).
 function syncMapToolbar() {
@@ -739,6 +863,22 @@ function syncMapToolbar() {
   if (sl) sl.checked = mapShowOffLines;
   const sdl = document.getElementById('map-show-deflines');
   if (sdl) sdl.checked = mapShowDefLines;
+  const ssr = document.getElementById('map-show-snobres');
+  if (ssr) ssr.checked = mapShowSnobRes;
+  const suo = document.getElementById('map-show-unusedoff');
+  if (suo) suo.checked = mapShowUnusedOff;
+  const sss = document.getElementById('map-show-supsenders');
+  if (sss) sss.checked = mapShowSupSenders;
+  const sos = document.getElementById('map-show-offsenders');
+  if (sos) sos.checked = mapShowOffSenders;
+  const sdo = document.getElementById('map-show-defonly');
+  if (sdo) sdo.checked = mapShowDefVillagesOnly;
+  const soo = document.getElementById('map-show-offonly');
+  if (soo) soo.checked = mapShowOffVillagesOnly;
+  const sbb = document.getElementById('map-show-barbs');
+  if (sbb) sbb.checked = mapShowBarbs;
+  syncTierChips();
+  syncMapColorInputs();
   syncIncomingInputs();
 }
 
@@ -818,6 +958,7 @@ const BARB_LIMIT = 50;         // cap the list (visible count, no silent truncat
 function toggleBarbFinder() {
   barbFinderActive = !barbFinderActive;
   if (barbFinderActive && mapExtractMode) toggleExtractMode(); // one click-panel at a time
+  if (barbFinderActive && heatcfgActive) closeHeatmapConfig();  // shares the left dock with Heatmap Config
   const btn = document.getElementById('map-barb-btn');
   if (btn) btn.classList.toggle('active', barbFinderActive);
   const panel = document.getElementById('map-barb-finder');
@@ -832,6 +973,25 @@ function closeBarbFinder() {
   const panel = document.getElementById('map-barb-finder'); if (panel) panel.style.display = 'none';
   barbResults = []; barbSnobCoords = []; barbPlayerCoords = new Set();
 }
+// ── Heatmap Config: a toggled flying menu (left dock) holding the incoming colour thresholds
+// and every overlay show-toggle. Same open/close model as the Barb Finder; mutually exclusive
+// with it (they share the left dock). Pure DOM — never runs in the test sandbox's render path.
+let heatcfgActive = false;
+function toggleHeatmapConfig() {
+  heatcfgActive = !heatcfgActive;
+  if (heatcfgActive && barbFinderActive) closeBarbFinder(); // one left-dock panel at a time
+  const btn = document.getElementById('map-heatcfg-btn');
+  if (btn) btn.classList.toggle('active', heatcfgActive);
+  const panel = document.getElementById('map-heatcfg');
+  if (panel) panel.style.display = heatcfgActive ? '' : 'none';
+  if (heatcfgActive) syncMapToolbar(); // reflect current toggle/threshold state into the controls
+}
+function closeHeatmapConfig() {
+  heatcfgActive = false;
+  const btn = document.getElementById('map-heatcfg-btn'); if (btn) btn.classList.remove('active');
+  const panel = document.getElementById('map-heatcfg'); if (panel) panel.style.display = 'none';
+}
+
 function setBarbPlayer(v) { barbPlayer = v; updateBarbResults(); }
 function setBarbBonusMode(v) {
   barbBonusMode = v;

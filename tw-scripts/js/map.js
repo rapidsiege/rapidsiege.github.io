@@ -363,6 +363,90 @@ function plannedSupportLines() {
   return out;
 }
 
+// ── Snob-reserved + unused-off halos (one marker per village, not a count) ──────────
+// 'x|y' → 1 for every village held back for a noble launch (planReserved, set by the plan).
+// One halo per reserved village. Pure read of planReserved (harness-tested).
+function snobReservedCountByCoord() {
+  const out = {};
+  if (typeof planReserved === 'undefined') return out;
+  for (const coord of planReserved) out[coord] = 1;
+  return out;
+}
+
+// 'x|y' → 1 for every offensive village NOT committed by the current plan (see unusedOffs()
+// in plan.js — sent, escort, or held-for-noble all count as committed). One halo per such
+// village. Pure read of the plan + village pool (harness-tested).
+function unusedOffCountByCoord() {
+  const out = {};
+  if (typeof unusedOffs !== 'function') return out;
+  for (const v of unusedOffs()) out[v.coord] = 1;
+  return out;
+}
+
+// 'x|y' → number of outgoing OFF orders launched FROM that village (offensive plan). One halo
+// per sending village; count blooms the halo. Mirrors the origins of the attack-travel lines
+// (any planRows row with a srcCoord — solo snob trains have none, so they don't count). Pure.
+function offSenderCountByCoord() {
+  const out = {};
+  if (typeof planRows === 'undefined') return out;
+  for (const r of planRows) if (r.srcCoord) out[r.srcCoord] = (out[r.srcCoord] || 0) + 1;
+  return out;
+}
+
+// 'x|y' → number of outgoing SUPPORT packets sent FROM that village (defensive plan). One halo
+// per sending village; count blooms the halo. Mirrors the origins of the support-travel lines.
+// Pure read of defPlanRows (harness-tested).
+function supportSenderCountByCoord() {
+  const out = {};
+  if (typeof defPlanRows === 'undefined') return out;
+  for (const r of defPlanRows) if (r.srcCoord) out[r.srcCoord] = (out[r.srcCoord] || 0) + 1;
+  return out;
+}
+
+// Off-tier visibility filter (Heatmap Config): true when this village's off tier is toggled
+// OFF, so isDimmed() fades it. Only the three real off tiers (complete/tq/half) are governed;
+// a village with no loaded troops, or a sub-1/2 ('none') off, is never filtered here — we can
+// only filter offs we actually know about. Pure read of troopByCoord + the mapShowTier*
+// toggles + getOffTier (harness-tested).
+function offTierFiltered(v) {
+  if (typeof troopByCoord === 'undefined' || typeof getOffTier !== 'function') return false;
+  const tt = troopByCoord[v.x + '|' + v.y];
+  if (!tt) return false;
+  const tier = getOffTier(tt.offPow);
+  if (tier === 'complete') return !mapShowTierComplete;
+  if (tier === 'tq')       return !mapShowTierTq;
+  if (tier === 'half')     return !mapShowTierHalf;
+  return false;
+}
+
+// Role focus filters (Heatmap Config): isolate one side by fading everything else. Uses the
+// SAME off/def classification as the on-map troop badge (villageTroopBadge → 'off' red-axe /
+// 'def' blue-sword / null) so what fades matches what you see — no second classifier.
+//  • "Defensive Villages Only" → show ONLY def-badge villages; fade the rest, EXCEPT villages
+//    receiving support while the defensive plan is shown.
+//  • "Offensive Villages Only" → show ONLY off-badge villages; fade the rest, EXCEPT
+//    snob-reserved (noble-launch) villages.
+// The filter applies ONLY to villages we have troop info for (a troopByCoord entry); every
+// other village (enemy, barbarian, unloaded) is always shown. Among the troop-info villages,
+// only the matching badge role stays — the rest fade (an off-only/def-only/empty village under
+// the opposite filter). Pure read of troopByCoord + villageTroopBadge + the toggles + plans.
+function villageRoleFiltered(v) {
+  if (!mapShowDefVillagesOnly && !mapShowOffVillagesOnly) return false; // no focus filter active
+  const coord = v.x + '|' + v.y;
+  if (typeof troopByCoord === 'undefined' || !troopByCoord[coord]) return false; // no troop info → always shown
+  const badge = (typeof villageTroopBadge === 'function') ? villageTroopBadge(coord) : null;
+  const role = badge ? badge.offdef : null; // 'off' | 'def' | null
+  if (mapShowDefVillagesOnly && role !== 'def') {
+    const isSupportTarget = mapShowDefPlan && typeof defPlanRows !== 'undefined' && defPlanRows.some(r => r.tCoord === coord);
+    if (!isSupportTarget) return true;
+  }
+  if (mapShowOffVillagesOnly && role !== 'off') {
+    const isSnobReserved = typeof planReserved !== 'undefined' && planReserved.indexOf(coord) !== -1;
+    if (!isSnobReserved) return true;
+  }
+  return false;
+}
+
 // Hover block: planned attacks (att.webp + count + per-order type/player). Always shown
 // when this coord is an objective, regardless of the Show Offensive Plan halo toggle.
 function plannedAttacksTooltipHtml(coord) {

@@ -259,16 +259,17 @@ function generatePlan() {
   // noble to its own target, the other is simply kept free. snobSenderTargets keys are RAW
   // (encoded) player names, to match the village pool's p.v.player for the reservation.
   // conquerorByTarget keys are DECODED names (to match offRows.srcPlayer) for the off-side
-  // coordination bias — SOLO only, because an escorted target already rides an off with its
-  // noble, so it needs no extra off biased toward the conqueror. A pinned sender kept on the
-  // plan without a noble yet (needNobles) still counts — they are intended to send.
+  // coordination force — populated for BOTH solo and escorted trains: even an escorted
+  // conqueror (whose escort rides with the noble) should also send one of the requested
+  // CLEARING offs from their own hand, so they can align their snob to the second behind
+  // their own last offensive. A pinned sender kept on the plan without a noble yet
+  // (needNobles) still counts — they are intended to send.
   const snobSenderTargets = {};  // raw player -> Set of target index (solo + escorted)
-  const conquerorByTarget = {};  // target index -> Set of decoded sender (solo trains only)
+  const conquerorByTarget = {};  // target index -> Set of decoded sender (solo + escorted)
   const noteSnobSender = (rawName, T) => {
     if (!rawName) return;
     (snobSenderTargets[rawName] || (snobSenderTargets[rawName] = new Set())).add(T.i);
-    if ((T.tg.snobMode || 'solo') !== 'escorted')
-      (conquerorByTarget[T.i] || (conquerorByTarget[T.i] = new Set())).add(decode(rawName));
+    (conquerorByTarget[T.i] || (conquerorByTarget[T.i] = new Set())).add(decode(rawName));
   };
 
   // Snob trains: pre-assigned senders fill the first trains, the rest are
@@ -463,6 +464,51 @@ function generatePlan() {
     }
   }
 
+  // Tier bump map (a need bumps UP to the nearest stronger off when its own tier is empty);
+  // shared by the conqueror reservation below and the auto pass further down.
+  const TIER_UP = { half: ['tq', 'complete'], tq: ['complete'], complete: [] };
+
+  // ── Conqueror off reservation (the force, placed up front) ────────────────
+  // A conquered target coordinates best when one of its CLEARING offs comes from the SAME
+  // hand that sends the noble — so the conqueror can time their snob to land right behind
+  // their own last off. We GUARANTEE that off and place it HERE, before the POWER + auto
+  // passes, so another target can't claim the conqueror's only matching village first (the
+  // "steal"). Marking it usedOff drops it from the global pool, so the later passes never
+  // see it — no per-target bookkeeping needed — and it counts against namedOffReserved so
+  // the auto pass fills only the remaining slots. Tier is enforced: we fill the strongest
+  // requested tier the conqueror can man, bumping UP only (a stronger village may cover a
+  // weaker request, never the reverse). Range/time — INCLUDING the max-distance input, via
+  // okOffDist — gate every pick: a conqueror whose every off village is beyond max distance,
+  // too late, held for the noble launch, or purely defensive reserves nothing, which is the
+  // intended "no village left" exception. Solo AND escorted (escorted rides an escort with
+  // the noble, but still wants a separate clearing off in hand). POWER targets are skipped —
+  // they take the strongest nukes regardless of who conquers. Runs after the named pins, so
+  // an explicit pin still wins (and a pin that already gave the conqueror an off ends it).
+  for (const T of targets) {
+    if (!T.c || T.tg.power) continue;
+    const conq = conquerorByTarget[T.i];
+    if (!conq) continue;
+    if (T.offRows.some(r => !r.unassigned && r.srcPlayer && conq.has(r.srcPlayer))) continue;
+    const ownCands = tt => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt
+      && conq.has(decode(p.v.player)) && okOffDist(p, T.c) && okOffTime(p, T));
+    for (const tier of ['complete', 'tq', 'half']) {
+      if (((T.tg[TIER_FIELD[tier]] || 0) - (namedOffReserved[T.i + '|' + tier] || 0)) <= 0) continue;
+      let cands = ownCands(tier);
+      for (const up of TIER_UP[tier]) { if (cands.length) break; cands = ownCands(up); }
+      if (!cands.length) continue; // conqueror can't man this requested tier — try the next
+      const p = cands.sort(byDist(T))[0];
+      p.usedOff = true; noteOffUsed(p.v.player);
+      namedOffReserved[T.i + '|' + tier] = (namedOffReserved[T.i + '|' + tier] || 0) + 1;
+      const d = distXY(p.c, T.c);
+      // Sent AS the village's own (≥ requested) tier; no "tier bumped" warning — this is a
+      // deliberate self-coordination off, not a shortage fallback. Tagged `conqueror` so the
+      // window pass can land it LAST among the offs (right before its own noble).
+      T.offRows.push({ type: p.tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+        dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us), conqueror: true });
+      break;
+    }
+  }
+
   // POWER targets (per-target tag): ignore the per-tier split and fill each one's
   // remaining off slots with the globally strongest available offs, balancing total
   // raw off power across all POWER targets — the next-strongest off goes to whichever
@@ -503,24 +549,11 @@ function generatePlan() {
     }
   }
 
-  // A conquered target coordinates its timings best when at least one of its offs comes
-  // from the SAME hand that sends the noble. We bias (never force) one auto off toward any
-  // of that target's noble senders — using their non-reserved villages (their closest are
-  // held for the noble launch). Escort mode already rides an off with the noble, so escorted
-  // targets are absent from conquerorByTarget. conquerorOffPlaced is seeded from offs placed
-  // by the named + POWER passes, so we don't double up.
-  const conquerorOffPlaced = {};
-  for (const T of targets) {
-    const conq = conquerorByTarget[T.i];
-    if (conq && T.offRows.some(r => !r.unassigned && r.srcPlayer && conq.has(r.srcPlayer)))
-      conquerorOffPlaced[T.i] = true;
-  }
-
   // Offs: strongest requests claim villages first (complete → 3/4 → 1/2);
   // an exhausted tier auto-bumps to the nearest stronger off (1/2 → 3/4 → Complete)
   // and the row is relabeled to what is actually sent, with a warning. Slots already
-  // reserved by named senders above are subtracted so each tier isn't double-filled.
-  const TIER_UP = { half: ['tq', 'complete'], tq: ['complete'], complete: [] };
+  // reserved by named senders + the conqueror reservation above are subtracted so each
+  // tier isn't double-filled.
   for (const tier of ['complete', 'tq', 'half']) {
     for (const T of targets) {
       if (!T.c || T.tg.power) continue; // POWER targets are filled by the balanced pass above
@@ -542,17 +575,9 @@ function generatePlan() {
           continue;
         }
         if (sent !== tier) planWarnings.push(t('warn_tier_bumped')(t('tier_' + tier), t('tier_' + sent), T.tg.coord));
-        // Until one off from this target's conqueror is placed, prefer the conqueror's
-        // own villages among THIS slot's feasible candidates (a reorder of cands — never
-        // widens the eligible set, so range/time/tier still hold). Closest of theirs.
-        const conq = conquerorByTarget[T.i];
-        let p;
-        if (conq && !conquerorOffPlaced[T.i]) {
-          const own = cands.filter(c => conq.has(decode(c.v.player))).sort(byDist(T));
-          if (own.length) p = own[0];
-        }
-        if (!p) p = cands.sort(byOptimize(T))[0];
-        if (conq && conq.has(decode(p.v.player))) conquerorOffPlaced[T.i] = true;
+        // The conqueror's own off was already reserved up front (see the conqueror
+        // reservation above), so the auto pass just fills the remaining slots by optimize.
+        const p = cands.sort(byOptimize(T))[0];
         p.usedOff = true; noteOffUsed(p.v.player);
         const d = distXY(p.c, T.c);
         T.offRows.push({
@@ -569,6 +594,12 @@ function generatePlan() {
   for (const T of targets) {
     if (!T.c) continue;
     T.offRows.sort((a, b) => TIER_RANK[b.type] - TIER_RANK[a.type]);
+    // The conqueror's own off lands LAST among this target's offs (immediately before its
+    // noble row), so the snob sender owns the final clear→noble handoff. Done after the
+    // tier sort and as a single splice so it doesn't disturb the strongest-first order of
+    // the rest. (At most one conqueror off per target — see the reservation pass.)
+    const ci = T.offRows.findIndex(r => r.conqueror);
+    if (ci !== -1) T.offRows.push(T.offRows.splice(ci, 1)[0]);
     const wins = T.tg.offWindows.length ? T.tg.offWindows : [{ win: '', count: 0 }];
     const counts = windowOffCounts(wins, T.offRows.length);
     let wi = 0, slot = 0;

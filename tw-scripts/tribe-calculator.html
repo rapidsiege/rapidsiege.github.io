@@ -125,26 +125,18 @@
   </div>
   <div id="map-toolbar" class="map-toolbar">
     <button class="btn btn-ghost btn-sm" onclick="mapZoom(1.2)" data-i18n="map_zoom_in" title="Zoom in">＋</button>
+    <span class="map-tb-sep"></span>
     <button class="btn btn-ghost btn-sm" onclick="mapZoom(1/1.2)" data-i18n="map_zoom_out" title="Zoom out">－</button>
+    <span class="map-tb-sep"></span>
     <button class="btn btn-ghost btn-sm" onclick="mapResetView()" data-i18n="map_reset_view">Reset view</button>
     <span class="map-tb-sep"></span>
     <button id="map-extract-btn" class="btn btn-ghost btn-sm" onclick="toggleExtractMode()" data-i18n="map_extract">Extract Coordinates</button>
+    <span class="map-tb-sep"></span>
     <button id="map-barb-btn" class="btn btn-ghost btn-sm" onclick="toggleBarbFinder()" data-i18n="barb_finder">Barb Finder</button>
     <span class="map-tb-sep"></span>
-    <span class="map-tb-inc-lbl" data-i18n="map_incoming">Incoming</span>
-    <input type="number" min="1" id="map-inc-yellow" class="map-inc-input map-inc-yellow" data-i18n-title="map_inc_yellow_t" title="Yellow at ≥" onchange="setIncomingThreshold('yellow', this.value)">
-    <input type="number" min="1" id="map-inc-orange" class="map-inc-input map-inc-orange" data-i18n-title="map_inc_orange_t" title="Orange at ≥" onchange="setIncomingThreshold('orange', this.value)">
-    <input type="number" min="1" id="map-inc-red" class="map-inc-input map-inc-red" data-i18n-title="map_inc_red_t" title="Red at ≥" onchange="setIncomingThreshold('red', this.value)">
+    <button id="map-heatcfg-btn" class="btn btn-ghost btn-sm" onclick="toggleHeatmapConfig()" data-i18n="map_heatmap_config">Heatmap Config</button>
     <span class="map-tb-sep"></span>
-    <label class="map-tb-check"><input type="checkbox" id="map-show-incoming" checked onchange="setMapShowIncoming(this.checked)"><span data-i18n="map_show_incoming">Show Incoming</span></label>
-    <span class="map-tb-sep"></span>
-    <label class="map-tb-check"><input type="checkbox" id="map-show-offplan" checked onchange="setMapShowOffPlan(this.checked)"><span data-i18n="map_show_offplan">Show Offensive Plan</span></label>
-    <span class="map-tb-sep"></span>
-    <label class="map-tb-check"><input type="checkbox" id="map-show-offlines" onchange="setMapShowOffLines(this.checked)"><span data-i18n="map_show_offlines">Show Attack Lines</span></label>
-    <span class="map-tb-sep"></span>
-    <label class="map-tb-check"><input type="checkbox" id="map-show-defplan" checked onchange="setMapShowDefPlan(this.checked)"><span data-i18n="map_show_defplan">Show Defensive Plan</span></label>
-    <span class="map-tb-sep"></span>
-    <label class="map-tb-check"><input type="checkbox" id="map-show-deflines" onchange="setMapShowDefLines(this.checked)"><span data-i18n="map_show_deflines">Show Support Lines</span></label>
+    <label class="map-tb-check"><input type="checkbox" id="map-show-barbs" checked onchange="setMapShowBarbs(this.checked)"><span data-i18n="map_show_barbs">Show Barbs</span></label>
     <span style="font-size:12px;color:#5a3a18;" data-i18n="map_hint">Drag to pan · scroll to zoom · hover for details</span>
   </div>
   <div id="map-wrap">
@@ -169,6 +161,68 @@
         <button class="map-barb-close" onclick="toggleBarbFinder()" title="Close">✕</button>
       </div>
       <div id="map-barb-body" class="map-barb-body"></div>
+    </div>
+    <div id="map-heatcfg" style="display:none;">
+      <div class="map-barb-head">
+        <span data-i18n="map_heatcfg_title">Heatmap Config - Show:</span>
+        <button class="map-barb-close" onclick="toggleHeatmapConfig()" title="Close">✕</button>
+      </div>
+      <div class="map-barb-body">
+        <details class="map-heatcfg-sect" open>
+          <summary class="map-heatcfg-shead"><img class="tw-ic" src="icons/map/att.webp" alt=""><span data-i18n="map_hd_incoming">Incoming Attacks</span></summary>
+          <div class="map-heatcfg-sbody">
+            <div class="map-heatcfg-inc">
+              <span class="map-tb-inc-lbl" data-i18n="map_incoming">Incoming</span>
+              <input type="number" min="1" id="map-inc-yellow" class="map-inc-input map-inc-yellow" data-i18n-title="map_inc_yellow_t" title="Yellow at ≥" onchange="setIncomingThreshold('yellow', this.value)">
+              <input type="number" min="1" id="map-inc-orange" class="map-inc-input map-inc-orange" data-i18n-title="map_inc_orange_t" title="Orange at ≥" onchange="setIncomingThreshold('orange', this.value)">
+              <input type="number" min="1" id="map-inc-red" class="map-inc-input map-inc-red" data-i18n-title="map_inc_red_t" title="Red at ≥" onchange="setIncomingThreshold('red', this.value)">
+            </div>
+            <label class="map-tb-check"><input type="checkbox" id="map-show-incoming" checked onchange="setMapShowIncoming(this.checked)"><span data-i18n="map_show_incoming">Incoming</span></label>
+          </div>
+        </details>
+        <div class="map-heatcfg-sep"></div>
+        <details class="map-heatcfg-sect" open>
+          <summary class="map-heatcfg-shead"><img class="tw-ic" src="icons/map/support.webp" alt=""><span data-i18n="map_hd_defensive">Defensive Plan</span><button class="map-cat-all" onclick="event.preventDefault(); event.stopPropagation(); toggleAllCategory('def', this)" data-i18n="map_all">All</button></summary>
+          <div class="map-heatcfg-sbody">
+            <label class="map-tb-check"><input type="checkbox" id="map-show-defplan" checked onchange="setMapShowDefPlan(this.checked)"><span data-i18n="map_show_defplan">Defensive Targets</span></label>
+            <label class="map-tb-check"><input type="checkbox" id="map-show-defonly" onchange="setMapShowDefOnly(this.checked)"><span data-i18n="map_show_defonly">Defensive Villages Only</span></label>
+            <label class="map-tb-check"><input type="checkbox" id="map-show-deflines" onchange="setMapShowDefLines(this.checked)"><span data-i18n="map_show_deflines">Support Lines</span></label>
+            <label class="map-tb-check"><input type="checkbox" id="map-show-supsenders" onchange="setMapShowSupSenders(this.checked)"><span data-i18n="map_show_supsenders">Villages Sending Support</span></label>
+          </div>
+        </details>
+        <div class="map-heatcfg-sep"></div>
+        <details class="map-heatcfg-sect" open>
+          <summary class="map-heatcfg-shead"><img class="tw-ic" src="icons/map/att.webp" alt=""><span data-i18n="map_hd_offensive">Offensive Plan</span><button class="map-cat-all" onclick="event.preventDefault(); event.stopPropagation(); toggleAllCategory('off', this)" data-i18n="map_all">All</button></summary>
+          <div class="map-heatcfg-sbody">
+            <label class="map-tb-check"><input type="checkbox" id="map-show-offplan" checked onchange="setMapShowOffPlan(this.checked)"><span data-i18n="map_show_offplan">Offensive Target</span></label>
+            <label class="map-tb-check"><input type="checkbox" id="map-show-offonly" onchange="setMapShowOffOnly(this.checked)"><span data-i18n="map_show_offonly">Offensive Villages Only</span></label>
+            <label class="map-tb-check"><input type="checkbox" id="map-show-offlines" onchange="setMapShowOffLines(this.checked)"><span data-i18n="map_show_offlines">Attack Lines</span></label>
+            <label class="map-tb-check"><input type="checkbox" id="map-show-offsenders" onchange="setMapShowOffSenders(this.checked)"><span data-i18n="map_show_offsenders">Villages Sending Off</span></label>
+            <label class="map-tb-check"><input type="checkbox" id="map-show-snobres" onchange="setMapShowSnobRes(this.checked)"><span data-i18n="map_show_snobres">Snob Reserved</span></label>
+            <label class="map-tb-check"><input type="checkbox" id="map-show-unusedoff" onchange="setMapShowUnusedOff(this.checked)"><span data-i18n="map_show_unusedoff">Unused Offs</span></label>
+            <div class="map-tier-tags">
+              <span class="badge badge-complete map-tier-tag" id="map-tier-complete" onclick="toggleMapTier('complete')" data-i18n="tier_complete">Complete</span>
+              <span class="badge badge-tq map-tier-tag" id="map-tier-tq" onclick="toggleMapTier('tq')" data-i18n="tier_tq">3/4</span>
+              <span class="badge badge-half map-tier-tag" id="map-tier-half" onclick="toggleMapTier('half')" data-i18n="tier_half">1/2</span>
+            </div>
+          </div>
+        </details>
+        <div class="map-heatcfg-sep"></div>
+        <details class="map-color-details">
+          <summary class="map-color-summary" data-i18n="map_cfg_colors">Config Colors</summary>
+          <div class="map-color-body">
+            <label class="map-color-row"><input type="color" id="map-color-offplan" onchange="setMapColor('offPlan', this.value)"><span data-i18n="map_color_offplan">Offensive Plan</span></label>
+            <label class="map-color-row"><input type="color" id="map-color-offline" onchange="setMapColor('offLine', this.value)"><span data-i18n="map_color_offline">Attack Lines</span></label>
+            <label class="map-color-row"><input type="color" id="map-color-defplan" onchange="setMapColor('defPlan', this.value)"><span data-i18n="map_color_defplan">Defensive Plan</span></label>
+            <label class="map-color-row"><input type="color" id="map-color-defline" onchange="setMapColor('defLine', this.value)"><span data-i18n="map_color_defline">Support Lines</span></label>
+            <label class="map-color-row"><input type="color" id="map-color-snobres" onchange="setMapColor('snobRes', this.value)"><span data-i18n="map_color_snobres">Snob Reserved</span></label>
+            <label class="map-color-row"><input type="color" id="map-color-unusedoff" onchange="setMapColor('unusedOff', this.value)"><span data-i18n="map_color_unusedoff">Unused Offs</span></label>
+            <label class="map-color-row"><input type="color" id="map-color-supsender" onchange="setMapColor('supSender', this.value)"><span data-i18n="map_color_supsender">Support Senders</span></label>
+            <label class="map-color-row"><input type="color" id="map-color-offsender" onchange="setMapColor('offSender', this.value)"><span data-i18n="map_color_offsender">Off Senders</span></label>
+            <button class="map-grp-new map-color-reset" onclick="resetMapColors()">↺ <span data-i18n="map_cfg_colors_reset">Reset to default colors</span></button>
+          </div>
+        </details>
+      </div>
     </div>
     <div id="map-empty">
       <p data-i18n="map_need_db">Load the village database to see the map.</p>
@@ -701,7 +755,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.6.0 &nbsp;·&nbsp; 2026-06-17</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.7.0 &nbsp;·&nbsp; 2026-06-18</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

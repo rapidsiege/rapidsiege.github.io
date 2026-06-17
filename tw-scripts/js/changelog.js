@@ -12,6 +12,22 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.7.0', date: '2026-06-18',
+    en: [
+      `<b>👑 The conqueror always sends one of its target's offs.</b> When a player is set to noble a village, the planner now <b>guarantees</b> one of that target's requested clearing offs comes from the conqueror's own villages — reserved up front so another target can't grab it first — and it lands <b>last, right before the noble</b>, so they control the final clear→snob handoff. The tier is respected (a lower-tier off never substitutes for a higher one); if all their offs are out of range or held for the launch, none is forced. Works for solo and split-off (escorted) trains.`,
+      `<b>🗺️ New “Heatmap Config” menu.</b> All the map's overlay controls now live in one tidy fly-out (button in the map toolbar), grouped into collapsible <b>Incoming Attacks / Defensive Plan / Offensive Plan</b> sections — each with an <b>All</b> button to flip its whole group on or off.`,
+      `<b>✨ Four new village halos.</b> <b>Snob Reserved</b> (yellow) on villages held back for a noble launch, <b>Unused Offs</b> (red) on offensive villages your plan didn't commit, and <b>Villages Sending Support</b> (white) / <b>Villages Sending Off</b> (black) on the origins of your plans. All off by default.`,
+      `<b>🔎 Focus filters.</b> <b>Defensive / Offensive Villages Only</b> fade the opposite side so you can read support or attack flow at a glance, and the <b>Complete / 3-4 / 1-2</b> chips hide off villages by tier. Plus a <b>Show Barbs</b> toggle to declutter barbarians.`,
+      `<b>🎨 Config Colors.</b> Every plan line and halo colour is now editable to your taste (with a one-click reset), saved in your browser.`,
+    ],
+    es: [
+      `<b>👑 El conquistador siempre envía una de las ofensivas de su objetivo.</b> Cuando un jugador va a noblear una aldea, el planificador ahora <b>garantiza</b> que una de las ofensivas de limpieza pedidas para ese objetivo salga de las propias aldeas del conquistador — reservada de antemano para que otro objetivo no la tome primero — y aterriza <b>la última, justo antes del noble</b>, para controlar el relevo limpieza→noble. Se respeta el tier (una ofensiva de menor tier nunca sustituye a una mayor); si todas sus ofensivas están fuera de rango o reservadas para el lanzamiento, no se fuerza ninguna. Funciona en trenes solo y con escolta (split-off).`,
+      `<b>🗺️ Nuevo menú “Config Mapa de Calor”.</b> Todos los controles de superposición del mapa viven ahora en un único panel desplegable (botón en la barra del mapa), agrupados en secciones plegables de <b>Ataques Entrantes / Plan Defensivo / Plan Ofensivo</b> — cada una con un botón <b>Todo</b> para encender o apagar todo su grupo.`,
+      `<b>✨ Cuatro nuevos halos de aldea.</b> <b>Reservados Snob</b> (amarillo) en aldeas guardadas para lanzar un noble, <b>Ofensivas sin Usar</b> (rojo) en aldeas ofensivas que tu plan no usó, y <b>Aldeas Enviando Apoyo</b> (blanco) / <b>Aldeas Enviando Ofensiva</b> (negro) en los orígenes de tus planes. Todos desactivados por defecto.`,
+      `<b>🔎 Filtros de enfoque.</b> <b>Solo Aldeas Defensivas / Ofensivas</b> atenúan el lado contrario para leer de un vistazo el flujo de apoyo o de ataque, y los chips <b>Completa / 3-4 / 1-2</b> ocultan aldeas ofensivas por tier. Además un interruptor <b>Mostrar Bárbaros</b> para despejar las bárbaras.`,
+      `<b>🎨 Config Colores.</b> Cada color de línea y halo del plan es ahora editable a tu gusto (con reinicio de un clic), guardado en tu navegador.`,
+    ],
+  },
   { ver: 'v3.6.0', date: '2026-06-17',
     en: [
       `<b>📥 Reads the new combined troop export.</b> The troop-file box now also accepts <b>tribe_everything.txt</b> (the combined export from the troop-counter script), reading its <b>troops</b> rows. The usual <b>tribe info.txt</b> still loads exactly as before — with or without the incoming-attacks column — and you can even drop both kinds of file together. (Defense and incoming-troop rows are recognised but not used yet — coming soon.)`,
