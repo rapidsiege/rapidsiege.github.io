@@ -182,8 +182,6 @@
     <button class="btn btn-ghost btn-sm" onclick="mapZoom(1/1.2)" data-i18n="map_zoom_out" title="Zoom out">－</button>
     <button class="btn btn-ghost btn-sm" onclick="mapResetView()" data-i18n="map_reset_view">Reset view</button>
     <span class="map-tb-sep"></span>
-    <label class="map-tb-check"><input type="checkbox" id="map-bonus-only" onchange="setMapBonusOnly(this.checked)"><span data-i18n="map_bonus_only">Bonus only</span></label>
-    <label class="map-tb-check"><input type="checkbox" id="map-barbs-only" onchange="setMapBarbsOnly(this.checked)"><span data-i18n="map_barbs_only">Barbs only</span></label>
     <button id="map-extract-btn" class="btn btn-ghost btn-sm" onclick="toggleExtractMode()" data-i18n="map_extract">Extract Coordinates</button>
     <button id="map-barb-btn" class="btn btn-ghost btn-sm" onclick="toggleBarbFinder()" data-i18n="barb_finder">Barb Finder</button>
     <span class="map-tb-sep"></span>
@@ -191,6 +189,12 @@
     <input type="number" min="1" id="map-inc-yellow" class="map-inc-input map-inc-yellow" data-i18n-title="map_inc_yellow_t" title="Yellow at ≥" onchange="setIncomingThreshold('yellow', this.value)">
     <input type="number" min="1" id="map-inc-orange" class="map-inc-input map-inc-orange" data-i18n-title="map_inc_orange_t" title="Orange at ≥" onchange="setIncomingThreshold('orange', this.value)">
     <input type="number" min="1" id="map-inc-red" class="map-inc-input map-inc-red" data-i18n-title="map_inc_red_t" title="Red at ≥" onchange="setIncomingThreshold('red', this.value)">
+    <span class="map-tb-sep"></span>
+    <label class="map-tb-check"><input type="checkbox" id="map-show-incoming" checked onchange="setMapShowIncoming(this.checked)"><span data-i18n="map_show_incoming">Show Incoming</span></label>
+    <span class="map-tb-sep"></span>
+    <label class="map-tb-check"><input type="checkbox" id="map-show-offplan" checked onchange="setMapShowOffPlan(this.checked)"><span data-i18n="map_show_offplan">Show Offensive Plan</span></label>
+    <span class="map-tb-sep"></span>
+    <label class="map-tb-check"><input type="checkbox" id="map-show-defplan" checked onchange="setMapShowDefPlan(this.checked)"><span data-i18n="map_show_defplan">Show Defensive Plan</span></label>
     <span style="font-size:12px;color:#5a3a18;" data-i18n="map_hint">Drag to pan · scroll to zoom · hover for details</span>
   </div>
   <div id="map-wrap">
@@ -742,7 +746,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.3.0 &nbsp;·&nbsp; 2026-06-17</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.4.0 &nbsp;·&nbsp; 2026-06-17</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

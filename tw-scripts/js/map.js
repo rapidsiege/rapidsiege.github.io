@@ -257,6 +257,8 @@ function villageTooltipHtml(coord) {
   if (!barb) html += row(t('map_tt_total'), totalPts.toLocaleString() + ' ' + t('map_pts'));
   if (v.bonus) html += row(t('map_tt_bonus'), `<span class="map-tt-bonus">${esc(bonusLabel(v.bonus))}</span>`);
   html += troopTooltipHtml(coord); // our tribe's loaded troops, if any
+  html += plannedAttacksTooltipHtml(coord); // Plan Offensive: attacks targeting this village
+  html += plannedSupportTooltipHtml(coord); // Plan Defense: support sent to this village
   return html;
 }
 
@@ -278,6 +280,86 @@ function troopTooltipHtml(coord) {
   if (units.length)
     h += `<div class="map-tt-units">` + units.map(u => `<span class="map-tt-unit">${ic(u)}${tt[u].toLocaleString()}</span>`).join('') + `</div>`;
   return h + `</div>`;
+}
+
+// ── Plan overlays (Plan Offensive / Plan Defense → map halos + hover) ──────────
+// Pure reads of the persisted plan globals (planRows / defPlanRows), so the headless
+// harness exercises them directly. Each planRows entry is ONE attack order (a snob train
+// counts as one, regardless of noble count); each defPlanRows entry is ONE support packet
+// from a village. The map shows a per-target halo + a hover breakdown; the "Show …"
+// toolbar toggles gate only the halos — the hover info is always available (task 10).
+
+// Label for one planned-attack row (mirrors the Plan-Offensive table badge text).
+function planAttackLabel(r) {
+  if (r.type === 'snob') {
+    const kind = t(r.escorted ? 'type_snob_split' : 'type_snob');
+    return ((r.count || 1) > 1 ? (r.count + 'x ') : '') + kind;
+  }
+  return t('tier_' + r.type) || r.type;
+}
+
+// Planned attacks targeting `coord` (from Plan Offensive). null when none. count = number
+// of attack orders; rows = [{label, player|null, unassigned}] in plan order.
+function plannedAttacksFor(coord) {
+  if (typeof planRows === 'undefined' || !planRows.length) return null;
+  const rows = planRows.filter(r => r.tCoord === coord);
+  if (!rows.length) return null;
+  return { count: rows.length, rows: rows.map(r => ({
+    label: planAttackLabel(r), player: r.srcPlayer || null, unassigned: !!r.unassigned,
+  })) };
+}
+
+// 'x|y' → planned-attack count, across all objectives (one halo per coord). Pure.
+function planAttackCountByCoord() {
+  const out = {};
+  if (typeof planRows === 'undefined') return out;
+  for (const r of planRows) out[r.tCoord] = (out[r.tCoord] || 0) + 1;
+  return out;
+}
+
+// Planned support sent to `coord` (from Plan Defense). null when none. count = number of
+// support packets; units = summed per-unit totals across those packets.
+function plannedSupportFor(coord) {
+  if (typeof defPlanRows === 'undefined' || !defPlanRows.length) return null;
+  const rows = defPlanRows.filter(r => r.tCoord === coord);
+  if (!rows.length) return null;
+  const units = {};
+  for (const r of rows) for (const u in (r.units || {})) units[u] = (units[u] || 0) + (r.units[u] || 0);
+  return { count: rows.length, units };
+}
+
+// 'x|y' → planned-support packet count, across all support targets. Pure.
+function defSupportCountByCoord() {
+  const out = {};
+  if (typeof defPlanRows === 'undefined') return out;
+  for (const r of defPlanRows) out[r.tCoord] = (out[r.tCoord] || 0) + 1;
+  return out;
+}
+
+// Hover block: planned attacks (att.webp + count + per-order type/player). Always shown
+// when this coord is an objective, regardless of the Show Offensive Plan halo toggle.
+function plannedAttacksTooltipHtml(coord) {
+  const pa = plannedAttacksFor(coord);
+  if (!pa) return '';
+  let h = `<div class="map-tt-plan map-tt-planoff"><img class="tw-ic" src="icons/map/att.webp" alt="">${t('map_tt_planoff')(pa.count)}</div>`;
+  h += `<div class="map-tt-planlist">` + pa.rows.map(r =>
+    `<div class="map-tt-planrow"><span class="map-tt-plantype">${esc(r.label)}</span>`
+    + `<span class="map-tt-planwho">${r.player ? esc(r.player) : t('bb_unassigned')}</span></div>`
+  ).join('') + `</div>`;
+  return h;
+}
+
+// Hover block: planned support (support.webp + packet count + summed troop totals). Always
+// shown when this coord is a support target, regardless of the Show Defensive Plan toggle.
+function plannedSupportTooltipHtml(coord) {
+  const ps = plannedSupportFor(coord);
+  if (!ps) return '';
+  const ic = (typeof twIcon === 'function') ? twIcon : () => '';
+  const units = (typeof UNITS !== 'undefined' ? UNITS : []).filter(u => (ps.units[u] || 0) > 0);
+  let h = `<div class="map-tt-plan map-tt-plandef"><img class="tw-ic" src="icons/map/support.webp" alt="">${t('map_tt_plandef')(ps.count)}</div>`;
+  if (units.length)
+    h += `<div class="map-tt-units">` + units.map(u => `<span class="map-tt-unit">${ic(u)}${ps.units[u].toLocaleString()}</span>`).join('') + `</div>`;
+  return h;
 }
 
 // Off/def/snob classification for the zoomed-in village badges. Returns null when we

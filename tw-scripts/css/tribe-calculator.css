@@ -493,6 +493,13 @@
     .map-tt-inc-yellow { color: #f5d000; background: rgba(245,205,0,.16); }
     .map-tt-inc-orange { color: #ff9b30; background: rgba(255,140,26,.16); }
     .map-tt-inc-red    { color: #ff5a5a; background: rgba(255,45,45,.18); }
+    .map-tt-plan { font-weight: 700; margin: 6px 0 3px; padding: 2px 6px; border-radius: 4px; display: flex; align-items: center; justify-content: center; gap: 5px; }
+    .map-tt-planoff { color: #8aff66; background: rgba(57,255,20,.15); }
+    .map-tt-plandef { color: #ff7ad4; background: rgba(255,30,190,.18); }
+    .map-tt-planlist { display: flex; flex-direction: column; gap: 1px; margin-bottom: 2px; }
+    .map-tt-planrow { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; }
+    .map-tt-plantype { color: #cdb488; }
+    .map-tt-planwho { color: #9fd07f; font-weight: 600; }
     #map-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #806030; }
     /* Phase 2: bonus filter + custom color groups */
     .map-tb-sep { width: 1px; align-self: stretch; background: #3a2808; margin: 2px 4px; }

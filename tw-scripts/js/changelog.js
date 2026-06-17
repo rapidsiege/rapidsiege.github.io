@@ -12,6 +12,16 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.4.0', date: '2026-06-17',
+    en: [
+      `<b>🟢 Your offensive &amp; defensive plans, drawn on the map.</b> Once you generate a <b>Plan Offensive</b> / <b>Plan Defense</b>, each target village now shows a halo: <b>neon-green</b> over offensive objectives, <b>neon-pink</b> over support targets. Hovering an objective lists <b>“(N) Planned Attacks”</b> with each order's type (Complete, 3/4, 1/2, “4x Split Off Snobs”…) and the attacking player; hovering a support target lists <b>“(N) Planned Support”</b> with the full troop totals being sent.`,
+      `<b>New map toolbar toggles.</b> <b>Show Incoming</b>, <b>Show Offensive Plan</b> and <b>Show Defensive Plan</b> (all on by default) turn their halos on/off — the hover details stay available either way. The old <b>“Bonus only / Barbs only”</b> checkboxes were removed, and the troop tooltip header was renamed <b>“Village Troops”</b>.`,
+    ],
+    es: [
+      `<b>🟢 Tus planes ofensivo y defensivo, dibujados en el mapa.</b> Cuando generas un <b>Plan Ofensivo</b> / <b>Plan Defensa</b>, cada aldea objetivo muestra ahora un halo: <b>verde neón</b> sobre los objetivos ofensivos y <b>rosa neón</b> sobre los objetivos de apoyo. Al pasar el ratón por un objetivo aparece <b>“(N) Ataques Planificados”</b> con el tipo de cada orden (Completo, 3/4, 1/2, “4x Nobles (Partir Off)”…) y el jugador atacante; sobre un objetivo de apoyo aparece <b>“(N) Apoyo Planificado”</b> con los totales de tropas que se envían.`,
+      `<b>Nuevos interruptores en la barra del mapa.</b> <b>Mostrar Entrantes</b>, <b>Mostrar Plan Ofensivo</b> y <b>Mostrar Plan Defensivo</b> (todos activados por defecto) encienden/apagan sus halos — la información al pasar el ratón sigue disponible igualmente. Se quitaron las casillas <b>“Solo bonif. / Solo bárbaros”</b> y la cabecera de tropas pasó a llamarse <b>“Tropas de la aldea”</b>.`,
+    ],
+  },
   { ver: 'v3.3.0', date: '2026-06-17',
     en: [
       `<b>🚨 Incoming attacks on the map.</b> If your uploaded tribe-troop file includes the new <b>“Incoming”</b> column (from the updated troop-counter script), each of your villages under attack now shows a coloured <b>heatmap halo</b> beneath it — visible without hovering. The halo <b>blooms with the attack count when zoomed out</b> (a village taking 80 hits glows far bigger than one taking 5) so you can spot hotspots from across the map, and tucks neatly under the village when zoomed in.`,

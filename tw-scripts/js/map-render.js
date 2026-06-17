@@ -14,8 +14,11 @@ let mapDrag = null; // { x, y, panX0, panY0, moved }
 
 // ── Phase 2 state: custom color groups + bonus filter ──
 // (Color model lives in map.js: mapGroups / mapGroupIndex / colorForVillage / detectMyTribe.)
-let mapBonusOnly = false;            // dim non-bonus villages when true
-let mapBarbsOnly = false;            // dim player (non-barbarian) villages when true
+let mapBonusOnly = false;            // dim non-bonus villages when true (legacy; isDimmed only)
+let mapBarbsOnly = false;            // dim player (non-barbarian) villages when true (legacy; isDimmed only)
+let mapShowIncoming = true;          // toggle incoming-attack halos (default on)
+let mapShowOffPlan  = true;          // toggle Plan-Offensive objective halos (default on)
+let mapShowDefPlan  = true;          // toggle Plan-Defense support halos (default on)
 let mapExtractMode = false;          // "Extract Coordinates": click villages to collect coords
 let mapSelection = new Set();        // selected 'x|y' coords (rings on the map)
 let mapPrefsLoaded = false;
@@ -65,6 +68,38 @@ function incomingHaloRadius(n, scale) {
   const rCount = Math.min(MAP_INCOMING_COUNT_CAP, MAP_INCOMING_COUNT_FLOOR + MAP_INCOMING_COUNT_K * Math.sqrt(Math.max(1, n)));
   return Math.max(rZoom, rCount);
 }
+// ── Plan-overlay halos (Plan Offensive / Plan Defense) ───────────────────────────
+// Same radial-glow + count-bloom model as incoming (reuses incomingHaloRadius), drawn as
+// post-passes OVER the village sprites: neon green over offensive objectives, dark blue over
+// support targets. Gated by the Show Offensive/Defensive Plan toolbar toggles.
+const MAP_PLAN_OFF_RGB = [57, 255, 20];   // neon green — offensive objectives
+const MAP_PLAN_DEF_RGB = [255, 30, 190];  // neon pink — support targets (more visible than dark blue)
+function drawPlanHalo(ctx, cx, cy, count, rgb) {
+  const [r0, g0, b0] = rgb;
+  const r = incomingHaloRadius(count, mapView.scale);
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  grad.addColorStop(0,    `rgba(${r0},${g0},${b0},0.58)`);
+  grad.addColorStop(0.55, `rgba(${r0},${g0},${b0},0.32)`);
+  grad.addColorStop(1,    `rgba(${r0},${g0},${b0},0)`);
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+}
+// Draw one plan halo per coord in a {coord: count} map (shared by the off + def passes).
+function drawPlanHaloPass(counts, rgb, w, h, margin) {
+  const haloMargin = margin + MAP_INCOMING_COUNT_CAP;
+  for (const coord in counts) {
+    const v = coordDb[coord];
+    if (!v) continue;
+    const s = worldToScreen(v.x, v.y);
+    if (s.px < -haloMargin || s.py < -haloMargin || s.px > w + haloMargin || s.py > h + haloMargin) continue;
+    mapOffCtx.globalAlpha = isDimmed(v) ? MAP_DIM_ALPHA : 1;
+    drawPlanHalo(mapOffCtx, s.px, s.py, counts[coord], rgb);
+  }
+  mapOffCtx.globalAlpha = 1;
+}
+
 // Soft radial glow (heatmap) drawn UNDER a village. cx/cy = the village centre in px.
 function drawIncomingHalo(ctx, cx, cy, count) {
   const tier = incomingTier(count);
@@ -87,8 +122,10 @@ function loadMapPrefs() {
   mapPrefsLoaded = true;
   try {
     const p = JSON.parse(localStorage.getItem(MAP_PREFS_KEY) || '{}');
-    mapBonusOnly = !!p.bonusOnly;
-    mapBarbsOnly = !!p.barbsOnly;
+    // Show-toggles default ON: absent key → true (do NOT use the !!p.x idiom here).
+    mapShowIncoming = p.showIncoming !== false;
+    mapShowOffPlan  = p.showOffPlan  !== false;
+    mapShowDefPlan  = p.showDefPlan  !== false;
     mapMineSeeded = !!p.mineSeeded;
     if (p.incomingThresholds) ['yellow','orange','red'].forEach(k => {
       const n = parseInt(p.incomingThresholds[k]);
@@ -106,7 +143,7 @@ function loadMapPrefs() {
 function saveMapPrefs() {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ bonusOnly: mapBonusOnly, barbsOnly: mapBarbsOnly, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds }));
+    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ showIncoming: mapShowIncoming, showOffPlan: mapShowOffPlan, showDefPlan: mapShowDefPlan, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds }));
   } catch (e) { /* ignore quota/serialization errors */ }
 }
 
@@ -294,7 +331,7 @@ function renderMapOffscreen() {
   // loaded villages) rather than the whole world — this runs on every pan frame, so we must
   // not add a second full villageDb scan. coordDb[coord] is the same village object the
   // sprite loop / tooltip use, so isDimmed() behaves identically.
-  if (typeof troopByCoord !== 'undefined' && typeof coordDb !== 'undefined') {
+  if (mapShowIncoming && typeof troopByCoord !== 'undefined' && typeof coordDb !== 'undefined') {
     const haloMargin = margin + MAP_INCOMING_COUNT_CAP;
     for (const coord in troopByCoord) {
       if ((troopByCoord[coord].incoming || 0) < 1) continue;
@@ -307,6 +344,13 @@ function renderMapOffscreen() {
     }
     mapOffCtx.globalAlpha = 1;
   }
+  // Plan-Offensive objective halos (neon green) + Plan-Defense support halos (dark blue),
+  // each a post-pass like incoming, gated by its Show … toggle. Iterate the plan rows (a
+  // handful of targets) → one halo per coord, NOT a second full villageDb scan.
+  if (mapShowOffPlan && typeof coordDb !== 'undefined' && typeof planRows !== 'undefined' && planRows.length)
+    drawPlanHaloPass(planAttackCountByCoord(), MAP_PLAN_OFF_RGB, w, h, margin);
+  if (mapShowDefPlan && typeof coordDb !== 'undefined' && typeof defPlanRows !== 'undefined' && defPlanRows.length)
+    drawPlanHaloPass(defSupportCountByCoord(), MAP_PLAN_DEF_RGB, w, h, margin);
   const count = document.getElementById('map-count');
   if (count) count.textContent = t('map_villages_shown')(villageDb.length);
 }
@@ -568,24 +612,20 @@ function mapResetView() {
 // ── Phase 2: bonus filter + custom color groups ──
 function repaintMapData() { if (mapInited) { renderMapOffscreen(); paintMap(); } }
 
-function setMapBonusOnly(on) {
-  mapBonusOnly = !!on;
-  saveMapPrefs();
-  repaintMapData();
-}
-
-function setMapBarbsOnly(on) {
-  mapBarbsOnly = !!on;
-  saveMapPrefs();
-  repaintMapData();
-}
+// Overlay toggles: persist + repaint. The hover tooltip info is unaffected (always shown);
+// these gate only the on-map halos (task 10).
+function setMapShowIncoming(on) { mapShowIncoming = !!on; saveMapPrefs(); repaintMapData(); }
+function setMapShowOffPlan(on)  { mapShowOffPlan  = !!on; saveMapPrefs(); repaintMapData(); }
+function setMapShowDefPlan(on)  { mapShowDefPlan  = !!on; saveMapPrefs(); repaintMapData(); }
 
 // Reflect persisted state into the toolbar controls (called after prefs load).
 function syncMapToolbar() {
-  const cb = document.getElementById('map-bonus-only');
-  if (cb) cb.checked = mapBonusOnly;
-  const bb = document.getElementById('map-barbs-only');
-  if (bb) bb.checked = mapBarbsOnly;
+  const si = document.getElementById('map-show-incoming');
+  if (si) si.checked = mapShowIncoming;
+  const so = document.getElementById('map-show-offplan');
+  if (so) so.checked = mapShowOffPlan;
+  const sd = document.getElementById('map-show-defplan');
+  if (sd) sd.checked = mapShowDefPlan;
   syncIncomingInputs();
 }
 
