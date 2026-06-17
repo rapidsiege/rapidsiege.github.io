@@ -4,8 +4,7 @@
 let villages = [];   // [{coord, player, spear, sword, axe, spy, light, heavy, ram, catapult, knight, snob, offPow, defInf, defCav, type}]
 let troopByCoord = {};  // 'x|y' → troop row (map hover/badges); rebuilt in parseData
 let players  = {};   // {playerName: {villages:[], totals:{...}, offPow, defInf, defCav}}
-let sortState = { players: {col:0,dir:1}, villages: {col:-1,dir:1} };
-let sortStateByVil = { col: 2, dir: 1 }; // default: off power desc
+let sortState = { players: {col:0,dir:1}, villages: {col:14,dir:1} }; // villages: Off Power desc (col 14)
 let targetSort = { key: 'dist', dir: 1 }; // default: distance asc
 
 
@@ -17,7 +16,6 @@ function changeLang(l) {
   if (villages.length) {
     renderOverview();
     renderPlayersTable();
-    renderByVillagesTable();
     renderVillagesTable();
     renderRankings();
   }

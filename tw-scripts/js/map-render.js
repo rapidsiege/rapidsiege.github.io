@@ -172,12 +172,15 @@ function isDimmed(v) {
 // rename, recolour, delete) — we never touch it again (mapMineSeeded persists). Needs
 // ally.txt to resolve a tag; until then it keeps retrying on later loads.
 function seedMineGroup() {
-  if (mapMineSeeded || !myAllyId) return;
-  const tag = (typeof allyDb !== 'undefined' && allyDb[myAllyId]) ? allyDb[myAllyId].tag : '';
-  if (!tag) return; // can't label the tribe without ally.txt — try again next load
+  if (mapMineSeeded || !myAllyIds.length) return;
+  const tags = myAllyIds
+    .map(a => (typeof allyDb !== 'undefined' && allyDb[a]) ? allyDb[a].tag : '')
+    .filter(Boolean);
+  if (!tags.length) return; // can't label the tribes without ally.txt — try again next load
   let g = mapGroups.find(x => x.id === MINE_GROUP_ID);
   if (!g) { g = { id: MINE_GROUP_ID, name: t('map_my_tribe'), color: MAP_COLOR_MINE, coords: [], players: [], tribes: [] }; mapGroups.unshift(g); }
-  if (!g.tribes.some(x => x.toLowerCase() === tag.toLowerCase())) g.tribes.push(tag);
+  for (const tag of tags)
+    if (!g.tribes.some(x => x.toLowerCase() === tag.toLowerCase())) g.tribes.push(tag);
   mapMineSeeded = true;
   rebuildGroupIndex();
   saveMapPrefs();

@@ -164,10 +164,10 @@ function renderPlayersTable() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// BY VILLAGES TABLE
+// TIER-DEPENDENT TABLES (re-rendered when the off thresholds change)
 // ══════════════════════════════════════════════════════════════
 function renderTierTables() {
-  renderByVillagesTable();
+  renderVillagesTable();   // shows the per-village Tier column
   renderPlayersTable();
 }
 
@@ -181,65 +181,15 @@ function getOffTier(offPow) {
   return 'none';
 }
 
-function renderByVillagesTable() {
-  const search     = (document.getElementById('byvillages-search')?.value || '').toLowerCase();
-  const tierFilter = document.getElementById('byvillages-filter-tier')?.value || 'all';
+// ── Off-power tier badge (shown in the Villages table's Tier column) ────────────
+const TIER_BADGE = {
+  complete: '<span class="badge badge-complete">Complete Off</span>',
+  tq:       '<span class="badge badge-tq">3/4</span>',
+  half:     '<span class="badge badge-half">1/2</span>',
+  none:     '<span class="badge badge-empty">—</span>',
+};
 
-  let data = villages.map(v => ({ ...v, tier: getOffTier(v.offPow) }));
-
-  if (search) data = data.filter(v =>
-    decode(v.player).toLowerCase().includes(search) || v.coord.includes(search));
-  if (tierFilter !== 'all') data = data.filter(v => v.tier === tierFilter);
-
-  const { col, dir } = sortStateByVil;
-  data.sort((a, b) => {
-    const av = [a.coord, decode(a.player), a.offPow, 0, a.axe, a.light, a.heavy, a.knight, a.ram, a.catapult, a.snob][col];
-    const bv = [b.coord, decode(b.player), b.offPow, 0, b.axe, b.light, b.heavy, b.knight, b.ram, b.catapult, b.snob][col];
-    if (typeof av === 'string') return dir * av.localeCompare(bv);
-    return dir * (bv - av);
-  });
-
-  const TIER_BADGE = {
-    complete: '<span class="badge badge-complete">Complete Off</span>',
-    tq:       '<span class="badge badge-tq">3/4</span>',
-    half:     '<span class="badge badge-half">1/2</span>',
-    none:     '<span class="badge badge-empty">—</span>',
-  };
-
-  const rows = data.map(v => `
-    <tr>
-      <td class="left" style="font-family:monospace;">${v.coord}</td>
-      <td class="left"><span class="player-tag">${decode(v.player)}</span></td>
-      <td style="color:#e06040;font-weight:600;">${v.offPow.toLocaleString()}</td>
-      <td>${TIER_BADGE[v.tier]}</td>
-      ${numCell(v.axe)}
-      ${numCell(v.light)}
-      ${numCell(v.heavy)}
-      ${numCell(v.knight)}
-      ${numCellAccent(v.ram)}
-      ${numCellAccent(v.catapult)}
-      ${numCellAccent(v.snob)}
-      <td><button class="btn btn-edit btn-sm" onclick="editByVillage('${v.coord}')">✎ ${t('btn_edit')}</button></td>
-    </tr>
-  `).join('');
-
-  document.getElementById('byvillages-tbody').innerHTML = rows ||
-    `<tr class="empty-row"><td colspan="12">${t('empty_no_byvillages')}</td></tr>`;
-
-  // sync sort arrows
-  document.getElementById('byvillages-table').querySelectorAll('th').forEach((th, i) => {
-    th.classList.remove('sort-asc', 'sort-desc');
-    if (i === col) th.classList.add(dir === -1 ? 'sort-desc' : 'sort-asc');
-  });
-}
-
-function sortByVillages(col) {
-  if (sortStateByVil.col === col) sortStateByVil.dir *= -1;
-  else { sortStateByVil.col = col; sortStateByVil.dir = -1; }
-  renderByVillagesTable();
-}
-
-// ── Manual edit of a village's troops (By Villages "Edit") ──────────────────
+// ── Manual edit of a village's troops (Villages "Edit") ─────────────────────
 // Lets you adjust a village's units in place — e.g. add snobs you know will be
 // recruited soon — so the plan accounts for them. SESSION-ONLY: the edit lives on
 // the in-memory village object; reloading or re-pasting the troop file resets it.
@@ -264,11 +214,10 @@ function saveByVillage() {
   recomputePlayerAggregate(v.player); // re-sum the owner's totals
   closeByVillageModal();
   // Re-render everything parseData refreshes (minus the status bar) so nothing is stale:
-  // By Villages + Villages tables, Players, Overview, Rankings, Tribe Timings off badge,
-  // the off/snob sender pickers (counts depend on tier/snobs), and the map.
+  // Villages table, Players, Overview, Rankings, Tribe Timings off badge, the off/snob
+  // sender pickers (counts depend on tier/snobs), and the map.
   renderOverview();
   renderPlayersTable();
-  renderByVillagesTable();
   renderVillagesTable();
   renderRankings();
   renderTargetTable();
@@ -283,15 +232,17 @@ function renderVillagesTable() {
   const search     = (document.getElementById('village-search').value || '').toLowerCase();
   const typeFilter = document.getElementById('village-filter-type').value;
 
-  let data = [...villages];
+  let data = villages.map(v => ({ ...v, tier: getOffTier(v.offPow) }));
 
   if (search) data = data.filter(v => v.player.toLowerCase().includes(search) || v.coord.includes(search));
   if (typeFilter !== 'all') data = data.filter(v => v.type === typeFilter);
 
   const { col, dir } = sortState.villages;
   if (col >= 0) {
+    // Index layout must match the <th> order: coord, player, type, TIER, 10 units, off, def, edit.
+    // Tier (3) + edit (16) aren't clickable, but keep placeholders so clickable columns line up.
     data.sort((a, b) => {
-      const vilVals = v => [v.coord, v.player, v.type, ...UNITS.map(u => v[u]), v.offPow, v.defInf + v.defCav];
+      const vilVals = v => [v.coord, v.player, v.type, v.tier, ...UNITS.map(u => v[u]), v.offPow, v.defInf + v.defCav, ''];
       const av = vilVals(a)[col], bv = vilVals(b)[col];
       if (typeof av === 'string') return dir * av.localeCompare(bv);
       return dir * (bv - av);
@@ -312,14 +263,16 @@ function renderVillagesTable() {
       <td class="left" style="font-family:monospace;">${v.coord}</td>
       <td class="left"><span class="player-tag">${decode(v.player)}</span></td>
       <td>${typeBadge[v.type]}</td>
+      <td>${TIER_BADGE[v.tier]}</td>
       ${UNITS.map(u => numCell(v[u])).join('')}
       <td style="color:#e06040;">${fmtM(v.offPow)}</td>
       <td style="color:#60a0e0;" title="${fmtM(v.defInf)} inf + ${fmtM(v.defCav)} cav">${fmtM(v.defInf + v.defCav)}</td>
+      <td><button class="btn btn-edit btn-sm" onclick="editByVillage('${v.coord}')">✎ ${t('btn_edit')}</button></td>
     </tr>
   `).join('');
 
   document.getElementById('villages-tbody').innerHTML = rows ||
-    `<tr class="empty-row"><td colspan="15">${t('empty_no_villages')}</td></tr>`;
+    `<tr class="empty-row"><td colspan="17">${t('empty_no_villages')}</td></tr>`;
 
   const { col: vcol, dir: vdir } = sortState.villages;
   document.getElementById('villages-table').querySelectorAll('th').forEach((th, i) => {

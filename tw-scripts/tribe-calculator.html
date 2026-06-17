@@ -30,10 +30,9 @@
 <!-- ═══════════════════════════ TABS ═══════════════════════════ -->
 <div class="tabs">
   <div class="tab active"  data-tab="overview"    onclick="switchTab('overview')"   data-i18n="tab_overview">Overview</div>
-  <div class="tab"         data-tab="players"     onclick="switchTab('players')"    data-i18n="tab_players">By Player</div>
-  <div class="tab"         data-tab="byvillages"  onclick="switchTab('byvillages')" data-i18n="tab_byvillages">By Villages</div>
   <div class="tab"         data-tab="map"         onclick="switchTab('map')"        data-i18n="tab_map">🗺 Map</div>
-  <div class="tab"         data-tab="villages"    onclick="switchTab('villages')"   data-i18n="tab_villages">Villages</div>
+  <div class="tab"         data-tab="players"     onclick="switchTab('players')"    data-i18n="tab_players">By Player</div>
+  <div class="tab"         data-tab="villages"    onclick="switchTab('villages')"   data-i18n="tab_byvillages">By Villages</div>
   <div class="tab"         data-tab="rankings"    onclick="switchTab('rankings')"   data-i18n="tab_rankings">Rankings</div>
   <div class="tab"         data-tab="target"      onclick="switchTab('target')"     data-i18n="tab_target">⏱ Tribe Timings</div>
   <div class="tab"         data-tab="offtargets"  onclick="switchTab('offtargets')" data-i18n="tab_offtargets">📌 Offensive Targets</div>
@@ -118,59 +117,6 @@
 </div>
 
 <!-- ═══════════════════════════ BY VILLAGES ═══════════════════════════ -->
-<div class="tab-content" id="tab-byvillages">
-  <div class="section-header">
-    <h2 data-i18n="sec_off_by_village">Offensive Power by Village</h2>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-ghost btn-sm" onclick="exportTable('byvillages-table','tribe_offpower.csv')">⬇ Export CSV</button>
-      <button class="btn btn-ghost btn-sm" onclick="showBBTable()">⬇ Export BB Table</button>
-    </div>
-  </div>
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:12px;color:#806030;">
-    <span>Tier thresholds configured in</span>
-    <button class="btn btn-ghost btn-sm" onclick="switchTab('settings')">⚙ Settings</button>
-    <div class="tier-legend">
-      <span class="badge badge-complete">Complete Off</span>
-      <span class="badge badge-tq">3/4</span>
-      <span class="badge badge-half">1/2</span>
-    </div>
-  </div>
-  <div class="filter-row">
-    <input type="text" id="byvillages-search" placeholder="Search player or coord…" oninput="renderByVillagesTable()">
-    <label data-i18n="lbl_tier">Tier:</label>
-    <select id="byvillages-filter-tier" onchange="renderByVillagesTable()">
-      <option value="all" data-i18n="opt_all_tiers">All tiers</option>
-      <option value="complete" data-i18n="opt_complete">Complete Off</option>
-      <option value="tq" data-i18n="opt_tq">3/4</option>
-      <option value="half" data-i18n="opt_half">1/2</option>
-      <option value="none" data-i18n="opt_below">Below threshold</option>
-    </select>
-  </div>
-  <div class="table-wrap">
-    <table id="byvillages-table">
-      <thead>
-        <tr>
-          <th class="left" onclick="sortByVillages(0)" data-i18n-th="th_coord">Coord <span class="sort-arrow"></span></th>
-          <th class="left" onclick="sortByVillages(1)" data-i18n-th="th_player">Player <span class="sort-arrow"></span></th>
-          <th onclick="sortByVillages(2)" data-i18n-th="th_off_power">Off Power <span class="sort-arrow"></span></th>
-          <th data-i18n="th_tier">Tier</th>
-          <th onclick="sortByVillages(4)" data-i18n-th="th_axe">Axe <span class="sort-arrow"></span></th>
-          <th onclick="sortByVillages(5)" data-i18n-th="th_light">Light <span class="sort-arrow"></span></th>
-          <th onclick="sortByVillages(6)" data-i18n-th="th_heavy">Heavy <span class="sort-arrow"></span></th>
-          <th onclick="sortByVillages(7)" data-i18n-th="th_knight">Knight <span class="sort-arrow"></span></th>
-          <th onclick="sortByVillages(8)" data-i18n-th="th_ram">Ram <span class="sort-arrow"></span></th>
-          <th onclick="sortByVillages(9)" data-i18n-th="th_cat">Cat <span class="sort-arrow"></span></th>
-          <th onclick="sortByVillages(10)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
-          <th data-i18n="th_edit">Edit</th>
-        </tr>
-      </thead>
-      <tbody id="byvillages-tbody">
-        <tr class="empty-row"><td colspan="12">Load a file to see data</td></tr>
-      </tbody>
-    </table>
-  </div>
-</div>
-
 <!-- ═══════════════════════════ MAP (v2.0.0) ═══════════════════════════ -->
 <div class="tab-content" id="tab-map">
   <div class="section-header">
@@ -251,22 +197,24 @@
           <th class="left" onclick="sortTable('villages',0)" data-i18n-th="th_coord">Coord <span class="sort-arrow"></span></th>
           <th class="left" onclick="sortTable('villages',1)" data-i18n-th="th_player">Player <span class="sort-arrow"></span></th>
           <th onclick="sortTable('villages',2)" data-i18n-th="th_type">Type <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('villages',3)" data-i18n-th="th_spear">Spear <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('villages',4)" data-i18n-th="th_sword">Sword <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('villages',5)" data-i18n-th="th_axe">Axe <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('villages',6)" data-i18n-th="th_spy">Spy <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('villages',7)" data-i18n-th="th_light">Light <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('villages',8)" data-i18n-th="th_heavy">Heavy <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('villages',9)" data-i18n-th="th_ram">Ram <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('villages',10)" data-i18n-th="th_cat">Cat <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('villages',11)" data-i18n-th="th_knight">Knight <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('villages',12)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('villages',13)" data-i18n-th="th_off">Off <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('villages',14)" data-i18n-th="th_def">Def Power <span class="sort-arrow"></span></th>
+          <th data-i18n="th_tier">Tier</th>
+          <th onclick="sortTable('villages',4)" data-i18n-th="th_spear">Spear <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',5)" data-i18n-th="th_sword">Sword <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',6)" data-i18n-th="th_axe">Axe <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',7)" data-i18n-th="th_spy">Spy <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',8)" data-i18n-th="th_light">Light <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',9)" data-i18n-th="th_heavy">Heavy <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',10)" data-i18n-th="th_ram">Ram <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',11)" data-i18n-th="th_cat">Cat <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',12)" data-i18n-th="th_knight">Knight <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',13)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',14)" data-i18n-th="th_off">Off <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('villages',15)" data-i18n-th="th_def">Def Power <span class="sort-arrow"></span></th>
+          <th data-i18n="th_edit">Edit</th>
         </tr>
       </thead>
       <tbody id="villages-tbody">
-        <tr class="empty-row"><td colspan="15">Load a file to see village data</td></tr>
+        <tr class="empty-row"><td colspan="17">Load a file to see village data</td></tr>
       </tbody>
     </table>
   </div>
@@ -749,7 +697,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.4.0 &nbsp;·&nbsp; 2026-06-17</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.4.1 &nbsp;·&nbsp; 2026-06-17</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

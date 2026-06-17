@@ -136,27 +136,25 @@ const MAP_COLOR_BARB  = '#8d8d8d';  // barbarian / abandoned → grey
 const MAP_COLOR_OWNED = '#a06a2c';  // any other player → brown
 const MAP_COLOR_MINE  = '#3f7fe0';  // default colour of the auto-seeded "My tribe" group
 
-// ── "My tribe" auto-detection (from the loaded tribe-troop file `villages[]`) ──
+// ── "My tribe(s)" auto-detection (from the loaded tribe-troop file `villages[]`) ──
 // The troop file lists my tribemates' villages by coord (no ids). Join coord→DB to find
-// the dominant ally = my tribe; the render shell seeds an editable "My tribe" color group
-// with that tribe's tag (see seedMineGroup). Detection only identifies which tribe — the
-// actual blue colouring then flows through the normal custom-group path, so the user can
-// add/remove tribes (e.g. a multi-tribe alliance) or recolour it like any other group.
-let myAllyId = null;             // dominant allyId among troop-file villages (or null)
+// EVERY ally present among them: we only ever have troop data for our OWN tribes, so all
+// tribes in the file are "ours" (we run several). The render shell seeds an editable "My
+// tribe" colour group with each of those tags (see seedMineGroup). Detection only identifies
+// the tribes — the actual blue colouring then flows through the normal custom-group path, so
+// the user can add/remove tribes or recolour it like any other group.
+let myAllyIds = [];              // all distinct allyIds among troop-file villages (your tribes)
 function detectMyTribe() {
-  myAllyId = null;
+  myAllyIds = [];
   if (typeof villages === 'undefined' || !villages.length) return;
-  const allyCount = {};
+  const seen = {};
   for (const tv of villages) {
     if (!tv.coord) continue;
     const dbv = (typeof coordDb !== 'undefined') ? coordDb[tv.coord] : null;
     if (!dbv) continue;
     const a = (typeof playerAllyDb !== 'undefined') ? playerAllyDb[dbv.playerId] : null;
-    if (a) allyCount[a] = (allyCount[a] || 0) + 1;
+    if (a && !seen[a]) { seen[a] = true; myAllyIds.push(a); }
   }
-  let best = null, bestN = 0;
-  for (const a in allyCount) if (allyCount[a] > bestN) { bestN = allyCount[a]; best = a; }
-  myAllyId = best;
 }
 
 // ── Custom color groups ──

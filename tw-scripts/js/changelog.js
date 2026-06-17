@@ -12,6 +12,16 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.4.1', date: '2026-06-17',
+    en: [
+      `<b>🧹 Tidier tabs.</b> The old <b>“By Villages”</b> tab was removed — the <b>“Villages”</b> tab already showed everything it did and more, so it now carries the <b>Tier</b> column too (plus the in-place <b>✎ Edit</b> troops button) and has been renamed <b>“By Villages”</b>. The <b>🗺 Map</b> tab also moved up to sit right after Overview.`,
+      `<b>🔵 “My tribe” now covers all your tribes.</b> When you upload troop data, the map’s auto-detected <b>“My tribe”</b> colour group now includes <b>every tribe present in the file</b>, not just the biggest one — so if you run several tribes and upload all of them, every one gets painted (you only ever have troop data for your own tribes anyway).`,
+    ],
+    es: [
+      `<b>🧹 Pestañas más ordenadas.</b> Se quitó la antigua pestaña <b>“Por Aldea”</b> — la pestaña <b>“Aldeas”</b> ya mostraba todo lo de aquella y más, así que ahora incluye también la columna <b>Nivel</b> (y el botón <b>✎ Editar</b> tropas in situ) y pasó a llamarse <b>“Por Aldea”</b>. La pestaña <b>🗺 Mapa</b> también subió para quedar justo después de Resumen.`,
+      `<b>🔵 “Mi tribu” ahora incluye todas tus tribus.</b> Al subir los datos de tropas, el grupo de color <b>“Mi tribu”</b> autodetectado en el mapa ahora incluye <b>todas las tribus presentes en el archivo</b>, no solo la más grande — así que si gestionas varias tribus y las subes todas, se pintan las aldeas de todas (de todos modos solo tienes datos de tropas de tus propias tribus).`,
+    ],
+  },
   { ver: 'v3.4.0', date: '2026-06-17',
     en: [
       `<b>🟢 Your offensive &amp; defensive plans, drawn on the map.</b> Once you generate a <b>Plan Offensive</b> / <b>Plan Defense</b>, each target village now shows a halo: <b>neon-green</b> over offensive objectives, <b>neon-pink</b> over support targets. Hovering an objective lists <b>“(N) Planned Attacks”</b> with each order's type (Complete, 3/4, 1/2, “4x Split Off Snobs”…) and the attacking player; hovering a support target lists <b>“(N) Planned Support”</b> with the full troop totals being sent.`,

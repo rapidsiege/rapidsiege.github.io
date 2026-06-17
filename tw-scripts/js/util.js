@@ -250,7 +250,7 @@ function showPlayersBBTable() {
   document.getElementById('bb-modal').classList.add('open');
 }
 
-function showBBTable(tableId = 'byvillages-table') {
+function showBBTable(tableId = 'villages-table') {
   const table = document.getElementById(tableId);
   const headers = [...table.querySelectorAll('thead th')].map(th => th.innerText.replace(/[▲▼⬍]/g,'').trim());
   const rows    = [...table.querySelectorAll('tbody tr')].filter(tr => !tr.classList.contains('empty-row'));

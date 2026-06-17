@@ -72,8 +72,7 @@ function clearData() {
   document.getElementById('overview-drop').style.display = '';
   document.getElementById('overview-content').style.display = 'none';
   document.getElementById('players-tbody').innerHTML = `<tr class="empty-row"><td colspan="17">${t('empty_load_players')}</td></tr>`;
-  document.getElementById('byvillages-tbody').innerHTML = `<tr class="empty-row"><td colspan="12">${t('empty_load_byvillages')}</td></tr>`;
-  document.getElementById('villages-tbody').innerHTML = `<tr class="empty-row"><td colspan="15">${t('empty_load_villages')}</td></tr>`;
+  document.getElementById('villages-tbody').innerHTML = `<tr class="empty-row"><td colspan="17">${t('empty_load_villages')}</td></tr>`;
   document.getElementById('rankings-content').innerHTML = `<div style="color:#5a3a18;padding:36px;text-align:center;">${t('empty_load_rankings')}</div>`;
   renderTargetTable();
 }
@@ -164,7 +163,6 @@ function parseData(text, filename) {
 
   renderOverview();
   renderPlayersTable();
-  renderByVillagesTable();
   renderVillagesTable();
   renderRankings();
   renderTargetTable();
