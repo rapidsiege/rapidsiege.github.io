@@ -410,6 +410,15 @@
         <input type="number" id="aa-nobles" value="1" min="1" max="4">
       </div>
       <div class="form-group">
+        <label data-i18n="lbl_speed">Speed (timing)</label>
+        <select id="aa-speed">
+          <option value="" data-i18n="opt_speed_auto">Auto (by type)</option>
+          <option value="axe" data-i18n="opt_speed_axe">Axe (18)</option>
+          <option value="sword" data-i18n="opt_speed_sword">Sword (22)</option>
+          <option value="lc" data-i18n="opt_speed_lc">Light Cavalry (10)</option>
+        </select>
+      </div>
+      <div class="form-group">
         <label data-i18n="lbl_landing_time">Landing Time</label>
         <input type="datetime-local" id="aa-landing" step="1">
       </div>
@@ -996,6 +1005,15 @@
         <input type="number" id="ma-nobles" value="1" min="1" max="4">
       </div>
       <div class="form-group">
+        <label data-i18n="lbl_speed">Speed (timing)</label>
+        <select id="ma-speed">
+          <option value="" data-i18n="opt_speed_auto">Auto (by type)</option>
+          <option value="axe" data-i18n="opt_speed_axe">Axe (18)</option>
+          <option value="sword" data-i18n="opt_speed_sword">Sword (22)</option>
+          <option value="lc" data-i18n="opt_speed_lc">Light Cavalry (10)</option>
+        </select>
+      </div>
+      <div class="form-group">
         <label data-i18n="lbl_landing_time">Landing Time</label>
         <input type="datetime-local" id="ma-landing" step="1">
       </div>
@@ -1142,6 +1160,11 @@ const LANG = {
     opt_off: 'Off (Rams)',
     opt_fake: 'Fake (1 spy/1 ram)',
     opt_snob: 'Snob (Nobleman)',
+    lbl_speed: 'Speed (timing)',
+    opt_speed_auto: 'Auto (by type)',
+    opt_speed_axe: 'Axe (18)',
+    opt_speed_sword: 'Sword (22)',
+    opt_speed_lc: 'Light Cavalry (10)',
     opt_target_off: 'Off',
     opt_target_fake: 'Fake',
 
@@ -1332,6 +1355,11 @@ const LANG = {
     opt_off: 'Off (Arietes)',
     opt_fake: 'Fake (1 esp/1 ariete)',
     opt_snob: 'Noble (Tren de nobles)',
+    lbl_speed: 'Velocidad (horario)',
+    opt_speed_auto: 'Auto (según tipo)',
+    opt_speed_axe: 'Hacha (18)',
+    opt_speed_sword: 'Espada (22)',
+    opt_speed_lc: 'Caballería Ligera (10)',
     opt_target_off: 'Off',
     opt_target_fake: 'Fake',
 
@@ -1463,7 +1491,14 @@ const IDB_DB    = 'apDbDir';
 // MATH / FORMULAS
 // ══════════════════════════════════════════════
 
-const BASE_MIN = { off: 30, fake: 30, snob: 35 };
+// Base minutes/field at world-speed 1, unit-speed 1.
+//  off/fake travel at ram speed (30), snob at noble speed (35).
+//  sword/axe/lc are optional per-attack timing overrides (see atk.speed) so the
+//  user can compute send/landing times at a faster unit's pace — timing only,
+//  the send-URL army is unchanged.
+const BASE_MIN = { off: 30, fake: 30, snob: 35, axe: 18, sword: 22, lc: 10 };
+// Short tags shown next to a row's type badge when a timing-speed override is set.
+const SPEED_LABEL = { axe: 'Axe', sword: 'Sword', lc: 'LC' };
 
 // Off power weights (standard TW attack values)
 const ATT = { axe: 40, lc: 130, rams: 2, cats: 100, nobles: 30 };
@@ -1499,7 +1534,9 @@ function computeAttackRow(atk) {
   if (!village || !target) return null;
 
   const d      = dist(village, target);
-  const tMs    = travelMs(d, atk.type, ws, us);
+  // Optional per-attack speed override (sword/axe/lc) for timing only; falls back to the type's pace.
+  const speedKey = (atk.speed && BASE_MIN[atk.speed]) ? atk.speed : atk.type;
+  const tMs    = travelMs(d, speedKey, ws, us);
   const landMs = new Date(atk.landingTime).getTime();
   const sendMs = landMs - tMs;
   const url    = buildAttackUrl(
@@ -2910,6 +2947,7 @@ function addAttack() {
   const fromId     = document.getElementById('aa-from').value;
   const targetId   = document.getElementById('aa-target').value;
   const type       = document.getElementById('aa-type').value;
+  const speed      = document.getElementById('aa-speed').value;
   const nobleCount = parseInt(document.getElementById('aa-nobles').value) || 1;
   const landingVal = document.getElementById('aa-landing').value;
 
@@ -2922,6 +2960,7 @@ function addAttack() {
     fromId,
     targetId,
     type,
+    speed:       speed || '',   // '' = travel at the type's pace; sword/axe/lc override timing only
     nobleCount:  type === 'snob' ? nobleCount : 1,
     landingTime: new Date(landingVal).toISOString(),
     manual:      true,   // survives Auto-Generate (which replaces generated attacks)
@@ -2938,6 +2977,7 @@ function editAttack(id) {
   if (!a) return;
   document.getElementById('ma-id').value      = a.id;
   document.getElementById('ma-type').value    = a.type;
+  document.getElementById('ma-speed').value   = a.speed || '';
   document.getElementById('ma-nobles').value  = a.nobleCount || 1;
   document.getElementById('ma-landing').value = localDatetimeValue(new Date(a.landingTime).getTime());
 
@@ -2961,6 +3001,7 @@ function saveAttack() {
   a.fromId     = document.getElementById('ma-from').value;
   a.targetId   = document.getElementById('ma-target').value;
   a.type       = document.getElementById('ma-type').value;
+  a.speed      = document.getElementById('ma-speed').value || '';
   a.nobleCount = parseInt(document.getElementById('ma-nobles').value) || 1;
   a.landingTime = new Date(landingVal).toISOString();
   closeModal('modal-attack');
@@ -3228,7 +3269,7 @@ function renderAttacks() {
       <td>${targetCoord}</td>
       <td>${villageName}</td>
       <td>${playerName}</td>
-      <td>${typeBadge}${a.type === 'snob' ? ` <small style="color:#6090e0">×${a.nobleCount}</small>` : ''}</td>
+      <td>${typeBadge}${a.type === 'snob' ? ` <small style="color:#6090e0">×${a.nobleCount}</small>` : ''}${a.speed && BASE_MIN[a.speed] ? ` <small style="color:#c0a060">@${SPEED_LABEL[a.speed] || a.speed}</small>` : ''}</td>
       <td>${a.type === 'off' && village ? `${calcOffPow(village).toLocaleString()} ${offTierBadge(calcOffPow(village))}` : '<span class="text-dim">—</span>'}</td>
       <td>${distCell}</td>
       <td style="font-family:monospace;font-size:12px">${travelCell}</td>
@@ -3594,7 +3635,7 @@ function renderAll() {
 })();
 </script>
 <div class="footer">
-  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.1.0 &nbsp;·&nbsp; 2026-06-15
+  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.2.0 &nbsp;·&nbsp; 2026-06-17
 </div>
 </body>
 </html>
