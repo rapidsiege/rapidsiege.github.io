@@ -83,8 +83,12 @@ function clearData() {
 // Off/def power + type classification for a troop-village row, derived from its unit
 // counts. Used by parseData (initial parse) AND the By-Villages manual edit, so the two
 // never diverge. Mutates vil in place (sets offPow / defInf / defCav / type).
-const OFF_UNITS = ['axe','light','ram','catapult'];
-const DEF_UNITS = ['spear','sword','heavy','catapult','knight','light','spy'];
+// Power is scored from a simple fixed unit list each (v3.7.1). Off = the clearing/siege
+// units + the noble; Def = only the dedicated defensive units. Hybrid/offensive units
+// (light cav, catapult, scout) are deliberately kept OUT of def power so a full off
+// village doesn't read as having large phantom defence.
+const OFF_UNITS = ['axe','light','ram','catapult','snob'];
+const DEF_UNITS = ['spear','sword','heavy','knight'];
 function applyVilDerived(vil) {
   vil.offPow = OFF_UNITS.reduce((s,u) => s + (vil[u] || 0) * ATT[u],  0);
   vil.defInf = DEF_UNITS.reduce((s,u) => s + (vil[u] || 0) * DINF[u], 0);

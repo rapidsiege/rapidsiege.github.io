@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.7.1', date: '2026-06-18',
+    en: [
+      `<b>🛡️⚔️ Cleaner Off / Def Power.</b> Power is now scored from a simple unit list each. <b>Defensive Power = spears + swords + heavy cavalry + paladins</b> only — the dedicated defensive units. <b>Offensive Power = axes + light cavalry + rams + catapults + nobles.</b> Offensive/hybrid units (light cav, catapults, scouts) no longer leak into Defensive Power, so a full off village no longer reads as having hundreds of thousands of phantom "defence".`,
+    ],
+    es: [
+      `<b>🛡️⚔️ Poder Ofensivo / Defensivo más limpio.</b> El poder se calcula ahora con una lista simple de unidades para cada uno. <b>Poder Defensivo = lanceros + espadas + caballería pesada + paladines</b> únicamente — las unidades puramente defensivas. <b>Poder Ofensivo = hachas + caballería ligera + arietes + catapultas + nobles.</b> Las unidades ofensivas/híbridas (caballería ligera, catapultas, exploradores) ya no se cuelan en el Poder Defensivo, así que una aldea puramente ofensiva ya no muestra cientos de miles de "defensa" fantasma.`,
+    ],
+  },
   { ver: 'v3.7.0', date: '2026-06-18',
     en: [
       `<b>👑 The conqueror always sends one of its target's offs.</b> When a player is set to noble a village, the planner now <b>guarantees</b> one of that target's requested clearing offs comes from the conqueror's own villages — reserved up front so another target can't grab it first — and it lands <b>last, right before the noble</b>, so they control the final clear→snob handoff. The tier is respected (a lower-tier off never substitutes for a higher one); if all their offs are out of range or held for the launch, none is forced. Works for solo and split-off (escorted) trains.`,

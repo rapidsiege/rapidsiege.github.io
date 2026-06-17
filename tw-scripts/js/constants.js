@@ -6,8 +6,8 @@ const UNIT_LABELS = ['Spear','Sword','Axe','Spy','Light','Heavy','Ram','Cat','Kn
 
 // Attack / Def-inf / Def-cav values (standard TW)
 const ATT  = { spear:10,  sword:25,  axe:40,  spy:35,  light:130, heavy:150, ram:2,   catapult:100, knight:150, snob:30  };
-const DINF = { spear:15,  sword:50,  axe:10,  spy:200, light:30,  heavy:200, ram:20,  catapult:100, knight:250, snob:100 };
-const DCAV = { spear:45,  sword:25,  axe:10,  spy:200, light:40,  heavy:80,  ram:50,  catapult:50,  knight:400, snob:100 };
+const DINF = { spear:15,  sword:50,  axe:10,  spy:2,   light:30,  heavy:200, ram:20,  catapult:100, knight:250, snob:100 };
+const DCAV = { spear:45,  sword:25,  axe:10,  spy:1,   light:40,  heavy:80,  ram:50,  catapult:50,  knight:400, snob:100 };
 
 const UNIT_TYPE = { // off / def / misc
   spear:'def', sword:'def', axe:'off', spy:'misc',
