@@ -55,7 +55,7 @@ function appVersion() {
 // Data only — the caller repaints (via changeLang).
 function rebuildTroopsFromVillages(vils) {
   villages = vils.map(v => { const u = { ...v }; applyVilDerived(u); return u; });
-  players = {}; troopByCoord = {};
+  players = {}; troopByCoord = {}; defenseByCoord = {}; incomingByCoord = {};
   for (const v of villages) {
     troopByCoord[v.coord] = v;
     if (!players[v.player]) players[v.player] = { villages: [], totals: Object.fromEntries(UNITS.map(u => [u, 0])), offPow: 0, defInf: 0, defCav: 0 };

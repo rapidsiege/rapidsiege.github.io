@@ -2,7 +2,9 @@
 // STATE
 // ══════════════════════════════════════════════════════════════
 let villages = [];   // [{coord, player, spear, sword, axe, spy, light, heavy, ram, catapult, knight, snob, offPow, defInf, defCav, type}]
-let troopByCoord = {};  // 'x|y' → troop row (map hover/badges); rebuilt in parseData
+let troopByCoord = {};  // 'x|y' → owned-troop row (map hover/badges); rebuilt in parseData
+let defenseByCoord = {};  // 'x|y' → stationed-troops row (defense type from tribe_everything.txt)
+let incomingByCoord = {}; // 'x|y' → inbound/returning troops row (incoming type)
 let players  = {};   // {playerName: {villages:[], totals:{...}, offPow, defInf, defCav}}
 let sortState = { players: {col:0,dir:1}, villages: {col:14,dir:1} }; // villages: Off Power desc (col 14)
 let targetSort = { key: 'dist', dir: 1 }; // default: distance asc

@@ -264,20 +264,54 @@ function villageTooltipHtml(coord) {
 // troopByCoord (built in parseData) maps 'x|y' → the parsed troop row. These are pure
 // reads of that global, so the harness can exercise them by setting troopByCoord.
 
-// Troop block appended to the hover tooltip when we have this village's troops loaded:
-// off power, total def, and the per-unit counts (with icons when twIcon is available).
-function troopTooltipHtml(coord) {
-  const tt = (typeof troopByCoord !== 'undefined') ? troopByCoord[coord] : null;
-  if (!tt) return '';
+// Does a parsed troop row carry any units at all? (skips empty stationed/inbound sections)
+function troopRowHasUnits(row) {
+  if (!row) return false;
+  return (typeof UNITS !== 'undefined' ? UNITS : []).some(u => (row[u] || 0) > 0);
+}
+
+// One tooltip troop block: a header, one or more power lines, and the per-unit chips.
+// powerLines is [[iconKey, label, value], …]; entry is the parsed troop row (for the chips).
+function troopBlockHtml(title, powerLines, entry) {
   const ic = (typeof twIcon === 'function') ? twIcon : () => '';
-  const totalDef = (tt.defInf || 0) + (tt.defCav || 0);
-  const units = (typeof UNITS !== 'undefined' ? UNITS : []).filter(u => (tt[u] || 0) > 0);
-  let h = `<div class="map-tt-troops"><div class="map-tt-troops-h">${t('map_tt_troops')}</div>`;
-  h += `<div class="map-tt-row"><span class="map-tt-k">${ic('off')}${t('map_tt_off')}</span><span class="map-tt-v">${(tt.offPow || 0).toLocaleString()}</span></div>`;
-  h += `<div class="map-tt-row"><span class="map-tt-k">${ic('def')}${t('map_tt_def')}</span><span class="map-tt-v">${totalDef.toLocaleString()}</span></div>`;
+  let h = `<div class="map-tt-troops"><div class="map-tt-troops-h">${title}</div>`;
+  for (const [icon, label, val] of powerLines)
+    h += `<div class="map-tt-row"><span class="map-tt-k">${ic(icon)}${label}</span><span class="map-tt-v">${(val || 0).toLocaleString()}</span></div>`;
+  const units = (typeof UNITS !== 'undefined' ? UNITS : []).filter(u => (entry[u] || 0) > 0);
   if (units.length)
-    h += `<div class="map-tt-units">` + units.map(u => `<span class="map-tt-unit">${ic(u)}${tt[u].toLocaleString()}</span>`).join('') + `</div>`;
+    h += `<div class="map-tt-units">` + units.map(u => `<span class="map-tt-unit">${ic(u)}${entry[u].toLocaleString()}</span>`).join('') + `</div>`;
   return h + `</div>`;
+}
+
+// Up to three stacked troop blocks appended to the hover tooltip (from tribe_everything.txt):
+//  • Owned Village Troops — the village's own troops. Off Power for an off (red-axe) village,
+//    Def Power for a def (blue-sword) one — the role from villageTroopBadge (mixed→dominant).
+//  • Troops In Village — troops currently stationed there (own + foreign support): both powers.
+//  • Inbound Troops — troops returning/incoming to the village: Def Power only.
+// Each section renders only when its data is loaded (stationed/inbound need ≥1 unit).
+function troopTooltipHtml(coord) {
+  let h = '';
+  const owned = (typeof troopByCoord !== 'undefined') ? troopByCoord[coord] : null;
+  if (owned) {
+    const badge = (typeof villageTroopBadge === 'function') ? villageTroopBadge(coord) : null;
+    const role = badge ? badge.offdef : null; // 'off' | 'def' | null
+    const line = (role === 'def')
+      ? ['def', t('map_tt_def'), (owned.defInf || 0) + (owned.defCav || 0)]
+      : ['off', t('map_tt_off'), owned.offPow || 0]; // off / mixed→off / empty default to off
+    h += troopBlockHtml(t('map_tt_troops'), [line], owned);
+  }
+  const stationed = (typeof defenseByCoord !== 'undefined') ? defenseByCoord[coord] : null;
+  if (troopRowHasUnits(stationed))
+    h += troopBlockHtml(t('map_tt_stationed'), [
+      ['off', t('map_tt_off'), stationed.offPow || 0],
+      ['def', t('map_tt_def'), (stationed.defInf || 0) + (stationed.defCav || 0)],
+    ], stationed);
+  const inbound = (typeof incomingByCoord !== 'undefined') ? incomingByCoord[coord] : null;
+  if (troopRowHasUnits(inbound))
+    h += troopBlockHtml(t('map_tt_inbound'), [
+      ['def', t('map_tt_def'), (inbound.defInf || 0) + (inbound.defCav || 0)],
+    ], inbound);
+  return h;
 }
 
 // ── Plan overlays (Plan Offensive / Plan Defense → map halos + hover) ──────────

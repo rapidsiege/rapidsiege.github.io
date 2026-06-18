@@ -118,17 +118,30 @@ function recomputePlayerAggregate(name) {
   }
 }
 
+// Build a stationed/inbound troops row (defense / incoming types) from parsed unit counts.
+// Mirrors the owned-troop derived fields (offPow / defInf / defCav) via applyVilDerived so
+// the map tooltip can show the same power numbers. NOT pushed to villages/players — those
+// stay owned-troop-only; this is map-tooltip data keyed by coord.
+function deriveStationRow(coord, player, units) {
+  const r = { coord, player, ...units };
+  applyVilDerived(r); // offPow / defInf / defCav (+ type / popUsed, harmless here)
+  return r;
+}
+
 function parseData(text, filename) {
   villages = [];
   players  = {};
   troopByCoord = {};
+  defenseByCoord = {};
+  incomingByCoord = {};
   const lines = text.split('\n').map(l => l.trim()).filter(l => l);
 
   // tribe_everything.txt (from tribeInfo.js) inserts a "Type" column (troops/defense/
   // incoming) at index 2, shifting the unit columns right by one. Detect it per-row
   // (cols[2] is a type label, not a unit count) so a multi-file upload can mix the
-  // everything format with the plain tribe info.txt format in any order. For now only
-  // "troops" rows are consumed; defense/incoming rows are skipped (planned feature).
+  // everything format with the plain tribe info.txt format in any order. "troops" rows
+  // feed villages/players (owned troops); "defense" (stationed in the village) and
+  // "incoming" (inbound/returning) rows feed the map tooltip only.
   const TYPE_LABELS = ['troops', 'defense', 'incoming'];
 
   for (const line of lines) {
@@ -137,13 +150,16 @@ function parseData(text, filename) {
 
     const rowType = (cols[2] || '').toLowerCase();
     const hasType = TYPE_LABELS.includes(rowType);
-    if (hasType && rowType !== 'troops') continue; // defense/incoming: not supported yet
     const base = hasType ? 3 : 2; // index of the first unit column
 
     const coord  = cols[0];
     const player = cols[1] || 'Unknown';
     const units  = {};
     UNITS.forEach((u, i) => { units[u] = parseInt(cols[base + i]) || 0; });
+
+    // defense / incoming rows: map-tooltip data only — never touch villages/players.
+    if (hasType && rowType === 'defense')  { defenseByCoord[coord]  = deriveStationRow(coord, player, units); continue; }
+    if (hasType && rowType === 'incoming') { incomingByCoord[coord] = deriveStationRow(coord, player, units); continue; }
     // Optional "Incoming" column (incoming attacks), read positionally from the slot right
     // after the last unit. Read per-row (NOT from the header) so a multi-file upload that
     // mixes files WITH and WITHOUT the column works in any order: a row missing the column

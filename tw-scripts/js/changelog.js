@@ -12,6 +12,16 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.8.0', date: '2026-06-18',
+    en: [
+      `<b>🗺️ All three troop categories in the map tooltip.</b> Hovering a village now shows up to three stacked sections from the combined <b>tribe_everything.txt</b> export: <b>Owned Village Troops</b> (the village's own army), <b>Troops In Village</b> (everything currently stationed there — its own plus any foreign support), and <b>Inbound Troops</b> (troops returning/incoming to the village). Each section lists its per-unit counts.`,
+      `<b>⚔️🛡️ Role-aware power lines.</b> <b>Owned Village Troops</b> shows <b>Off Power</b> for an offensive village (red axe) and <b>Def Power</b> for a defensive one (blue sword). <b>Troops In Village</b> shows <b>both</b> Off and Def Power, and <b>Inbound Troops</b> shows <b>Def Power</b> only. Empty stationed/inbound sections are hidden.`,
+    ],
+    es: [
+      `<b>🗺️ Las tres categorías de tropas en el tooltip del mapa.</b> Al pasar el ratón por una aldea ahora se muestran hasta tres secciones apiladas desde el export combinado <b>tribe_everything.txt</b>: <b>Tropas Propias de la Aldea</b> (el ejército propio de la aldea), <b>Tropas en la Aldea</b> (todo lo que está estacionado allí — las propias más cualquier apoyo externo) y <b>Tropas Entrantes</b> (tropas que regresan/entran a la aldea). Cada sección lista sus unidades una a una.`,
+      `<b>⚔️🛡️ Líneas de poder según el rol.</b> <b>Tropas Propias de la Aldea</b> muestra <b>Pod. Off</b> para una aldea ofensiva (hacha roja) y <b>Pod. Def</b> para una defensiva (espada azul). <b>Tropas en la Aldea</b> muestra <b>ambos</b> Pod. Off y Pod. Def, y <b>Tropas Entrantes</b> muestra solo <b>Pod. Def</b>. Las secciones vacías de estacionadas/entrantes se ocultan.`,
+    ],
+  },
   { ver: 'v3.7.1', date: '2026-06-18',
     en: [
       `<b>🛡️⚔️ Cleaner Off / Def Power.</b> Power is now scored from a simple unit list each. <b>Defensive Power = spears + swords + heavy cavalry + paladins</b> only — the dedicated defensive units. <b>Offensive Power = axes + light cavalry + rams + catapults + nobles.</b> Offensive/hybrid units (light cav, catapults, scouts) no longer leak into Defensive Power, so a full off village no longer reads as having hundreds of thousands of phantom "defence".`,
