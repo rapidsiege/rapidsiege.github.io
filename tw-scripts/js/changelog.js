@@ -12,6 +12,18 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.9.0', date: '2026-06-18',
+    en: [
+      `<b>🚫 Ignore Coordinates (Offensive Targets).</b> A new <b>Ignore Coordinates</b> box on the Offensive Targets tab lets you list your own villages that must <b>never send anything</b> — no off, no noble train, no split-off escort. Listed villages are dropped from the planner entirely, so they stay free for whatever you're holding them for.`,
+      `<b>🙅 Ignore Players (Offensive Targets).</b> A new <b>Ignore Players</b> picker (same chip style as the snob senders) lets you exclude whole players from the plan in one click — none of their villages are ever assigned, and they're hidden from the off- and snob-sender selectors so you can't pin them by accident.`,
+      `<b>🛡️ Ignore Coordinates &amp; Enemy Tribes moved to Defensive Targets.</b> The defensive <b>Ignore Coordinates</b> box and the <b>Enemy Tribes</b> control (with its distance field) now live on the <b>Defensive Targets</b> tab (next to where you set objectives) instead of Plan Defense — same behaviour, just a more natural home.`,
+    ],
+    es: [
+      `<b>🚫 Ignorar Coordenadas (Objetivos Ofensivos).</b> Una nueva caja <b>Ignorar Coordenadas</b> en la pestaña de Objetivos Ofensivos te deja listar tus propias aldeas que <b>nunca deben enviar nada</b> — ni off, ni tren de nobles, ni escolta. Las aldeas listadas se excluyen por completo del planificador, así que quedan libres para lo que sea que las estés reservando.`,
+      `<b>🙅 Ignorar Jugadores (Objetivos Ofensivos).</b> Un nuevo selector <b>Ignorar Jugadores</b> (con el mismo estilo de fichas que los remitentes de nobles) te deja excluir jugadores enteros del plan con un clic — ninguna de sus aldeas se asigna jamás, y se ocultan de los selectores de remitentes de off y de nobles para que no los fijes por error.`,
+      `<b>🛡️ Ignorar Coordenadas y Tribus Enemigas movidos a Objetivos Defensivos.</b> La caja defensiva <b>Ignorar Coordenadas</b> y el control <b>Tribus Enemigas</b> (con su campo de distancia) ahora viven en la pestaña <b>Objetivos Defensivos</b> (junto a donde defines los objetivos) en vez de en Planear Defensa — mismo comportamiento, solo un sitio más natural.`,
+    ],
+  },
   { ver: 'v3.8.0', date: '2026-06-18',
     en: [
       `<b>🗺️ All three troop categories in the map tooltip.</b> Hovering a village now shows up to three stacked sections from the combined <b>tribe_everything.txt</b> export: <b>Owned Village Troops</b> (the village's own army), <b>Troops In Village</b> (everything currently stationed there — its own plus any foreign support), and <b>Inbound Troops</b> (troops returning/incoming to the village). Each section lists its per-unit counts.`,

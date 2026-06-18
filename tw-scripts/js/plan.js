@@ -118,10 +118,15 @@ function generatePlan() {
   const minDistRaw = parseFloat((document.getElementById('plan-min-dist') || {}).value);
   const minDist = isNaN(minDistRaw) ? 0 : minDistRaw;
 
+  // Ignore lists (Offensive Targets): villages listed by coord, or owned by an ignored
+  // player, are dropped from the pool entirely — so they're never picked for an off, a
+  // snob train, or a split-off escort by ANY pass below (all passes draw from `pool`).
+  const ignoreCoords  = parseOffIgnoreSet();
+  const ignorePlayers = new Set(offIgnorePlayers);
   const pool = villages.map(v => ({
     v, c: parseCoordStr(v.coord), tier: getOffTier(v.offPow),
     snobLeft: v.snob, usedOff: false, usedSnob: false,
-  })).filter(p => p.c);
+  })).filter(p => p.c && !ignoreCoords.has(p.v.coord) && !ignorePlayers.has(p.v.player));
 
   // Off-load fairness (auto pass only): how many off villages each player owns, and how
   // many have been committed so far. Used to spread offs in PROPORTION to roster size, so

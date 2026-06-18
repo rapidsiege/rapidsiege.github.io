@@ -9,6 +9,8 @@ const TIER_FIELD = { complete: 'nComplete', tq: 'nTq', half: 'nHalf' };
 
 let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30', serverUrl: 'es100.guerrastribales.es', serverUtcOffset: 2, defComplete: 1, defTq: 0, defHalf: 0, defSnobMode: 'solo' };
 let offTargets   = []; // [{id, coord, player, nComplete, nTq, nHalf, snobPlayers, nobles, offWindows:[{win,count}], winSnob, snobMode, snobAssignees:[{name,count}]}]
+let offIgnore        = ''; // raw "Ignore Coordinates" textarea (Offensive Targets) — these villages never send anything
+let offIgnorePlayers = []; // raw player names excluded from the whole plan (no off, no snob, no escort)
 let planRows     = []; // denormalized so a saved plan renders without the troop file loaded
 let planWarnings = [];
 let planReserved = []; // coords of noble-launch villages held out of the offs (excluded from Unused Offs)
@@ -18,7 +20,8 @@ function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&qu
 
 function saveOffensive() {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
-    cfg: otCfg, targets: offTargets, plan: planRows, warnings: planWarnings, reserved: planReserved, nextId: otNextId,
+    cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers,
+    plan: planRows, warnings: planWarnings, reserved: planReserved, nextId: otNextId,
   }));
 }
 
@@ -28,6 +31,8 @@ function loadOffensive() {
     if (d) {
       otCfg        = { ...otCfg, ...(d.cfg || {}) };
       offTargets   = d.targets || [];
+      offIgnore        = typeof d.ignore === 'string' ? d.ignore : '';
+      offIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
       planRows     = d.plan || [];
       planWarnings = d.warnings || [];
       planReserved = d.reserved || [];
@@ -55,12 +60,76 @@ function loadOffensive() {
   if (dh) dh.value = otCfg.defHalf ?? 0;
   const dsm = document.getElementById('ot-def-snobmode');
   if (dsm) dsm.value = otCfg.defSnobMode || 'solo';
+  const ign = document.getElementById('ot-ignore-input');
+  if (ign) ign.value = offIgnore;
+  renderOffIgnorePlayers();
 }
 
 function updOTCfg(k, v) { otCfg[k] = v.trim(); saveOffensive(); }
 function updServerUrl(v) { otCfg.serverUrl = v.trim(); saveOffensive(); }
 function updServerOffset(v) { const n = parseFloat(v); otCfg.serverUtcOffset = isNaN(n) ? 2 : n; saveOffensive(); updateServerNow(); }
 function updOTCfgInt(k, v) { otCfg[k] = parseInt(v, 10) || 0; saveOffensive(); }
+
+// ── Ignore Coordinates / Ignore Players (Offensive Targets) ──────────────────
+// Villages whose coord is listed here, or whose owner is on the ignore-players list,
+// are dropped from the sender pool in generatePlan() — so they're never assigned an
+// off, a snob train, or a split-off escort. (Ignore = senders held out, mirroring
+// Plan Defense; targets are entered separately in the table and are unaffected.)
+function parseOffIgnoreSet() {
+  const set = new Set();
+  for (const line of String(offIgnore || '').split('\n')) {
+    const c = parseCoordStr(line);
+    if (c) set.add(`${c.x}|${c.y}`);
+  }
+  return set;
+}
+function updOffIgnore() {
+  const el = document.getElementById('ot-ignore-input');
+  offIgnore = el ? el.value : '';
+  saveOffensive();
+}
+function toggleOffIgnore() {
+  const el = document.getElementById('ot-ignore-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+function toggleOffIgnorePlayers() {
+  const el = document.getElementById('ot-ignore-players-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+// Loaded troop-file players not already ignored, alphabetical (label shows village count).
+function ignorePlayerOptions() {
+  const ig = new Set(offIgnorePlayers);
+  return Object.keys(players)
+    .filter(name => !ig.has(name))
+    .map(name => ({ name, villages: players[name].villages.length }))
+    .sort((a, b) => decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
+}
+function addIgnorePlayer(name) {
+  if (!name || offIgnorePlayers.includes(name)) return;
+  offIgnorePlayers.push(name);
+  saveOffensive(); renderOffIgnorePlayers(); renderOffTargets(); // refresh the sender dropdowns
+}
+function removeIgnorePlayer(idx) {
+  offIgnorePlayers.splice(idx, 1);
+  saveOffensive(); renderOffIgnorePlayers(); renderOffTargets();
+}
+// Chip list of ignored players + a snob-sender-style picker (same chip/select markup).
+function renderOffIgnorePlayers() {
+  const host = document.getElementById('ot-ignore-players-host');
+  if (!host) return;
+  if (!Object.keys(players).length && !offIgnorePlayers.length) {
+    host.innerHTML = `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+    return;
+  }
+  const chips = offIgnorePlayers.map((name, i) =>
+    `<span class="chip">${esc(decode(name))}<span class="chip-x" onclick="removeIgnorePlayer(${i})">✕</span></span>`).join('');
+  const opts = ignorePlayerOptions();
+  const picker = `<select class="cell-input" style="width:170px;" onchange="addIgnorePlayer(this.value)">
+       <option value="">${t('opt_pick_ignore_player')}</option>
+       ${opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('')}
+     </select>`;
+  host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}${picker}</div>`;
+}
 
 // ── Time-window helpers (windows stored as 'HH:MM/HH:MM'; start === end = fixed time) ──
 function winParts(s) {
@@ -191,7 +260,9 @@ function clearOffTargets() {
 // no nobles yet are still listed (shown as "(0)") so they can be pinned — generatePlan
 // then flags them to recruit a noble in time, which is exactly the intended signal.
 function snobSenderOptions() {
+  const ig = new Set(offIgnorePlayers);
   return Object.entries(players)
+    .filter(([name]) => !ig.has(name))
     .map(([name, p]) => ({ name, snob: p.totals.snob }))
     .sort((a, b) => (b.snob - a.snob) || decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
 }
@@ -233,7 +304,9 @@ function playerOffTierCounts(name) {
 }
 // Loaded troop-file players that own ≥1 off of `tier`, richest first (label shows the count)
 function offSenderOptions(tier) {
+  const ig = new Set(offIgnorePlayers);
   return Object.keys(players)
+    .filter(name => !ig.has(name))
     .map(name => ({ name, count: playerOffTierCounts(name)[tier] }))
     .filter(x => x.count > 0)
     .sort((a, b) => b.count - a.count);
