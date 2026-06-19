@@ -709,7 +709,9 @@ function renderPlanTable() {
 // ── BB icon helper (shared by both export functions) ──
 function planRowIconBB(r) {
   if (r.type === 'snob') return r.escorted ? '[unit]axe[/unit][unit]snob[/unit]' : '[unit]snob[/unit]';
-  return `[unit]${r.type === 'half' ? 'axe' : 'ram'}[/unit]`;
+  // Complete offs stay rams; 3/4 and 1/2 use axe with the tier tagged in parens.
+  if (r.type === 'complete') return '[unit]ram[/unit]';
+  return `[unit]axe[/unit] (${t('tier_' + r.type)})`;
 }
 
 // ── Build objective groups from the plan (one per target, in plan order) ──
@@ -746,7 +748,8 @@ function showPlanBB() {
 
   let bb = `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabel()}[/size]\n\n`;
   bb += `[unit]ram[/unit] --> ${t('bb_legend_ram')}\n`;
-  if (planRows.some(r => r.type === 'half')) bb += `[unit]axe[/unit] --> ${t('bb_legend_axe')}\n`;
+  if (planRows.some(r => r.type === 'tq')) bb += `[unit]axe[/unit] (${t('tier_tq')}) --> ${t('bb_legend_tq')}\n`;
+  if (planRows.some(r => r.type === 'half')) bb += `[unit]axe[/unit] (${t('tier_half')}) --> ${t('bb_legend_axe')}\n`;
   if (planRows.some(r => r.type === 'snob' && !r.escorted)) bb += `[unit]snob[/unit] --> ${t('bb_legend_snob')(noblesLabel)}\n`;
   if (planRows.some(r => r.type === 'snob' && r.escorted)) bb += `[unit]axe[/unit][unit]snob[/unit] --> ${t('bb_legend_split')(noblesLabel)}\n`;
   bb += '\n';

@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.10.2', date: '2026-06-19',
+    en: [
+      `<b>🪓 Plan Offensive exports tag partial offs as axe.</b> In every Plan Offensive export, a <b>Complete</b> off still shows <code>[unit]ram[/unit]</code>, but a <b>3/4</b> or <b>1/2</b> off now shows <code>[unit]axe[/unit] (3/4)</code> / <code>[unit]axe[/unit] (1/2)</code> so the off size is clear at a glance. Split offs stay <code>[unit]axe[/unit][unit]snob[/unit]</code> and solo nobles stay <code>[unit]snob[/unit]</code>.`,
+    ],
+    es: [
+      `<b>🪓 Los exports de Planear Ofensiva marcan los offs parciales como hacha.</b> En cada export de Planear Ofensiva, un off <b>Completo</b> sigue mostrando <code>[unit]ram[/unit]</code>, pero un off <b>3/4</b> o <b>1/2</b> ahora muestra <code>[unit]axe[/unit] (3/4)</code> / <code>[unit]axe[/unit] (1/2)</code> para que el tamaño del off se vea de un vistazo. Las offs partidas siguen siendo <code>[unit]axe[/unit][unit]snob[/unit]</code> y los nobles solos siguen siendo <code>[unit]snob[/unit]</code>.`,
+    ],
+  },
   { ver: 'v3.10.1', date: '2026-06-19',
     en: [
       `<b>⬇ Export Per-Player Orders — sorted by send time, easier to read.</b> Each player's attack lines now come out <b>in send-time order</b> (earliest launch first), matching the Per-Player Table, and a <b>blank line</b> separates each attack so the orders are easier to scan and copy. This also flows into <b>Export Per-Player All</b>.`,
