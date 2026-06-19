@@ -785,7 +785,10 @@ function playerNamesAZ(byPlayer) {
 function playerPlanBBBlock(name, rows, allGroups) {
   let bb = `========== ${name} (${rows.length}) ==========\n`;
   bb += `[b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabel()}\n\n`;
-  for (const r of rows) {
+  // Order lines come out send-time-sorted (earliest launch first), matching the Per-Player
+  // Table, with a blank line between each attack. planRowsBySendTime is side-effect free.
+  const lines = [];
+  for (const r of planRowsBySendTime(rows)) {
     const iconBB   = planRowIconBB(r);
     const prefix   = r.type === 'snob' && r.count > 1 ? `${r.count}x ` : '';
     const defender = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
@@ -797,10 +800,10 @@ function playerPlanBBBlock(name, rows, allGroups) {
       const prep = t('plan_prepare_snob')(r.escorted, `[coord]${r.tCoord}[/coord]`);
       if (r.needNobles) { // pinned sender with no noble yet → recruit first; still show the arrival window
         const win = (fmtWindow(r.window) || '??:??').replace('/', '-');
-        bb += `${prefix}${iconBB} [b][color=#ff0e0e]${t('snobs_need_recruiting')}[/color][/b] ${prep} [b][color=#2e2eff]${win}[/color][/b]\n`;
+        lines.push(`${prefix}${iconBB} [b][color=#ff0e0e]${t('snobs_need_recruiting')}[/color][/b] ${prep} [b][color=#2e2eff]${win}[/color][/b]`);
       } else {
         const win = (fmtWindow(r.window) || '??:??').replace('/', '-');
-        bb += `${prefix}${iconBB} ${prep}${defender} [b][color=#2e2eff]${win}[/color][/b]\n`;
+        lines.push(`${prefix}${iconBB} ${prep}${defender} [b][color=#2e2eff]${win}[/color][/b]`);
       }
       continue;
     }
@@ -816,8 +819,10 @@ function playerPlanBBBlock(name, rows, allGroups) {
     const launch  = lp
       ? `\n${t('bb_pp_launchline')(lp.day, `[color=#ff0e0e]${lp.span}[/color]`, lp.single)}${urlPart}[/b]`
       : `${urlPart}[/b]`;
-    bb += `${prefix}${iconBB} ${r.srcCoord} → [coord]${r.tCoord}[/coord]${defender} [b][color=#2e2eff]${win}[/color]${launch}\n`;
+    lines.push(`${prefix}${iconBB} ${r.srcCoord} → [coord]${r.tCoord}[/coord]${defender} [b][color=#2e2eff]${win}[/color]${launch}`);
   }
+  bb += lines.join('\n\n');
+  if (lines.length) bb += '\n';
 
   // ── Objective context: paste the full objective(s) this player sends a snob to, so
   //    they see the whole train (who else hits it + arrival windows). Forum-BB format,

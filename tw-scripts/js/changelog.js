@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.10.1', date: '2026-06-19',
+    en: [
+      `<b>⬇ Export Per-Player Orders — sorted by send time, easier to read.</b> Each player's attack lines now come out <b>in send-time order</b> (earliest launch first), matching the Per-Player Table, and a <b>blank line</b> separates each attack so the orders are easier to scan and copy. This also flows into <b>Export Per-Player All</b>.`,
+    ],
+    es: [
+      `<b>⬇ Exportar Órdenes por Jugador — ordenadas por hora de envío, más fáciles de leer.</b> Las líneas de ataque de cada jugador ahora salen <b>ordenadas por hora de envío</b> (la salida más temprana primero), igual que la Tabla por Jugador, y una <b>línea en blanco</b> separa cada ataque para que las órdenes se lean y copien mejor. Esto también se aplica a <b>Exportar Todo por Jugador</b>.`,
+    ],
+  },
   { ver: 'v3.10.0', date: '2026-06-19',
     en: [
       `<b>📋 Export Per-Player Table (Plan Offensive).</b> A new <b>Export Per-Player Table</b> button (next to Export Per-Player Orders) outputs a forum <code>[table]</code> per player — columns <b>#, Source, Target, Target Player, Type, Send time, Arrival time, Attack URL</b> — with each player's rows sorted by send time. Type shows the unit icon + name (Off / Snob / Split Off Snob); offs carry an "open" rally link, while noble trains (which have no fixed launch village) show a "Prepare Snob Train" note instead.`,
