@@ -763,97 +763,250 @@ function showPlanBB() {
   document.getElementById('bb-modal').classList.add('open');
 }
 
-// ── Per-player BB export ──
-function showPlayerPlanBB() {
-  if (!planRows.length) { alert(t('empty_no_plan')); return; }
-
-  const nobleCounts = [...new Set(offTargets.map(x => x.nobles).filter(Boolean))].sort((a, b) => a - b);
-  const noblesLabel = nobleCounts.length ? nobleCounts.join(' ó ') : '4';
-
-  // Rows with a sender (incl. pinned-but-unplaced "needs nobles") group under that
-  // player; only truly anonymous unassigned rows go to the bottom section.
-  const named      = planRows.filter(r => r.srcPlayer);
-  const unassigned = planRows.filter(r => !r.srcPlayer);
-
+// ── Grouping shared by all three per-player exports (Orders BB, Table, combined All):
+//    rows-with-a-sender (incl. pinned-but-unplaced "needs nobles") bucket by player; truly
+//    anonymous unassigned rows are handled separately by the caller. ──
+function groupPlanRowsByPlayer(named) {
   const byPlayer = {};
   for (const r of named) {
     if (!byPlayer[r.srcPlayer]) byPlayer[r.srcPlayer] = [];
     byPlayer[r.srcPlayer].push(r);
   }
-  const names = Object.keys(byPlayer).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  return byPlayer;
+}
+function playerNamesAZ(byPlayer) {
+  return Object.keys(byPlayer).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+}
 
-  const allGroups = planGroups(); // for the per-player "objective context" dump below
+// ── One player's Orders block: header + arrival date + order lines + (if they send a snob)
+//    the full objective-context dump. `allGroups` = planGroups() (passed in so the caller
+//    builds it once). Ends with a trailing blank line, matching the legacy layout. Shared by
+//    the on-screen Per-Player Orders export and the combined Per-Player All download. ──
+function playerPlanBBBlock(name, rows, allGroups) {
+  let bb = `========== ${name} (${rows.length}) ==========\n`;
+  bb += `[b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabel()}\n\n`;
+  for (const r of rows) {
+    const iconBB   = planRowIconBB(r);
+    const prefix   = r.type === 'snob' && r.count > 1 ? `${r.count}x ` : '';
+    const defender = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
+
+    if (r.type === 'snob') {
+      // Snob trains never name an origin village: just a "Prepare Snob Train for
+      // <target>" call-out (the player picks their own send village). No "src →",
+      // no rally URL — so the attack-planner import correctly skips these lines.
+      const prep = t('plan_prepare_snob')(r.escorted, `[coord]${r.tCoord}[/coord]`);
+      if (r.needNobles) { // pinned sender with no noble yet → recruit first; still show the arrival window
+        const win = (fmtWindow(r.window) || '??:??').replace('/', '-');
+        bb += `${prefix}${iconBB} [b][color=#ff0e0e]${t('snobs_need_recruiting')}[/color][/b] ${prep} [b][color=#2e2eff]${win}[/color][/b]\n`;
+      } else {
+        const win = (fmtWindow(r.window) || '??:??').replace('/', '-');
+        bb += `${prefix}${iconBB} ${prep}${defender} [b][color=#2e2eff]${win}[/color][/b]\n`;
+      }
+      continue;
+    }
+
+    // ── Offs (always assigned in this per-player section; unassigned offs have no
+    //    sender and fall to the UNASSIGNED block below) ──
+    const url     = rallyUrl(r.srcCoord, r.tCoord);
+    const urlPart = url ? ` — [url=${url}]${t('bb_pp_attack_url')}▶[/url]` : '';
+    const win     = (fmtWindow(r.window) || '??:??').replace('/', '-');
+    const lp      = launchWindowParts(r.window, r.travel);
+    // Line 1 = village → target + arrival window; line 2 = the red launch-time call-out
+    // (carries the rally link). [b] opens on line 1 and closes after the launch line.
+    const launch  = lp
+      ? `\n${t('bb_pp_launchline')(lp.day, `[color=#ff0e0e]${lp.span}[/color]`, lp.single)}${urlPart}[/b]`
+      : `${urlPart}[/b]`;
+    bb += `${prefix}${iconBB} ${r.srcCoord} → [coord]${r.tCoord}[/coord]${defender} [b][color=#2e2eff]${win}[/color]${launch}\n`;
+  }
+
+  // ── Objective context: paste the full objective(s) this player sends a snob to, so
+  //    they see the whole train (who else hits it + arrival windows). Forum-BB format,
+  //    numbered per-player (1..N). None of these lines carry "→"/[url=], so the
+  //    attack-planner per-player import skips every one — no phantom attacks. ──
+  const snobTIdx = [];
+  for (const r of rows) if (r.type === 'snob' && !snobTIdx.includes(r.tIdx)) snobTIdx.push(r.tIdx);
+  if (snobTIdx.length) {
+    bb += '\n\n'; // two blank lines separate the player's instructions from the context dump
+    snobTIdx.forEach((tIdx, oi) => {
+      const g = allGroups.find(x => x.idx === tIdx);
+      if (!g) return;
+      const multiSnob = g.rows.filter(x => x.type === 'snob').length > 1;
+      bb += `${t('bb_objective')} ${oi + 1}. ${g.coord}${g.player ? ` - [player]${g.player}[/player]` : ''}\n`;
+      for (const gr of g.rows) bb += planRowForumBB(gr, multiSnob) + '\n';
+      bb += '\n';
+    });
+  }
+  bb += '\n';
+  return bb;
+}
+
+// Anonymous-unassigned Orders block (no sender) — simple "label → coord" lines.
+function unassignedPlanBBBlock(unassigned) {
+  let bb = `========== ${t('bb_unassigned')} ==========\n`;
+  for (const r of unassigned) {
+    const label = r.type === 'snob' ? t('type_snob') : t('tier_' + r.type);
+    bb += `${label} → ${r.tCoord}\n`;
+  }
+  bb += '\n';
+  return bb;
+}
+
+// ── Per-player BB export (Per-Player Orders) ──
+function showPlayerPlanBB() {
+  if (!planRows.length) { alert(t('empty_no_plan')); return; }
+
+  const named      = planRows.filter(r => r.srcPlayer);
+  const unassigned = planRows.filter(r => !r.srcPlayer);
+  const byPlayer   = groupPlanRowsByPlayer(named);
+  const names      = playerNamesAZ(byPlayer);
+  const allGroups  = planGroups(); // for the per-player "objective context" dump
+
+  let bb = '';
+  for (const name of names) bb += playerPlanBBBlock(name, byPlayer[name], allGroups);
+  if (unassigned.length) bb += unassignedPlanBBBlock(unassigned);
+
+  document.getElementById('bb-output').value = bb.trimEnd() + '\n';
+  document.getElementById('bb-modal').classList.add('open');
+}
+
+// ── Per-player attack TABLE export (BB [table], one section per player) ─────────
+// Type column = unit icon(s) + text: offs → "[unit]ram[/unit] Off" (half offs keep the
+// axe icon), solo snob → "[unit]snob[/unit] Snob", escorted → "[unit]axe[/unit][unit]snob[/unit] Split Off Snob".
+function planRowTableType(r) {
+  if (r.type === 'snob') {
+    return r.escorted
+      ? `[unit]axe[/unit][unit]snob[/unit] ${t('tbl_type_split')}`
+      : `[unit]snob[/unit] ${t('tbl_type_snob')}`;
+  }
+  return `${planRowIconBB(r)} ${t('tbl_type_off')}`;
+}
+
+// Absolute send/arrival server-wall times for a plan row. Arrival = the window's START
+// (a single value for the table cell, matching the in-game export shape); send = arrival −
+// travel (minute-rounded, like launchWindowStr, so times end in :00). Day-wrap is handled
+// by working in absolute epoch ms. Returns null if no arrival date is set or the window is
+// unparseable — the caller then leaves the time cells blank.
+function planRowAbsTimes(r) {
+  const md = String(otCfg.dateISO || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const w  = parseWindowStr(r.window);
+  if (!md || !w) return null;
+  const p = n => String(n).padStart(2, '0');
+  const fmt = ms => { const d = new Date(ms);
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} `
+         + `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`; };
+  const arrMs  = Date.UTC(+md[1], +md[2] - 1, +md[3]) + w.f * 60000;
+  const sendMs = arrMs - Math.round(r.travel || 0) * 60000;
+  return { sendMs, send: fmt(sendMs), arrival: fmt(arrMs) };
+}
+
+// One BB [table] row for a plan row. Snob trains have no origin village in this tool, so
+// Source is blank and the Attack URL cell shows the Prepare-Snob-Train note instead of a
+// rally link (the target coord already lives in its own column). Offs link to the bare
+// rally point (no preset troops, per the chosen format). Cells joined by [|] with a
+// trailing [|] (matches the in-game export); empty cells stay as adjacent [|][|].
+function planTableRowBB(r, n) {
+  const cs = '[|]';
+  const abs = planRowAbsTimes(r);
+  let urlBB;
+  if (r.type === 'snob') {
+    urlBB = t('plan_prepare_snob')(r.escorted);
+  } else {
+    const url = r.srcCoord ? rallyUrl(r.srcCoord, r.tCoord) : null;
+    urlBB = url ? `[url=${url}]${t('bb_tbl_open')}[/url]` : '';
+  }
+  const cells = [
+    n,
+    r.type === 'snob' || !r.srcCoord ? '' : `[coord]${r.srcCoord}[/coord]`,
+    `[coord]${r.tCoord}[/coord]`,
+    r.tPlayer ? `[player]${r.tPlayer}[/player]` : '',
+    planRowTableType(r),
+    abs ? abs.send : '',
+    abs ? abs.arrival : '',
+    urlBB,
+  ];
+  return `[*]${cells.join(cs)}${cs}`;
+}
+
+// Rows sorted by absolute send time (epoch ms); rows with no computable time sort last.
+// Side-effect free — wraps each row, never mutates the shared planRows.
+function planRowsBySendTime(rows) {
+  return rows
+    .map(r => ({ r, t: (planRowAbsTimes(r) || { sendMs: Infinity }).sendMs }))
+    .sort((a, b) => a.t - b.t)
+    .map(x => x.r);
+}
+
+// One BB [table] (header + send-time-sorted rows) for a set of plan rows. No
+// "========== player ==========" banner — callers add that. Shared by the on-screen
+// Per-Player Table export and the combined Per-Player All download.
+function planTableBlock(rows) {
+  const sep = '[||]';
+  const header = `[**]#${sep}${t('th_source')}${sep}${t('th_target')}${sep}${t('th_target_player')}`
+               + `${sep}${t('th_type')}${sep}${t('th_send_time')}${sep}${t('th_arrival_time')}${sep}${t('th_attack_url')}[/**]`;
+  let bb = `[table]\n${header}\n`;
+  planRowsBySendTime(rows).forEach((r, i) => { bb += planTableRowBB(r, i + 1) + '\n'; });
+  bb += '[/table]';
+  return bb;
+}
+
+function showPlayerPlanTable() {
+  if (!planRows.length) { alert(t('empty_no_plan')); return; }
+
+  const named      = planRows.filter(r => r.srcPlayer);
+  const unassigned = planRows.filter(r => !r.srcPlayer);
+  const byPlayer   = groupPlanRowsByPlayer(named);
+  const names      = playerNamesAZ(byPlayer);
 
   let bb = '';
   for (const name of names) {
     const rows = byPlayer[name];
-    bb += `========== ${name} (${rows.length}) ==========\n`;
-    bb += `[b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabel()}\n\n`;
-    for (const r of rows) {
-      const iconBB   = planRowIconBB(r);
-      const prefix   = r.type === 'snob' && r.count > 1 ? `${r.count}x ` : '';
-      const defender = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
-
-      if (r.type === 'snob') {
-        // Snob trains never name an origin village: just a "Prepare Snob Train for
-        // <target>" call-out (the player picks their own send village). No "src →",
-        // no rally URL — so the attack-planner import correctly skips these lines.
-        const prep = t('plan_prepare_snob')(r.escorted, `[coord]${r.tCoord}[/coord]`);
-        if (r.needNobles) { // pinned sender with no noble yet → recruit first; still show the arrival window
-          const win = (fmtWindow(r.window) || '??:??').replace('/', '-');
-          bb += `${prefix}${iconBB} [b][color=#ff0e0e]${t('snobs_need_recruiting')}[/color][/b] ${prep} [b][color=#2e2eff]${win}[/color][/b]\n`;
-        } else {
-          const win = (fmtWindow(r.window) || '??:??').replace('/', '-');
-          bb += `${prefix}${iconBB} ${prep}${defender} [b][color=#2e2eff]${win}[/color][/b]\n`;
-        }
-        continue;
-      }
-
-      // ── Offs (always assigned in this per-player section; unassigned offs have no
-      //    sender and fall to the UNASSIGNED block below) ──
-      const url     = rallyUrl(r.srcCoord, r.tCoord);
-      const urlPart = url ? ` — [url=${url}]${t('bb_pp_attack_url')}▶[/url]` : '';
-      const win     = (fmtWindow(r.window) || '??:??').replace('/', '-');
-      const lp      = launchWindowParts(r.window, r.travel);
-      // Line 1 = village → target + arrival window; line 2 = the red launch-time call-out
-      // (carries the rally link). [b] opens on line 1 and closes after the launch line.
-      const launch  = lp
-        ? `\n${t('bb_pp_launchline')(lp.day, `[color=#ff0e0e]${lp.span}[/color]`, lp.single)}${urlPart}[/b]`
-        : `${urlPart}[/b]`;
-      bb += `${prefix}${iconBB} ${r.srcCoord} → [coord]${r.tCoord}[/coord]${defender} [b][color=#2e2eff]${win}[/color]${launch}\n`;
-    }
-
-    // ── Objective context: paste the full objective(s) this player sends a snob to, so
-    //    they see the whole train (who else hits it + arrival windows). Forum-BB format,
-    //    numbered per-player (1..N). None of these lines carry "→"/[url=], so the
-    //    attack-planner per-player import skips every one — no phantom attacks. ──
-    const snobTIdx = [];
-    for (const r of rows) if (r.type === 'snob' && !snobTIdx.includes(r.tIdx)) snobTIdx.push(r.tIdx);
-    if (snobTIdx.length) {
-      bb += '\n\n'; // two blank lines separate the player's instructions from the context dump
-      snobTIdx.forEach((tIdx, oi) => {
-        const g = allGroups.find(x => x.idx === tIdx);
-        if (!g) return;
-        const multiSnob = g.rows.filter(x => x.type === 'snob').length > 1;
-        bb += `${t('bb_objective')} ${oi + 1}. ${g.coord}${g.player ? ` - [player]${g.player}[/player]` : ''}\n`;
-        for (const gr of g.rows) bb += planRowForumBB(gr, multiSnob) + '\n';
-        bb += '\n';
-      });
-    }
-    bb += '\n';
+    bb += `========== ${name} (${rows.length}) ==========\n\n${planTableBlock(rows)}\n\n`;
   }
-
   if (unassigned.length) {
-    bb += `========== ${t('bb_unassigned')} ==========\n`;
-    for (const r of unassigned) {
-      const label = r.type === 'snob' ? t('type_snob') : t('tier_' + r.type);
-      bb += `${label} → ${r.tCoord}\n`;
-    }
-    bb += '\n';
+    bb += `========== ${t('bb_unassigned')} ==========\n\n${planTableBlock(unassigned)}\n\n`;
   }
 
   document.getElementById('bb-output').value = bb.trimEnd() + '\n';
   document.getElementById('bb-modal').classList.add('open');
+}
+
+// One combined-download section: the "========== name (n) ==========" banner stays OUTSIDE
+// (a visible separator), then everything else (Orders body + the attack table) is wrapped in
+// a [code]…[/code] block so the forum renders it verbatim (monospace, no BBCode/smiley
+// interpretation, easy one-click copy per player). Two blank lines glue Orders→table.
+function codeWrapPlanSection(ordersBlock, tableBlock) {
+  const trimmed = ordersBlock.trimEnd();
+  const nl      = trimmed.indexOf('\n');
+  const banner  = nl >= 0 ? trimmed.slice(0, nl) : trimmed;
+  const body    = nl >= 0 ? trimmed.slice(nl + 1) : '';
+  return `${banner}\n[code]\n${body}\n\n\n${tableBlock}\n[/code]\n\n\n`;
+}
+
+// ── Combined per-player export: each player's Orders block immediately followed by their
+//    attack table, one [code]-wrapped section per player, as a single downloadable .txt.
+//    Stitches the two on-screen exports together; the banner is the visible per-player
+//    separator and the Orders+table live inside [code]…[/code]. ──
+function buildPlayerPlanAll() {
+  const named      = planRows.filter(r => r.srcPlayer);
+  const unassigned = planRows.filter(r => !r.srcPlayer);
+  const byPlayer   = groupPlanRowsByPlayer(named);
+  const names      = playerNamesAZ(byPlayer);
+  const allGroups  = planGroups();
+
+  let out = '';
+  for (const name of names) {
+    const rows = byPlayer[name];
+    out += codeWrapPlanSection(playerPlanBBBlock(name, rows, allGroups), planTableBlock(rows));
+  }
+  if (unassigned.length) {
+    out += codeWrapPlanSection(unassignedPlanBBBlock(unassigned), planTableBlock(unassigned));
+  }
+  return out.trimEnd() + '\n';
+}
+
+function exportPlayerPlanAll() {
+  if (!planRows.length) { alert(t('empty_no_plan')); return; }
+  downloadFile(buildPlayerPlanAll(), 'tribe_plan_per_player.txt', 'text/plain;charset=utf-8');
 }
 
 // ── Unused offs BB table: every offensive village NOT committed by the current plan ──

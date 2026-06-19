@@ -290,9 +290,12 @@
   <div class="section-header">
     <h2 data-i18n="sec_target">Distance to Target</h2>
     <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="showBBTable('target-table')">⬇ Export Forum Table</button>
+      <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="showTargetTimingBB()" data-i18n="btn_export_player_bb">⬇ Export Per-Player BB</button>
+      <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="exportTable('target-table','tribe_target.csv')">⬇ Export CSV</button>
-      <button class="btn btn-ghost btn-sm" onclick="showBBTable('target-table')">⬇ Export BB Table</button>
+      <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="clearTimings()" data-i18n="btn_clear_targets">✕ Clear All</button>
     </div>
   </div>
@@ -347,7 +350,8 @@
   <div class="section-header">
     <h2 data-i18n="sec_offtargets">Offensive Targets</h2>
     <div style="display:flex;gap:8px;">
-      <button class="btn btn-ghost btn-sm" onclick="toggleBulkAdd()" data-i18n="btn_bulk_add">📋 Bulk Add</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleBulkAdd()" data-i18n="btn_bulk_add">📋 Bulk Add Coordinates</button>
+      <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="clearOffTargets()" data-i18n="btn_clear_targets">✕ Clear All</button>
     </div>
   </div>
@@ -433,10 +437,18 @@
   <div class="section-header">
     <h2 data-i18n="sec_plan">Offensive Plan</h2>
     <div style="display:flex;gap:8px;">
-      <button class="btn btn-ghost btn-sm" onclick="showPlanBB()" data-i18n="btn_export_forum">⬇ Export Forum BB</button>
-      <button class="btn btn-ghost btn-sm" onclick="showPlayerPlanBB()" data-i18n="btn_export_player_bb">⬇ Export Per-Player BB</button>
+      <button class="btn btn-ghost btn-sm" onclick="showPlanBB()" data-i18n="btn_export_forum">⬇ Export Objectives (Forum)</button>
+      <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="showPlayerPlanBB()" data-i18n="btn_export_player_orders">⬇ Export Per-Player Orders</button>
+      <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="showPlayerPlanTable()" data-i18n="btn_export_player_table">⬇ Export Per-Player Table</button>
+      <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="exportPlayerPlanAll()" data-i18n="btn_export_player_all">⬇ Export Per-Player All</button>
+      <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="showUnusedOffsBB()" data-i18n="btn_export_unused_offs">⬇ Export Unused Offs</button>
+      <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="exportTable('plan-table','tribe_plan.csv')">⬇ Export CSV</button>
+      <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="clearPlan()" data-i18n="btn_clear_targets">✕ Clear All</button>
     </div>
   </div>
@@ -498,7 +510,8 @@
   <div class="section-header">
     <h2 data-i18n="sec_deftargets">Defensive Targets</h2>
     <div style="display:flex;gap:8px;">
-      <button class="btn btn-ghost btn-sm" onclick="toggleDefBulkAdd()" data-i18n="btn_bulk_add">📋 Bulk Add</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleDefBulkAdd()" data-i18n="btn_bulk_add">📋 Bulk Add Coordinates</button>
+      <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="clearDefTargets()" data-i18n="btn_clear_targets">✕ Clear All</button>
     </div>
   </div>
@@ -560,8 +573,10 @@
   <div class="section-header">
     <h2 data-i18n="sec_defplan">Defensive Plan</h2>
     <div style="display:flex;gap:8px;">
-      <button class="btn btn-ghost btn-sm" onclick="showDefPlayerBB()" data-i18n="btn_export_player_bb">⬇ Export Per-Player BB</button>
+      <button class="btn btn-ghost btn-sm" onclick="showDefPlayerBB()" data-i18n="btn_export_player_orders">⬇ Export Per-Player Orders</button>
+      <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="exportTable('defplan-table','tribe_def_plan.csv')">⬇ Export CSV</button>
+      <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="clearDefPlan()" data-i18n="btn_clear_targets">✕ Clear All</button>
     </div>
   </div>
@@ -765,7 +780,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.9.0 &nbsp;·&nbsp; 2026-06-18</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.10.0 &nbsp;·&nbsp; 2026-06-19</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
