@@ -902,6 +902,15 @@
         <input type="text" id="mt-player">
       </div>
     </div>
+    <div style="margin-top:10px">
+      <label style="display:block;color:#a08050;font-size:13px;margin-bottom:4px" data-i18n="lbl_requirements">Requirements</label>
+      <div id="mt-reqs-list"></div>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="mtReqAdd()" data-i18n="btn_add_req">+ Add requirement</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="mtReqAssignAll()" data-i18n="btn_assign_me">👤 Assign all to me</button>
+      </div>
+      <p class="note" style="margin-top:6px" data-i18n="mt_reqs_hint">One row per attack. The player must match “My Player” to be picked up by Auto-Generate. Source is the origin coord X|Y that pins the sender (optional).</p>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="saveTarget()" data-i18n="btn_save">Save</button>
       <button class="btn btn-ghost" onclick="closeModal('modal-target')" data-i18n="btn_cancel">Cancel</button>
@@ -1076,6 +1085,8 @@ const LANG = {
     btn_add_village: '+ Add Village',
     btn_clear_villages: '🗑 Clear Villages',
     btn_add_target: '+ Add Target',
+    btn_add_req: '+ Add requirement',
+    btn_assign_me: '👤 Assign all to me',
     btn_clear_targets: '🗑 Clear Targets',
     btn_paste_villages: '📋 Paste Villages',
     btn_import_off: 'Import Off Targets',
@@ -1154,6 +1165,11 @@ const LANG = {
     lbl_cats: 'Cats',
     lbl_escort_axe_lc: 'Escort Axe/LC',
     lbl_requirements: 'Requirements',
+    mt_no_reqs: 'No requirements yet — add one below.',
+    mt_reqs_hint: 'One row per attack. The player must match “My Player” to be picked up by Auto-Generate. Source is the origin coord X|Y that pins the sender (optional).',
+    mt_count: 'Count (noble-train size for snobs)',
+    mt_src: 'src',
+    mt_src_title: 'Origin village coord X|Y — pins which village sends this attack (optional)',
     lbl_points: 'Points',
 
     // Select options
@@ -1201,6 +1217,7 @@ const LANG = {
     alert_enriched: 'Enriched {n} target(s).',
     alert_village_name_required: 'Village name is required.',
     alert_coords_required: 'Coordinates are required.',
+    alert_no_my_player: 'Set “My Player” in the top bar first.',
     alert_delete_village: 'Delete this village?',
     alert_delete_target: 'Delete this target?',
     alert_delete_attack: 'Delete this attack?',
@@ -1271,6 +1288,8 @@ const LANG = {
     btn_add_village: '+ Añadir Pueblo',
     btn_clear_villages: '🗑 Borrar Pueblos',
     btn_add_target: '+ Añadir Objetivo',
+    btn_add_req: '+ Añadir requisito',
+    btn_assign_me: '👤 Asignármelos todos',
     btn_clear_targets: '🗑 Borrar Objetivos',
     btn_paste_villages: '📋 Pegar Pueblos',
     btn_import_off: 'Importar Obj. Off',
@@ -1349,6 +1368,11 @@ const LANG = {
     lbl_cats: 'Catas',
     lbl_escort_axe_lc: 'Hacha/Lija Escolta',
     lbl_requirements: 'Requisitos',
+    mt_no_reqs: 'Sin requisitos todavía — añade uno abajo.',
+    mt_reqs_hint: 'Una fila por ataque. El jugador debe coincidir con “Mi Jugador” para que Auto-Generar lo tenga en cuenta. Origen es la coordenada X|Y que fija la aldea emisora (opcional).',
+    mt_count: 'Cantidad (tamaño del tren de nobles)',
+    mt_src: 'orig',
+    mt_src_title: 'Coordenada de aldea de origen X|Y — fija qué aldea envía este ataque (opcional)',
     lbl_points: 'Puntos',
 
     // Select options
@@ -1396,6 +1420,7 @@ const LANG = {
     alert_enriched: '{n} objetivo(s) completado(s).',
     alert_village_name_required: 'El nombre del pueblo es obligatorio.',
     alert_coords_required: 'Las coordenadas son obligatorias.',
+    alert_no_my_player: 'Primero indica “Mi Jugador” en la barra superior.',
     alert_delete_village: '¿Eliminar este pueblo?',
     alert_delete_target: '¿Eliminar este objetivo?',
     alert_delete_attack: '¿Eliminar este ataque?',
@@ -2208,27 +2233,110 @@ function addTarget() {
   refreshDropdowns();
 }
 
+// ── Edit Target: requirements editor ──────────────────────────────
+// Working copy of the edited target's requirements. editTarget deep-copies into this,
+// the inline row handlers mutate it, and saveTarget writes a normalized copy back — so
+// hitting Cancel discards every change. The structured rows (vs a textarea) are what let
+// us round-trip the rich fields the per-player import sets — attacker, count, and the
+// srcCoord/srcVillageId pin — instead of silently dropping them.
+let mtReqs = [];
+
+const MT_REQ_INPUT = 'background:#111008;border:1px solid #4a3010;color:#d4b483;padding:4px 6px;border-radius:4px;font-size:12px';
+
+function renderMtReqs() {
+  const host = document.getElementById('mt-reqs-list');
+  if (!mtReqs.length) {
+    host.innerHTML = `<p class="note" style="margin:2px 0">${t('mt_no_reqs')}</p>`;
+    return;
+  }
+  host.innerHTML = mtReqs.map((r, i) => {
+    const sel = v => r.unitType === v ? ' selected' : '';
+    return `
+    <div style="display:flex;gap:5px;align-items:center;margin-bottom:5px;flex-wrap:wrap">
+      <select onchange="mtReqs[${i}].unitType=this.value" style="${MT_REQ_INPUT}">
+        <option value="ram"${sel('ram')}>⚔ off</option>
+        <option value="axe"${sel('axe')}>🪓 1/2</option>
+        <option value="snob"${sel('snob')}>👑 snob</option>
+      </select>
+      <input type="text" value="${escHtml(r.attacker || '')}" oninput="mtReqs[${i}].attacker=this.value" placeholder="${t('lbl_player')}" style="${MT_REQ_INPUT};flex:1;min-width:100px">
+      <input type="number" min="1" value="${r.count || 1}" oninput="mtReqs[${i}].count=parseInt(this.value)||1" title="${t('mt_count')}" style="${MT_REQ_INPUT};width:46px">
+      <input type="text" value="${escHtml(r.timeFrom || '')}" oninput="mtReqs[${i}].timeFrom=this.value.trim()" placeholder="HH:MM" style="${MT_REQ_INPUT};width:58px">
+      <input type="text" value="${escHtml(r.timeTo || '')}" oninput="mtReqs[${i}].timeTo=this.value.trim()" placeholder="HH:MM" style="${MT_REQ_INPUT};width:58px">
+      <input type="text" value="${escHtml(r.srcCoord || '')}" oninput="mtReqs[${i}].srcCoord=this.value.trim()" placeholder="${t('mt_src')}" title="${t('mt_src_title')}" style="${MT_REQ_INPUT};width:66px">
+      <button type="button" class="btn btn-danger btn-sm" onclick="mtReqRemove(${i})">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function mtReqAdd() {
+  mtReqs.push({ unitType: 'ram', attacker: (DATA.settings.playerName || '').trim(), timeFrom: '', timeTo: '', count: 1, srcCoord: '', srcVillageId: '' });
+  renderMtReqs();
+}
+
+function mtReqRemove(i) {
+  mtReqs.splice(i, 1);
+  renderMtReqs();
+}
+
+function mtReqAssignAll() {
+  const me = (DATA.settings.playerName || '').trim();
+  if (!me) { alert(t('alert_no_my_player')); return; }
+  mtReqs.forEach(r => { r.attacker = me; });
+  renderMtReqs();
+}
+
+// Clean a working requirements list before saving: drop blank rows, keep the noble count only
+// where it matters, and re-pin srcVillageId from srcCoord against the known villages (so an
+// edited/typed origin coord still resolves to its real village ID; clearing the coord drops the
+// pin). Pure — villages are passed in so the test harness can exercise it without the DOM.
+function normalizeReqs(reqs, villages) {
+  const byCoord = {};
+  (villages || []).forEach(v => { byCoord[`${v.x}|${v.y}`] = v; });
+  return (reqs || [])
+    .filter(r => r && r.unitType)
+    .map(r => {
+      const out = {
+        unitType: r.unitType,
+        attacker: (r.attacker || '').trim(),
+        timeFrom: (r.timeFrom || '').trim(),
+        timeTo:   (r.timeTo || '').trim(),
+      };
+      const cnt = Math.max(1, parseInt(r.count, 10) || 1);
+      if (r.unitType === 'snob' || cnt > 1) out.count = cnt;
+      const srcCoord = (r.srcCoord || '').trim();
+      if (srcCoord) {
+        out.srcCoord = srcCoord;
+        const v = byCoord[srcCoord];
+        out.srcVillageId = v ? (v.villageId || '') : (r.srcVillageId || '');
+      }
+      return out;
+    });
+}
+
 function editTarget(id) {
-  const t = DATA.targets.find(t => t.id === id);
-  if (!t) return;
-  document.getElementById('mt-id').value     = t.id;
-  document.getElementById('mt-x').value      = t.x;
-  document.getElementById('mt-y').value      = t.y;
-  document.getElementById('mt-name').value   = t.name;
-  document.getElementById('mt-vid').value    = t.villageId || '';
-  document.getElementById('mt-player').value = t.player || '';
+  const tg = DATA.targets.find(t => t.id === id);
+  if (!tg) return;
+  document.getElementById('mt-id').value     = tg.id;
+  document.getElementById('mt-x').value      = tg.x;
+  document.getElementById('mt-y').value      = tg.y;
+  document.getElementById('mt-name').value   = tg.name;
+  document.getElementById('mt-vid').value    = tg.villageId || '';
+  document.getElementById('mt-player').value = tg.player || '';
+  mtReqs = (tg.requirements || []).map(r => ({ ...r }));   // working copy — Cancel discards
+  renderMtReqs();
   openModal('modal-target');
 }
 
 function saveTarget() {
   const id = document.getElementById('mt-id').value;
-  const t  = DATA.targets.find(t => t.id === id);
-  if (!t) return;
-  t.x         = parseInt(document.getElementById('mt-x').value)      || 0;
-  t.y         = parseInt(document.getElementById('mt-y').value)      || 0;
-  t.name      = document.getElementById('mt-name').value.trim()      || `${t.x}|${t.y}`;
-  t.villageId = document.getElementById('mt-vid').value.trim()       || '';
-  t.player    = document.getElementById('mt-player').value.trim()    || '';
+  const tg = DATA.targets.find(t => t.id === id);
+  if (!tg) return;
+  tg.x            = parseInt(document.getElementById('mt-x').value)   || 0;
+  tg.y            = parseInt(document.getElementById('mt-y').value)   || 0;
+  tg.name         = document.getElementById('mt-name').value.trim()   || `${tg.x}|${tg.y}`;
+  tg.villageId    = document.getElementById('mt-vid').value.trim()    || '';
+  tg.player       = document.getElementById('mt-player').value.trim() || '';
+  tg.requirements = normalizeReqs(mtReqs, DATA.villages);
   closeModal('modal-target');
   saveData();
   renderTargets();
@@ -3635,7 +3743,7 @@ function renderAll() {
 })();
 </script>
 <div class="footer">
-  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.2.0 &nbsp;·&nbsp; 2026-06-17
+  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.3.0 &nbsp;·&nbsp; 2026-06-20
 </div>
 </body>
 </html>
