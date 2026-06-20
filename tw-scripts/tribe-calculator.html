@@ -332,6 +332,8 @@
     <input type="text" id="target-search" placeholder="Search player or coord…" oninput="renderTargetTable()">
     <label data-i18n="lbl_min_power">Min power:</label>
     <input type="number" id="target-min-power" value="50000" placeholder="0" style="width:110px;" oninput="renderTargetTable()">
+    <label data-i18n="lbl_min_points">Min points:</label>
+    <input type="number" id="target-min-points" value="0" placeholder="0" style="width:90px;" oninput="renderTargetTable()">
     <label data-i18n="lbl_arrive_by">Arrive by:</label>
     <input type="date" id="target-arrival-date" onchange="renderTargetTable()">
     <input type="time" id="target-arrival-time" step="1" onchange="renderTargetTable()">
@@ -780,7 +782,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.10.2 &nbsp;·&nbsp; 2026-06-19</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.11.0 &nbsp;·&nbsp; 2026-06-20</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

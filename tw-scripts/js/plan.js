@@ -157,6 +157,20 @@ function generatePlan() {
   const snobMaxRaw = parseFloat((document.getElementById('plan-snob-max') || {}).value);
   const snobMax = isNaN(snobMaxRaw) ? 70 : snobMaxRaw;
   const okSnobDist = (p, tc) => snobMax <= 0 || distXY(p.c, tc) <= snobMax;
+  // Snob targets are mostly ASSIGNED to a player who then recruits the noble, so every snob
+  // row lists that player's own villages within noble range of the objective that are big
+  // enough to plausibly hold an Academy (> SNOB_RANGE_MIN_POINTS points; unknown points pass,
+  // mirroring reserveEligible). Closest first. rawName is the encoded pool key (p.v.player).
+  const snobAcademyOk = p => {
+    const dbv = coordDb[p.v.coord];
+    const pts = dbv && typeof dbv.points === 'number' ? dbv.points : null;
+    return pts === null || pts > SNOB_RANGE_MIN_POINTS;
+  };
+  const snobRangeVills = (rawName, T) =>
+    (!rawName || !T || !T.c) ? []
+      : pool.filter(p => p.v.player === rawName && okSnobDist(p, T.c) && snobAcademyOk(p))
+            .sort((a, b) => distXY(a.c, T.c) - distXY(b.c, T.c))
+            .map(p => p.v.coord);
 
   // Launch feasibility: with an arrival date set, a village whose travel time
   // pushes the launch before the current server time can never make it.
@@ -248,14 +262,9 @@ function generatePlan() {
     }
   }
 
-  // Named senders assigned more nobles (across all targets) than they own
-  {
-    const agg = senderNobleTotals();
-    for (const [nm, used] of Object.entries(agg)) {
-      const have = players[nm] ? players[nm].totals.snob : 0;
-      if (used > have) planWarnings.push(t('warn_sender_capacity')(decode(nm), used, have));
-    }
-  }
+  // (No "assigned more nobles than they own" capacity warning here: assigning a snob target to
+  // a player BEFORE they've recruited the nobles is the normal workflow, so it's not an error.
+  // The per-train "Prepare Snob Train" + [SNOBS NEED RECRUITING] label is the cue instead.)
 
   // Which players send a noble train, and to which targets — captured AS the snob loop runs
   // (so it covers pinned AND auto-picked senders, in BOTH solo and escorted modes). Every
@@ -308,13 +317,15 @@ function generatePlan() {
         if (strong.length) cands = strong;
       }
       const enough = cands.filter(p => p.snobLeft >= nc);
-      // A pinned sender whose villages can't field a FULL train (some nobles, but fewer
-      // than this train needs) is treated like the no-noble case: kept on the plan by
-      // name, origin UNASSIGNED, warned to recruit more — never assigned a short village.
+      // A pinned sender whose villages can't field a FULL train (some nobles, but fewer than
+      // this train needs) is treated like the no-noble case: kept on the plan by name, origin
+      // UNASSIGNED, never assigned a short village. No "recruit nobles" warning (assigning snobs
+      // before recruiting is the normal workflow); the row's "Prepare Snob Train" +
+      // [SNOBS NEED RECRUITING] label is the cue.
       if (want && cands.length && !enough.length) {
-        planWarnings.push(t('warn_need_nobles')(decode(want), nc, T.tg.coord));
         T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true,
-          srcPlayer: decode(want), needNobles: true, recruitCoord, dist: recruitDist, travel: recruitTravel });
+          srcPlayer: decode(want), needNobles: true, recruitCoord, dist: recruitDist, travel: recruitTravel,
+          rangeVills: snobRangeVills(want, T) });
         noteSnobSender(want, T);
         return;
       }
@@ -350,13 +361,14 @@ function generatePlan() {
             // reserved escort off to recruit there (needNobles); (b) they have ENOUGH nobles
             // but the escort off is already spent — suggest Solo / free an off.
             const nobleSupply = inRange.reduce((s, p) => s + p.snobLeft, 0);
-            if (recruitCoord && nobleSupply < nc) { msg = t('warn_need_nobles')(decode(want), nc, T.tg.coord); needNobles = true; }
+            if (recruitCoord && nobleSupply < nc) needNobles = true; // short on nobles → no warning (see below)
             else msg = t('warn_escort_used')(decode(want), T.tg.coord);
           }
           else {
-            // the pinned player simply owns no (free) nobles → keep them on the plan
-            // as the sender, flag the origin UNASSIGNED, and tell them to recruit one
-            msg = t('warn_need_nobles')(decode(want), nc, T.tg.coord);
+            // the pinned player simply owns no (free) nobles → keep them on the plan as the
+            // sender with the origin flagged UNASSIGNED. No "recruit nobles" warning (assigning
+            // snobs before recruiting is the normal workflow); the row's "Prepare Snob Train" +
+            // [SNOBS NEED RECRUITING] label is the cue.
             needNobles = true;
           }
         } else {
@@ -365,12 +377,15 @@ function generatePlan() {
             ? t('warn_snob_too_late')(T.tg.coord)
             : t('warn_missed_snob')(T.tg.coord);
         }
-        planWarnings.push(msg);
+        // needNobles rows carry no warning (recruiting later is expected); the out-of-range /
+        // too-late / escort-used / missed-snob cases still warn.
+        if (msg && !needNobles) planWarnings.push(msg);
         // A manually-pinned sender stays named on the plan even when unplaced (so they
         // see their assignment); an auto train that couldn't be filled has no name.
         T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true,
           srcPlayer: want ? decode(want) : undefined, needNobles, recruitCoord: needNobles ? recruitCoord : undefined,
-          dist: needNobles ? recruitDist : undefined, travel: needNobles ? recruitTravel : undefined });
+          dist: needNobles ? recruitDist : undefined, travel: needNobles ? recruitTravel : undefined,
+          rangeVills: snobRangeVills(want, T) });
         if (want) noteSnobSender(want, T);
         return;
       }
@@ -389,6 +404,7 @@ function generatePlan() {
         type: 'snob', count: nc, escorted: mode === 'escorted',
         srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.snob, ws, us),
+        rangeVills: snobRangeVills(p.v.player, T),
       });
     });
   }
@@ -675,12 +691,16 @@ function renderPlanTable() {
       first && i > 0 ? 'border-top:2px solid #7a5c10' : '',
       r.unassigned ? 'background:rgba(192,64,32,0.08)' : '',
     ].filter(Boolean).join(';');
-    // Snob trains never carry a displayed origin (the player prepares the train from
-    // a village of their own choosing) — so they show a "Prepare Snob Train" label and
-    // no distance/travel/launch/rally/morale, only the arrival window. Offs show timing
-    // when assigned. (needNobles is snob-only, so the off path is just assigned/not.)
+    // Snob trains never carry a displayed origin (the player prepares the train from a village
+    // of their own choosing) — so the Source cell shows a "Prepare Snob Train" label plus the
+    // new "Villages in snob range: …" list (the assigned player's in-range, Academy-sized
+    // villages), and no distance/travel/launch/rally/morale, only the arrival window. Offs
+    // show timing when assigned. (needNobles is snob-only, so the off path is just assigned/not.)
     const isSnob = r.type === 'snob';
     const showTiming = !isSnob && !r.unassigned;
+    const snobRangeTxt = snobRangeText(r);
+    const snobRange = snobRangeTxt
+      ? `<div style="color:#c8a060;font-size:12px;margin-top:2px;">${esc(snobRangeTxt)}</div>` : '';
     return `
     <tr${trStyle ? ` style="${trStyle}"` : ''}>
       <td style="color:#806030;">${first ? r.tIdx : ''}</td>
@@ -689,7 +709,7 @@ function renderPlanTable() {
       <td>${badge}</td>
       <td class="left" style="font-family:monospace;">${
         isSnob
-          ? `<span style="color:#e0a020;font-weight:600;">${esc(t('plan_prepare_snob')(r.escorted))}${r.needNobles ? ` ${t('snobs_need_recruiting')}` : ''}</span>`
+          ? `<span style="color:#e0a020;font-weight:600;">${esc(t('plan_prepare_snob')(r.escorted))}${r.needNobles ? ` ${t('snobs_need_recruiting')}` : ''}</span>${snobRange}`
           : (r.unassigned
               ? `<span style="color:#e06040;">${t('bb_unassigned')}</span>`
               : esc(r.srcCoord))
@@ -704,6 +724,17 @@ function renderPlanTable() {
       <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
     </tr>`;
   }).join('');
+}
+
+// The "Villages in snob range: …" / "No villages …" text for a snob row, or '' when there's
+// no assigned player to attribute villages to (an anonymous unfilled auto-train). Shared by the
+// Plan Offensive table and every BB export so the message is identical everywhere. Plain text
+// (the coord list has no "→"/[coord]), so it stays invisible to both attack-planner importers.
+function snobRangeText(r) {
+  if (r.type !== 'snob' || !r.srcPlayer) return '';
+  return r.rangeVills && r.rangeVills.length
+    ? t('snob_range_vills')(r.rangeVills.join(', '))
+    : t('snob_range_none');
 }
 
 // ── BB icon helper (shared by both export functions) ──
@@ -736,7 +767,12 @@ function planRowForumBB(r, multiSnob) {
     ? `[player]${r.srcPlayer}[/player]${r.needNobles ? ` (${t('bb_need_nobles')})` : ''}`
     : t('bb_unassigned');
   const prep   = r.type === 'snob' ? ` ${t('plan_prepare_snob')(r.escorted)}` : '';
-  return `${prefix}${iconBB} ${who}${prep} [b][color=#0000a5]${fmtWindow(r.window) || '??:??'}[/color][/b]`;
+  // Snob trains list the assigned player's in-range, Academy-sized villages on a TRAILING
+  // line (kept off the attack line so the off-plan re-import still parses the attack, and so
+  // the bare X|Y coords — no "→"/[coord] — are ignored by both BB importers).
+  const rt     = snobRangeText(r);
+  const range  = rt ? `\n${rt}` : '';
+  return `${prefix}${iconBB} ${who}${prep} [b][color=#0000a5]${fmtWindow(r.window) || '??:??'}[/color][/b]${range}`;
 }
 
 // ── Forum BB export (matches the tribe's offensive post format) ──
@@ -781,6 +817,24 @@ function playerNamesAZ(byPlayer) {
   return Object.keys(byPlayer).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 }
 
+// ── A snob train's per-player instruction line(s): a "Prepare Snob Train for <target>"
+//    call-out (no origin village, no rally URL — so the importers skip it) + the arrival
+//    window, then a trailing "Villages in snob range: …" line (bare X|Y coords, also skipped).
+//    Shared by the Per-Player Orders BB and the Per-Player Table export (snobs sit BELOW the
+//    [table] there, since a noble train has no launch village to fill the table columns). ──
+function snobOrderLineBB(r) {
+  const iconBB   = planRowIconBB(r);
+  const prefix   = r.count > 1 ? `${r.count}x ` : '';
+  const prep     = t('plan_prepare_snob')(r.escorted, `[coord]${r.tCoord}[/coord]`);
+  const defender = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
+  const rt       = snobRangeText(r);
+  const range    = rt ? `\n${rt}` : '';
+  const win      = (fmtWindow(r.window) || '??:??').replace('/', '-');
+  return r.needNobles // pinned sender with no noble yet → recruit first; still show the arrival window
+    ? `${prefix}${iconBB} [b][color=#ff0e0e]${t('snobs_need_recruiting')}[/color][/b] ${prep} [b][color=#2e2eff]${win}[/color][/b]${range}`
+    : `${prefix}${iconBB} ${prep}${defender} [b][color=#2e2eff]${win}[/color][/b]${range}`;
+}
+
 // ── One player's Orders block: header + arrival date + order lines + (if they send a snob)
 //    the full objective-context dump. `allGroups` = planGroups() (passed in so the caller
 //    builds it once). Ends with a trailing blank line, matching the legacy layout. Shared by
@@ -797,17 +851,9 @@ function playerPlanBBBlock(name, rows, allGroups) {
     const defender = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
 
     if (r.type === 'snob') {
-      // Snob trains never name an origin village: just a "Prepare Snob Train for
-      // <target>" call-out (the player picks their own send village). No "src →",
-      // no rally URL — so the attack-planner import correctly skips these lines.
-      const prep = t('plan_prepare_snob')(r.escorted, `[coord]${r.tCoord}[/coord]`);
-      if (r.needNobles) { // pinned sender with no noble yet → recruit first; still show the arrival window
-        const win = (fmtWindow(r.window) || '??:??').replace('/', '-');
-        lines.push(`${prefix}${iconBB} [b][color=#ff0e0e]${t('snobs_need_recruiting')}[/color][/b] ${prep} [b][color=#2e2eff]${win}[/color][/b]`);
-      } else {
-        const win = (fmtWindow(r.window) || '??:??').replace('/', '-');
-        lines.push(`${prefix}${iconBB} ${prep}${defender} [b][color=#2e2eff]${win}[/color][/b]`);
-      }
+      // Snob trains never name an origin village — just a "Prepare Snob Train for <target>"
+      // call-out + arrival window + the in-range village list (shared with the Table export).
+      lines.push(snobOrderLineBB(r));
       continue;
     }
 
@@ -951,10 +997,21 @@ function planTableBlock(rows) {
   const sep = '[||]';
   const header = `[**]#${sep}${t('th_source')}${sep}${t('th_target')}${sep}${t('th_target_player')}`
                + `${sep}${t('th_type')}${sep}${t('th_send_time')}${sep}${t('th_arrival_time')}${sep}${t('th_attack_url')}[/**]`;
+  // Noble trains have no origin/launch village, so they're never table rows — the table is
+  // OFFS ONLY. The standalone Per-Player Table export appends them as text below the [table]
+  // (see showPlayerPlanTable); in the combined Per-Player All download the Orders block already
+  // lists them, so keeping the table offs-only avoids showing each train twice.
   let bb = `[table]\n${header}\n`;
-  planRowsBySendTime(rows).forEach((r, i) => { bb += planTableRowBB(r, i + 1) + '\n'; });
+  planRowsBySendTime(rows.filter(r => r.type !== 'snob')).forEach((r, i) => { bb += planTableRowBB(r, i + 1) + '\n'; });
   bb += '[/table]';
   return bb;
+}
+
+// Noble-train text lines for a set of plan rows (send-time-sorted), or '' if none — the snob
+// half of the Per-Player Table export, shown below the offs-only [table].
+function planTableSnobLines(rows) {
+  const snobs = rows.filter(r => r.type === 'snob');
+  return snobs.length ? planRowsBySendTime(snobs).map(snobOrderLineBB).join('\n') : '';
 }
 
 function showPlayerPlanTable() {
@@ -965,13 +1022,18 @@ function showPlayerPlanTable() {
   const byPlayer   = groupPlanRowsByPlayer(named);
   const names      = playerNamesAZ(byPlayer);
 
+  // Each section = the offs-only [table] + (if the player sends nobles) the snob text lines below it.
+  const section = rows => {
+    const snobLines = planTableSnobLines(rows);
+    return planTableBlock(rows) + (snobLines ? `\n\n${snobLines}` : '');
+  };
   let bb = '';
   for (const name of names) {
     const rows = byPlayer[name];
-    bb += `========== ${name} (${rows.length}) ==========\n\n${planTableBlock(rows)}\n\n`;
+    bb += `========== ${name} (${rows.length}) ==========\n\n${section(rows)}\n\n`;
   }
   if (unassigned.length) {
-    bb += `========== ${t('bb_unassigned')} ==========\n\n${planTableBlock(unassigned)}\n\n`;
+    bb += `========== ${t('bb_unassigned')} ==========\n\n${section(unassigned)}\n\n`;
   }
 
   document.getElementById('bb-output').value = bb.trimEnd() + '\n';

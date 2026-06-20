@@ -24,6 +24,12 @@ const POP = { spear:1, sword:1, axe:1, spy:2, light:4, heavy:6, ram:5, catapult:
 const RESERVE_MIN_POINTS = 4000;
 const RESERVE_MIN_POP    = 4000;
 
+// A snob target's assigned player will usually RECRUIT a noble rather than send an existing
+// one, so the plan lists which of that player's villages sit within noble range of the
+// objective and are big enough to plausibly hold an Academy. Villages at or below this many
+// points are hidden (probably no Academy). Points need the world DB; unknown → shown.
+const SNOB_RANGE_MIN_POINTS = 5000;
+
 // Plan Defense: a village only sends support if it has at least this much farm pop in
 // defensive troops (spear/sword/spy/heavy) — small garrisons are left alone. And every
 // emitted support order carries at least this much farm pop, so a player's contribution

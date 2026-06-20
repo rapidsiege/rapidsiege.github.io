@@ -69,6 +69,7 @@ function targetCols() {
   return [
     { key:'coord',  label:t('th_coord'),    left:true, str:true, defDir:1 },
     { key:'player', label:t('th_player'),   left:true, str:true, defDir:1 },
+    { key:'points', label:t('th_points'),   defDir:-1 },
     { key:'dist',   label:t('th_distance'), defDir:1 },
     { key:m.power,  label: twIcon(mode === 'off' ? 'off' : 'def') + (mode === 'off' ? t('th_off_power') : t('th_def_power')), defDir:-1 },
     ...(mode === 'off' ? [{ key:'morale', label:t('th_morale'), title:t('morale_title'), defDir:-1 }] : []),
@@ -97,6 +98,7 @@ function targetTimingData() {
   const us     = parseFloat(document.getElementById('target-unit-speed').value) || 1;
   const search = (document.getElementById('target-search').value || '').toLowerCase();
   const minPow = parseInt(document.getElementById('target-min-power').value) || 0;
+  const minPts = parseInt(document.getElementById('target-min-points').value) || 0;
 
   const tgtCoord = `${target.x}|${target.y}`;
   const tgtPts   = playerPointsAtCoord(tgtCoord); // defender's aggregated points (off mode morale)
@@ -105,6 +107,9 @@ function targetTimingData() {
   let data = villages.map(v => {
     const c = parseCoordStr(v.coord);
     const row = { ...v, dist: c ? distXY(c, target) : Infinity };
+    // Village's OWN points (needs the world DB); null when unknown so the cell shows "—".
+    const dbv = coordDb[v.coord];
+    row.points = dbv && typeof dbv.points === 'number' ? dbv.points : null;
     m.travel.forEach(u => { row['tt_'+u] = travelTimeMin(row.dist, UNIT_BASE_MIN[u], ws, us); });
     if (mode === 'off') row.morale = tgtBarb ? 1 : moraleValue(tgtPts, playerPointsAtCoord(v.coord));
     return row;
@@ -116,6 +121,9 @@ function targetTimingData() {
   if (search) data = data.filter(v =>
     decode(v.player).toLowerCase().includes(search) || v.coord.includes(search));
   if (minPow > 0) data = data.filter(v => v[m.power] >= minPow);
+  // Min Points (needs the world DB): villages with unknown points count as 0, so a set
+  // threshold hides them — mirrors Min Power, which is always known from the troop file.
+  if (minPts > 0) data = data.filter(v => (v.points || 0) >= minPts);
 
   // Arrival deadline: keep only villages that can land in time — with the chosen
   // pace unit, or any owned unit when pace is "Any". In def mode an in-time
@@ -128,7 +136,7 @@ function targetTimingData() {
   }
 
   const cols   = targetCols();
-  const colDef = cols.find(c => c.key === targetSort.key) || cols[2];
+  const colDef = cols.find(c => c.key === targetSort.key) || cols.find(c => c.key === 'dist');
   data.sort((a, b) => {
     const av = a[colDef.key], bv = b[colDef.key];
     if (colDef.str) return targetSort.dir * String(av).localeCompare(String(bv));
@@ -160,7 +168,7 @@ function offTierBadge(tier) {
 function clearTimings() {
   const coordEl = document.getElementById('target-coord');
   if (coordEl && coordEl.value.trim() && !confirm(t('confirm_clear_timings'))) return;
-  ['target-coord', 'target-search', 'target-min-power', 'target-arrival-date', 'target-arrival-time']
+  ['target-coord', 'target-search', 'target-min-power', 'target-min-points', 'target-arrival-date', 'target-arrival-time']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   renderTargetTable();
 }
@@ -216,6 +224,7 @@ function renderTargetTable() {
     <tr>
       <td class="left" style="font-family:monospace;">${v.coord}</td>
       <td class="left"><span class="player-tag">${decode(v.player)}</span></td>
+      <td style="color:#c8a060;">${v.points == null ? '—' : v.points.toLocaleString()}</td>
       <td style="color:#f0c040;font-weight:600;">${isFinite(v.dist) ? v.dist.toFixed(1) : '—'}</td>
       <td style="color:${powColor};font-weight:600;">${fmtM(v[m.power])}${mode === 'off' ? ` ${offTierBadge(getOffTier(v.offPow))}` : ''}</td>
       ${moraleCell}
