@@ -264,7 +264,7 @@ function generatePlan() {
 
   // (No "assigned more nobles than they own" capacity warning here: assigning a snob target to
   // a player BEFORE they've recruited the nobles is the normal workflow, so it's not an error.
-  // The per-train "Prepare Snob Train" + [SNOBS NEED RECRUITING] label is the cue instead.)
+  // The per-train "Prepare Snob Train" call-out is the cue instead.)
 
   // Which players send a noble train, and to which targets — captured AS the snob loop runs
   // (so it covers pinned AND auto-picked senders, in BOTH solo and escorted modes). Every
@@ -320,8 +320,7 @@ function generatePlan() {
       // A pinned sender whose villages can't field a FULL train (some nobles, but fewer than
       // this train needs) is treated like the no-noble case: kept on the plan by name, origin
       // UNASSIGNED, never assigned a short village. No "recruit nobles" warning (assigning snobs
-      // before recruiting is the normal workflow); the row's "Prepare Snob Train" +
-      // [SNOBS NEED RECRUITING] label is the cue.
+      // before recruiting is the normal workflow); the row's "Prepare Snob Train" call-out is the cue.
       if (want && cands.length && !enough.length) {
         T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true,
           srcPlayer: decode(want), needNobles: true, recruitCoord, dist: recruitDist, travel: recruitTravel,
@@ -367,8 +366,8 @@ function generatePlan() {
           else {
             // the pinned player simply owns no (free) nobles → keep them on the plan as the
             // sender with the origin flagged UNASSIGNED. No "recruit nobles" warning (assigning
-            // snobs before recruiting is the normal workflow); the row's "Prepare Snob Train" +
-            // [SNOBS NEED RECRUITING] label is the cue.
+            // snobs before recruiting is the normal workflow); the row's "Prepare Snob Train"
+            // call-out is the cue.
             needNobles = true;
           }
         } else {
@@ -709,7 +708,7 @@ function renderPlanTable() {
       <td>${badge}</td>
       <td class="left" style="font-family:monospace;">${
         isSnob
-          ? `<span style="color:#e0a020;font-weight:600;">${esc(t('plan_prepare_snob')(r.escorted))}${r.needNobles ? ` ${t('snobs_need_recruiting')}` : ''}</span>${snobRange}`
+          ? `<span style="color:#e0a020;font-weight:600;">${esc(t('plan_prepare_snob')(r.escorted))}</span>${snobRange}`
           : (r.unassigned
               ? `<span style="color:#e06040;">${t('bb_unassigned')}</span>`
               : esc(r.srcCoord))
@@ -726,15 +725,19 @@ function renderPlanTable() {
   }).join('');
 }
 
-// The "Villages in snob range: …" / "No villages …" text for a snob row, or '' when there's
-// no assigned player to attribute villages to (an anonymous unfilled auto-train). Shared by the
-// Plan Offensive table and every BB export so the message is identical everywhere. Plain text
-// (the coord list has no "→"/[coord]), so it stays invisible to both attack-planner importers.
+// The snob-range text for a snob row, or '' when there's no assigned player to attribute
+// villages to (an anonymous unfilled auto-train). Coordinates are listed ONLY when the player
+// has 1 or 2 in-range Academy-sized villages — a tight squeeze worth spelling out. With 3+ they
+// have plenty of room to coordinate their own train, so we list nothing. 0 in range keeps the
+// "No villages …" warning. Shared by the Plan Offensive table and the per-player exports so the
+// message is identical. Plain text (no "→"/[coord]), so it stays invisible to both importers.
 function snobRangeText(r) {
   if (r.type !== 'snob' || !r.srcPlayer) return '';
-  return r.rangeVills && r.rangeVills.length
-    ? t('snob_range_vills')(r.rangeVills.join(', '))
-    : t('snob_range_none');
+  const v = r.rangeVills || [];
+  if (v.length === 0) return t('snob_range_none');
+  if (v.length === 1) return t('snob_range_one')(v[0]);
+  if (v.length === 2) return t('snob_range_two')(v.join(', '));
+  return ''; // 3+ in range → plenty of room to coordinate; no coords listed
 }
 
 // ── BB icon helper (shared by both export functions) ──
@@ -757,20 +760,21 @@ function planGroups() {
 }
 
 // ── Forum-style BB row (shared by the Forum export and the per-player objective context) ──
-// A pinned-but-unplaced sender keeps their name (with a "needs nobles" note); a truly
-// anonymous unassigned row falls back to the UNASSIGNED label. Snob trains never name an
-// origin — just the "Prepare Snob Train" call-out (the target is the group header above).
-function planRowForumBB(r, multiSnob) {
+// A pinned-but-unplaced sender keeps their name; a truly anonymous unassigned row falls back
+// to the UNASSIGNED label. Snob trains never name an origin — just the "Prepare Snob Train"
+// call-out (the target is the group header above). `bare` (the Plan Offensive Forum export)
+// drops the "Villages in snob range" trailing line — that detail lives in the Per-Player Orders
+// export, so the tribe-wide Forum post shows just the snob + the assigned player + window. The
+// per-player objective-context dump leaves `bare` false and keeps the range line.
+function planRowForumBB(r, multiSnob, bare) {
   const iconBB = planRowIconBB(r);
   const prefix = r.type === 'snob' && multiSnob ? `${r.count}x ` : '';
-  const who    = r.srcPlayer
-    ? `[player]${r.srcPlayer}[/player]${r.needNobles ? ` (${t('bb_need_nobles')})` : ''}`
-    : t('bb_unassigned');
+  const who    = r.srcPlayer ? `[player]${r.srcPlayer}[/player]` : t('bb_unassigned');
   const prep   = r.type === 'snob' ? ` ${t('plan_prepare_snob')(r.escorted)}` : '';
   // Snob trains list the assigned player's in-range, Academy-sized villages on a TRAILING
   // line (kept off the attack line so the off-plan re-import still parses the attack, and so
   // the bare X|Y coords — no "→"/[coord] — are ignored by both BB importers).
-  const rt     = snobRangeText(r);
+  const rt     = bare ? '' : snobRangeText(r);
   const range  = rt ? `\n${rt}` : '';
   return `${prefix}${iconBB} ${who}${prep} [b][color=#0000a5]${fmtWindow(r.window) || '??:??'}[/color][/b]${range}`;
 }
@@ -794,7 +798,7 @@ function showPlanBB() {
   groups.forEach((g, gi) => {
     bb += `${gi + 1}. ${g.coord}${g.player ? ` - [player]${g.player}[/player]` : ''}\n`;
     const multiSnob = g.rows.filter(x => x.type === 'snob').length > 1;
-    for (const r of g.rows) bb += planRowForumBB(r, multiSnob) + '\n';
+    for (const r of g.rows) bb += planRowForumBB(r, multiSnob, true) + '\n';
     bb += '\n';
   });
 
@@ -830,9 +834,8 @@ function snobOrderLineBB(r) {
   const rt       = snobRangeText(r);
   const range    = rt ? `\n${rt}` : '';
   const win      = (fmtWindow(r.window) || '??:??').replace('/', '-');
-  return r.needNobles // pinned sender with no noble yet → recruit first; still show the arrival window
-    ? `${prefix}${iconBB} [b][color=#ff0e0e]${t('snobs_need_recruiting')}[/color][/b] ${prep} [b][color=#2e2eff]${win}[/color][/b]${range}`
-    : `${prefix}${iconBB} ${prep}${defender} [b][color=#2e2eff]${win}[/color][/b]${range}`;
+  // needNobles rows are no longer flagged — "Prepare Snob Train" already implies recruiting one.
+  return `${prefix}${iconBB} ${prep}${defender} [b][color=#2e2eff]${win}[/color][/b]${range}`;
 }
 
 // ── One player's Orders block: header + arrival date + order lines + (if they send a snob)

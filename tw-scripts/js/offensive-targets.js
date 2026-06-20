@@ -264,7 +264,7 @@ function snobSenderOptions() {
   return Object.entries(players)
     .filter(([name]) => !ig.has(name))
     .map(([name, p]) => ({ name, snob: p.totals.snob }))
-    .sort((a, b) => (b.snob - a.snob) || decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
+    .sort((a, b) => decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
 }
 
 function addSnobAssignee(id, name) {

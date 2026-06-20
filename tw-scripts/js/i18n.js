@@ -147,7 +147,8 @@ const T = {
     // Snob trains are never assigned a fixed origin village — the player prepares the
     // train from a village of their choosing and only the arrival window is coordinated.
     plan_prepare_snob: (split, coordBB) => `⚠ Prepare Snob Train${coordBB ? ` for ${coordBB}` : ''}${split ? ' (Split Off)' : ''} ⚠`,
-    snob_range_vills: coords => `Villages in snob range: ${coords}`,
+    snob_range_one: coord => `Only one village in snob range: ${coord}`,
+    snob_range_two: coords => `Only two villages in snob range: ${coords}`,
     snob_range_none:'No villages in snob range (>5,000 pts)',
     bb_arrival_date:'ARRIVAL DATE',
     bb_objective:'Objective',
@@ -210,8 +211,6 @@ const T = {
     troops_restored:'restored from last session',
     plan_optimize_note:'Auto-optimizes by morale × off power vs. distance. Pin senders per target or tag a target POWER in Offensive Targets.',
     warn_need_nobles:(player, n, coord) => `${player} has no noble for ${coord} — recruit ${n > 1 ? n + ' nobles' : 'a noble'} so the train can arrive in time.`,
-    bb_need_nobles:'recruit noble — none yet',
-    snobs_need_recruiting:'[SNOBS NEED RECRUITING]',
     bb_pp_need_recruit: (recruitBB, tgtBB) => `recruit nobles at ${recruitBB} for target ${tgtBB}`,
     warn_tier_bumped: (from, to, coord) => `No ${from} off left for ${coord} — upgraded to a ${to} off`,
     // ── Defensive Targets / Plan Defense (v3.0.0) ──
@@ -393,7 +392,8 @@ const T = {
     plan_summary: (a, u) => `${a} ataques asignados · ${u} sin asignar`,
     plan_warnings_toggle: n => `⚠ ${n} ${n === 1 ? 'aviso' : 'avisos'} — clic para expandir`,
     plan_prepare_snob: (split, coordBB) => `⚠ Prepara el Tren de Nobles${coordBB ? ` para ${coordBB}` : ''}${split ? ' (Partir Off)' : ''} ⚠`,
-    snob_range_vills: coords => `Aldeas en alcance de noble: ${coords}`,
+    snob_range_one: coord => `Solo una aldea en alcance de noble: ${coord}`,
+    snob_range_two: coords => `Solo dos aldeas en alcance de noble: ${coords}`,
     snob_range_none:'Sin aldeas en alcance de noble (>5.000 ptos)',
     bb_arrival_date:'FECHA DE LLEGADA',
     bb_objective:'Objetivo',
@@ -456,8 +456,6 @@ const T = {
     troops_restored:'restaurado de la sesión anterior',
     plan_optimize_note:'Optimiza automáticamente por moral × poder ofensivo vs. distancia. Fija remitentes por objetivo o marca un objetivo como PODER en Objetivos Ofensivos.',
     warn_need_nobles:(player, n, coord) => `${player} no tiene noble para ${coord} — recluta ${n > 1 ? n + ' nobles' : 'un noble'} para que el tren llegue a tiempo.`,
-    bb_need_nobles:'reclutar noble — aún ninguno',
-    snobs_need_recruiting:'[NECESITAS RECLUTAR NOBLES]',
     bb_pp_need_recruit: (recruitBB, tgtBB) => `recluta nobles en ${recruitBB} para el objetivo ${tgtBB}`,
     warn_tier_bumped: (from, to, coord) => `Sin off ${from} disponible para ${coord} — mejorado a un off ${to}`,
     // ── Objetivos Defensivos / Plan Defensivo (v3.0.0) ──

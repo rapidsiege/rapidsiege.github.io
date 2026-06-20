@@ -12,6 +12,18 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.11.1', date: '2026-06-20',
+    en: [
+      `<b>👑 Cleaner noble-train lines.</b> Noble trains now read as just the unit, the assigned player and the arrival window — the redundant <b>"[SNOBS NEED RECRUITING]"</b> flag and <b>"recruit noble — none yet"</b> note are gone everywhere (knowing they have to <i>prepare a noble train</i> already implies it). The <b>Export Objectives (Forum)</b> post also drops the in-range village list, which lives in the per-player exports.`,
+      `<b>👑 Snob range list only when it's tight.</b> The <b>"Villages in snob range: …"</b> line now appears <b>only when a player has 1 or 2</b> villages in range — shown as <b>"Only one village in snob range: X"</b> / <b>"Only two villages in snob range: X, Y"</b>. With <b>3 or more</b> in range no coordinates are listed (they have plenty of room to coordinate their own train); with none, the "No villages in snob range" note still shows.`,
+      `<b>🔤 Noble-sender dropdown sorted A-Z.</b> In <b>Offensive Targets</b>, the noble-sender assignment dropdown is now sorted alphabetically (case-insensitive), matching the Ignore Players picker, instead of by noble count. Each option still shows the player's noble count as "(N)".`,
+    ],
+    es: [
+      `<b>👑 Líneas de tren de nobles más limpias.</b> Los trenes de nobles ahora se leen como solo la unidad, el jugador asignado y la ventana de llegada — la etiqueta redundante <b>"[NECESITAS RECLUTAR NOBLES]"</b> y la nota <b>"reclutar noble — aún ninguno"</b> desaparecen de todas partes (saber que hay que <i>preparar un tren de nobles</i> ya lo implica). El export <b>Exportar Objetivos (Foro)</b> también deja de listar las aldeas en alcance, que viven en los exports por jugador.`,
+      `<b>👑 Lista de alcance de noble solo cuando es ajustado.</b> La línea <b>"Aldeas en alcance de noble: …"</b> ahora aparece <b>solo cuando un jugador tiene 1 o 2</b> aldeas en alcance — mostrada como <b>"Solo una aldea en alcance de noble: X"</b> / <b>"Solo dos aldeas en alcance de noble: X, Y"</b>. Con <b>3 o más</b> en alcance no se listan coordenadas (tienen margen de sobra para coordinar su propio tren); sin ninguna, la nota "Sin aldeas en alcance de noble" sigue apareciendo.`,
+      `<b>🔤 Desplegable de emisor de noble ordenado A-Z.</b> En <b>Objetivos Off</b>, el desplegable de asignación de emisor de noble ahora se ordena alfabéticamente (sin distinguir mayúsculas), igual que el selector de Ignorar Jugadores, en vez de por cantidad de nobles. Cada opción sigue mostrando la cantidad de nobles del jugador como "(N)".`,
+    ],
+  },
   { ver: 'v3.11.0', date: '2026-06-20',
     en: [
       `<b>👑 Snob trains now list the villages in noble range.</b> Since a noble target is usually <i>assigned to a player who then recruits the noble</i> (rather than sent from an existing one), every noble train now shows a <b>"Villages in snob range: …"</b> line — that player's own villages within noble range (≤ the Snob Max distance, 70 by default) of the objective. Villages of <b>5,000 points or fewer are hidden</b> (likely no Academy); if the world DB isn't loaded, points are unknown so all in-range villages are shown. When none qualify it shows <b>"No villages in snob range (>5,000 pts)"</b> instead. The list appears in the <b>Plan Offensive</b> table (under the "Prepare Snob Train" note) and in the <b>Export Objectives (Forum)</b>, <b>Export Per-Player Orders</b> and <b>Export Per-Player Table</b> outputs.`,
