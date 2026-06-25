@@ -163,6 +163,32 @@ function fixDefWin(key) {
   if (si && ei) { ei.value = si.value; updDefWin(key); }
 }
 
+// ── Mass-apply the top default inputs to EVERY existing target ────────────────
+// Normally the defaults only seed targets at add-time (newOffTarget). These three buttons
+// push the current inputs onto the targets already in the list. Each overwrites only its
+// own slice and asks first (it can't be undone). The arrival date is global (otCfg.dateISO)
+// so it already applies to every target; "arrival" here pushes the per-target windows.
+function applyDefArrivalToAll() {
+  if (!offTargets.length) return;
+  if (!confirm(t('confirm_apply_arrival')(offTargets.length))) return;
+  for (const tg of offTargets) {
+    tg.offWindows = [{ win: otCfg.defWinOff || '', count: 0 }]; // collapses to the single default window
+    tg.winSnob = otCfg.defWinSnob || '';
+  }
+  saveOffensive(); renderOffTargets();
+}
+function applyDefOffsSnobToAll() {
+  if (!offTargets.length) return;
+  if (!confirm(t('confirm_apply_offssnob')(offTargets.length))) return;
+  for (const tg of offTargets) {
+    tg.nComplete = otCfg.defComplete ?? 1;
+    tg.nTq       = otCfg.defTq ?? 0;
+    tg.nHalf     = otCfg.defHalf ?? 0;
+    tg.snobMode  = otCfg.defSnobMode || 'solo';
+  }
+  saveOffensive(); renderOffTargets();
+}
+
 // Normalize a target saved by (or pasted from) older versions:
 // winOff string → offWindows list, assignee names → {name, count} objects
 function normalizeOffTarget(tg) {

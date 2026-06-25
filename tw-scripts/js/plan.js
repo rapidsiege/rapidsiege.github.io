@@ -117,6 +117,11 @@ function generatePlan() {
   const maxDist = parseFloat(document.getElementById('plan-max-dist').value) || 0;
   const minDistRaw = parseFloat((document.getElementById('plan-min-dist') || {}).value);
   const minDist = isNaN(minDistRaw) ? 0 : minDistRaw;
+  // Min. Morale (%) for a conqueror's own coordination off — see the conqueror reservation
+  // pass. The field holds a percentage (default 90); convert to the 0–1 morale fraction.
+  // 0 disables the gate entirely (the conqueror always keeps their own off, pre-v3.12 behaviour).
+  const minMoraleRaw = parseFloat((document.getElementById('plan-min-morale') || {}).value);
+  const minMorale = (isNaN(minMoraleRaw) ? 90 : minMoraleRaw) / 100;
 
   // Ignore lists (Offensive Targets): villages listed by coord, or owned by an ignored
   // player, are dropped from the pool entirely — so they're never picked for an off, a
@@ -509,22 +514,67 @@ function generatePlan() {
     const conq = conquerorByTarget[T.i];
     if (!conq) continue;
     if (T.offRows.some(r => !r.unassigned && r.srcPlayer && conq.has(r.srcPlayer))) continue;
-    const ownCands = tt => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt
-      && conq.has(decode(p.v.player)) && okOffDist(p, T.c) && okOffTime(p, T));
-    for (const tier of ['complete', 'tq', 'half']) {
-      if (((T.tg[TIER_FIELD[tier]] || 0) - (namedOffReserved[T.i + '|' + tier] || 0)) <= 0) continue;
-      let cands = ownCands(tier);
-      for (const up of TIER_UP[tier]) { if (cands.length) break; cands = ownCands(up); }
-      if (!cands.length) continue; // conqueror can't man this requested tier — try the next
-      const p = cands.sort(byDist(T))[0];
+
+    // ── Min. Morale gate ────────────────────────────────────────────────────
+    // A conqueror only KEEPS their own coordination off if their morale on THIS objective
+    // clears the Min. Morale field (default 90%). Below it, the slot is instead RESERVED for
+    // the highest-morale reachable sender that itself clears the bar — chosen by morale (not
+    // morale×distance), so a closer low-morale village can't reclaim it in the auto pass
+    // ("ideally 100%" beats proximity here). If no qualifying alternative is reachable, fall
+    // back to the conqueror's own off (a low-morale clear still beats an uncleared target).
+    // Morale is per-PLAYER (aggregated points), so resolve it once per player via any village.
+    // The gate is inert when morale is unresolvable (no DB / barbarian target → moraleUsable
+    // false) and when the field is 0 — both keep the pre-v3.12 conqueror-always-keeps behaviour.
+    const gate = moraleUsable(T) ? minMorale : 0;
+    const playerMorale = name => {
+      const rep = pool.find(p => decode(p.v.player) === name);
+      const m = rep ? planAttackMorale(rep.v.coord, T.tg.coord) : null;
+      return m == null ? 1 : m; // unknown points → treat as 100% (matches effPow's convention)
+    };
+    const conqOk = new Set([...conq].filter(name => playerMorale(name) >= gate));
+
+    // candidate villages for a tier, restricted by a sender predicate (decoded names)
+    const candsFor = (allow, tt) => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt
+      && allow(p) && okOffDist(p, T.c) && okOffTime(p, T));
+    const reserve = (p, tier) => {
       p.usedOff = true; noteOffUsed(p.v.player);
       namedOffReserved[T.i + '|' + tier] = (namedOffReserved[T.i + '|' + tier] || 0) + 1;
       const d = distXY(p.c, T.c);
       // Sent AS the village's own (≥ requested) tier; no "tier bumped" warning — this is a
-      // deliberate self-coordination off, not a shortage fallback. Tagged `conqueror` so the
-      // window pass can land it LAST among the offs (right before its own noble).
+      // deliberate coordination off, not a shortage fallback. Tagged `conqueror` so the window
+      // pass can land it LAST among the offs (the decisive clear right before the noble).
       T.offRows.push({ type: p.tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us), conqueror: true });
+    };
+
+    for (const tier of ['complete', 'tq', 'half']) {
+      if (((T.tg[TIER_FIELD[tier]] || 0) - (namedOffReserved[T.i + '|' + tier] || 0)) <= 0) continue;
+      const bump = allow => { // requested tier first, then bump UP only (stronger covers weaker)
+        let c = candsFor(allow, tier);
+        for (const up of TIER_UP[tier]) { if (c.length) break; c = candsFor(allow, up); }
+        return c;
+      };
+      // 1) A qualifying conqueror keeps the coordination off (closest of their villages).
+      if (conqOk.size) {
+        const cands = bump(p => conqOk.has(decode(p.v.player)));
+        if (!cands.length) continue; // can't man this tier — try the next
+        reserve(cands.sort(byDist(T))[0], tier);
+        break;
+      }
+      // 2) No conqueror clears the bar → reserve for a reachable sender that DOES clear it,
+      //    chosen by the same "optimize" score as the auto pass (morale × off power ÷ distance,
+      //    damped by roster balance) — so a close 96% beats a far 100% rather than morale
+      //    overriding distance outright. Reserving it (usedOff) keeps a closer sub-bar village
+      //    from reclaiming the slot in the auto pass.
+      const repCands = bump(p => playerMorale(decode(p.v.player)) >= minMorale);
+      if (repCands.length) {
+        reserve(repCands.sort(byOptimize(T))[0], tier);
+        break;
+      }
+      // 3) No high-morale alternative reachable → fall back to the conqueror's own off.
+      const fallback = bump(p => conq.has(decode(p.v.player)));
+      if (!fallback.length) continue;
+      reserve(fallback.sort(byDist(T))[0], tier);
       break;
     }
   }

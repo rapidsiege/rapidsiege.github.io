@@ -373,6 +373,10 @@
       <button class="btn btn-ghost btn-sm" id="ot-def-winsnob-fix" style="padding:1px 6px;" onclick="fixDefWin('defWinSnob')">=</button>
       <input type="time" id="ot-def-winsnob-e" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinSnob')">
     </span>
+    <span class="map-tb-sep"></span>
+    <button class="btn btn-ghost btn-sm" onclick="applyDefArrivalToAll()" data-i18n="btn_apply_arrival" data-i18n-title="apply_arrival_title">↻ Update arrival times</button>
+  </div>
+  <div class="filter-row" style="margin-top:8px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
     <label data-i18n="lbl_def_offs">Default offs:</label>
     <span class="badge badge-complete" data-i18n="opt_complete">Complete Off</span>
     <input type="number" id="ot-def-complete" min="0" max="99" style="width:55px;" oninput="updOTCfgInt('defComplete',this.value)">
@@ -385,6 +389,8 @@
       <option value="solo" data-i18n="opt_escort_no">👑 Solo</option>
       <option value="escorted" data-i18n="opt_escort_yes">⚔ Split Off</option>
     </select>
+    <span class="map-tb-sep"></span>
+    <button class="btn btn-ghost btn-sm" onclick="applyDefOffsSnobToAll()" data-i18n="btn_apply_offssnob" data-i18n-title="apply_offssnob_title">↻ Update offs &amp; snob mode</button>
   </div>
   <div class="filter-row" style="margin-top:10px;">
     <input type="text" id="ot-add-coord" placeholder="500|500" style="width:90px;font-family:'Consolas','Courier New',monospace;" onkeydown="if(event.key==='Enter')addOffTarget()">
@@ -478,6 +484,8 @@
     <input type="number" id="plan-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited">
     <label data-i18n="lbl_snob_max">Snob max distance:</label>
     <input type="number" id="plan-snob-max" value="70" min="0" style="width:70px;" title="0 = unlimited">
+    <label data-i18n="lbl_min_morale">Min. morale (snob off):</label>
+    <input type="number" id="plan-min-morale" value="90" min="0" max="100" style="width:70px;" data-i18n-title="min_morale_title" title="A noble sender keeps their own clearing off only at or above this morale %; below it the off goes to a higher-morale player. 0 = always keep.">
     <span style="font-size:12px;color:#5a3a18;" data-i18n="plan_optimize_note">Auto-optimizes by morale × off power vs. distance. Pin senders per target or tag a target POWER in Offensive Targets.</span>
     <button class="btn btn-primary btn-sm" onclick="generatePlan()" data-i18n="btn_generate">⚡ Generate Plan</button>
   </div>
@@ -782,7 +790,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.11.1 &nbsp;·&nbsp; 2026-06-20</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.12.0 &nbsp;·&nbsp; 2026-06-25</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

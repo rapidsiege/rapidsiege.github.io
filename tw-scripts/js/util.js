@@ -108,7 +108,8 @@ function buildDebugDump() {
     settings: {
       thresholds: { complete: val('thresh-complete'), tq: val('thresh-tq'), half: val('thresh-half') },
       plan: { worldSpeed: val('plan-world-speed'), unitSpeed: val('plan-unit-speed'),
-              minDist: val('plan-min-dist'), maxDist: val('plan-max-dist'), snobMax: val('plan-snob-max') },
+              minDist: val('plan-min-dist'), maxDist: val('plan-max-dist'), snobMax: val('plan-snob-max'),
+              minMorale: val('plan-min-morale') },
       lang,
     },
     troops: villages.length ? { villages } : null,
@@ -158,7 +159,8 @@ function importDebugDataFromText(text) {
   const s = dump.settings || {};
   if (s.thresholds) { set('thresh-complete', s.thresholds.complete); set('thresh-tq', s.thresholds.tq); set('thresh-half', s.thresholds.half); }
   if (s.plan) { set('plan-world-speed', s.plan.worldSpeed); set('plan-unit-speed', s.plan.unitSpeed);
-                set('plan-min-dist', s.plan.minDist); set('plan-max-dist', s.plan.maxDist); set('plan-snob-max', s.plan.snobMax); }
+                set('plan-min-dist', s.plan.minDist); set('plan-max-dist', s.plan.maxDist); set('plan-snob-max', s.plan.snobMax);
+                set('plan-min-morale', s.plan.minMorale); }
   // world-DB subset (coord records + player names/points) so Optimize/morale, defenders
   // and tooltips resolve for the relevant coords without the live mirror
   if (dump.db && dump.db.coord) {
