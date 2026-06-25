@@ -397,6 +397,7 @@
     <button class="btn btn-primary btn-sm" onclick="addOffTarget()" data-i18n="btn_add_target">+ Add Target</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleOffIgnore()" data-i18n="btn_ignore_coords">🚫 Ignore Coordinates</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleOffIgnorePlayers()" data-i18n="btn_ignore_players">🙅 Ignore Players</button>
+    <button class="btn btn-ghost btn-sm" onclick="toggleOffMvPlayers()" data-i18n="btn_mv_players">🏖 MV Players</button>
     <span style="font-size:12px;color:#5a3a18;" data-i18n="ot_defender_note">Defender auto-fills from the village database.</span>
   </div>
   <div id="ot-ignore-wrap" style="display:none;margin-top:10px;">
@@ -406,6 +407,10 @@
   <div id="ot-ignore-players-wrap" style="display:none;margin-top:10px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="ignore_players_hint">Pick whole players to exclude from the plan — none of their villages send anything, and they're hidden from the sender selectors. Requires the tribe troop file.</div>
     <div id="ot-ignore-players-host"></div>
+  </div>
+  <div id="ot-mv-players-wrap" style="display:none;margin-top:10px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="mv_players_hint">Pair players who are in vacation mode (MV): two paired players will never both attack the SAME enemy player (across all that player's villages) — a game limit during vacation mode and for 48h after. They stay fully pickable otherwise. Requires the tribe troop file.</div>
+    <div id="ot-mv-players-host"></div>
   </div>
   <div id="ot-bulk-wrap" style="display:none;margin-bottom:12px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="bulk_hint">Paste coordinates (one per line, optionally followed by the defender name) and click Add.</div>
@@ -790,7 +795,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.12.0 &nbsp;·&nbsp; 2026-06-25</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.14.0 &nbsp;·&nbsp; 2026-06-25</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

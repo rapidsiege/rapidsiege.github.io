@@ -123,15 +123,50 @@ function generatePlan() {
   const minMoraleRaw = parseFloat((document.getElementById('plan-min-morale') || {}).value);
   const minMorale = (isNaN(minMoraleRaw) ? 90 : minMoraleRaw) / 100;
 
-  // Ignore lists (Offensive Targets): villages listed by coord, or owned by an ignored
-  // player, are dropped from the pool entirely — so they're never picked for an off, a
-  // snob train, or a split-off escort by ANY pass below (all passes draw from `pool`).
+  // Ignore lists (Offensive Targets). Ignored COORDINATES are dropped from the pool entirely
+  // (those villages never send anything). Ignored PLAYERS stay IN the pool but are barred from
+  // every regular-OFF pass (folded into offBlocked below) — they may still be hand-picked as
+  // noble (snob) senders, sending the train + its escort, just never a regular clearing off.
   const ignoreCoords  = parseOffIgnoreSet();
   const ignorePlayers = new Set(offIgnorePlayers);
   const pool = villages.map(v => ({
     v, c: parseCoordStr(v.coord), tier: getOffTier(v.offPow),
     snobLeft: v.snob, usedOff: false, usedSnob: false,
-  })).filter(p => p.c && !ignoreCoords.has(p.v.coord) && !ignorePlayers.has(p.v.player));
+  })).filter(p => p.c && !ignoreCoords.has(p.v.coord));
+
+  // ── MV (vacation-mode) pairs ──────────────────────────────────────────────
+  // Two MV-paired players must not BOTH attack the SAME enemy PLAYER (the defending
+  // player, across all their villages) — a game limit during vacation mode + 48h after.
+  // Enforced per defender: the first of a pair committed against a defending player CLAIMS
+  // it; the partner is then blocked from that defender in every pass. Raw sender namespace
+  // throughout (p.v.player) to match offMvPairs and the pool; the claim key is the defending
+  // player string (never compared to a sender name, only bucketed). Ownerless defenders
+  // (no DB / barbarian → blank player) are exempt (no real player to double-attack).
+  const mvPartners = new Map(); // raw player -> Set of its raw MV partners
+  for (const pair of (typeof offMvPairs !== 'undefined' ? offMvPairs : [])) {
+    if (!Array.isArray(pair) || pair.length !== 2) continue;
+    const [a, b] = pair;
+    if (!a || !b || a === b) continue;
+    let sa = mvPartners.get(a); if (!sa) mvPartners.set(a, sa = new Set()); sa.add(b);
+    let sb = mvPartners.get(b); if (!sb) mvPartners.set(b, sb = new Set()); sb.add(a);
+  }
+  const mvClaims = new Map(); // defending player -> Set of raw sender names committed against them
+  const mvDef = T => { const d = T && T.tg && T.tg.player; return d && String(d).trim() ? d : null; };
+  const mvBlocked = (p, T) => {
+    const def = mvDef(T); if (!def) return false;
+    const partners = mvPartners.get(p.v.player); if (!partners) return false;
+    const claimed = mvClaims.get(def); if (!claimed) return false;
+    for (const x of partners) if (claimed.has(x)) return true;
+    return false;
+  };
+  const noteMvClaim = (p, T) => {
+    if (!mvPartners.has(p.v.player)) return; // only paired players can ever block
+    const def = mvDef(T); if (!def) return;
+    let s = mvClaims.get(def); if (!s) mvClaims.set(def, s = new Set()); s.add(p.v.player);
+  };
+  // Would this pinned sender have had a candidate for T if not for an MV conflict?
+  const mvWouldBlockPin = (rawName, T) =>
+    mvPartners.has(rawName) && !!mvDef(T) && pool.some(p => p.v.player === rawName && mvBlocked(p, T));
 
   // Off-load fairness (auto pass only): how many off villages each player owns, and how
   // many have been committed so far. Used to spread offs in PROPORTION to roster size, so
@@ -142,6 +177,7 @@ function generatePlan() {
   const noteOffUsed = name => { offUsedByPlayer[name] = (offUsedByPlayer[name] || 0) + 1; };
 
   planRows = []; planWarnings = []; planReserved = [];
+  planStats = emptyPlanStats();
 
   const targets = offTargets.map((tg, i) => ({ tg, i, c: parseCoordStr(tg.coord), offRows: [], snobRows: [] }));
   targets.filter(T => !T.c).forEach(T => planWarnings.push(t('warn_invalid_coord')(T.tg.coord)));
@@ -259,7 +295,7 @@ function generatePlan() {
     for (const { name: want } of targetTrainSpec(T.tg)) {
       const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !tooClose.has(p)
         && tiers.includes(p.tier) && okSnobDist(p, T.c) && okSnobTime(p, T)
-        && (!want || p.v.player === want))
+        && (want ? p.v.player === want : !ignorePlayers.has(p.v.player)))
         .sort((a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (b.v.offPow - a.v.offPow))[0];
       const p = pick(['complete', 'tq']) || pick(['half']);
       if (p) escortReserved.add(p);
@@ -313,8 +349,9 @@ function generatePlan() {
       // A village may host several trains while it has snobs left; in split-off
       // mode its off can only be split once (solo trains from it stay fine)
       let cands = pool.filter(p =>
-        p.snobLeft > 0 && okSnobDist(p, T.c) && okSnobTime(p, T) &&
-        (want ? p.v.player === want : !chosen.has(p.v.player)) &&
+        p.snobLeft > 0 && okSnobDist(p, T.c) && okSnobTime(p, T) && !mvBlocked(p, T) &&
+        // a pinned (want) sender may be an ignored player; auto-picks never use ignored players
+        (want ? p.v.player === want : (!chosen.has(p.v.player) && !ignorePlayers.has(p.v.player))) &&
         (mode !== 'escorted' || !p.usedOff));
       if (mode === 'escorted') {
         // train travels with its own off escort → prefer villages with real off power
@@ -340,7 +377,10 @@ function generatePlan() {
         // pinpoint the blocker: out of noble range / launch in the past /
         // off already split / no snobs
         let msg, needNobles = false;
-        if (want) {
+        if (want && mvWouldBlockPin(want, T)) {
+          // an MV-paired partner already attacks this defender → this sender can't (game limit)
+          msg = t('warn_mv')(decode(want), T.tg.coord);
+        } else if (want) {
           const mine = pool.filter(p => p.snobLeft > 0 && p.v.player === want);
           const inRange = mine.filter(p => okSnobDist(p, T.c));
           if (mine.length && !inRange.length) {
@@ -400,8 +440,8 @@ function generatePlan() {
         ? (a, b) => (b.v.offPow - a.v.offPow) || (distXY(a.c, T.c) - distXY(b.c, T.c))
         : (a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (a.v.offPow - b.v.offPow));
       const p = cands[0];
-      p.snobLeft -= nc; p.usedSnob = true; chosen.add(p.v.player);
-      if (mode === 'escorted') p.usedOff = true;
+      p.snobLeft -= nc; p.usedSnob = true; chosen.add(p.v.player); noteMvClaim(p, T);
+      if (mode === 'escorted') { p.usedOff = true; p.isEscort = true; } // its off rides as the split-off
       noteSnobSender(p.v.player, T);
       const d = distXY(p.c, T.c);
       T.snobRows.push({
@@ -441,7 +481,9 @@ function generatePlan() {
     mine.sort((a, b) => (dOf(a) - dOf(b)) || (b.v.offPow - a.v.offPow) || (a.v.coord < b.v.coord ? -1 : 1));
     for (const p of mine.slice(0, 2)) snobReserved.add(p);
   }
-  const offBlocked = p => escortReserved.has(p) || snobReserved.has(p);
+  // Ignored players are barred from every regular-off pass here (all four use offBlocked),
+  // but NOT from the snob loop / escort pick — so a hand-picked ignored noble sender still sends.
+  const offBlocked = p => escortReserved.has(p) || snobReserved.has(p) || ignorePlayers.has(p.v.player);
   // Persist the reserved launch-village coords so the "Export Unused Offs" list can drop
   // them (they're being kept for a noble, not offered as a free second-wave off).
   planReserved = [...snobReserved].map(p => p.v.coord);
@@ -465,11 +507,11 @@ function generatePlan() {
         const want = Math.min(a.count, Math.max(0, N - placed)); // never exceed the tier request
         if (want <= 0) continue;
         const cands = pool.filter(p => !p.usedOff && !offBlocked(p) && p.v.player === a.name && p.tier === tier
-          && okOffDist(p, T.c) && okOffTime(p, T)).sort(byDist(T));
+          && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T)).sort(byDist(T));
         let got = 0;
         for (const p of cands) {
           if (got >= want) break;
-          p.usedOff = true; got++; placed++; noteOffUsed(p.v.player);
+          p.usedOff = true; got++; placed++; noteOffUsed(p.v.player); noteMvClaim(p, T);
           const d = distXY(p.c, T.c);
           T.offRows.push({ type: tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
             dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
@@ -478,9 +520,12 @@ function generatePlan() {
           placed += want - got; // reserve the shortfall so the auto pass won't backfill it
           const owned = pool.filter(p => p.v.player === a.name && p.tier === tier);
           const inRange = owned.filter(p => okOffDist(p, T.c));
+          const inRangeTime = inRange.filter(p => okOffTime(p, T) && !p.usedOff && !offBlocked(p));
           planWarnings.push(
             owned.length && !inRange.length ? t('warn_off_range')(decode(a.name), t('tier_' + tier), T.tg.coord)
             : inRange.length && !inRange.some(p => okOffTime(p, T)) ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
+            // all otherwise-usable villages blocked by an MV pair conflict → say so
+            : inRangeTime.length && inRangeTime.every(p => mvBlocked(p, T)) ? t('warn_mv')(decode(a.name), T.tg.coord)
             : t('warn_sender_short_off')(decode(a.name), t('tier_' + tier), T.tg.coord));
           for (let z = 0; z < want - got; z++) T.offRows.push({ type: tier, unassigned: true });
         }
@@ -535,9 +580,9 @@ function generatePlan() {
 
     // candidate villages for a tier, restricted by a sender predicate (decoded names)
     const candsFor = (allow, tt) => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt
-      && allow(p) && okOffDist(p, T.c) && okOffTime(p, T));
+      && allow(p) && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T));
     const reserve = (p, tier) => {
-      p.usedOff = true; noteOffUsed(p.v.player);
+      p.usedOff = true; noteOffUsed(p.v.player); noteMvClaim(p, T);
       namedOffReserved[T.i + '|' + tier] = (namedOffReserved[T.i + '|' + tier] || 0) + 1;
       const d = distXY(p.c, T.c);
       // Sent AS the village's own (≥ requested) tier; no "tier bumped" warning — this is a
@@ -597,7 +642,7 @@ function generatePlan() {
       const open = powerTargets.filter(T => remaining[T.i] > 0).sort((a, b) => powSum[a.i] - powSum[b.i]);
       if (!open.length) break;
       const T = open[0];
-      const cands = pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T))
+      const cands = pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T))
         .sort((a, b) => b.v.offPow - a.v.offPow);
       remaining[T.i]--;
       if (!cands.length) {
@@ -612,7 +657,7 @@ function generatePlan() {
         continue;
       }
       const p = cands[0];
-      p.usedOff = true; powSum[T.i] += p.v.offPow; noteOffUsed(p.v.player);
+      p.usedOff = true; powSum[T.i] += p.v.offPow; noteOffUsed(p.v.player); noteMvClaim(p, T);
       const d = distXY(p.c, T.c);
       T.offRows.push({ type: p.tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
@@ -629,7 +674,7 @@ function generatePlan() {
       if (!T.c || T.tg.power) continue; // POWER targets are filled by the balanced pass above
       const autoNeed = Math.max(0, (T.tg[TIER_FIELD[tier]] || 0) - (namedOffReserved[T.i + '|' + tier] || 0));
       for (let k = 0; k < autoNeed; k++) {
-        const tierCands = tt => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T));
+        const tierCands = tt => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T));
         let sent = tier, cands = tierCands(tier);
         for (const up of TIER_UP[tier]) {
           if (cands.length) break;
@@ -648,7 +693,7 @@ function generatePlan() {
         // The conqueror's own off was already reserved up front (see the conqueror
         // reservation above), so the auto pass just fills the remaining slots by optimize.
         const p = cands.sort(byOptimize(T))[0];
-        p.usedOff = true; noteOffUsed(p.v.player);
+        p.usedOff = true; noteOffUsed(p.v.player); noteMvClaim(p, T);
         const d = distXY(p.c, T.c);
         T.offRows.push({
           type: sent, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
@@ -700,6 +745,40 @@ function generatePlan() {
     }
   }
 
+  // Off-pool breakdown for the Plan summary footer, split PER OFF TIER (Complete / 3-4 /
+  // 1-2) by each village's OWN tier. Computed HERE (after every off pass) so `usedOff` /
+  // `isEscort` are final. Over OFF-CAPABLE villages only (tier !== 'none' — a defensive/empty
+  // village isn't an off). The buckets PARTITION each tier's gross village count so the footer
+  // reconciles exactly: gross[tier] = assigned + heldDist + heldNoble + heldSplit + unused + ignored.
+  //   • ignored    = excluded from the pool by the Ignore Coordinates / Ignore Players lists
+  //   • assigned   = an off committed in the plan (usedOff, not the escort)
+  //   • split-off  = the village whose off rides WITH a noble as the escort (usedOff + isEscort)
+  //   • noble launch = a launch village held free for the noble (snobReserved, not used)
+  //   • distance   = the blanket minDist holdback (tooClose), not otherwise used/reserved
+  //   • unused     = in the pool, off-capable, neither used nor reserved (surplus / no
+  //                  request for that tier / out of range or time)
+  // A village counts as RESERVED for a split-off / noble launch if it's in the reservation
+  // set, whether or not the snob loop ended up launching from it — an escort the engine held
+  // back is off-limits to the off passes (offBlocked), so it's "reserved", NOT "unused".
+  // That's why the held buckets key on escortReserved/snobReserved (plus the actual launched
+  // escort via isEscort), so `unused` means genuinely free, and the partition still reconciles.
+  planStats = emptyPlanStats();
+  for (const v of villages) {
+    const tier = getOffTier(v.offPow);
+    if (tier === 'none') continue;
+    if (ignoreCoords.has(v.coord) || ignorePlayers.has(v.player)) planStats[tier].ignored++;
+  }
+  for (const p of pool) {
+    if (p.tier === 'none') continue;                                          // not an off
+    if (ignorePlayers.has(p.v.player)) continue;                              // counted under `ignored` above (now in pool, but barred from offs)
+    const s = planStats[p.tier];
+    if (escortReserved.has(p) || (p.usedOff && p.isEscort)) s.heldSplit++;     // reserved for / riding as a split-off escort
+    else if (snobReserved.has(p))                           s.heldNoble++;     // held free for a noble launch
+    else if (p.usedOff)                                     s.assigned++;      // an off committed in the plan
+    else if (tooClose.has(p))                               s.heldDist++;      // blanket min-distance holdback
+    else                                                    s.unused++;        // genuinely free / not needed / unreachable
+  }
+
   saveOffensive();
   renderPlanTable();
 }
@@ -711,6 +790,7 @@ function delPlanRow(i) { planRows.splice(i, 1); saveOffensive(); renderPlanTable
 function clearPlan() {
   if (planRows.length && !confirm(t('confirm_clear_plan'))) return;
   planRows = []; planWarnings = []; planReserved = [];
+  planStats = emptyPlanStats();
   saveOffensive(); renderPlanTable();
 }
 
@@ -721,8 +801,25 @@ function renderPlanTable() {
     ? `<details class="warn-box"><summary>${t('plan_warnings_toggle')(planWarnings.length)}</summary>`
       + `<div class="warn-list">${planWarnings.map(esc).join('<br>')}</div></details>` : '';
   const assigned = planRows.filter(r => !r.unassigned).length;
-  document.getElementById('plan-summary').textContent =
-    planRows.length ? t('plan_summary')(assigned, planRows.length - assigned) : '';
+  // Per-tier off breakdown next to the attack tally. Every number comes from planStats
+  // (computed in generatePlan), whose six buckets partition each tier's gross village count,
+  // so each segment reconciles: assigned + held(distance/noble/split) + unused + ignored = [N].
+  const TIER_BADGE = { complete: 'badge-complete', tq: 'badge-tq', half: 'badge-half' };
+  let summary = planRows.length ? esc(t('plan_summary')(assigned, planRows.length - assigned)) : '';
+  if (planRows.length && planStats) {
+    // One line per off tier, behind a collapsible toggle (native <details>, file://-safe).
+    const segs = ['complete', 'tq', 'half'].map(tier => {
+      const s = planStats[tier] || { assigned: 0, heldDist: 0, heldNoble: 0, heldSplit: 0, unused: 0, ignored: 0 };
+      // [N] = gross count of villages of this tier tribe-wide (same denominator as the
+      // Offensive Targets footer — total selectable offs, before any holdback/reservation).
+      const gross = villages.filter(v => getOffTier(v.offPow) === tier).length;
+      return `<span class="badge ${TIER_BADGE[tier]}">${t('tier_' + tier)} [${gross}]</span> `
+        + esc(t('plan_offs_summary')(s.assigned, s.heldDist, s.heldNoble, s.heldSplit, s.unused, s.ignored));
+    });
+    summary += `<details style="margin-top:6px;"><summary style="cursor:pointer;">${esc(t('btn_show_off_counts'))}</summary>`
+      + `<div style="margin-top:4px;line-height:1.9;">${segs.join('<br>')}</div></details>`;
+  }
+  document.getElementById('plan-summary').innerHTML = summary;
 
   const tbody = document.getElementById('plan-tbody');
   if (!planRows.length) {

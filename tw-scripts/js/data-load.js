@@ -197,6 +197,7 @@ function parseData(text, filename) {
   renderTargetTable();
   renderOffTargets(); // sender picker depends on the troop data
   if (typeof renderOffIgnorePlayers === 'function') renderOffIgnorePlayers(); // ignore-players picker too
+  if (typeof renderOffMvPlayers === 'function') renderOffMvPlayers(); // MV-pairs picker too
   if (typeof mapDetectAndSeed === 'function') mapDetectAndSeed(); // map: detect uploading tribe + seed My-tribe group
   if (typeof mapRefresh === 'function') mapRefresh();             // recolor map if it's open
 

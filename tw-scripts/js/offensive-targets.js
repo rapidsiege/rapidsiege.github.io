@@ -11,17 +11,24 @@ let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00
 let offTargets   = []; // [{id, coord, player, nComplete, nTq, nHalf, snobPlayers, nobles, offWindows:[{win,count}], winSnob, snobMode, snobAssignees:[{name,count}]}]
 let offIgnore        = ''; // raw "Ignore Coordinates" textarea (Offensive Targets) — these villages never send anything
 let offIgnorePlayers = []; // raw player names excluded from the whole plan (no off, no snob, no escort)
+let offMvPairs       = []; // [[rawA, rawB], …] vacation-mode pairs: two paired players can't both attack the SAME enemy player
 let planRows     = []; // denormalized so a saved plan renders without the troop file loaded
 let planWarnings = [];
 let planReserved = []; // coords of noble-launch villages held out of the offs (excluded from Unused Offs)
+// Off-pool holdback breakdown for the Plan summary footer, per off tier (off-capable villages only).
+function emptyPlanStats() {
+  const t = () => ({ assigned: 0, heldDist: 0, heldNoble: 0, heldSplit: 0, unused: 0, ignored: 0 });
+  return { complete: t(), tq: t(), half: t() };
+}
+let planStats    = emptyPlanStats();
 let otNextId     = 1;
 
 function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
 function saveOffensive() {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
-    cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers,
-    plan: planRows, warnings: planWarnings, reserved: planReserved, nextId: otNextId,
+    cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, mvPairs: offMvPairs,
+    plan: planRows, warnings: planWarnings, reserved: planReserved, stats: planStats, nextId: otNextId,
   }));
 }
 
@@ -33,9 +40,11 @@ function loadOffensive() {
       offTargets   = d.targets || [];
       offIgnore        = typeof d.ignore === 'string' ? d.ignore : '';
       offIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
+      offMvPairs       = Array.isArray(d.mvPairs) ? d.mvPairs.filter(p => Array.isArray(p) && p.length === 2 && p[0] && p[1] && p[0] !== p[1]) : [];
       planRows     = d.plan || [];
       planWarnings = d.warnings || [];
       planReserved = d.reserved || [];
+      planStats    = (d.stats && d.stats.complete) ? d.stats : emptyPlanStats(); // ignore the pre-3.13 flat shape
       otNextId     = d.nextId || (Math.max(0, ...offTargets.map(x => x.id)) + 1);
     }
   } catch {}
@@ -63,6 +72,7 @@ function loadOffensive() {
   const ign = document.getElementById('ot-ignore-input');
   if (ign) ign.value = offIgnore;
   renderOffIgnorePlayers();
+  renderOffMvPlayers();
 }
 
 function updOTCfg(k, v) { otCfg[k] = v.trim(); saveOffensive(); }
@@ -129,6 +139,48 @@ function renderOffIgnorePlayers() {
        ${opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('')}
      </select>`;
   host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}${picker}</div>`;
+}
+
+// ── MV (vacation-mode) pairs: two players who can't both attack the same enemy player ──
+function toggleOffMvPlayers() {
+  const el = document.getElementById('ot-mv-players-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+// Every loaded player, alphabetical (a player may be in several pairs, so nothing is filtered out).
+function mvPlayerOptions() {
+  return Object.keys(players)
+    .map(name => ({ name, villages: players[name].villages.length }))
+    .sort((a, b) => decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
+}
+function mvPairExists(a, b) {
+  return offMvPairs.some(p => (p[0] === a && p[1] === b) || (p[0] === b && p[1] === a));
+}
+function addMvPairFromSelects() {
+  const a = (document.getElementById('ot-mv-a') || {}).value;
+  const b = (document.getElementById('ot-mv-b') || {}).value;
+  if (!a || !b || a === b || mvPairExists(a, b)) return;
+  offMvPairs.push([a, b]);
+  saveOffensive(); renderOffMvPlayers();
+}
+function removeMvPair(idx) {
+  offMvPairs.splice(idx, 1);
+  saveOffensive(); renderOffMvPlayers();
+}
+// Chip list of pairs ("A ↔ B") + two player pickers and an Add Pair button.
+function renderOffMvPlayers() {
+  const host = document.getElementById('ot-mv-players-host');
+  if (!host) return;
+  if (!Object.keys(players).length && !offMvPairs.length) {
+    host.innerHTML = `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+    return;
+  }
+  const chips = offMvPairs.map((pr, i) =>
+    `<span class="chip">${esc(decode(pr[0]))} ↔ ${esc(decode(pr[1]))}<span class="chip-x" onclick="removeMvPair(${i})">✕</span></span>`).join('');
+  const optHtml = mvPlayerOptions().map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('');
+  const sel = id => `<select id="${id}" class="cell-input" style="width:150px;"><option value="">${t('opt_pick_mv_player')}</option>${optHtml}</select>`;
+  host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}`
+    + `${sel('ot-mv-a')}<span style="color:#806030;">↔</span>${sel('ot-mv-b')}`
+    + `<button class="btn btn-ghost btn-sm" onclick="addMvPairFromSelects()">${t('btn_add_mv_pair')}</button></div>`;
 }
 
 // ── Time-window helpers (windows stored as 'HH:MM/HH:MM'; start === end = fixed time) ──
@@ -286,9 +338,9 @@ function clearOffTargets() {
 // no nobles yet are still listed (shown as "(0)") so they can be pinned — generatePlan
 // then flags them to recruit a noble in time, which is exactly the intended signal.
 function snobSenderOptions() {
-  const ig = new Set(offIgnorePlayers);
+  // Ignored players ARE listed here (unlike the off-sender picker): an ignored player can still
+  // be hand-picked to send a noble train; they're only barred from regular off assignment.
   return Object.entries(players)
-    .filter(([name]) => !ig.has(name))
     .map(([name, p]) => ({ name, snob: p.totals.snob }))
     .sort((a, b) => decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
 }
