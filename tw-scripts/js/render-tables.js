@@ -181,6 +181,39 @@ function getOffTier(offPow) {
   return 'none';
 }
 
+// ── Settings persistence (Settings tab + Plan Offensive inputs + language) ──
+// These are plain DOM fields / the language global, so a refresh reset them to the
+// HTML defaults. Persist them under tw_tribe_settings on every edit (saveSettings,
+// wired to each control's oninput/onchange + to changeLang) and restore on load
+// (loadSettings, called from the init block before the first render). The tw_tribe*
+// prefix means the debug export/import already round-trips this key.
+const TRIBE_SETTINGS_KEY = 'tw_tribe_settings';
+// Plan Offensive controls that should survive a refresh (keyed by element id).
+const PLAN_SETTING_IDS = ['plan-world-speed', 'plan-unit-speed', 'plan-min-dist', 'plan-max-dist',
+  'plan-snob-max', 'plan-min-morale-off', 'plan-min-morale', 'plan-cat-count'];
+function saveSettings() {
+  const v = id => document.getElementById(id)?.value;
+  const plan = {};
+  for (const id of PLAN_SETTING_IDS) { const val = v(id); if (val != null) plan[id] = val; }
+  try {
+    localStorage.setItem(TRIBE_SETTINGS_KEY, JSON.stringify({
+      lang: (typeof lang === 'string') ? lang : undefined,
+      thresholds: { complete: v('thresh-complete'), tq: v('thresh-tq'), half: v('thresh-half') },
+      plan,
+    }));
+  } catch {}
+}
+function loadSettings() {
+  let s;
+  try { s = JSON.parse(localStorage.getItem(TRIBE_SETTINGS_KEY) || 'null'); } catch {}
+  if (!s) return;
+  const set = (id, val) => { const e = document.getElementById(id); if (e && val != null && val !== '') e.value = val; };
+  if (s.thresholds) { set('thresh-complete', s.thresholds.complete); set('thresh-tq', s.thresholds.tq); set('thresh-half', s.thresholds.half); }
+  if (s.plan) for (const id of PLAN_SETTING_IDS) set(id, s.plan[id]);
+  // The init block applies this via changeLang(lang) after loadSettings() sets the global.
+  if (s.lang === 'en' || s.lang === 'es') lang = s.lang;
+}
+
 // ── Off-power tier badge (shown in the Villages table's Tier column) ────────────
 const TIER_BADGE = {
   complete: '<span class="badge badge-complete">Complete Off</span>',

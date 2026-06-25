@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.19.0', date: '2026-06-25',
+    en: [
+      `<b>💾 Settings now stick across refreshes.</b> Three groups of controls used to reset every time you reloaded the page — now they're saved in your browser and restored automatically. (1) The <b>Offensive Power Thresholds</b> (Complete / 3-4 / 1-2) on the Settings tab. (2) Every input on <b>Plan Offensive</b>: world speed, unit speed, off min/max distance, snob max distance, both morale fields, and the number of catapults. (3) Your <b>language</b> choice (English / Español) — the page now opens in the language you last used. Nothing else changes; your saved values just survive a refresh.`,
+    ],
+    es: [
+      `<b>💾 Los ajustes ahora se mantienen al recargar.</b> Tres grupos de controles se reiniciaban cada vez que recargabas la página — ahora se guardan en tu navegador y se restauran automáticamente. (1) Los <b>Umbrales de Poder Ofensivo</b> (Completo / 3-4 / 1-2) en la pestaña Ajustes. (2) Todos los campos de <b>Plan Ofensivo</b>: velocidad del mundo, velocidad de unidad, distancia mín./máx. de off, distancia máx. de noble, ambos campos de moral y el número de catapultas. (3) Tu elección de <b>idioma</b> (English / Español) — la página ahora abre en el idioma que usaste por última vez. Nada más cambia; tus valores guardados simplemente sobreviven a una recarga.`,
+    ],
+  },
   { ver: 'v3.18.0', date: '2026-06-25',
     en: [
       `<b>🧨 "Destroyer" targets prefer catapult offs.</b> A target with offs assigned, <b>no noble senders</b>, and <b>catapult attacks turned on</b> is treated as a <b>destroyer (voladora)</b> — you flatten the village instead of taking it. For these, the planner now <b>prefers offensive villages that carry 101+ catapults</b> when choosing the clearing off(s), so the off itself demolishes buildings. The usual requirements still come first (tier, range, launch time, morale); catapult count then decides among the qualifying villages, and it applies to <b>every</b> off slot on the target, not just one. If no catapult-carrying off can reach the target, a normal off is sent instead and a warning is raised. The extra small catapult attacks from your defensive villages are unchanged and still added on top.`,

@@ -469,7 +469,7 @@
   </div>
   <div class="filter-row" style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
     <label data-i18n="lbl_world_speed">World speed:</label>
-    <select id="plan-world-speed">
+    <select id="plan-world-speed" onchange="saveSettings()">
       <option value="0.5">0.5×</option>
       <option value="1">1×</option>
       <option value="2" selected>2×</option>
@@ -478,7 +478,7 @@
       <option value="10">10×</option>
     </select>
     <label data-i18n="lbl_unit_speed">Unit speed:</label>
-    <select id="plan-unit-speed">
+    <select id="plan-unit-speed" onchange="saveSettings()">
       <option value="0.25">0.25×</option>
       <option value="0.5" selected>0.5×</option>
       <option value="1">1×</option>
@@ -486,17 +486,17 @@
       <option value="3">3×</option>
     </select>
     <label data-i18n="lbl_min_dist">Off min distance:</label>
-    <input type="number" id="plan-min-dist" value="0" min="0" style="width:70px;" title="0 = no minimum">
+    <input type="number" id="plan-min-dist" value="0" min="0" style="width:70px;" title="0 = no minimum" oninput="saveSettings()">
     <label data-i18n="lbl_max_dist">Off max distance:</label>
-    <input type="number" id="plan-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited">
+    <input type="number" id="plan-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited" oninput="saveSettings()">
     <label data-i18n="lbl_snob_max">Snob max distance:</label>
-    <input type="number" id="plan-snob-max" value="70" min="0" style="width:70px;" title="0 = unlimited">
+    <input type="number" id="plan-snob-max" value="70" min="0" style="width:70px;" title="0 = unlimited" oninput="saveSettings()">
     <label data-i18n="lbl_min_morale_off">Min. morale (off):</label>
-    <input type="number" id="plan-min-morale-off" value="100" min="0" max="100" style="width:70px;" data-i18n-title="min_morale_off_title" title="Regular clearing offs are only sent at or above this morale %; below it the engine falls back to the best available sender. A noble sender's own off uses the snob-off gate instead. 0 = no morale limit.">
+    <input type="number" id="plan-min-morale-off" value="100" min="0" max="100" style="width:70px;" data-i18n-title="min_morale_off_title" title="Regular clearing offs are only sent at or above this morale %; below it the engine falls back to the best available sender. A noble sender's own off uses the snob-off gate instead. 0 = no morale limit." oninput="saveSettings()">
     <label data-i18n="lbl_min_morale">Min. morale (snob off):</label>
-    <input type="number" id="plan-min-morale" value="90" min="0" max="100" style="width:70px;" data-i18n-title="min_morale_title" title="A noble sender keeps their own clearing off only at or above this morale %; below it the off goes to a higher-morale player. 0 = always keep.">
+    <input type="number" id="plan-min-morale" value="90" min="0" max="100" style="width:70px;" data-i18n-title="min_morale_title" title="A noble sender keeps their own clearing off only at or above this morale %; below it the off goes to a higher-morale player. 0 = always keep." oninput="saveSettings()">
     <label data-i18n="lbl_cat_count"><img class="tw-ic" src="icons/catapult.png" alt="">Number of catapults:</label>
-    <input type="number" id="plan-cat-count" value="20" min="1" style="width:70px;" data-i18n-title="cat_count_title" title="Catapults per catapult attack. Each catapult target's wanted attacks are sourced from your defensive villages that own catapults; a source village provides floor(catapults / this) attacks.">
+    <input type="number" id="plan-cat-count" value="20" min="1" style="width:70px;" data-i18n-title="cat_count_title" title="Catapults per catapult attack. Each catapult target's wanted attacks are sourced from your defensive villages that own catapults; a source village provides floor(catapults / this) attacks." oninput="saveSettings()">
     <span style="font-size:12px;color:#5a3a18;" data-i18n="plan_optimize_note">Auto-optimizes by morale × off power vs. distance. Pin senders per target or tag a target POWER in Offensive Targets.</span>
     <button class="btn btn-primary btn-sm" onclick="generatePlan()" data-i18n="btn_generate">⚡ Generate Plan</button>
   </div>
@@ -692,11 +692,11 @@
   <div class="section-header"><h2 data-i18n="sec_off_thresholds">Offensive Power Thresholds</h2></div>
   <div class="threshold-row">
     <label><span class="badge badge-complete" data-i18n="opt_complete">Complete Off</span> ≥</label>
-    <input type="number" id="thresh-complete" value="500000" oninput="renderTierTables()">
+    <input type="number" id="thresh-complete" value="500000" oninput="saveSettings(); renderTierTables()">
     <label><span class="badge badge-tq" data-i18n="opt_tq">3/4</span> ≥</label>
-    <input type="number" id="thresh-tq" value="350000" oninput="renderTierTables()">
+    <input type="number" id="thresh-tq" value="350000" oninput="saveSettings(); renderTierTables()">
     <label><span class="badge badge-half" data-i18n="opt_half">1/2</span> ≥</label>
-    <input type="number" id="thresh-half" value="250000" oninput="renderTierTables()">
+    <input type="number" id="thresh-half" value="250000" oninput="saveSettings(); renderTierTables()">
   </div>
   <p style="font-size:12px;color:#5a3a18;margin-top:10px;" data-i18n="settings_note">Changes apply instantly to By Villages and By Player tabs.</p>
   <div class="section-header"><h2 data-i18n="sec_server">Server</h2></div>
@@ -749,6 +749,10 @@
 // Prepend unit/stat icons to the static table headers (once)
 injectThIcons();
 
+// Restore saved settings (Offensive Power Thresholds + Plan Offensive inputs + language)
+// before any render reads them; the saved language is applied by changeLang(lang) at the end.
+loadSettings();
+
 // Build the Changelog tab from js/changelog.js (re-rendered by changeLang on switch)
 if (typeof renderChangelog === 'function') renderChangelog();
 
@@ -788,6 +792,10 @@ if (TW_ENV === 'production') {
   tryAutoLoadDb();
 }
 
+// Apply the saved language (loadSettings() set the global above) — translates the static
+// DOM, sets the active flag button, and repaints every tab in the restored language.
+changeLang(lang);
+
 // Allow dropping files anywhere on the page
 document.addEventListener('dragover', e => e.preventDefault());
 document.addEventListener('drop', e => {
@@ -801,7 +809,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.18.0 &nbsp;·&nbsp; 2026-06-25</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.19.0 &nbsp;·&nbsp; 2026-06-25</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

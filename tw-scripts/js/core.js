@@ -29,6 +29,7 @@ function changeLang(l) {
   renderDbTable();
   updateDbConnectBtn();
   if (typeof renderChangelog === 'function') renderChangelog();
+  if (typeof saveSettings === 'function') saveSettings(); // persist the language choice
 }
 
 // ── Unit/stat icons (icons/ folder; see .claude/PLAN.md for the deploy note) ──
