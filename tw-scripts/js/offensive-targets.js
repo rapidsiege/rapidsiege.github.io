@@ -245,6 +245,8 @@ function applyDefOffsSnobToAll() {
 // winOff string → offWindows list, assignee names → {name, count} objects
 function normalizeOffTarget(tg) {
   if (typeof tg.power !== 'boolean') tg.power = false;
+  if (typeof tg.catapult !== 'number' || !(tg.catapult >= 0)) tg.catapult = Math.max(0, parseInt(tg.catapult) || 0);
+  if (typeof tg.catEnabled !== 'boolean') tg.catEnabled = tg.catapult > 0; // migrate a prior count>0 to the new toggle
   if (!tg.snobMode) tg.snobMode = 'solo';
   if (!Array.isArray(tg.snobAssignees)) tg.snobAssignees = [];
   tg.snobAssignees = tg.snobAssignees.filter(Boolean).map(a => typeof a === 'string'
@@ -266,7 +268,7 @@ function normalizeOffTarget(tg) {
 
 function newOffTarget(coord, player) {
   return {
-    id: otNextId++, coord, player, power: false,
+    id: otNextId++, coord, player, power: false, catEnabled: false, catapult: 0,
     nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0, snobPlayers: 0, nobles: 4,
     snobMode: otCfg.defSnobMode || 'solo', snobAssignees: [], offAssignees: [],
     offWindows: [{ win: otCfg.defWinOff, count: 0 }], winSnob: otCfg.defWinSnob,
@@ -305,7 +307,7 @@ function bulkAddTargets() {
 function updOT(id, field, val) {
   const tg = offTargets.find(x => x.id === id);
   if (!tg) return;
-  if (['nComplete','nTq','nHalf','snobPlayers','nobles'].includes(field)) tg[field] = Math.max(0, parseInt(val) || 0);
+  if (['nComplete','nTq','nHalf','snobPlayers','nobles','catapult'].includes(field)) tg[field] = Math.max(0, parseInt(val) || 0);
   else tg[field] = val.trim();
   if (field === 'coord') {
     // defender is DB-derived; refresh it (clear if the DB doesn't know the new coord)
@@ -325,6 +327,16 @@ function setOTPower(id, val) {
   const tg = offTargets.find(x => x.id === id);
   if (!tg) return;
   tg.power = !!val;
+  saveOffensive(); renderOffTargets();
+}
+
+// CATAPULT toggle (per target): when ticked, reveal the attack-count input (defaulting to 5
+// the first time it's enabled); when unticked, no catapult attacks are planned for this target.
+function setOTCatapult(id, val) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg) return;
+  tg.catEnabled = !!val;
+  if (tg.catEnabled && !(tg.catapult > 0)) tg.catapult = 5;
   saveOffensive(); renderOffTargets();
 }
 
@@ -568,7 +580,7 @@ function renderOffTargets() {
 
   const tbody = document.getElementById('offtargets-tbody');
   if (!offTargets.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="15">${t('empty_no_targets')}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="17">${t('empty_no_targets')}</td></tr>`;
     return;
   }
   const senders = snobSenderOptions();
@@ -625,10 +637,22 @@ function renderOffTargets() {
       <td style="color:#806030;">${i + 1}</td>
       <td class="left"><input class="cell-input mono" style="width:74px;${isUnknown ? 'border-color:#b02010;' : ''}" value="${esc(tg.coord)}" title="${dbTitle}" onchange="updOT(${tg.id},'coord',this.value)"></td>
       <td class="left" title="${dbTitle}">${tg.player ? `<span class="player-tag">${esc(tg.player)}</span>` : '<span class="num-zero">—</span>'}</td>
+      <td>${(() => {
+        const dbv = coordDb[tg.coord];
+        const pts = dbv && typeof dbv.points === 'number' ? dbv.points : null;
+        if (pts == null) return '<span class="num-zero">—</span>';
+        const url = villageInfoUrl(tg.coord);
+        const txt = pts.toLocaleString();
+        return url ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:#c8a060;">${txt}</a>` : `<span style="color:#c8a060;">${txt}</span>`;
+      })()}</td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.nComplete}" onchange="updOT(${tg.id},'nComplete',this.value)"></td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.nTq}" onchange="updOT(${tg.id},'nTq',this.value)"></td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.nHalf}" onchange="updOT(${tg.id},'nHalf',this.value)"></td>
       <td title="${esc(t('ot_power_title'))}"><label class="ot-power"><input type="checkbox" ${tg.power ? 'checked' : ''} onchange="setOTPower(${tg.id},this.checked)">⚡</label></td>
+      <td title="${esc(t('ot_catapult_title'))}"><div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+        <label class="ot-power"><input type="checkbox" ${tg.catEnabled ? 'checked' : ''} onchange="setOTCatapult(${tg.id},this.checked)">${twIcon('catapult')}</label>
+        ${tg.catEnabled ? `<input type="number" min="0" class="cell-input num" style="width:46px;" value="${tg.catapult}" onchange="updOT(${tg.id},'catapult',this.value)">` : ''}
+      </div></td>
       <td class="left"><div style="max-width:280px;">${offSenderCell}</div></td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.snobPlayers}" onchange="updOT(${tg.id},'snobPlayers',this.value)"></td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.nobles}" onchange="updOT(${tg.id},'nobles',this.value)"></td>

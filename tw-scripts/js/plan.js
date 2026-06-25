@@ -102,6 +102,15 @@ function rallyUrl(srcCoord, tgtCoord, units) {
   return url;
 }
 
+// In-game info page for the village at `coord` (needs the world DB for the village id +
+// a server URL). null when either is missing → the caller shows plain text, no link.
+function villageInfoUrl(coord) {
+  const v = coordDb[coord];
+  if (!v || !otCfg.serverUrl) return null;
+  const host = otCfg.serverUrl.replace(/^https?:\/\//, '');
+  return `https://${host}/game.php?screen=info_village&id=${v.id}`;
+}
+
 function splitNobles(total, nPlayers) {
   const n = Math.max(1, nPlayers), base = Math.floor(total / n), rem = total % n;
   return Array.from({ length: n }, (_, i) => base + (i < rem ? 1 : 0)).filter(x => x > 0);
@@ -122,6 +131,13 @@ function generatePlan() {
   // 0 disables the gate entirely (the conqueror always keeps their own off, pre-v3.12 behaviour).
   const minMoraleRaw = parseFloat((document.getElementById('plan-min-morale') || {}).value);
   const minMorale = (isNaN(minMoraleRaw) ? 90 : minMoraleRaw) / 100;
+  // Min. Morale (%) for ANY regular clearing off (auto pass) — default 100, so the engine
+  // only sends offs at full morale and falls back to the best below-threshold sender only
+  // when no qualifying village can reach the target (soft gate, mirrors the snob-off gate).
+  // A noble sender's OWN coordination off is exempt: it's governed by minMorale (the snob-off
+  // gate) and reserved before the auto pass runs, so this gate never re-touches it. 0 disables.
+  const minMoraleOffRaw = parseFloat((document.getElementById('plan-min-morale-off') || {}).value);
+  const minMoraleOff = (isNaN(minMoraleOffRaw) ? 100 : minMoraleOffRaw) / 100;
 
   // Ignore lists (Offensive Targets). Ignored COORDINATES are dropped from the pool entirely
   // (those villages never send anything). Ignored PLAYERS stay IN the pool but are barred from
@@ -179,7 +195,7 @@ function generatePlan() {
   planRows = []; planWarnings = []; planReserved = [];
   planStats = emptyPlanStats();
 
-  const targets = offTargets.map((tg, i) => ({ tg, i, c: parseCoordStr(tg.coord), offRows: [], snobRows: [] }));
+  const targets = offTargets.map((tg, i) => ({ tg, i, c: parseCoordStr(tg.coord), offRows: [], snobRows: [], catRows: [] }));
   targets.filter(T => !T.c).forEach(T => planWarnings.push(t('warn_invalid_coord')(T.tg.coord)));
 
   // Off distance band. The MINIMUM is a tribe-wide buffer, NOT per-target: an
@@ -606,12 +622,14 @@ function generatePlan() {
         reserve(cands.sort(byDist(T))[0], tier);
         break;
       }
-      // 2) No conqueror clears the bar → reserve for a reachable sender that DOES clear it,
-      //    chosen by the same "optimize" score as the auto pass (morale × off power ÷ distance,
-      //    damped by roster balance) — so a close 96% beats a far 100% rather than morale
-      //    overriding distance outright. Reserving it (usedOff) keeps a closer sub-bar village
-      //    from reclaiming the slot in the auto pass.
-      const repCands = bump(p => playerMorale(decode(p.v.player)) >= minMorale);
+      // 2) No conqueror clears the snob-off bar → reserve the off for a reachable sender that
+      //    clears the OFF gate (minMoraleOff, default 100% — this is a regular clearing off now,
+      //    not the conqueror's own coordination off), chosen by the same "optimize" score as the
+      //    auto pass (morale × off power ÷ distance, damped by roster balance) — so a close 100%
+      //    beats a far 100%. Reserving it (usedOff) keeps a closer sub-bar village from reclaiming
+      //    the slot in the auto pass. (Inert when morale is unresolvable — see offGate below.)
+      const repGate = moraleUsable(T) ? minMoraleOff : 0;
+      const repCands = bump(p => playerMorale(decode(p.v.player)) >= repGate);
       if (repCands.length) {
         reserve(repCands.sort(byOptimize(T))[0], tier);
         break;
@@ -673,6 +691,13 @@ function generatePlan() {
     for (const T of targets) {
       if (!T.c || T.tg.power) continue; // POWER targets are filled by the balanced pass above
       const autoNeed = Math.max(0, (T.tg[TIER_FIELD[tier]] || 0) - (namedOffReserved[T.i + '|' + tier] || 0));
+      // Min. Morale (off) gate — once the TIER is resolved (the tier-bump below still fires only
+      // when a tier is empty, never for morale), PREFER candidates whose morale on this target
+      // clears minMoraleOff (default 100%), and fall back to the best below-gate village only when
+      // none qualify (soft — a low-morale clear beats an uncleared target). Inert with no morale
+      // signal (offGate = 0) or when the field is 0. Per-PLAYER morale via the source village.
+      const offGate = moraleUsable(T) ? minMoraleOff : 0;
+      const candMorale = p => { const m = planAttackMorale(p.v.coord, T.tg.coord); return m == null ? 1 : m; };
       for (let k = 0; k < autoNeed; k++) {
         const tierCands = tt => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T));
         let sent = tier, cands = tierCands(tier);
@@ -690,9 +715,11 @@ function generatePlan() {
           continue;
         }
         if (sent !== tier) planWarnings.push(t('warn_tier_bumped')(t('tier_' + tier), t('tier_' + sent), T.tg.coord));
-        // The conqueror's own off was already reserved up front (see the conqueror
-        // reservation above), so the auto pass just fills the remaining slots by optimize.
-        const p = cands.sort(byOptimize(T))[0];
+        // The conqueror's own off was already reserved up front (see the conqueror reservation
+        // above), so the auto pass just fills the remaining slots by optimize — preferring the
+        // villages that clear the Min. Morale (off) gate, else falling back to all candidates.
+        const hi = cands.filter(p => candMorale(p) >= offGate);
+        const p = (hi.length ? hi : cands).sort(byOptimize(T))[0];
         p.usedOff = true; noteOffUsed(p.v.player); noteMvClaim(p, T);
         const d = distXY(p.c, T.c);
         T.offRows.push({
@@ -701,6 +728,39 @@ function generatePlan() {
         });
       }
     }
+  }
+
+  // ── Catapult attacks (EXTRA, from defensive villages that own catapults) ──────────
+  // Fully independent of the off pool, morale gate, MV pairs and reservations — these are
+  // additional demolition attacks, NOT clearing offs. Each target's requested count
+  // (`tg.catapult`) is filled from OWN villages classified DEFENSIVE (`type === 'def'`) that
+  // own catapults; one attack sends `catsPerAttack` catapults. A source village's budget =
+  // floor(its catapults / catsPerAttack), spent across all targets; at most 2 attacks per
+  // (source village → the SAME target) — so a player can still send 4 to one target from two
+  // villages. No distance limit (closest source preferred). A shortfall is warned.
+  const catsPerAttack = Math.max(1, parseInt((document.getElementById('plan-cat-count') || {}).value) || 20);
+  const catPool = villages
+    .map(v => ({ v, c: parseCoordStr(v.coord), budget: Math.floor((v.catapult || 0) / catsPerAttack) }))
+    .filter(s => s.c && s.v.type === 'def' && s.budget > 0);
+  for (const T of targets) {
+    if (!T.c) continue;
+    const want = T.tg.catEnabled ? (T.tg.catapult || 0) : 0; // only when the target's catapult toggle is on
+    if (want <= 0) continue;
+    const perTarget = {}; // source coord → attacks already aimed at THIS target (cap 2)
+    let placed = 0;
+    while (placed < want) {
+      const cand = catPool
+        .filter(s => s.budget > 0 && (perTarget[s.v.coord] || 0) < 2)
+        .sort((a, b) => distXY(a.c, T.c) - distXY(b.c, T.c))[0];
+      if (!cand) break; // no eligible cat source left (budget spent or 2-per-target cap hit)
+      cand.budget--;
+      perTarget[cand.v.coord] = (perTarget[cand.v.coord] || 0) + 1;
+      placed++;
+      const d = distXY(cand.c, T.c);
+      T.catRows.push({ type: 'catapult', cats: catsPerAttack, srcCoord: cand.v.coord, srcPlayer: decode(cand.v.player),
+        dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
+    }
+    if (placed < want) planWarnings.push(t('warn_cat_short')(T.tg.coord, want - placed));
   }
 
   // Windows: offs land strongest-first (complete → 3/4 → 1/2) across the
@@ -724,7 +784,16 @@ function generatePlan() {
       slot++;
     }
     T.snobRows.forEach(r => { r.window = T.tg.winSnob || (wins[wins.length - 1].win || ''); });
-    [...T.offRows, ...T.snobRows].forEach(r => {
+    // Catapult attacks land in the target's off window(s) too (extra attacks alongside the
+    // offs), distributed the same way but as their own stream so they don't disturb off counts.
+    const catCounts = windowOffCounts(wins, T.catRows.length);
+    let cwi = 0, cslot = 0;
+    for (const r of T.catRows) {
+      while (cwi < wins.length - 1 && cslot >= catCounts[cwi]) { cwi++; cslot = 0; }
+      r.window = wins[cwi].win || T.tg.winSnob || '';
+      cslot++;
+    }
+    [...T.offRows, ...T.catRows, ...T.snobRows].forEach(r => {
       // Morale of the assigned attack (shown in the plan column); needs the world DB.
       if (r.srcCoord && dbReady) r.morale = planAttackMorale(r.srcCoord, T.tg.coord);
       planRows.push({ tIdx: T.i + 1, tCoord: T.tg.coord, tPlayer: T.tg.player, ...r });
@@ -736,7 +805,9 @@ function generatePlan() {
   // Snob trains are skipped: they carry no prescribed origin/launch, so there's
   // no launch-in-the-past to flag (the player picks their own send village).
   for (const r of planRows) {
-    if (r.unassigned || r.type === 'snob') continue;
+    // Catapults are slow (they'd false-positive the launch-in-the-past check en masse) and
+    // carry no off-pool launch contract — exempt them from the late flag, like snob trains.
+    if (r.unassigned || r.type === 'snob' || r.type === 'catapult') continue;
     const pw = parseWindowStr(r.window);
     const landMs = pw ? serverWallMs(otCfg.dateISO, pw.to) : null;
     if (landMs !== null && landMs - r.travel * 60000 < serverNowMs()) {
@@ -832,6 +903,8 @@ function renderPlanTable() {
     lastIdx = r.tIdx;
     const badge = r.type === 'snob'
       ? `<span class="badge badge-snob">${r.count > 1 ? r.count + 'x ' : ''}👑 ${t(r.escorted ? 'type_snob_split' : 'type_snob')}</span>`
+      : r.type === 'catapult'
+      ? `<span class="badge" style="background:#5a3f6a;color:#e8d8f0;">${twIcon('catapult')} ${r.cats}</span>`
       : `<span class="badge badge-${r.type === 'complete' ? 'complete' : r.type === 'tq' ? 'tq' : 'half'}">${t('tier_' + r.type)}</span>`;
     const trStyle = [
       first && i > 0 ? 'border-top:2px solid #7a5c10' : '',
@@ -866,7 +939,7 @@ function renderPlanTable() {
       <td style="color:#f0c040;">${showTiming ? r.dist.toFixed(1) : '—'}</td>
       <td>${showTiming ? fmtTime(r.travel) : '—'}</td>
       <td style="font-family:monospace;${r.late ? 'color:#e06040;font-weight:600;' : ''}">${showTiming ? (r.late ? '⚠ ' : '') + launchWindowStr(r.window, r.travel) : '—'}</td>
-      <td>${(() => { const url = showTiming ? rallyUrl(r.srcCoord, r.tCoord) : null; return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
+      <td>${(() => { const url = showTiming ? rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined) : null; return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
     </tr>`;
   }).join('');
@@ -890,6 +963,7 @@ function snobRangeText(r) {
 // ── BB icon helper (shared by both export functions) ──
 function planRowIconBB(r) {
   if (r.type === 'snob') return r.escorted ? '[unit]axe[/unit][unit]snob[/unit]' : '[unit]snob[/unit]';
+  if (r.type === 'catapult') return '[unit]catapult[/unit]';
   // Complete offs stay rams; 3/4 and 1/2 use axe with the tier tagged in parens.
   if (r.type === 'complete') return '[unit]ram[/unit]';
   return `[unit]axe[/unit] (${t('tier_' + r.type)})`;
@@ -937,6 +1011,7 @@ function showPlanBB() {
   bb += `[unit]ram[/unit] --> ${t('bb_legend_ram')}\n`;
   if (planRows.some(r => r.type === 'tq')) bb += `[unit]axe[/unit] (${t('tier_tq')}) --> ${t('bb_legend_tq')}\n`;
   if (planRows.some(r => r.type === 'half')) bb += `[unit]axe[/unit] (${t('tier_half')}) --> ${t('bb_legend_axe')}\n`;
+  if (planRows.some(r => r.type === 'catapult')) bb += `[unit]catapult[/unit] --> ${t('bb_legend_cat')}\n`;
   if (planRows.some(r => r.type === 'snob' && !r.escorted)) bb += `[unit]snob[/unit] --> ${t('bb_legend_snob')(noblesLabel)}\n`;
   if (planRows.some(r => r.type === 'snob' && r.escorted)) bb += `[unit]axe[/unit][unit]snob[/unit] --> ${t('bb_legend_split')(noblesLabel)}\n`;
   bb += '\n';
@@ -1009,8 +1084,10 @@ function playerPlanBBBlock(name, rows, allGroups) {
 
     // ── Offs (always assigned in this per-player section; unassigned offs have no
     //    sender and fall to the UNASSIGNED block below) ──
-    const url     = rallyUrl(r.srcCoord, r.tCoord);
+    // Catapult attacks preset their catapult count in the rally link and show it in bold parens.
+    const url     = rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined);
     const urlPart = url ? ` — [url=${url}]${t('bb_pp_attack_url')}▶[/url]` : '';
+    const catPart = r.type === 'catapult' ? ` [b](${r.cats})[/b]` : '';
     const win     = (fmtWindow(r.window) || '??:??').replace('/', '-');
     const lp      = launchWindowParts(r.window, r.travel);
     // Line 1 = village → target + arrival window; line 2 = the red launch-time call-out
@@ -1018,7 +1095,7 @@ function playerPlanBBBlock(name, rows, allGroups) {
     const launch  = lp
       ? `\n${t('bb_pp_launchline')(lp.day, `[color=#ff0e0e]${lp.span}[/color]`, lp.single)}${urlPart}[/b]`
       : `${urlPart}[/b]`;
-    lines.push(`${prefix}${iconBB} ${r.srcCoord} → [coord]${r.tCoord}[/coord]${defender} [b][color=#2e2eff]${win}[/color]${launch}`);
+    lines.push(`${prefix}${iconBB}${catPart} ${r.srcCoord} → [coord]${r.tCoord}[/coord]${defender} [b][color=#2e2eff]${win}[/color]${launch}`);
   }
   bb += lines.join('\n\n');
   if (lines.length) bb += '\n';
@@ -1082,6 +1159,7 @@ function planRowTableType(r) {
       ? `[unit]axe[/unit][unit]snob[/unit] ${t('tbl_type_split')}`
       : `[unit]snob[/unit] ${t('tbl_type_snob')}`;
   }
+  if (r.type === 'catapult') return `[unit]catapult[/unit] ${t('tbl_type_cat')} (${r.cats})`;
   return `${planRowIconBB(r)} ${t('tbl_type_off')}`;
 }
 
@@ -1115,7 +1193,7 @@ function planTableRowBB(r, n) {
   if (r.type === 'snob') {
     urlBB = t('plan_prepare_snob')(r.escorted);
   } else {
-    const url = r.srcCoord ? rallyUrl(r.srcCoord, r.tCoord) : null;
+    const url = r.srcCoord ? rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined) : null;
     urlBB = url ? `[url=${url}]${t('bb_tbl_open')}[/url]` : '';
   }
   const cells = [
@@ -1236,6 +1314,7 @@ function exportPlayerPlanAll() {
 function planUsedOffCoords() {
   const used = new Set();
   for (const r of planRows) {
+    if (r.type === 'catapult') continue; // catapults come from def villages, not the off pool
     if (r.unassigned) { if (r.needNobles && r.recruitCoord) used.add(r.recruitCoord); continue; }
     if (r.type === 'snob') { if (r.escorted && r.srcCoord) used.add(r.srcCoord); }
     else if (r.srcCoord) used.add(r.srcCoord);

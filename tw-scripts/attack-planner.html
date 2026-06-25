@@ -2427,7 +2427,9 @@ function parseOffPlanBB(text) {
     // Attack line: [unit]TYPE[/unit] [player]NAME[/player] [b]HH:MM/HH:MM[/b]
     // The trailing time may be a window (HH:MM/HH:MM) or a single exact time (HH:MM).
     const am = line.match(/\[unit\](\w+)\[\/unit\].*?\[player\](.+?)\[\/player\].*?(\d{1,2}:\d{2})(?:\s*[\/\-–]\s*(\d{1,2}:\d{2}))?/);
-    if (am) {
+    // Catapult demolition rows (tribe-calculator) aren't clearing-off / noble requirements —
+    // they belong to a separate workflow, so the attack planner skips them on import.
+    if (am && am[1].toLowerCase() !== 'catapult') {
       current.requirements.push({ unitType: am[1], attacker: am[2].trim(), timeFrom: am[3], timeTo: am[4] || '' });
     }
   }
@@ -2473,6 +2475,11 @@ function parsePlayerPlanBB(text) {
 
   for (const rec of records) {
     const line = rec.text, sender = rec.sender;
+
+    // Catapult demolition rows (tribe-calculator) carry "→ [coord]" + a rally URL like an off,
+    // but they're not clearing-off / noble requirements — skip them so they don't import as
+    // phantom axe offs (the unit-classify below has no catapult tier and would fall to 'axe').
+    if (/\[unit\]catapult\[\/unit\]/i.test(line)) continue;
 
     const tm = line.match(/→\s*\[coord\](\d{1,3}\|\d{1,3})\[\/coord\]/); // target coord
     if (!tm) continue;
