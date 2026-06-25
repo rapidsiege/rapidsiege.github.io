@@ -554,6 +554,24 @@ function generatePlan() {
   // shared by the conqueror reservation below and the auto pass further down.
   const TIER_UP = { half: ['tq', 'complete'], tq: ['complete'], complete: [] };
 
+  // ── DESTROYER / VOLADORA targets ──────────────────────────────────────────
+  // A target with offs assigned, NO nobles sent by anyone (no snob senders → conquerorByTarget
+  // unset), AND catapult attacks enabled is a "destroyer": you flatten the village instead of
+  // taking it. For these, off selection PREFERS catapult-carrying off villages (≥ CAT_CLEAR_MIN
+  // cats) so the clearing off itself demolishes — applied to EVERY off slot, falling back to a
+  // normal off only when no cat-off qualifies (range/time/tier still gate first; a target whose
+  // offs end up carrying no cats is warned once, see below). Independent of the EXTRA small cat
+  // attacks sourced from defensive villages further down.
+  const CAT_CLEAR_MIN = 101; // an off with ≥ this many catapults can serve as the clearing off
+  const isDestroyer = T => !conquerorByTarget[T.i] && T.tg.catEnabled && (T.tg.catapult || 0) > 0;
+  // Among already-filtered off candidates, keep only the cat-carriers when this is a destroyer
+  // target and at least one qualifies; otherwise leave the set untouched (normal-off fallback).
+  const preferCatOffs = (T, cands) => {
+    if (!isDestroyer(T)) return cands;
+    const catOffs = cands.filter(p => (p.v.catapult || 0) >= CAT_CLEAR_MIN);
+    return catOffs.length ? catOffs : cands;
+  };
+
   // ── Conqueror off reservation (the force, placed up front) ────────────────
   // A conquered target coordinates best when one of its CLEARING offs comes from the SAME
   // hand that sends the noble — so the conqueror can time their snob to land right behind
@@ -660,7 +678,7 @@ function generatePlan() {
       const open = powerTargets.filter(T => remaining[T.i] > 0).sort((a, b) => powSum[a.i] - powSum[b.i]);
       if (!open.length) break;
       const T = open[0];
-      const cands = pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T))
+      const cands = preferCatOffs(T, pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T)))
         .sort((a, b) => b.v.offPow - a.v.offPow);
       remaining[T.i]--;
       if (!cands.length) {
@@ -719,7 +737,8 @@ function generatePlan() {
         // above), so the auto pass just fills the remaining slots by optimize — preferring the
         // villages that clear the Min. Morale (off) gate, else falling back to all candidates.
         const hi = cands.filter(p => candMorale(p) >= offGate);
-        const p = (hi.length ? hi : cands).sort(byOptimize(T))[0];
+        // Morale gate first (usual requirement), then prefer cat-carriers on a destroyer target.
+        const p = preferCatOffs(T, hi.length ? hi : cands).sort(byOptimize(T))[0];
         p.usedOff = true; noteOffUsed(p.v.player); noteMvClaim(p, T);
         const d = distXY(p.c, T.c);
         T.offRows.push({
@@ -730,6 +749,19 @@ function generatePlan() {
     }
   }
 
+  // Destroyer warning: a destroyer target that got offs but none carrying ≥ CAT_CLEAR_MIN
+  // catapults sent a regular off instead of a cat-clearing one — surface it (fall back + warn).
+  {
+    const vCat = {};
+    for (const v of villages) vCat[v.coord] = v.catapult || 0;
+    for (const T of targets) {
+      if (!T.c || !isDestroyer(T)) continue;
+      const assigned = T.offRows.filter(r => !r.unassigned && r.srcCoord);
+      if (assigned.length && !assigned.some(r => (vCat[r.srcCoord] || 0) >= CAT_CLEAR_MIN))
+        planWarnings.push(t('warn_no_cat_clear')(T.tg.coord));
+    }
+  }
+
   // ── Catapult attacks (EXTRA, from defensive villages that own catapults) ──────────
   // Fully independent of the off pool, morale gate, MV pairs and reservations — these are
   // additional demolition attacks, NOT clearing offs. Each target's requested count
@@ -737,7 +769,14 @@ function generatePlan() {
   // own catapults; one attack sends `catsPerAttack` catapults. A source village's budget =
   // floor(its catapults / catsPerAttack), spent across all targets; at most 2 attacks per
   // (source village → the SAME target) — so a player can still send 4 to one target from two
-  // villages. No distance limit (closest source preferred). A shortfall is warned.
+  // villages. Two extra rules:
+  //   • Player spread: among eligible sources we pick the player who has sent the FEWEST
+  //     attacks to this target so far (ties broken by closest), so we don't repeat a player
+  //     while a fresh one is available — only repeating once every distinct player is used.
+  //   • Distance lead: a cat source must be at least CAT_OFF_LEAD fields CLOSER to the target
+  //     than the farthest assigned off (cats are slow — keep them inside the off ring). With no
+  //     assigned off the gate is inert. This can tighten supply, so shortfalls are warned.
+  const CAT_OFF_LEAD = 8;
   const catsPerAttack = Math.max(1, parseInt((document.getElementById('plan-cat-count') || {}).value) || 20);
   const catPool = villages
     .map(v => ({ v, c: parseCoordStr(v.coord), budget: Math.floor((v.catapult || 0) / catsPerAttack) }))
@@ -746,18 +785,24 @@ function generatePlan() {
     if (!T.c) continue;
     const want = T.tg.catEnabled ? (T.tg.catapult || 0) : 0; // only when the target's catapult toggle is on
     if (want <= 0) continue;
+    const offDists = T.offRows.filter(r => !r.unassigned && typeof r.dist === 'number').map(r => r.dist);
+    const maxCatDist = offDists.length ? Math.max(...offDists) - CAT_OFF_LEAD : Infinity;
     const perTarget = {}; // source coord → attacks already aimed at THIS target (cap 2)
+    const perPlayer = {}; // source player → attacks already aimed at THIS target (spread)
     let placed = 0;
     while (placed < want) {
       const cand = catPool
-        .filter(s => s.budget > 0 && (perTarget[s.v.coord] || 0) < 2)
-        .sort((a, b) => distXY(a.c, T.c) - distXY(b.c, T.c))[0];
-      if (!cand) break; // no eligible cat source left (budget spent or 2-per-target cap hit)
+        .filter(s => s.budget > 0 && (perTarget[s.v.coord] || 0) < 2 && distXY(s.c, T.c) <= maxCatDist)
+        .sort((a, b) => (perPlayer[decode(a.v.player)] || 0) - (perPlayer[decode(b.v.player)] || 0)
+          || distXY(a.c, T.c) - distXY(b.c, T.c))[0];
+      if (!cand) break; // no eligible cat source left (budget/cap hit or none within the distance lead)
+      const cp = decode(cand.v.player);
       cand.budget--;
       perTarget[cand.v.coord] = (perTarget[cand.v.coord] || 0) + 1;
+      perPlayer[cp] = (perPlayer[cp] || 0) + 1;
       placed++;
       const d = distXY(cand.c, T.c);
-      T.catRows.push({ type: 'catapult', cats: catsPerAttack, srcCoord: cand.v.coord, srcPlayer: decode(cand.v.player),
+      T.catRows.push({ type: 'catapult', cats: catsPerAttack, srcCoord: cand.v.coord, srcPlayer: cp,
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
     }
     if (placed < want) planWarnings.push(t('warn_cat_short')(T.tg.coord, want - placed));

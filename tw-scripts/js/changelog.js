@@ -12,6 +12,22 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.18.0', date: '2026-06-25',
+    en: [
+      `<b>🧨 "Destroyer" targets prefer catapult offs.</b> A target with offs assigned, <b>no noble senders</b>, and <b>catapult attacks turned on</b> is treated as a <b>destroyer (voladora)</b> — you flatten the village instead of taking it. For these, the planner now <b>prefers offensive villages that carry 101+ catapults</b> when choosing the clearing off(s), so the off itself demolishes buildings. The usual requirements still come first (tier, range, launch time, morale); catapult count then decides among the qualifying villages, and it applies to <b>every</b> off slot on the target, not just one. If no catapult-carrying off can reach the target, a normal off is sent instead and a warning is raised. The extra small catapult attacks from your defensive villages are unchanged and still added on top.`,
+    ],
+    es: [
+      `<b>🧨 Objetivos "voladora" priorizan offs con catapultas.</b> Un objetivo con offs asignados, <b>sin emisores de nobles</b> y con <b>ataques de catapulta activados</b> se trata como una <b>voladora (destroyer)</b> — arrasas la aldea en vez de conquistarla. Para estos, el planificador ahora <b>prefiere aldeas ofensivas que lleven 101+ catapultas</b> al elegir el/los off(s) de limpieza, para que el propio off demuela edificios. Los requisitos habituales siguen primero (tipo, alcance, hora de salida, moral); el número de catapultas decide luego entre las aldeas válidas, y aplica a <b>cada</b> off del objetivo, no solo a uno. Si ningún off con catapultas alcanza el objetivo, se envía un off normal y se muestra un aviso. Los ataques de catapulta pequeños desde tus aldeas defensivas no cambian y se siguen añadiendo además.`,
+    ],
+  },
+  { ver: 'v3.17.0', date: '2026-06-25',
+    en: [
+      `<b>🪨 Smarter catapult-attack sourcing.</b> Two changes to how the extra catapult attacks pick their source villages. <b>(1) More players per target:</b> the attacks on a single target now spread across <b>different players</b> first — a player isn't repeated while another catapult-owning player is still available (the limit of <b>2 attacks from the same village to the same target</b> still holds). <b>(2) Closer than the offs:</b> a catapult source must now be at least <b>8 fields closer</b> to the target than the farthest off assigned to it, so the slow catapults stay inside the off ring and can land in the window. This can reduce supply, so any shortfall is flagged in the warnings.`,
+    ],
+    es: [
+      `<b>🪨 Selección de origen más inteligente para los ataques de catapulta.</b> Dos cambios en cómo los ataques de catapulta extra eligen sus aldeas de origen. <b>(1) Más jugadores por objetivo:</b> los ataques sobre un mismo objetivo ahora se reparten primero entre <b>jugadores distintos</b> — no se repite un jugador mientras haya otro jugador con catapultas disponible (el límite de <b>2 ataques desde la misma aldea al mismo objetivo</b> se mantiene). <b>(2) Más cerca que los offs:</b> un origen de catapulta debe estar ahora al menos <b>8 campos más cerca</b> del objetivo que el off más lejano asignado a él, para que las lentas catapultas se queden dentro del anillo de offs y lleguen en la ventana. Esto puede reducir la oferta, así que cualquier déficit se avisa.`,
+    ],
+  },
   { ver: 'v3.16.0', date: '2026-06-25',
     en: [
       `<b>📊 Points column in Offensive Targets.</b> A new <b>Points</b> column (right of Defender) shows each target village's points from the world database, and links straight to that village's in-game info page in a new tab. Shows <b>—</b> until the database is loaded.`,
