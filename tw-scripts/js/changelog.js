@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.20.0', date: '2026-07-01',
+    en: [
+      `<b>⬇ Export Objectives button (Offensive Targets).</b> A new button next to "Bulk Add Coordinates" opens a pop-up with three options that export your target coordinates as a plain <code>X|Y</code> list, one per line, in table order — ready to paste anywhere. <b>Export Snob Objectives</b> lists only targets with a noble (Snob Players above 0), <b>Export Off Objectives</b> lists only the rest (no noble), and <b>Export All</b> lists every target. Pick an option, then Copy to Clipboard.`,
+    ],
+    es: [
+      `<b>⬇ Botón Exportar Objetivos (Objetivos Ofensivos).</b> Un nuevo botón junto a "Añadir Coordenadas" abre una ventana con tres opciones que exportan las coordenadas de tus objetivos como una lista simple <code>X|Y</code>, una por línea, en el orden de la tabla — lista para pegar donde quieras. <b>Exportar Objetivos Noble</b> lista solo los objetivos con noble (Jugadores Noble mayor que 0), <b>Exportar Objetivos Off</b> lista solo el resto (sin noble), y <b>Exportar Todo</b> lista todos los objetivos. Elige una opción y pulsa Copiar al portapapeles.`,
+    ],
+  },
   { ver: 'v3.19.0', date: '2026-06-25',
     en: [
       `<b>💾 Settings now stick across refreshes.</b> Three groups of controls used to reset every time you reloaded the page — now they're saved in your browser and restored automatically. (1) The <b>Offensive Power Thresholds</b> (Complete / 3-4 / 1-2) on the Settings tab. (2) Every input on <b>Plan Offensive</b>: world speed, unit speed, off min/max distance, snob max distance, both morale fields, and the number of catapults. (3) Your <b>language</b> choice (English / Español) — the page now opens in the language you last used. Nothing else changes; your saved values just survive a refresh.`,

@@ -354,6 +354,8 @@
     <div style="display:flex;gap:8px;">
       <button class="btn btn-ghost btn-sm" onclick="toggleBulkAdd()" data-i18n="btn_bulk_add">📋 Bulk Add Coordinates</button>
       <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="openObjectivesExport()" data-i18n="btn_export_objectives">⬇ Export Objectives</button>
+      <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="clearOffTargets()" data-i18n="btn_clear_targets">✕ Clear All</button>
     </div>
   </div>
@@ -809,7 +811,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.19.0 &nbsp;·&nbsp; 2026-06-25</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.20.0 &nbsp;·&nbsp; 2026-07-01</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
@@ -825,6 +827,28 @@ document.addEventListener('drop', e => {
     <div class="modal-footer">
       <button class="btn btn-ghost btn-sm" onclick="closeBBModal()" data-i18n="btn_close">Close</button>
       <button class="btn btn-primary btn-sm" id="bb-copy-btn" onclick="copyBBTable()" data-i18n="bb_copy_btn">Copy to Clipboard</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ EXPORT OBJECTIVES MODAL ═══════════════════════ -->
+<div class="modal-overlay" id="obj-modal" onclick="if(event.target===this)closeObjectivesExport()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 data-i18n="obj_modal_title">Export Objectives — coordinates, one per line</h3>
+      <button class="modal-close" onclick="closeObjectivesExport()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <button id="obj-opt-snob" class="btn btn-ghost btn-sm" onclick="pickObjectivesExport('snob')" data-i18n="obj_export_snob">Export Snob Objectives</button>
+        <button id="obj-opt-off" class="btn btn-ghost btn-sm" onclick="pickObjectivesExport('off')" data-i18n="obj_export_off">Export Off Objectives</button>
+        <button id="obj-opt-all" class="btn btn-ghost btn-sm" onclick="pickObjectivesExport('all')" data-i18n="obj_export_all">Export All</button>
+      </div>
+      <textarea id="obj-output" readonly spellcheck="false"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeObjectivesExport()" data-i18n="btn_close">Close</button>
+      <button class="btn btn-primary btn-sm" id="obj-copy-btn" onclick="copyObjectives()" data-i18n="bb_copy_btn">Copy to Clipboard</button>
     </div>
   </div>
 </div>

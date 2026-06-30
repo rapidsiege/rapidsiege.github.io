@@ -670,3 +670,50 @@ function renderOffTargets() {
   }).join('');
 }
 
+// ── Export Objectives: plain X|Y coords (one per line), in table order ──
+// Three kinds: 'snob' = targets with a noble (snobPlayers > 0), 'off' = targets
+// without (snobPlayers === 0), 'all' = every target. Snob+off partition the list,
+// so 'all' is their union. Pure logic (no DOM) so it's headless-testable.
+function objectiveCoords(kind) {
+  return offTargets
+    .filter(tg => {
+      const hasSnob = (tg.snobPlayers || 0) > 0;
+      if (kind === 'snob') return hasSnob;
+      if (kind === 'off')  return !hasSnob;
+      return true; // 'all'
+    })
+    .map(tg => tg.coord)
+    .join('\n');
+}
+
+let objExportKind = 'all'; // last-picked option in the Export Objectives modal
+function openObjectivesExport() {
+  if (!offTargets.length) { alert(t('empty_no_targets')); return; }
+  objExportKind = 'all';
+  renderObjectivesExport();
+  document.getElementById('obj-modal').classList.add('open');
+}
+function pickObjectivesExport(kind) {
+  objExportKind = kind;
+  renderObjectivesExport();
+}
+function renderObjectivesExport() {
+  for (const k of ['snob', 'off', 'all']) {
+    const b = document.getElementById('obj-opt-' + k);
+    if (b) b.className = 'btn btn-sm ' + (k === objExportKind ? 'btn-primary' : 'btn-ghost');
+  }
+  const out = document.getElementById('obj-output');
+  if (out) out.value = objectiveCoords(objExportKind);
+}
+function closeObjectivesExport() {
+  document.getElementById('obj-modal').classList.remove('open');
+}
+function copyObjectives() {
+  const ta = document.getElementById('obj-output');
+  ta.select();
+  document.execCommand('copy');
+  const btn = document.getElementById('obj-copy-btn');
+  btn.textContent = '✓ Copied!';
+  setTimeout(() => { btn.textContent = t('bb_copy_btn'); }, 2000);
+}
+
