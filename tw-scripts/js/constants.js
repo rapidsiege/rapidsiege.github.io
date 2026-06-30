@@ -37,6 +37,19 @@ const SNOB_RANGE_MIN_POINTS = 5000;
 const DEF_SENDER_MIN_POP = 4000;
 const DEF_MIN_PACKET_POP = 400;
 
+// Catapult target buildings offered in the Offensive Targets catapult cell, in display order.
+// Values are the in-game building keys (the rally-point confirm-page <select name="building">
+// option values), so they drop straight into the rally URL's &building= param. Labels are i18n
+// (`catb_<key>`). Used by both offensive-targets.js (the picker) and plan.js (display + URL).
+const CAT_BUILDING_KEYS = ['smith', 'farm', 'wood', 'stone', 'iron'];
+// "Catapult Mode" column (per target): the building objective for the OFF SENDERS' attacks
+// (clearing offs / destroyer offs / offs accompanying a noble) — distinct from CAT_BUILDING_KEYS
+// (the extra def-sourced catapult attacks). Default 'smith'; POWER forces 'wall'.
+const CAT_MODE_KEYS = ['smith', 'farm', 'wall'];
+// Union of every building key that can appear as a row's target building (picker ∪ mode) — used
+// to validate the label lookup (`catb_<key>`) and the rally URL's best-effort &building= param.
+const BUILDING_TARGET_KEYS = ['smith', 'farm', 'wood', 'stone', 'iron', 'wall'];
+
 // Base travel speed in minutes per field (at world speed 1, unit speed 1)
 const UNIT_BASE_MIN = { spear:18, sword:22, axe:18, spy:9, light:10, heavy:11, ram:30, catapult:30, knight:10, snob:35 };
 const TRAVEL_ICON = { spear:'🗡', sword:'⚔', axe:'🪓', spy:'🔍', light:'🏹', heavy:'🐴', ram:'🐏', catapult:'💣', knight:'🐴', snob:'👑' };

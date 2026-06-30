@@ -90,15 +90,16 @@ function orderUnitsFor(mode, pace, v) {
   return null;
 }
 
-function rallyUrl(srcCoord, tgtCoord, units) {
+function rallyUrl(srcCoord, tgtCoord, units, building) {
   const sv = coordDb[srcCoord];
   const tv = coordDb[tgtCoord];
   if (!sv || !tv || !otCfg.serverUrl) return null;
   const host = otCfg.serverUrl.replace(/^https?:\/\//, '');
   const base = `https://${host}/game.php?village=${sv.id}&screen=place&target=${tv.id}`;
-  if (!units || !Object.keys(units).length) return base;
   let url = base;
   for (const [u, n] of Object.entries(units || {})) if (n > 0) url += `&${u}=${n}`;
+  // Target building (best-effort preselect): catapult-attack target or off-sender Catapult Mode.
+  if (building && BUILDING_TARGET_KEYS.includes(building)) url += `&building=${building}`;
   return url;
 }
 
@@ -785,6 +786,10 @@ function generatePlan() {
     if (!T.c) continue;
     const want = T.tg.catEnabled ? (T.tg.catapult || 0) : 0; // only when the target's catapult toggle is on
     if (want <= 0) continue;
+    // Per-attack target building, dealt round-robin (one per building per pass). Length ≤ want;
+    // empty when no buildings assigned → those rows carry no building (back-compat). The k-th
+    // placed attack takes catBuildings[k]; a shortfall spreads evenly (5 over 3, 3 sent → 1/1/1).
+    const catBuildings = catBuildingTargets(T.tg);
     const offDists = T.offRows.filter(r => !r.unassigned && typeof r.dist === 'number').map(r => r.dist);
     const maxCatDist = offDists.length ? Math.max(...offDists) - CAT_OFF_LEAD : Infinity;
     const perTarget = {}; // source coord → attacks already aimed at THIS target (cap 2)
@@ -803,6 +808,7 @@ function generatePlan() {
       placed++;
       const d = distXY(cand.c, T.c);
       T.catRows.push({ type: 'catapult', cats: catsPerAttack, srcCoord: cand.v.coord, srcPlayer: cp,
+        building: catBuildings[placed - 1] || null,
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
     }
     if (placed < want) planWarnings.push(t('warn_cat_short')(T.tg.coord, want - placed));
@@ -838,7 +844,12 @@ function generatePlan() {
       r.window = wins[cwi].win || T.tg.winSnob || '';
       cslot++;
     }
+    // Catapult Mode: every OFF row carries this target's off-sender building objective (the cats
+    // riding with the clearing/destroyer/noble-escort off aim here). POWER forces Wall. Catapult
+    // attacks keep their own per-attack building (set above); snob trains carry none.
+    const offBuilding = effectiveCatMode(T.tg);
     [...T.offRows, ...T.catRows, ...T.snobRows].forEach(r => {
+      if (r.type === 'complete' || r.type === 'tq' || r.type === 'half') r.building = offBuilding;
       // Morale of the assigned attack (shown in the plan column); needs the world DB.
       if (r.srcCoord && dbReady) r.morale = planAttackMorale(r.srcCoord, T.tg.coord);
       planRows.push({ tIdx: T.i + 1, tCoord: T.tg.coord, tPlayer: T.tg.player, ...r });
@@ -970,7 +981,7 @@ function renderPlanTable() {
       <td style="color:#806030;">${first ? r.tIdx : ''}</td>
       <td class="left" style="font-family:monospace;">${first ? esc(r.tCoord) : ''}</td>
       <td class="left">${first && r.tPlayer ? `<span class="player-tag">${esc(r.tPlayer)}</span>` : ''}</td>
-      <td>${badge}</td>
+      <td>${badge}${r.type !== 'snob' && catTargetLabel(r) ? ` <span style="color:#c8a0e0;font-size:11px;white-space:nowrap;">→ ${esc(catTargetLabel(r))}</span>` : ''}</td>
       <td class="left" style="font-family:monospace;">${
         isSnob
           ? `<span style="color:#e0a020;font-weight:600;">${esc(t('plan_prepare_snob')(r.escorted))}</span>${snobRange}`
@@ -984,7 +995,7 @@ function renderPlanTable() {
       <td style="color:#f0c040;">${showTiming ? r.dist.toFixed(1) : '—'}</td>
       <td>${showTiming ? fmtTime(r.travel) : '—'}</td>
       <td style="font-family:monospace;${r.late ? 'color:#e06040;font-weight:600;' : ''}">${showTiming ? (r.late ? '⚠ ' : '') + launchWindowStr(r.window, r.travel) : '—'}</td>
-      <td>${(() => { const url = showTiming ? rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined) : null; return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
+      <td>${(() => { const url = showTiming ? rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined, r.building) : null; return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
     </tr>`;
   }).join('');
@@ -1003,6 +1014,12 @@ function snobRangeText(r) {
   if (v.length === 1) return t('snob_range_one')(v[0]);
   if (v.length === 2) return t('snob_range_two')(v.join(', '));
   return ''; // 3+ in range → plenty of room to coordinate; no coords listed
+}
+
+// Localized target-building label for a plan row ('' when none / not a valid key). Covers both
+// the catapult-attack picker buildings and the Catapult Mode (off-sender) buildings.
+function catTargetLabel(r) {
+  return r && r.building && BUILDING_TARGET_KEYS.includes(r.building) ? t('catb_' + r.building) : '';
 }
 
 // ── BB icon helper (shared by both export functions) ──
@@ -1036,7 +1053,8 @@ function planRowForumBB(r, multiSnob, bare) {
   const iconBB = planRowIconBB(r);
   const prefix = r.type === 'snob' && multiSnob ? `${r.count}x ` : '';
   const who    = r.srcPlayer ? `[player]${r.srcPlayer}[/player]` : t('bb_unassigned');
-  const prep   = r.type === 'snob' ? ` ${t('plan_prepare_snob')(r.escorted)}` : '';
+  const prep   = r.type === 'snob' ? ` ${t('plan_prepare_snob')(r.escorted)}`
+               : catTargetLabel(r) ? ` (→ ${catTargetLabel(r)})` : ''; // cat-attack or off-sender building objective
   // Snob trains list the assigned player's in-range, Academy-sized villages on a TRAILING
   // line (kept off the attack line so the off-plan re-import still parses the attack, and so
   // the bare X|Y coords — no "→"/[coord] — are ignored by both BB importers).
@@ -1130,9 +1148,14 @@ function playerPlanBBBlock(name, rows, allGroups) {
     // ── Offs (always assigned in this per-player section; unassigned offs have no
     //    sender and fall to the UNASSIGNED block below) ──
     // Catapult attacks preset their catapult count in the rally link and show it in bold parens.
-    const url     = rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined);
+    const url     = rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined, r.building);
     const urlPart = url ? ` — [url=${url}]${t('bb_pp_attack_url')}▶[/url]` : '';
-    const catPart = r.type === 'catapult' ? ` [b](${r.cats})[/b]` : '';
+    // Catapult rows show their cat count (+ target building); off rows show their Catapult Mode
+    // building objective alone. Both render as a bold parenthetical after the unit icon.
+    const bldg    = catTargetLabel(r);
+    const catPart = r.type === 'catapult'
+      ? ` [b](${r.cats}${bldg ? ` → ${bldg}` : ''})[/b]`
+      : (bldg ? ` [b](→ ${bldg})[/b]` : '');
     const win     = (fmtWindow(r.window) || '??:??').replace('/', '-');
     const lp      = launchWindowParts(r.window, r.travel);
     // Line 1 = village → target + arrival window; line 2 = the red launch-time call-out
@@ -1204,8 +1227,8 @@ function planRowTableType(r) {
       ? `[unit]axe[/unit][unit]snob[/unit] ${t('tbl_type_split')}`
       : `[unit]snob[/unit] ${t('tbl_type_snob')}`;
   }
-  if (r.type === 'catapult') return `[unit]catapult[/unit] ${t('tbl_type_cat')} (${r.cats})`;
-  return `${planRowIconBB(r)} ${t('tbl_type_off')}`;
+  if (r.type === 'catapult') return `[unit]catapult[/unit] ${t('tbl_type_cat')} (${r.cats}${catTargetLabel(r) ? ` → ${catTargetLabel(r)}` : ''})`;
+  return `${planRowIconBB(r)} ${t('tbl_type_off')}${catTargetLabel(r) ? ` (→ ${catTargetLabel(r)})` : ''}`;
 }
 
 // Absolute send/arrival server-wall times for a plan row. Arrival = the window's START
@@ -1238,7 +1261,7 @@ function planTableRowBB(r, n) {
   if (r.type === 'snob') {
     urlBB = t('plan_prepare_snob')(r.escorted);
   } else {
-    const url = r.srcCoord ? rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined) : null;
+    const url = r.srcCoord ? rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined, r.building) : null;
     urlBB = url ? `[url=${url}]${t('bb_tbl_open')}[/url]` : '';
   }
   const cells = [

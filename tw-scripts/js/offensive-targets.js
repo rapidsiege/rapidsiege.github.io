@@ -247,6 +247,12 @@ function normalizeOffTarget(tg) {
   if (typeof tg.power !== 'boolean') tg.power = false;
   if (typeof tg.catapult !== 'number' || !(tg.catapult >= 0)) tg.catapult = Math.max(0, parseInt(tg.catapult) || 0);
   if (typeof tg.catEnabled !== 'boolean') tg.catEnabled = tg.catapult > 0; // migrate a prior count>0 to the new toggle
+  // Catapult target buildings: drop anything not on the 5-building allowlist (stale/corrupt saves)
+  if (!Array.isArray(tg.catBuildings)) tg.catBuildings = [];
+  tg.catBuildings = tg.catBuildings
+    .filter(b => b && CAT_BUILDING_KEYS.includes(b.building))
+    .map(b => ({ building: b.building, count: Math.max(0, parseInt(b.count) || 0) }));
+  if (!CAT_MODE_KEYS.includes(tg.catMode)) tg.catMode = 'smith'; // Catapult Mode (off-sender building objective)
   if (!tg.snobMode) tg.snobMode = 'solo';
   if (!Array.isArray(tg.snobAssignees)) tg.snobAssignees = [];
   tg.snobAssignees = tg.snobAssignees.filter(Boolean).map(a => typeof a === 'string'
@@ -268,7 +274,7 @@ function normalizeOffTarget(tg) {
 
 function newOffTarget(coord, player) {
   return {
-    id: otNextId++, coord, player, power: false, catEnabled: false, catapult: 0,
+    id: otNextId++, coord, player, power: false, catEnabled: false, catapult: 0, catBuildings: [], catMode: 'smith',
     nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0, snobPlayers: 0, nobles: 4,
     snobMode: otCfg.defSnobMode || 'solo', snobAssignees: [], offAssignees: [],
     offWindows: [{ win: otCfg.defWinOff, count: 0 }], winSnob: otCfg.defWinSnob,
@@ -338,6 +344,82 @@ function setOTCatapult(id, val) {
   tg.catEnabled = !!val;
   if (tg.catEnabled && !(tg.catapult > 0)) tg.catapult = 5;
   saveOffensive(); renderOffTargets();
+}
+
+// ── Catapult target buildings (per target): pick which buildings the catapult attacks
+// demolish, and how many attacks each gets — mirrors the snob-sender count UI. A building
+// with an explicit count > 0 is honored; buildings left at 0 split the remaining attacks
+// evenly (earlier buildings absorb the rounding via splitNobles, e.g. 5 over 3 → 2,2,1).
+function addCatBuilding(id, building) {
+  if (!building || !CAT_BUILDING_KEYS.includes(building)) return;
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg) return;
+  if (!Array.isArray(tg.catBuildings)) tg.catBuildings = [];
+  if (tg.catBuildings.some(b => b.building === building)) return; // each building at most once
+  tg.catBuildings.push({ building, count: 0 });
+  saveOffensive(); renderOffTargets();
+}
+function removeCatBuilding(id, idx) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg || !tg.catBuildings[idx]) return;
+  tg.catBuildings.splice(idx, 1);
+  saveOffensive(); renderOffTargets();
+}
+function updCatBuildingCount(id, idx, val) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg || !tg.catBuildings[idx]) return;
+  tg.catBuildings[idx].count = Math.max(0, parseInt(val) || 0);
+  saveOffensive();
+}
+
+// Resolve a target's catapult buildings to [{building, count}] (pure — no DOM, headless-testable).
+// `want` = the target's catapult-attack count (0 / toggle off → no buildings). Explicit counts are
+// honored; count-0 buildings share the remaining attacks evenly. Mirrors targetTrainSpec/targetOffAssign.
+function targetCatBuildingSpec(tg) {
+  const want = tg.catEnabled ? (tg.catapult || 0) : 0;
+  const list = (tg.catBuildings || []).filter(b => b && CAT_BUILDING_KEYS.includes(b.building));
+  if (!want || !list.length) return [];
+  const explicitSum = list.reduce((s, b) => s + (b.count > 0 ? b.count : 0), 0);
+  const auto = list.filter(b => !(b.count > 0));
+  const shares = auto.length ? splitNobles(Math.max(0, want - explicitSum), auto.length) : [];
+  let ai = 0;
+  return list
+    .map(b => ({ building: b.building, count: b.count > 0 ? b.count : (shares[ai++] || 0) }))
+    .filter(x => x.count > 0);
+}
+// Flat list of building keys, one per catapult attack, dealt ROUND-ROBIN (one per building per
+// pass, each building's resolved count as a cap) so the k-th planned attack targets
+// catBuildingTargets(tg)[k]. Round-robin means a supply shortfall spreads evenly rather than
+// starving the trailing building — e.g. 5 wanted over 3 buildings but only 3 sent → 1/1/1, not
+// 2/1/0. Full allocation totals are unchanged (5 over 3 → 2/2/1). Length ≤ want; empty when no
+// buildings are assigned → those attacks carry no target building (back-compat).
+function catBuildingTargets(tg) {
+  const spec = targetCatBuildingSpec(tg);
+  const remaining = spec.map(s => s.count);
+  const out = [];
+  for (let dealt = true; dealt;) {
+    dealt = false;
+    for (let i = 0; i < spec.length; i++) {
+      if (remaining[i] > 0) { out.push(spec[i].building); remaining[i]--; dealt = true; }
+    }
+  }
+  return out;
+}
+
+// ── Catapult Mode (per target): the building objective for this target's OFF SENDERS ──
+// A single dropdown (Smithy / Farm / Wall) right of Snob Mode, default Smithy. POWER forces Wall
+// (the picker is locked while POWER is on). The stored `catMode` is left untouched while POWER is
+// on, so releasing POWER restores whatever was chosen before — and a manually-chosen Wall stays
+// Wall. `effectiveCatMode` is the value actually used (display + plan + rally URL): wall iff POWER.
+function effectiveCatMode(tg) {
+  if (tg.power) return 'wall';
+  return CAT_MODE_KEYS.includes(tg.catMode) ? tg.catMode : 'smith';
+}
+function updCatMode(id, val) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg || !CAT_MODE_KEYS.includes(val)) return;
+  tg.catMode = val; // only reachable when POWER is off (the select is disabled under POWER)
+  saveOffensive();
 }
 
 function clearOffTargets() {
@@ -580,7 +662,7 @@ function renderOffTargets() {
 
   const tbody = document.getElementById('offtargets-tbody');
   if (!offTargets.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="17">${t('empty_no_targets')}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="18">${t('empty_no_targets')}</td></tr>`;
     return;
   }
   const senders = snobSenderOptions();
@@ -652,6 +734,18 @@ function renderOffTargets() {
       <td title="${esc(t('ot_catapult_title'))}"><div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
         <label class="ot-power"><input type="checkbox" ${tg.catEnabled ? 'checked' : ''} onchange="setOTCatapult(${tg.id},this.checked)">${twIcon('catapult')}</label>
         ${tg.catEnabled ? `<input type="number" min="0" class="cell-input num" style="width:46px;" value="${tg.catapult}" onchange="updOT(${tg.id},'catapult',this.value)">` : ''}
+        ${tg.catEnabled ? (() => {
+          // Target-building picker + editable-count chips (which buildings the cats demolish, how
+          // many attacks each). Buildings not yet chosen are offered; default 0 = split evenly.
+          const chosen = new Set((tg.catBuildings || []).map(b => b.building));
+          const opts = CAT_BUILDING_KEYS.filter(k => !chosen.has(k));
+          const bChips = (tg.catBuildings || []).map((b, j) =>
+            `<span class="chip">${esc(t('catb_' + b.building))} ×<input type="number" min="0" value="${b.count || 0}" title="${esc(t('cat_building_count_title'))}" style="width:28px;background:transparent;border:none;border-bottom:1px solid #7a5c10;color:inherit;font-size:11px;text-align:center;" onchange="updCatBuildingCount(${tg.id},${j},this.value)"><span class="chip-x" onclick="removeCatBuilding(${tg.id},${j})">✕</span></span>`).join('');
+          const bPicker = opts.length
+            ? `<select class="cell-input" style="width:104px;" onchange="addCatBuilding(${tg.id},this.value)"><option value="">${t('opt_pick_building')}</option>${opts.map(k => `<option value="${k}">${esc(t('catb_' + k))}</option>`).join('')}</select>`
+            : '';
+          return `<div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;justify-content:center;max-width:180px;">${bChips}${bPicker}</div>`;
+        })() : ''}
       </div></td>
       <td class="left"><div style="max-width:280px;">${offSenderCell}</div></td>
       <td><input type="number" min="0" class="cell-input num" value="${tg.snobPlayers}" onchange="updOT(${tg.id},'snobPlayers',this.value)"></td>
@@ -661,6 +755,11 @@ function renderOffTargets() {
         <select class="cell-input" onchange="updOT(${tg.id},'snobMode',this.value)">
           <option value="escorted"${tg.snobMode === 'escorted' ? ' selected' : ''}>${t('opt_escort_yes')}</option>
           <option value="solo"${tg.snobMode !== 'escorted' ? ' selected' : ''}>${t('opt_escort_no')}</option>
+        </select>
+      </td>
+      <td title="${esc(t('catmode_title'))}">
+        <select class="cell-input" ${tg.power ? 'disabled' : ''} onchange="updCatMode(${tg.id},this.value)">
+          ${CAT_MODE_KEYS.map(k => `<option value="${k}"${effectiveCatMode(tg) === k ? ' selected' : ''}>${esc(t('catb_' + k))}</option>`).join('')}
         </select>
       </td>
       <td>${offWinCell}</td>
