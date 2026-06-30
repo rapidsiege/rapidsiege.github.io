@@ -90,16 +90,16 @@ function orderUnitsFor(mode, pace, v) {
   return null;
 }
 
-function rallyUrl(srcCoord, tgtCoord, units, building) {
+function rallyUrl(srcCoord, tgtCoord, units) {
   const sv = coordDb[srcCoord];
   const tv = coordDb[tgtCoord];
   if (!sv || !tv || !otCfg.serverUrl) return null;
   const host = otCfg.serverUrl.replace(/^https?:\/\//, '');
-  const base = `https://${host}/game.php?village=${sv.id}&screen=place&target=${tv.id}`;
-  let url = base;
+  let url = `https://${host}/game.php?village=${sv.id}&screen=place&target=${tv.id}`;
   for (const [u, n] of Object.entries(units || {})) if (n > 0) url += `&${u}=${n}`;
-  // Target building (best-effort preselect): catapult-attack target or off-sender Catapult Mode.
-  if (building && BUILDING_TARGET_KEYS.includes(building)) url += `&building=${building}`;
+  // NOTE: the catapult/off target building is chosen on the CONFIRM screen and is NOT preselectable
+  // via the rally-point URL, so we do NOT append &building=. The target building is surfaced as text
+  // in the plan + exports (catTargetLabel) instead — that's the actual deliverable.
   return url;
 }
 
@@ -786,9 +786,9 @@ function generatePlan() {
     if (!T.c) continue;
     const want = T.tg.catEnabled ? (T.tg.catapult || 0) : 0; // only when the target's catapult toggle is on
     if (want <= 0) continue;
-    // Per-attack target building, dealt round-robin (one per building per pass). Length ≤ want;
-    // empty when no buildings assigned → those rows carry no building (back-compat). The k-th
-    // placed attack takes catBuildings[k]; a shortfall spreads evenly (5 over 3, 3 sent → 1/1/1).
+    // Per-attack target building, dealt round-robin (one per building per pass); defaults to all
+    // Smithy when no buildings are picked. The k-th placed attack takes catBuildings[k]; a
+    // shortfall spreads evenly (5 over 3, 3 sent → 1/1/1).
     const catBuildings = catBuildingTargets(T.tg);
     const offDists = T.offRows.filter(r => !r.unassigned && typeof r.dist === 'number').map(r => r.dist);
     const maxCatDist = offDists.length ? Math.max(...offDists) - CAT_OFF_LEAD : Infinity;
@@ -995,7 +995,7 @@ function renderPlanTable() {
       <td style="color:#f0c040;">${showTiming ? r.dist.toFixed(1) : '—'}</td>
       <td>${showTiming ? fmtTime(r.travel) : '—'}</td>
       <td style="font-family:monospace;${r.late ? 'color:#e06040;font-weight:600;' : ''}">${showTiming ? (r.late ? '⚠ ' : '') + launchWindowStr(r.window, r.travel) : '—'}</td>
-      <td>${(() => { const url = showTiming ? rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined, r.building) : null; return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
+      <td>${(() => { const url = showTiming ? rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined) : null; return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
     </tr>`;
   }).join('');
@@ -1148,7 +1148,7 @@ function playerPlanBBBlock(name, rows, allGroups) {
     // ── Offs (always assigned in this per-player section; unassigned offs have no
     //    sender and fall to the UNASSIGNED block below) ──
     // Catapult attacks preset their catapult count in the rally link and show it in bold parens.
-    const url     = rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined, r.building);
+    const url     = rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined);
     const urlPart = url ? ` — [url=${url}]${t('bb_pp_attack_url')}▶[/url]` : '';
     // Catapult rows show their cat count (+ target building); off rows show their Catapult Mode
     // building objective alone. Both render as a bold parenthetical after the unit icon.
@@ -1261,7 +1261,7 @@ function planTableRowBB(r, n) {
   if (r.type === 'snob') {
     urlBB = t('plan_prepare_snob')(r.escorted);
   } else {
-    const url = r.srcCoord ? rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined, r.building) : null;
+    const url = r.srcCoord ? rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined) : null;
     urlBB = url ? `[url=${url}]${t('bb_tbl_open')}[/url]` : '';
   }
   const cells = [

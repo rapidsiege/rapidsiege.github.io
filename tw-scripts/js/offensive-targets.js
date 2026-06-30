@@ -377,8 +377,9 @@ function updCatBuildingCount(id, idx, val) {
 // honored; count-0 buildings share the remaining attacks evenly. Mirrors targetTrainSpec/targetOffAssign.
 function targetCatBuildingSpec(tg) {
   const want = tg.catEnabled ? (tg.catapult || 0) : 0;
+  if (!want) return [];
   const list = (tg.catBuildings || []).filter(b => b && CAT_BUILDING_KEYS.includes(b.building));
-  if (!want || !list.length) return [];
+  if (!list.length) return [{ building: 'smith', count: want }]; // no buildings picked → all attacks default to Smithy
   const explicitSum = list.reduce((s, b) => s + (b.count > 0 ? b.count : 0), 0);
   const auto = list.filter(b => !(b.count > 0));
   const shares = auto.length ? splitNobles(Math.max(0, want - explicitSum), auto.length) : [];
@@ -391,8 +392,8 @@ function targetCatBuildingSpec(tg) {
 // pass, each building's resolved count as a cap) so the k-th planned attack targets
 // catBuildingTargets(tg)[k]. Round-robin means a supply shortfall spreads evenly rather than
 // starving the trailing building — e.g. 5 wanted over 3 buildings but only 3 sent → 1/1/1, not
-// 2/1/0. Full allocation totals are unchanged (5 over 3 → 2/2/1). Length ≤ want; empty when no
-// buildings are assigned → those attacks carry no target building (back-compat).
+// 2/1/0. Full allocation totals are unchanged (5 over 3 → 2/2/1). Length ≤ want; when no
+// buildings are picked the spec defaults to all-Smithy, so every catapult attack carries one.
 function catBuildingTargets(tg) {
   const spec = targetCatBuildingSpec(tg);
   const remaining = spec.map(s => s.count);

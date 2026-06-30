@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.21.1', date: '2026-07-01',
+    en: [
+      `<b>🏰 Catapult buildings, two fixes.</b> The target building no longer rides in the attack link — in Tribal Wars you pick the catapult's target on the <i>confirm</i> screen, not on the rally point, so the link can't pre-select it. The building is still shown clearly in the plan and exports so the sender knows what to demolish. And in the <b>Catapults</b> column, if you don't pick any buildings the attacks now default to the <b>Smithy</b> (Herrería) instead of "no target".`,
+    ],
+    es: [
+      `<b>🏰 Edificios de catapulta, dos correcciones.</b> El edificio objetivo ya no va en el enlace de ataque — en Tribal Wars el objetivo de la catapulta se elige en la pantalla de <i>confirmación</i>, no en la plaza de reuniones, así que el enlace no puede preseleccionarlo. El edificio se sigue mostrando claramente en el plan y las exportaciones para que el remitente sepa qué derribar. Y en la columna <b>Catapultas</b>, si no eliges ningún edificio los ataques ahora apuntan por defecto a la <b>Herrería</b> en lugar de "sin objetivo".`,
+    ],
+  },
   { ver: 'v3.21.0', date: '2026-07-01',
     en: [
       `<b>🏰 Aim catapult attacks at specific buildings.</b> When you tick <b>Catapults</b> on an Offensive Target, you can now choose <b>which buildings to demolish</b> below the attack-count box — pick from <b>Smithy, Farm, Timber Camp, Clay Pit and Iron Mine</b>, just like assigning noble senders. Each building gets a count box: leave it at <b>0</b> and the attacks split evenly across the chosen buildings — and if fewer attacks can be sent than requested, they spread round-robin (e.g. 5 wanted over 3 buildings but only 3 sent → 1/1/1, not 2/1/0). Set a number to pin exactly that many to a building. With one building, all the attacks hit it. The target building shows up in the plan and in every export, and the attack link pre-selects it where the game allows.`,
