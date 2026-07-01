@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.23.0', date: '2026-07-02',
+    en: [
+      `<b>🏖 Vacation-mode (MV) fix for noble senders.</b> Assigning a player a <b>noble target by hand</b> now blocks their MV partner from attacking that defender <i>immediately</i> — even if the sender hasn't recruited the noble yet ("Prepare Snob Train"). Previously the block only kicked in once the train had a launch village, so a partner could be auto-assigned an off against the same defender. Also: if you assign <b>both</b> members of an MV pair a noble against the <b>same defender</b>, the plan now shows a clear conflict error telling you to remove one.`,
+    ],
+    es: [
+      `<b>🏖 Corrección del modo vacaciones (MV) para envíos de noble.</b> Asignar a un jugador un <b>objetivo de noble a mano</b> ahora bloquea a su pareja MV de atacar a ese defensor <i>de inmediato</i> — aunque el remitente todavía no haya reclutado el noble ("Preparar Tren de Nobles"). Antes el bloqueo solo se aplicaba cuando el tren ya tenía aldea de lanzamiento, así que una pareja podía recibir un ataque automático contra el mismo defensor. Además: si asignas a <b>ambos</b> miembros de una pareja MV un noble contra el <b>mismo defensor</b>, el plan ahora muestra un error de conflicto claro pidiéndote que elimines uno.`,
+    ],
+  },
   { ver: 'v3.22.0', date: '2026-07-01',
     en: [
       `<b>🌙 Night Mode on the map.</b> The map now uses the game's <b>night-mode village graphics</b> by default — darker sprites on a dark-teal terrain, easier on the eyes. A new <b>Night Mode</b> checkbox sits next to <b>Show Barbs</b>: untick it to switch back to the daytime graphics. Your choice is remembered across sessions.`,

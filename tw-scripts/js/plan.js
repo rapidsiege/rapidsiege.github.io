@@ -176,11 +176,17 @@ function generatePlan() {
     for (const x of partners) if (claimed.has(x)) return true;
     return false;
   };
-  const noteMvClaim = (p, T) => {
-    if (!mvPartners.has(p.v.player)) return; // only paired players can ever block
+  // Claim by RAW player name (village-less): a MANUALLY-assigned snob sender claims its
+  // defender even when the train can't be placed yet (needNobles / out of range / too late).
+  // A pinned assignment is a committed intent to attack, so the MV limit must apply to the
+  // partner from that moment — not only once an origin village is resolved. See the unassigned
+  // snob branches below (they only carry `want`, never a village).
+  const noteMvClaimName = (rawName, T) => {
+    if (!rawName || !mvPartners.has(rawName)) return; // only paired players can ever block
     const def = mvDef(T); if (!def) return;
-    let s = mvClaims.get(def); if (!s) mvClaims.set(def, s = new Set()); s.add(p.v.player);
+    let s = mvClaims.get(def); if (!s) mvClaims.set(def, s = new Set()); s.add(rawName);
   };
+  const noteMvClaim = (p, T) => noteMvClaimName(p.v.player, T);
   // Would this pinned sender have had a candidate for T if not for an MV conflict?
   const mvWouldBlockPin = (rawName, T) =>
     mvPartners.has(rawName) && !!mvDef(T) && pool.some(p => p.v.player === rawName && mvBlocked(p, T));
@@ -344,6 +350,36 @@ function generatePlan() {
     (conquerorByTarget[T.i] || (conquerorByTarget[T.i] = new Set())).add(decode(rawName));
   };
 
+  // ── Manual snob MV conflict (explicit, up front) ──────────────────────────
+  // Two MV-paired players HAND-ASSIGNED as snob senders against the SAME defender is
+  // illegal (both attacking one defender is the exact thing vacation mode forbids).
+  // Report it deterministically here — independent of which train the snob loop places
+  // first — and remember the senders so the per-target loop doesn't ALSO warn for them.
+  const mvSnobConflictPins = new Set(); // 'def|rawName' keys already flagged in a manual snob conflict
+  {
+    const snobPinsByDef = new Map(); // defender string -> Set of raw manual snob sender names
+    for (const T of targets) {
+      const def = mvDef(T); if (!def) continue;
+      for (const { name } of targetTrainSpec(T.tg)) {
+        if (!name) continue; // auto-picked train, not a manual assignment
+        let s = snobPinsByDef.get(def); if (!s) snobPinsByDef.set(def, s = new Set());
+        s.add(name);
+      }
+    }
+    const reported = new Set();
+    for (const [def, names] of snobPinsByDef) {
+      const arr = [...names];
+      for (let i = 0; i < arr.length; i++) for (let j = i + 1; j < arr.length; j++) {
+        const a = arr[i], b = arr[j], pa = mvPartners.get(a);
+        if (!pa || !pa.has(b)) continue; // not an MV pair
+        const key = def + '|' + [a, b].sort().join('|');
+        if (reported.has(key)) continue; reported.add(key);
+        mvSnobConflictPins.add(def + '|' + a); mvSnobConflictPins.add(def + '|' + b);
+        planWarnings.push(t('warn_mv_snob_conflict')(decode(a), decode(b), decode(def)));
+      }
+    }
+  }
+
   // Snob trains: pre-assigned senders fill the first trains, the rest are
   // auto-picked from distinct players; escort mode is a per-target setting
   for (const T of targets) {
@@ -385,6 +421,7 @@ function generatePlan() {
           srcPlayer: decode(want), needNobles: true, recruitCoord, dist: recruitDist, travel: recruitTravel,
           rangeVills: snobRangeVills(want, T) });
         noteSnobSender(want, T);
+        noteMvClaimName(want, T); // pinned intent claims the defender even before nobles exist
         return;
       }
       if (enough.length) cands = enough;
@@ -395,8 +432,10 @@ function generatePlan() {
         // off already split / no snobs
         let msg, needNobles = false;
         if (want && mvWouldBlockPin(want, T)) {
-          // an MV-paired partner already attacks this defender → this sender can't (game limit)
-          msg = t('warn_mv')(decode(want), T.tg.coord);
+          // an MV-paired partner already attacks this defender → this sender can't (game limit).
+          // If this is a manual-vs-manual snob conflict we already reported explicitly up front,
+          // don't warn again here — the row still shows unassigned.
+          if (!mvSnobConflictPins.has(mvDef(T) + '|' + want)) msg = t('warn_mv')(decode(want), T.tg.coord);
         } else if (want) {
           const mine = pool.filter(p => p.snobLeft > 0 && p.v.player === want);
           const inRange = mine.filter(p => okSnobDist(p, T.c));
@@ -447,7 +486,7 @@ function generatePlan() {
           srcPlayer: want ? decode(want) : undefined, needNobles, recruitCoord: needNobles ? recruitCoord : undefined,
           dist: needNobles ? recruitDist : undefined, travel: needNobles ? recruitTravel : undefined,
           rangeVills: snobRangeVills(want, T) });
-        if (want) noteSnobSender(want, T);
+        if (want) { noteSnobSender(want, T); noteMvClaimName(want, T); } // pinned intent claims the defender
         return;
       }
       // escorted: strongest escort wins; solo: nearest village, weakest off stays home
