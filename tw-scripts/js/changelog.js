@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.22.0', date: '2026-07-01',
+    en: [
+      `<b>🌙 Night Mode on the map.</b> The map now uses the game's <b>night-mode village graphics</b> by default — darker sprites on a dark-teal terrain, easier on the eyes. A new <b>Night Mode</b> checkbox sits next to <b>Show Barbs</b>: untick it to switch back to the daytime graphics. Your choice is remembered across sessions.`,
+    ],
+    es: [
+      `<b>🌙 Modo Nocturno en el mapa.</b> El mapa ahora usa los <b>gráficos de aldea del modo nocturno</b> del juego por defecto — sprites más oscuros sobre un terreno verde-azulado oscuro, más suave para la vista. Una nueva casilla <b>Modo Nocturno</b> junto a <b>Mostrar Bárbaros</b>: desmárcala para volver a los gráficos diurnos. Tu elección se recuerda entre sesiones.`,
+    ],
+  },
   { ver: 'v3.21.1', date: '2026-07-01',
     en: [
       `<b>🏰 Catapult buildings, two fixes.</b> The target building no longer rides in the attack link — in Tribal Wars you pick the catapult's target on the <i>confirm</i> screen, not on the rally point, so the link can't pre-select it. The building is still shown clearly in the plan and exports so the sender knows what to demolish. And in the <b>Catapults</b> column, if you don't pick any buildings the attacks now default to the <b>Smithy</b> (Herrería) instead of "no target".`,

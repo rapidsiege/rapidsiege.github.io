@@ -28,6 +28,7 @@ let mapShowOffSenders = false;       // toggle halos on villages SENDING offs (d
 let mapShowDefVillagesOnly = false;  // fade the tribe's offensive villages (default OFF)
 let mapShowOffVillagesOnly = false;  // fade the tribe's defensive villages (default OFF)
 let mapShowBarbs = true;             // render barbarian villages (default ON)
+let mapNightMode = true;             // use night-mode (n_) village sprites + dark terrain (default ON)
 let mapShowTierComplete = true;      // off-tier filter: show Complete-off villages (default ON)
 let mapShowTierTq       = true;      // off-tier filter: show 3/4-off villages (default ON)
 let mapShowTierHalf     = true;      // off-tier filter: show 1/2-off villages (default ON)
@@ -242,6 +243,7 @@ function loadMapPrefs() {
     mapShowDefVillagesOnly = p.showDefOnly === true;
     mapShowOffVillagesOnly = p.showOffOnly === true;
     mapShowBarbs = p.showBarbs !== false; // default ON
+    mapNightMode = p.nightMode !== false; // default ON
     // Per-key colour load: keep a default for any missing/malformed entry (never NaN rgb).
     mapColors = { ...MAP_COLOR_DEFAULTS };
     if (p.colors && typeof p.colors === 'object')
@@ -267,7 +269,7 @@ function loadMapPrefs() {
 function saveMapPrefs() {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ showIncoming: mapShowIncoming, showOffPlan: mapShowOffPlan, showDefPlan: mapShowDefPlan, showOffLines: mapShowOffLines, showDefLines: mapShowDefLines, showSnobRes: mapShowSnobRes, showUnusedOff: mapShowUnusedOff, showSupSenders: mapShowSupSenders, showOffSenders: mapShowOffSenders, showDefOnly: mapShowDefVillagesOnly, showOffOnly: mapShowOffVillagesOnly, showBarbs: mapShowBarbs, showTierComplete: mapShowTierComplete, showTierTq: mapShowTierTq, showTierHalf: mapShowTierHalf, colors: mapColors, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds }));
+    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ showIncoming: mapShowIncoming, showOffPlan: mapShowOffPlan, showDefPlan: mapShowDefPlan, showOffLines: mapShowOffLines, showDefLines: mapShowDefLines, showSnobRes: mapShowSnobRes, showUnusedOff: mapShowUnusedOff, showSupSenders: mapShowSupSenders, showOffSenders: mapShowOffSenders, showDefOnly: mapShowDefVillagesOnly, showOffOnly: mapShowOffVillagesOnly, showBarbs: mapShowBarbs, nightMode: mapNightMode, showTierComplete: mapShowTierComplete, showTierTq: mapShowTierTq, showTierHalf: mapShowTierHalf, colors: mapColors, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds }));
   } catch (e) { /* ignore quota/serialization errors */ }
 }
 
@@ -329,7 +331,8 @@ const MAP_SPRITE_KEYS = [
   'v1_left','v2_left','v3_left','v4_left','v5_left','v6_left',                          // barbarian (regular)
   'b1_left','b2_left','b3_left','b4_left','b5_left','b6_left',                          // barbarian (bonus)
 ];
-const MAP_GRASS = '#5c701b';   // the sprites' baked-in grass background (exact)
+const MAP_GRASS_DAY = '#5c701b';   // day sprites' baked-in grass background (exact)
+const MAP_GRASS_NIGHT = '#20413a'; // night (n_) sprites' baked-in dark-teal background (exact)
 // MAP_SPRITE_MIN_SCALE (= 12) lives in map.js — it also gates the square↔38/53 aspect switch.
 let mapSprites = {};
 let mapSpritesReady = false;
@@ -346,7 +349,7 @@ function loadMapSprites() {
     const img = new Image();
     img.onload = onSettle;
     img.onerror = onSettle; // any failure → stay in dot mode (graceful)
-    img.src = 'icons/map/' + k + '.png';
+    img.src = 'icons/map/' + (mapNightMode ? 'n_' : '') + k + '.png'; // night mode → n_ sprites
     mapSprites[k] = img;
   }
 }
@@ -427,7 +430,7 @@ function renderMapOffscreen() {
   const spriteMode = mapSpritesReady && mapView.scale >= MAP_SPRITE_MIN_SCALE;
   const margin = Math.max(6, mapView.scale); // field-filling dots/sprites can be ~scale wide
   mapOffCtx.clearRect(0, 0, w, h);
-  if (spriteMode) { mapOffCtx.fillStyle = MAP_GRASS; mapOffCtx.fillRect(0, 0, w, h); } // continuous terrain
+  if (spriteMode) { mapOffCtx.fillStyle = mapNightMode ? MAP_GRASS_NIGHT : MAP_GRASS_DAY; mapOffCtx.fillRect(0, 0, w, h); } // continuous terrain (matches sprites' baked-in background)
   drawMapGrid(mapOffCtx, w, h, spriteMode);
   const dw = mapView.scale, dh = dw * MAP_Y_RATIO; // one sprite = one (anisotropic) field
   const dot = mapDotRectSize(mapView.scale);       // dot-mode field rectangle (tiles edge-to-edge)
@@ -807,6 +810,10 @@ function setMapShowOffOnly(on) {
   saveMapPrefs(); repaintMapData();
 }
 function setMapShowBarbs(on) { mapShowBarbs = !!on; saveMapPrefs(); repaintMapData(); }
+// Night mode toggles the sprite set (n_ files) + terrain colour. Clear the sprite cache and
+// reload so the new src set is fetched; onSettle repaints once ready. repaintMapData() runs
+// now so the grass colour flips immediately (dot mode until the sprites finish loading).
+function setMapNightMode(on) { mapNightMode = !!on; saveMapPrefs(); mapSprites = {}; mapSpritesReady = false; loadMapSprites(); repaintMapData(); }
 
 // "All" header button: flip every SHOW overlay in a category on/off at once (the Villages-Only
 // focus filter and the tier chips are intentionally excluded — they're not "show" overlays).
@@ -877,6 +884,8 @@ function syncMapToolbar() {
   if (soo) soo.checked = mapShowOffVillagesOnly;
   const sbb = document.getElementById('map-show-barbs');
   if (sbb) sbb.checked = mapShowBarbs;
+  const snm = document.getElementById('map-night-mode');
+  if (snm) snm.checked = mapNightMode;
   syncTierChips();
   syncMapColorInputs();
   syncIncomingInputs();
