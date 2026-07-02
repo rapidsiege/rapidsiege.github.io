@@ -364,7 +364,7 @@ function loadMapBadges() {
     const img = new Image();
     img.onload = repaint;
     img.onerror = () => {}; // missing icon → badge shows as a plain colored square
-    img.src = 'icons/' + k + '.png';
+    img.src = 'icons/units/' + k + '.png';
     mapBadgeIcons[k] = img;
   }
 }

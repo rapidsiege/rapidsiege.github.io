@@ -181,7 +181,7 @@
     }
     .unit-name  { font-size: 11px; color: #806030; text-transform: uppercase; letter-spacing: 0.4px; }
     .unit-count { font-size: 18px; font-weight: 700; color: #d4b483; }
-    /* Unit/stat icons (icons/ folder) */
+    /* Unit/stat icons (icons/units/ folder) */
     .tw-ic    { width: 16px; height: 16px; vertical-align: -3px; margin-right: 3px; image-rendering: -webkit-optimize-contrast; }
     .tw-ic-lg { width: 26px; height: 26px; vertical-align: middle; margin-right: 0; }
     th .tw-ic { margin-right: 4px; }

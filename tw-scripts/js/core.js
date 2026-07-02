@@ -32,10 +32,10 @@ function changeLang(l) {
   if (typeof saveSettings === 'function') saveSettings(); // persist the language choice
 }
 
-// ── Unit/stat icons (icons/ folder; see .claude/PLAN.md for the deploy note) ──
+// ── Unit/stat icons (icons/units/ folder; see .claude/PLAN.md for the deploy note) ──
 const ICON_KEYS = new Set(['spear','sword','axe','spy','light','heavy','ram','catapult','knight','snob','off','def','def_cav']);
 function twIcon(key, cls) {
-  return ICON_KEYS.has(key) ? `<img class="tw-ic${cls ? ' ' + cls : ''}" src="icons/${key}.png" alt="">` : '';
+  return ICON_KEYS.has(key) ? `<img class="tw-ic${cls ? ' ' + cls : ''}" src="icons/units/${key}.png" alt="">` : '';
 }
 // Map data-i18n-th header keys → icon file key
 const TH_ICON = {
