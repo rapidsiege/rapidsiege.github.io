@@ -33,6 +33,7 @@
   <div class="tab"         data-tab="map"         onclick="switchTab('map')"        data-i18n="tab_map">🗺 Map</div>
   <div class="tab"         data-tab="players"     onclick="switchTab('players')"    data-i18n="tab_players">By Player</div>
   <div class="tab"         data-tab="villages"    onclick="switchTab('villages')"   data-i18n="tab_byvillages">By Villages</div>
+  <div class="tab"         data-tab="outbound"    onclick="switchTab('outbound')"   data-i18n="tab_outbound">Outbound Offs</div>
   <div class="tab"         data-tab="rankings"    onclick="switchTab('rankings')"   data-i18n="tab_rankings">Rankings</div>
   <div class="tab"         data-tab="target"      onclick="switchTab('target')"     data-i18n="tab_target">⏱ Tribe Timings</div>
   <div class="tab"         data-tab="offtargets"  onclick="switchTab('offtargets')" data-i18n="tab_offtargets">📌 Offensive Targets</div>
@@ -274,6 +275,43 @@
       </thead>
       <tbody id="villages-tbody">
         <tr class="empty-row"><td colspan="17">Load a file to see village data</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ OUTBOUND OFFS (v3.24.0) ═══════════════════════════ -->
+<div class="tab-content" id="tab-outbound">
+  <div class="section-header">
+    <h2 data-i18n="sec_outbound">Outbound Offs</h2>
+    <button class="btn btn-ghost btn-sm" onclick="exportOutboundCoords()" data-i18n="btn_export_coords">⬇ Export Coords</button>
+  </div>
+  <p style="font-size:12px;color:#5a3a18;margin:2px 0 10px;" data-i18n="outbound_note">Offensive villages whose off is currently deployed away (troops − home − returning). Unit counts are the approximate amounts out. Needs a tribe-everything export (troops / defense / incoming rows).</p>
+  <div class="filter-row">
+    <input type="text" id="outbound-search" placeholder="Search player or coord…" data-i18n-placeholder="ph_village_search" oninput="renderOutboundTable()">
+    <span id="outbound-summary" style="font-size:12px;color:#a08050;font-weight:600;"></span>
+  </div>
+  <div class="table-wrap">
+    <table id="outbound-table">
+      <thead>
+        <tr>
+          <th class="left" onclick="sortTable('outbound',0)" data-i18n-th="th_coord">Coord <span class="sort-arrow"></span></th>
+          <th class="left" onclick="sortTable('outbound',1)" data-i18n-th="th_player">Player <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',2)" data-i18n-th="th_type">Type <span class="sort-arrow"></span></th>
+          <th data-i18n="th_tier">Tier</th>
+          <th onclick="sortTable('outbound',4)" data-i18n-th="th_axe">Axe <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',5)" data-i18n-th="th_spy">Spy <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',6)" data-i18n-th="th_light">Light <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',7)" data-i18n-th="th_ram">Ram <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',8)" data-i18n-th="th_cat">Cat <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',9)" data-i18n-th="th_knight">Knight <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',10)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',11)" data-i18n-th="th_off">Off <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',12)" data-i18n-th="th_def">Def Power <span class="sort-arrow"></span></th>
+        </tr>
+      </thead>
+      <tbody id="outbound-tbody">
+        <tr class="empty-row"><td colspan="13">Load a file to see outbound offs</td></tr>
       </tbody>
     </table>
   </div>
@@ -813,7 +851,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.23.0 &nbsp;·&nbsp; 2026-07-02</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.24.0 &nbsp;·&nbsp; 2026-07-02</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

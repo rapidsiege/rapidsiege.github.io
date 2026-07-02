@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.24.0', date: '2026-07-02',
+    en: [
+      `<b>🏃 New "Outbound Offs" tab.</b> A new tab (right of By Villages) lists every offensive village whose <b>off army is currently deployed away</b> — computed as <i>troops − home − returning</i> from your tribe-everything export. The unit columns show the approximate amounts that are <b>out</b> (not home, not on their way back), in the same layout as By Villages (coord, player, type, tier, units). A village is listed when its own axe is at least 2,000 and most of that axe (≥ 50%) is outbound. This <b>needs a tribe-everything export</b> (rows tagged troops / defense / incoming) — a plain tribe-info file shows a hint instead. The top-right <b>Export Coords</b> button copies every outbound village's coordinates (one per line) so you can paste them straight into <b>Offensive Targets → Ignore Coordinates</b>.`,
+    ],
+    es: [
+      `<b>🏃 Nueva pestaña "Offs Fuera".</b> Una nueva pestaña (a la derecha de Por Aldea) lista todas las aldeas ofensivas cuyo <b>off está actualmente desplegado fuera</b> — calculado como <i>tropas − en casa − regresando</i> a partir de tu exportación tribe-everything. Las columnas de unidades muestran las cantidades aproximadas que están <b>fuera</b> (ni en casa, ni regresando), con el mismo diseño que Por Aldea (coordenada, jugador, tipo, nivel, unidades). Una aldea se lista cuando su propio hacha es al menos 2.000 y la mayoría de ese hacha (≥ 50%) está fuera. Esto <b>requiere una exportación tribe-everything</b> (filas etiquetadas troops / defense / incoming) — un archivo tribe-info normal muestra un aviso en su lugar. El botón <b>Exportar Coordenadas</b> arriba a la derecha copia las coordenadas de todas las aldeas con off fuera (una por línea) para que las pegues directamente en <b>Objetivos Ofensivos → Ignorar Coordenadas</b>.`,
+    ],
+  },
   { ver: 'v3.23.0', date: '2026-07-02',
     en: [
       `<b>🏖 Vacation-mode (MV) fix for noble senders.</b> Assigning a player a <b>noble target by hand</b> now blocks their MV partner from attacking that defender <i>immediately</i> — even if the sender hasn't recruited the noble yet ("Prepare Snob Train"). Previously the block only kicked in once the train had a launch village, so a partner could be auto-assigned an off against the same defender. Also: if you assign <b>both</b> members of an MV pair a noble against the <b>same defender</b>, the plan now shows a clear conflict error telling you to remove one.`,

@@ -6,7 +6,7 @@ let troopByCoord = {};  // 'x|y' → owned-troop row (map hover/badges); rebuilt
 let defenseByCoord = {};  // 'x|y' → stationed-troops row (defense type from tribe_everything.txt)
 let incomingByCoord = {}; // 'x|y' → inbound/returning troops row (incoming type)
 let players  = {};   // {playerName: {villages:[], totals:{...}, offPow, defInf, defCav}}
-let sortState = { players: {col:0,dir:1}, villages: {col:14,dir:1} }; // villages: Off Power desc (col 14)
+let sortState = { players: {col:0,dir:1}, villages: {col:14,dir:1}, outbound: {col:11,dir:1} }; // villages: Off Power desc (col 14); outbound: Off desc (col 11)
 let targetSort = { key: 'dist', dir: 1 }; // default: distance asc
 
 

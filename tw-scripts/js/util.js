@@ -15,6 +15,7 @@ function sortTable(tableId, col) {
 
   if (tableId === 'players') renderPlayersTable();
   else if (tableId === 'villages') renderVillagesTable();
+  else if (tableId === 'outbound') renderOutboundTable();
 }
 
 // ══════════════════════════════════════════════════════════════

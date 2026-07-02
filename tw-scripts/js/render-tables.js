@@ -169,6 +169,7 @@ function renderPlayersTable() {
 function renderTierTables() {
   renderVillagesTable();   // shows the per-village Tier column
   renderPlayersTable();
+  if (typeof renderOutboundTable === 'function') renderOutboundTable(); // Outbound Offs Tier column
 }
 
 function getOffTier(offPow) {
@@ -312,6 +313,142 @@ function renderVillagesTable() {
     th.classList.remove('sort-asc', 'sort-desc');
     if (i === vcol) th.classList.add(vdir === -1 ? 'sort-desc' : 'sort-asc');
   });
+}
+
+// ══════════════════════════════════════════════════════════════
+// OUTBOUND OFFS (v3.24.0)
+// ──────────────────────────────────────────────────────────────
+// Offensive villages whose off army is currently DEPLOYED AWAY. Needs the
+// tribe_everything export (troops/defense/incoming rows): the "troops" row is the
+// village's own army, "defense" is what's home right now, "incoming" is its own
+// away-troops returning. So outbound = troops − defense − incoming per unit. Mirrors
+// find_outbound_offs.py: list a village when its own axe ≥ OUTBOUND_MIN_AXE and the
+// outbound axe is ≥ OUTBOUND_FRACTION of that axe body. The unit columns show the
+// approximate amounts CURRENTLY OUT (not home, not returning).
+const OUTBOUND_MIN_AXE  = 2000; // village's own axe must be at least this to count as an off
+const OUTBOUND_FRACTION = 0.5;  // outbound axe must be ≥ this share of the village's axe body
+// Unit columns shown in the Outbound Offs table — pure defensive units (spear/sword/heavy)
+// are dropped since this tab is about offs on the move. Column indices below assume this
+// list; keep the <th> order in the HTML and sortState.outbound in sync.
+const OUTBOUND_UNITS = UNITS.filter(u => !['spear', 'sword', 'heavy'].includes(u));
+
+// Pure (no DOM): given owned villages + the station dicts, return the outbound-off rows.
+// Each row carries the per-unit outbound counts, the off/def power of THAT outbound army,
+// and the village's own off power (so the caller can derive its identity tier). A village
+// with no defense/incoming row falls back to zeros → read as fully deployed (correct for a
+// real export). The caller guards the empty-station case so a plain tribe-info file — where
+// every off would falsely read as 100% out — shows an explanatory state instead of rows.
+function computeOutboundOffs(vils, defByCoord, incByCoord, minAxe, fraction) {
+  const rows = [];
+  for (const v of vils) {
+    if ((v.axe || 0) < minAxe) continue;
+    const de  = defByCoord[v.coord] || {};
+    const inc = incByCoord[v.coord] || {};
+    const out = {};
+    UNITS.forEach(u => { out[u] = Math.max(0, (v[u] || 0) - (de[u] || 0) - (inc[u] || 0)); });
+    if (v.axe > 0 && out.axe / v.axe >= fraction) {
+      rows.push({
+        coord: v.coord, player: v.player, type: v.type, ownOffPow: v.offPow, out,
+        outOffPow: OFF_UNITS.reduce((s, u) => s + out[u] * ATT[u],  0),
+        outDefInf: DEF_UNITS.reduce((s, u) => s + out[u] * DINF[u], 0),
+        outDefCav: DEF_UNITS.reduce((s, u) => s + out[u] * DCAV[u], 0),
+      });
+    }
+  }
+  return rows;
+}
+
+// Is there any station data at all? Without defense/incoming rows the computation is
+// meaningless (every off reads as fully outbound), so the tab shows a hint instead.
+function hasStationData() {
+  return Object.keys(defenseByCoord).length > 0 || Object.keys(incomingByCoord).length > 0;
+}
+
+function renderOutboundTable() {
+  const tbody = document.getElementById('outbound-tbody');
+  if (!tbody) return;
+  const summary = document.getElementById('outbound-summary');
+
+  if (!hasStationData()) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="13">${t('outbound_need_everything')}</td></tr>`;
+    if (summary) summary.textContent = '';
+    return;
+  }
+
+  const search = (document.getElementById('outbound-search')?.value || '').toLowerCase();
+  let data = computeOutboundOffs(villages, defenseByCoord, incomingByCoord, OUTBOUND_MIN_AXE, OUTBOUND_FRACTION)
+    .map(r => ({ ...r, tier: getOffTier(r.ownOffPow) }));
+  const totalOut = data.length;
+
+  if (search) data = data.filter(r => r.player.toLowerCase().includes(search) || r.coord.includes(search));
+
+  // Sort — column layout mirrors the <th> order: coord, player, type, TIER, 10 units,
+  // Off (out), Def (out). Tier (3) isn't clickable but keeps its slot so indices line up.
+  const { col, dir } = sortState.outbound;
+  if (col >= 0) {
+    data.sort((a, b) => {
+      const vals = r => [r.coord, r.player, r.type, r.tier, ...OUTBOUND_UNITS.map(u => r.out[u]), r.outOffPow, r.outDefInf + r.outDefCav];
+      const av = vals(a)[col], bv = vals(b)[col];
+      if (typeof av === 'string') return dir * av.localeCompare(bv);
+      return dir * (bv - av);
+    });
+  } else {
+    data.sort((a, b) => a.player.localeCompare(b.player) || a.coord.localeCompare(b.coord));
+  }
+
+  const typeBadge = {
+    off: '<span class="badge badge-off">OFF</span>',
+    def: '<span class="badge badge-def">DEF</span>',
+    mixed: '<span class="badge badge-mixed">MIX</span>',
+    empty: '<span class="badge badge-empty">—</span>',
+  };
+
+  const rows = data.map(r => `
+    <tr>
+      <td class="left" style="font-family:monospace;">${r.coord}</td>
+      <td class="left"><span class="player-tag">${decode(r.player)}</span></td>
+      <td>${typeBadge[r.type]}</td>
+      <td>${TIER_BADGE[r.tier]}</td>
+      ${OUTBOUND_UNITS.map(u => numCell(r.out[u])).join('')}
+      <td style="color:#e06040;">${fmtM(r.outOffPow)}</td>
+      <td style="color:#60a0e0;" title="${fmtM(r.outDefInf)} inf + ${fmtM(r.outDefCav)} cav">${fmtM(r.outDefInf + r.outDefCav)}</td>
+    </tr>
+  `).join('');
+
+  tbody.innerHTML = rows || `<tr class="empty-row"><td colspan="13">${t('outbound_none')}</td></tr>`;
+  if (summary) {
+    const players = new Set(data.map(r => r.player)).size;
+    summary.textContent = t('outbound_summary')(totalOut, players);
+  }
+
+  const { col: ocol, dir: odir } = sortState.outbound;
+  document.getElementById('outbound-table').querySelectorAll('th').forEach((th, i) => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (i === ocol) th.classList.add(odir === -1 ? 'sort-desc' : 'sort-asc');
+  });
+}
+
+// "Export Coords" — copy every outbound village's X|Y (one per line) to the clipboard,
+// ready to paste into Offensive Targets → Ignore Coordinates. Always the FULL list (the
+// search box is a find-aid, not an export scoper), in the same order the table renders.
+function exportOutboundCoords() {
+  if (!hasStationData()) { alert(t('outbound_need_everything')); return; }
+  const rows = computeOutboundOffs(villages, defenseByCoord, incomingByCoord, OUTBOUND_MIN_AXE, OUTBOUND_FRACTION)
+    .sort((a, b) => a.player.localeCompare(b.player) || a.coord.localeCompare(b.coord));
+  if (!rows.length) { alert(t('outbound_none')); return; }
+  const txt = rows.map(r => r.coord).join('\n');
+  const done = () => alert(t('outbound_copied')(rows.length));
+  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(txt).then(done).catch(() => outboundFallbackCopy(txt, done));
+  else outboundFallbackCopy(txt, done);
+}
+function outboundFallbackCopy(txt, done) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = txt; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    done();
+  } catch (e) { alert(txt); }
 }
 
 // ══════════════════════════════════════════════════════════════
