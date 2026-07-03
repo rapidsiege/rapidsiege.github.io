@@ -440,6 +440,7 @@
     <button class="btn btn-ghost btn-sm" onclick="toggleOffIgnorePlayers()" data-i18n="btn_ignore_players">🙅 Ignore Players</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleOffMvPlayers()" data-i18n="btn_mv_players">🏖 MV Players</button>
     <span style="font-size:12px;color:#5a3a18;" data-i18n="ot_defender_note">Defender auto-fills from the village database.</span>
+    <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="openMassEdit()" data-i18n="btn_mass_edit">✏ Edit Selected Rows</button>
   </div>
   <div id="ot-ignore-wrap" style="display:none;margin-top:10px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="off_ignore_hint">Paste coordinates (one per line) of your own villages that must never send anything — no off, no snob, no escort.</div>
@@ -463,6 +464,7 @@
     <table id="offtargets-table">
       <thead>
         <tr>
+          <th style="width:26px;"><input type="checkbox" id="ot-sel-all" title="Select / deselect all rows" data-i18n-title="sel_all_title" onchange="toggleOTSelectAll(this.checked)"></th>
           <th>#</th>
           <th class="left" data-i18n="th_coord">Coord</th>
           <th class="left" data-i18n="th_def_player">Defender</th>
@@ -851,7 +853,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.24.1 &nbsp;·&nbsp; 2026-07-03</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.25.0 &nbsp;·&nbsp; 2026-07-03</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
@@ -889,6 +891,74 @@ document.addEventListener('drop', e => {
     <div class="modal-footer">
       <button class="btn btn-ghost btn-sm" onclick="closeObjectivesExport()" data-i18n="btn_close">Close</button>
       <button class="btn btn-primary btn-sm" id="obj-copy-btn" onclick="copyObjectives()" data-i18n="bb_copy_btn">Copy to Clipboard</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ MASS EDIT MODAL (Offensive Targets) ═══════════════════════ -->
+<div class="modal-overlay" id="ot-mass-modal" onclick="if(event.target===this)closeMassEdit()">
+  <div class="modal" style="width:min(600px,95vw);">
+    <div class="modal-header">
+      <h3><span data-i18n="mass_modal_title">Edit Selected Rows</span> <span id="ot-mass-count" style="color:#f0c040;"></span></h3>
+      <button class="modal-close" onclick="closeMassEdit()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="mass-row">
+        <span class="mass-lbl">⚡ <span data-i18n="th_power">POWER</span></span>
+        <button class="btn btn-ghost btn-sm" onclick="massSetPower(true)" data-i18n="mass_on">Turn ON</button>
+        <button class="btn btn-ghost btn-sm" onclick="massSetPower(false)" data-i18n="mass_off">Turn OFF</button>
+      </div>
+      <div class="mass-row">
+        <span class="mass-lbl"><img class="tw-ic" src="icons/units/catapult.png" alt=""> <span data-i18n="th_catapults">CATAPULTS</span></span>
+        <button class="btn btn-ghost btn-sm" onclick="massSetCatapult(true)" data-i18n="mass_on">Turn ON</button>
+        <button class="btn btn-ghost btn-sm" onclick="massSetCatapult(false)" data-i18n="mass_off">Turn OFF</button>
+        <input type="number" id="ot-mass-cat-count" min="0" max="99" class="cell-input num" style="width:52px;" title="Number of catapult attacks wanted here" data-i18n-title="ot_catapult_title">
+        <span style="flex-basis:100%;height:0;"></span>
+        <span class="mass-lbl"></span>
+        <span id="ot-mass-catb-host" style="display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center;"></span>
+        <button class="btn btn-primary btn-sm" onclick="massSetCatBuildings()" data-i18n="mass_apply" data-i18n-title="mass_catb_title">Apply</button>
+      </div>
+      <div class="mass-row">
+        <span class="mass-lbl"><img class="tw-ic" src="icons/units/off.png" alt=""> <span data-i18n="mass_lbl_offs">Offs:</span></span>
+        <span class="badge badge-complete" data-i18n="th_complete">Complete</span>
+        <input type="number" id="ot-mass-complete" min="0" max="99" class="cell-input num" style="width:52px;">
+        <span class="badge badge-tq" data-i18n="th_tq">3/4</span>
+        <input type="number" id="ot-mass-tq" min="0" max="99" class="cell-input num" style="width:52px;">
+        <span class="badge badge-half" data-i18n="th_half">1/2</span>
+        <input type="number" id="ot-mass-half" min="0" max="99" class="cell-input num" style="width:52px;">
+        <button class="btn btn-primary btn-sm" onclick="massSetOffs()" data-i18n="mass_apply">Apply</button>
+      </div>
+      <div class="mass-row">
+        <span class="mass-lbl"><img class="tw-ic" src="icons/units/snob.png" alt=""> <span data-i18n="th_escort">Snob Mode</span></span>
+        <button class="btn btn-ghost btn-sm" onclick="massSetSnobMode('solo')" data-i18n="opt_escort_no">👑 Solo</button>
+        <button class="btn btn-ghost btn-sm" onclick="massSetSnobMode('escorted')" data-i18n="opt_escort_yes">⚔ Split Off</button>
+      </div>
+      <div class="mass-row">
+        <span class="mass-lbl"><img class="tw-ic" src="icons/buildings/smithy.webp" alt=""> <span data-i18n="th_catmode">Catapult Mode</span></span>
+        <button class="btn btn-ghost btn-sm" onclick="massSetCatMode('smith')" data-i18n="catb_smith">Smithy</button>
+        <button class="btn btn-ghost btn-sm" onclick="massSetCatMode('farm')" data-i18n="catb_farm">Farm</button>
+        <button class="btn btn-ghost btn-sm" onclick="massSetCatMode('wall')" data-i18n="catb_wall">Wall</button>
+      </div>
+      <div class="mass-row">
+        <span class="mass-lbl">⏱ <span data-i18n="th_win_off">Off Windows</span></span>
+        <span id="ot-mass-winoff-host" style="display:flex;flex-direction:column;gap:3px;"></span>
+        <button class="btn btn-primary btn-sm" onclick="massSetOffWin()" data-i18n="mass_apply" data-i18n-title="mass_winoff_title">Apply</button>
+      </div>
+      <div class="mass-row">
+        <span class="mass-lbl">⏱ <span data-i18n="th_win_snob">Snob Window</span></span>
+        <input type="time" id="ot-mass-winsnob-s" class="cell-input mono" style="width:88px;">
+        <button class="btn btn-ghost btn-sm" style="padding:1px 6px;" data-i18n-title="fix_time_title" onclick="fixMassWin('ot-mass-winsnob')">=</button>
+        <input type="time" id="ot-mass-winsnob-e" class="cell-input mono" style="width:88px;">
+        <button class="btn btn-primary btn-sm" onclick="massSetSnobWin()" data-i18n="mass_apply">Apply</button>
+      </div>
+      <div class="mass-row">
+        <span class="mass-lbl"></span>
+        <button class="btn btn-ghost btn-sm" style="color:#e06040;border-color:#7a2010;" onclick="massDeleteSelected()" data-i18n="mass_delete_btn">🗑 Delete Selected Rows</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span id="ot-mass-status" style="margin-right:auto;font-size:12px;color:#40a050;font-weight:600;"></span>
+      <button class="btn btn-ghost btn-sm" onclick="closeMassEdit()" data-i18n="btn_close">Close</button>
     </div>
   </div>
 </div>

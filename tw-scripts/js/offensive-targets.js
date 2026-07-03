@@ -97,6 +97,7 @@ function updOffIgnore() {
   const el = document.getElementById('ot-ignore-input');
   offIgnore = el ? el.value : '';
   saveOffensive();
+  renderOtOffsSummary(); // ignored coords shrink the summary's available pool
 }
 function toggleOffIgnore() {
   const el = document.getElementById('ot-ignore-wrap');
@@ -321,10 +322,12 @@ function updOT(id, field, val) {
     renderOffTargets();
   }
   saveOffensive();
+  renderOtOffsSummary(); // off/snob count cells feed the summary but updOT doesn't rebuild the table
 }
 
 function delOffTarget(id) {
   offTargets = offTargets.filter(x => x.id !== id);
+  otSelected.delete(id);
   saveOffensive(); renderOffTargets();
 }
 
@@ -426,7 +429,190 @@ function updCatMode(id, val) {
 function clearOffTargets() {
   if (offTargets.length && !confirm(t('confirm_clear_targets'))) return;
   offTargets = [];
+  otSelected.clear();
   saveOffensive(); renderOffTargets();
+}
+
+// ── Row selection + "Edit Selected Rows" mass edit ────────────────────────────
+// Selection is EPHEMERAL (in-memory only, never persisted): it's a working set for
+// one mass edit, and stale ids restored from an old session would silently edit the
+// wrong rows. The row checkboxes are re-rendered from this set, so a full table
+// rebuild (every mass apply triggers one) keeps the selection.
+let otSelected = new Set(); // ids of the selected offTargets
+
+function otPruneSelection() {
+  const ids = new Set(offTargets.map(tg => tg.id));
+  for (const id of [...otSelected]) if (!ids.has(id)) otSelected.delete(id);
+}
+// Header select-all checkbox mirrors the set (indeterminate on a partial selection)
+function syncOtSelAll() {
+  const el = document.getElementById('ot-sel-all');
+  if (!el) return;
+  el.checked = offTargets.length > 0 && otSelected.size === offTargets.length;
+  el.indeterminate = otSelected.size > 0 && otSelected.size < offTargets.length;
+}
+// Checkbox change: flip the id + restyle just that row — no tbody rebuild, ticking
+// a box must stay instant on a big target list.
+function toggleOTSelect(id, on, cb) {
+  if (on) otSelected.add(id); else otSelected.delete(id);
+  const tr = cb && cb.closest ? cb.closest('tr') : null;
+  if (tr) tr.classList.toggle('ot-row-sel', !!on);
+  syncOtSelAll();
+}
+function toggleOTSelectAll(on) {
+  otSelected = on ? new Set(offTargets.map(tg => tg.id)) : new Set();
+  for (const cb of document.querySelectorAll('#offtargets-tbody input.ot-sel')) {
+    cb.checked = !!on;
+    const tr = cb.closest('tr');
+    if (tr) tr.classList.toggle('ot-row-sel', !!on);
+  }
+  syncOtSelAll();
+}
+
+function openMassEdit() {
+  otPruneSelection();
+  if (!otSelected.size) { alert(t('mass_none_selected')); return; }
+  document.getElementById('ot-mass-count').textContent = `(${otSelected.size})`;
+  // input-based sections start from the current tab defaults; staging lists reset
+  document.getElementById('ot-mass-complete').value = otCfg.defComplete ?? 1;
+  document.getElementById('ot-mass-tq').value       = otCfg.defTq ?? 0;
+  document.getElementById('ot-mass-half').value     = otCfg.defHalf ?? 0;
+  document.getElementById('ot-mass-cat-count').value = 5;
+  massCatBuildings = [];
+  renderMassCatBuildings();
+  massOffWins = [{ win: otCfg.defWinOff || '', count: 0 }];
+  renderMassOffWins();
+  setWinInputs('ot-mass-winsnob', otCfg.defWinSnob);
+  document.getElementById('ot-mass-status').textContent = '';
+  document.getElementById('ot-mass-modal').classList.add('open');
+}
+function closeMassEdit() {
+  document.getElementById('ot-mass-modal').classList.remove('open');
+}
+function fixMassWin(prefix) {
+  const s = document.getElementById(prefix + '-s'), e = document.getElementById(prefix + '-e');
+  if (s && e) e.value = s.value;
+}
+
+// ── Mass-edit staging lists (catapult buildings + off windows) ────────────────
+// Both are LOCAL drafts for the modal: openMassEdit resets them, their Apply copies
+// them onto every selected target (same shapes as tg.catBuildings / tg.offWindows).
+let massCatBuildings = []; // [{building, count}] — mirrors the per-target Catapults cell
+let massOffWins      = []; // [{win, count}]      — mirrors the per-target Off Windows cell
+
+function renderMassCatBuildings() {
+  const host = document.getElementById('ot-mass-catb-host');
+  if (!host) return;
+  const chosen = new Set(massCatBuildings.map(b => b.building));
+  const opts = CAT_BUILDING_KEYS.filter(k => !chosen.has(k));
+  const chips = massCatBuildings.map((b, j) =>
+    `<span class="chip">${esc(t('catb_' + b.building))} ×<input type="number" min="0" value="${b.count || 0}" title="${esc(t('cat_building_count_title'))}" style="width:28px;background:transparent;border:none;border-bottom:1px solid #7a5c10;color:inherit;font-size:11px;text-align:center;" onchange="massUpdCatBuildingCount(${j},this.value)"><span class="chip-x" onclick="massRemoveCatBuilding(${j})">✕</span></span>`).join('');
+  const picker = opts.length
+    ? `<select class="cell-input" style="width:104px;" onchange="massAddCatBuilding(this.value)"><option value="">${t('opt_pick_building')}</option>${opts.map(k => `<option value="${k}">${esc(t('catb_' + k))}</option>`).join('')}</select>`
+    : '';
+  host.innerHTML = chips + picker;
+}
+function massAddCatBuilding(b) {
+  if (!b || !CAT_BUILDING_KEYS.includes(b) || massCatBuildings.some(x => x.building === b)) return;
+  massCatBuildings.push({ building: b, count: 0 });
+  renderMassCatBuildings();
+}
+function massRemoveCatBuilding(j) { massCatBuildings.splice(j, 1); renderMassCatBuildings(); }
+function massUpdCatBuildingCount(j, v) { if (massCatBuildings[j]) massCatBuildings[j].count = Math.max(0, parseInt(v) || 0); }
+// Applying buildings means catapult attacks ARE wanted here → also turns Catapults ON
+// with the modal's attack count. An empty list is valid: it clears the selected rows'
+// picks → targetCatBuildingSpec's default all-Smithy.
+function massSetCatBuildings() {
+  const cnt = massCatCount();
+  massApply(tg => {
+    tg.catEnabled = true;
+    tg.catapult = cnt;
+    tg.catBuildings = massCatBuildings.map(b => ({ building: b.building, count: b.count || 0 }));
+  });
+}
+
+// Off-window staging — same editor as the per-target cell (time / = / time, count +
+// ✕ only when >1 windows, trailing + to add). Ids `ot-mass-winoff-<k>-s/-e` so the
+// shared winParts/readWinInputs helpers work; onchange keeps the staging list in
+// sync so add/remove re-renders don't lose typed times.
+function renderMassOffWins() {
+  const host = document.getElementById('ot-mass-winoff-host');
+  if (!host) return;
+  const multi = massOffWins.length > 1;
+  host.innerHTML = massOffWins.map((w, k) => {
+    const [ws, we] = winParts(w.win);
+    return `<div style="display:flex;gap:2px;align-items:center;">
+      <input type="time" id="ot-mass-winoff-${k}-s" class="cell-input mono" style="width:78px;" value="${ws}" onchange="updMassOffWin(${k})">
+      <button class="btn btn-ghost btn-sm" style="padding:1px 5px;" title="${esc(t('fix_time_title'))}" onclick="fixMassWin('ot-mass-winoff-${k}');updMassOffWin(${k})">=</button>
+      <input type="time" id="ot-mass-winoff-${k}-e" class="cell-input mono" style="width:78px;" value="${we}" onchange="updMassOffWin(${k})">
+      ${multi ? `<input type="number" min="0" value="${w.count || 0}" title="${esc(t('win_count_title'))}" class="cell-input num" style="width:38px;" onchange="updMassOffWinCount(${k},this.value)">` : ''}
+      ${multi ? `<span class="chip-x" title="${esc(t('del_window_title'))}" onclick="massDelOffWin(${k})">✕</span>` : ''}
+    </div>`;
+  }).join('')
+  + `<button class="btn btn-ghost btn-sm" style="padding:0 6px;align-self:flex-start;" title="${esc(t('add_window_title'))}" onclick="massAddOffWin()">+</button>`;
+}
+function updMassOffWin(k) { if (massOffWins[k]) massOffWins[k].win = readWinInputs(`ot-mass-winoff-${k}`); }
+function updMassOffWinCount(k, v) { if (massOffWins[k]) massOffWins[k].count = Math.max(0, parseInt(v) || 0); }
+function massAddOffWin() {
+  const last = massOffWins[massOffWins.length - 1];
+  massOffWins.push({ win: last ? last.win : (otCfg.defWinOff || ''), count: 0 });
+  renderMassOffWins();
+}
+function massDelOffWin(k) {
+  massOffWins.splice(k, 1);
+  if (!massOffWins.length) massOffWins.push({ win: otCfg.defWinOff || '', count: 0 });
+  renderMassOffWins();
+}
+// Run `fn` on every selected target, save + re-render (the selection survives the
+// rebuild), and confirm in the modal footer. The modal stays open so several mass
+// edits can be chained on the same selection.
+function massApply(fn) {
+  otPruneSelection();
+  const sel = offTargets.filter(tg => otSelected.has(tg.id));
+  if (!sel.length) return;
+  sel.forEach(fn);
+  saveOffensive(); renderOffTargets();
+  const st = document.getElementById('ot-mass-status');
+  if (st) {
+    st.textContent = t('mass_applied')(sel.length);
+    clearTimeout(massApply._t);
+    massApply._t = setTimeout(() => { st.textContent = ''; }, 2500);
+  }
+}
+function massSetPower(v)    { massApply(tg => { tg.power = !!v; }); }
+// The modal's catapult attack count (default 5, like the row toggle's first enable).
+// Both Turn ON and the buildings Apply stamp it onto every selected row.
+function massCatCount() {
+  const n = parseInt((document.getElementById('ot-mass-cat-count') || {}).value, 10);
+  return n > 0 ? n : 5;
+}
+function massSetCatapult(v) {
+  const cnt = massCatCount();
+  massApply(tg => { tg.catEnabled = !!v; if (v) tg.catapult = cnt; });
+}
+function massSetOffs() {
+  const n = id => Math.max(0, parseInt(document.getElementById(id).value) || 0);
+  const c = n('ot-mass-complete'), q = n('ot-mass-tq'), h = n('ot-mass-half');
+  massApply(tg => { tg.nComplete = c; tg.nTq = q; tg.nHalf = h; });
+}
+function massSetSnobMode(v) { massApply(tg => { tg.snobMode = v === 'escorted' ? 'escorted' : 'solo'; }); }
+function massSetCatMode(v)  { if (CAT_MODE_KEYS.includes(v)) massApply(tg => { tg.catMode = v; }); }
+// Replaces ALL of each selected row's off windows with the staged list
+function massSetOffWin() {
+  massApply(tg => { tg.offWindows = massOffWins.map(w => ({ win: w.win || '', count: w.count || 0 })); });
+}
+function massSetSnobWin() {
+  const win = readWinInputs('ot-mass-winsnob');
+  massApply(tg => { tg.winSnob = win; });
+}
+function massDeleteSelected() {
+  otPruneSelection();
+  if (!otSelected.size) return;
+  if (!confirm(t('confirm_mass_delete')(otSelected.size))) return;
+  offTargets = offTargets.filter(tg => !otSelected.has(tg.id));
+  otSelected.clear();
+  saveOffensive(); renderOffTargets();
+  closeMassEdit();
 }
 
 // All players from the loaded tribe troop file as potential train senders. Players with
@@ -639,9 +825,54 @@ function otFillPicker(sel, kind) {
   sel.insertAdjacentHTML('beforeend', otPickerOptsHtml[kind] || '');
 }
 
+// ── "Offs assigned" summary (the line under the table) ───────────────────────
+// Assigned = offs the targets request, per tier (each split-off/escorted train rides
+// with one Complete off, so it counts as +1 Complete — same per-train count the escort
+// reservation uses, incl. needNobles pins). Available = off villages in the loaded
+// troop file MINUS the Ignore Coordinates / Ignore Players holdouts — the pool
+// generatePlan actually draws from. Distance, morale and noble-launch reservations
+// only resolve at Generate Plan (its summary footer shows that breakdown), so
+// "available" here is the static upper bound. Kept separate from renderOffTargets so
+// the cheap edits that DON'T rebuild the table (off-count cells via updOT, the ignore
+// textarea) can refresh just this line without stealing focus; the ↻ button re-runs
+// it on demand as well.
+function renderOtOffsSummary() {
+  const el = document.getElementById('ot-offs-summary');
+  if (!el) return;
+  if (!offTargets.length && !villages.length) { el.innerHTML = ''; return; }
+  const escortOffs = offTargets.reduce((s, tg) =>
+    s + (tg.snobMode === 'escorted' ? targetTrainSpec(tg).length : 0), 0);
+  const ignoreCoords = parseOffIgnoreSet();
+  const ignorePl = new Set(offIgnorePlayers);
+  const stat = { complete: { total: 0, ign: 0 }, tq: { total: 0, ign: 0 }, half: { total: 0, ign: 0 } };
+  for (const v of villages) {
+    const s = stat[getOffTier(v.offPow)];
+    if (!s) continue;
+    s.total++;
+    if (ignoreCoords.has(v.coord) || ignorePl.has(v.player)) s.ign++;
+  }
+  const tierMeta = [['complete', 'badge-complete', 'th_complete'], ['tq', 'badge-tq', 'th_tq'], ['half', 'badge-half', 'th_half']];
+  let ignTotal = 0;
+  const parts = tierMeta.map(([tier, cls, label]) => {
+    const used = offTargets.reduce((s, tg) => s + (tg[TIER_FIELD[tier]] || 0), 0) + (tier === 'complete' ? escortOffs : 0);
+    const avail = stat[tier].total - stat[tier].ign;
+    ignTotal += stat[tier].ign;
+    const usedHtml = used > avail ? `<span style="color:#e06040;">${used}</span>` : `${used}`;
+    return `<span class="badge ${cls}">${t(label)}</span> ${usedHtml} / ${avail}`;
+  });
+  const notes = [];
+  if (ignTotal > 0) notes.push(t('offs_ignored_note')(ignTotal));
+  if (escortOffs > 0) notes.push(t('offs_escort_note')(escortOffs));
+  const note = notes.length ? ` <span style="color:#806030;font-weight:400;">${notes.join(' ')}</span>` : '';
+  el.innerHTML =
+    `<button class="btn btn-ghost btn-sm" style="padding:1px 7px;margin-right:6px;" title="${esc(t('refresh_offs_title'))}" onclick="renderOtOffsSummary()">↻</button>`
+    + `<span title="${esc(t('offs_summary_title'))}">${t('offs_assigned_label')} ${parts.join('&nbsp;&nbsp;·&nbsp;&nbsp;')}${note}</span>`;
+}
+
 function renderOffTargets() {
   updateDatePreview();
   offTargets.forEach(normalizeOffTarget);
+  otPruneSelection();
   const warnEl = document.getElementById('ot-warnings');
   const warns = (villageDb.length ? offTargets.filter(tg => !coordDb[tg.coord]) : [])
     .map(tg => t('warn_target_not_in_db')(tg.coord));
@@ -658,28 +889,12 @@ function renderOffTargets() {
     ? `<details class="warn-box"><summary>${t('plan_warnings_toggle')(warns.length)}</summary>`
       + `<div class="warn-list">${warns.map(esc).join('<br>')}</div></details>` : '';
 
-  // Offs committed across all targets vs. the tribe's off villages, PER TIER
-  // (Complete / 3-4 / 1-2): how many of each you've assigned out of how many exist.
-  const offsSummaryEl = document.getElementById('ot-offs-summary');
-  if (offsSummaryEl) {
-    // Each split-off (escorted) train rides with one Complete off, so it counts as +1
-    // Complete here — same per-train count the escort reservation uses (incl. needNobles pins).
-    const escortOffs = offTargets.reduce((s, tg) =>
-      s + (tg.snobMode === 'escorted' ? targetTrainSpec(tg).length : 0), 0);
-    const tierMeta = [['complete', 'badge-complete', 'th_complete'], ['tq', 'badge-tq', 'th_tq'], ['half', 'badge-half', 'th_half']];
-    const parts = tierMeta.map(([tier, cls, label]) => {
-      const used = offTargets.reduce((s, tg) => s + (tg[TIER_FIELD[tier]] || 0), 0) + (tier === 'complete' ? escortOffs : 0);
-      const total = villages.filter(v => getOffTier(v.offPow) === tier).length;
-      return `<span class="badge ${cls}">${t(label)}</span> ${used} / ${total}`;
-    });
-    const note = escortOffs > 0 ? ` <span style="color:#806030;font-weight:400;">${t('offs_escort_note')(escortOffs)}</span>` : '';
-    offsSummaryEl.innerHTML = (offTargets.length || villages.length)
-      ? `${t('offs_assigned_label')} ${parts.join('&nbsp;&nbsp;·&nbsp;&nbsp;')}${note}` : '';
-  }
+  renderOtOffsSummary();
 
   const tbody = document.getElementById('offtargets-tbody');
   if (!offTargets.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="18">${t('empty_no_targets')}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="19">${t('empty_no_targets')}</td></tr>`;
+    syncOtSelAll();
     return;
   }
   // ── Sender pickers are LAZY: each row renders its <select>s with only the placeholder,
@@ -742,8 +957,10 @@ function renderOffTargets() {
     const snobWinCell = `<div style="display:flex;gap:2px;align-items:center;justify-content:center;">
         ${winEditor(`otsw-${tg.id}`, tg.winSnob, `updTgWin(${tg.id},'snob',0)`, `fixTgWin(${tg.id},'snob',0)`)}
       </div>`;
+    const sel = otSelected.has(tg.id);
     return `
-    <tr>
+    <tr${sel ? ' class="ot-row-sel"' : ''}>
+      <td><input type="checkbox" class="ot-sel"${sel ? ' checked' : ''} onchange="toggleOTSelect(${tg.id},this.checked,this)"></td>
       <td style="color:#806030;">${i + 1}</td>
       <td class="left"><input class="cell-input mono" style="width:74px;${isUnknown ? 'border-color:#b02010;' : ''}" value="${esc(tg.coord)}" title="${dbTitle}" onchange="updOT(${tg.id},'coord',this.value)"></td>
       <td class="left" title="${dbTitle}">${tg.player ? `<span class="player-tag">${esc(tg.player)}</span>` : '<span class="num-zero">—</span>'}</td>
@@ -795,6 +1012,7 @@ function renderOffTargets() {
       <td><button class="btn btn-ghost btn-sm" onclick="delOffTarget(${tg.id})">✕</button></td>
     </tr>`;
   }).join('');
+  syncOtSelAll();
 }
 
 // ── Export Objectives: plain X|Y coords (one per line), in table order ──

@@ -125,6 +125,9 @@
     .empty-row td { text-align: center; color: #5a3a18; padding: 36px; }
     tr.total-row td { background: #2a1c08; color: #f0c040; font-weight: 700; border-top: 2px solid #7a5c10; }
     tr.total-row:hover td { background: #342408; }
+    /* Selected Offensive Targets rows (mass edit) — light grey overlay */
+    tr.ot-row-sel td { background: rgba(190,190,190,0.14); }
+    tbody tr.ot-row-sel:hover td { background: rgba(190,190,190,0.20); }
 
     /* ── Section header ── */
     .section-header {
@@ -394,6 +397,12 @@
       justify-content: flex-end;
       gap: 8px;
     }
+
+    /* ── Mass-edit modal rows (Edit Selected Rows) ── */
+    .mass-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid #2e1e08; }
+    .mass-row:last-child { border-bottom: none; }
+    .mass-row .mass-lbl { flex: 0 0 130px; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #806030; font-weight: 600; }
+    .mass-row .mass-lbl .tw-ic { margin-right: 0; }
 
     /* ── POWER tag (Offensive Targets) ── */
     .ot-power { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; user-select: none; font-size: 13px; }
