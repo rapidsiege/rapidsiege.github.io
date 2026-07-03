@@ -625,6 +625,20 @@ function updateDatePreview() {
   if (el) el.textContent = bbDateLabel();
 }
 
+// Option HTML for the sender pickers, rebuilt by renderOffTargets() once per render and
+// injected per-<select> on demand by otFillPicker().
+let otPickerOptsHtml = { snob: '', complete: '', tq: '', half: '' };
+
+// Fill a sender <select> with its option list only when the user actually opens it.
+// onfocus + onmousedown both point here: whichever fires first fills the list before the
+// native dropdown paints; the dataset guard makes every later call a no-op. The options
+// reset naturally on the next re-render (the tbody — and thus the select — is rebuilt).
+function otFillPicker(sel, kind) {
+  if (sel.dataset.filled) return;
+  sel.dataset.filled = '1';
+  sel.insertAdjacentHTML('beforeend', otPickerOptsHtml[kind] || '');
+}
+
 function renderOffTargets() {
   updateDatePreview();
   offTargets.forEach(normalizeOffTarget);
@@ -668,16 +682,29 @@ function renderOffTargets() {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="18">${t('empty_no_targets')}</td></tr>`;
     return;
   }
+  // ── Sender pickers are LAZY: each row renders its <select>s with only the placeholder,
+  // and otFillPicker() injects the (identical, potentially huge) option list the moment one
+  // is opened. A full tbody rebuild used to create every option for every row — targets ×
+  // players × 4 pickers ≈ tens of thousands of DOM nodes — which made ANY re-rendering
+  // action (delete row, toggle, count edit) take seconds on a big plan. The option HTML per
+  // picker kind is built ONCE per render here; offSenderOptions() is likewise hoisted out
+  // of the row loop (it walks every player's villages — it used to run per row × 3 tiers).
   const senders = snobSenderOptions();
+  otPickerOptsHtml.snob = senders.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.snob})</option>`).join('');
+  const tierHasSenders = {};
+  for (const tier of ['complete', 'tq', 'half']) {
+    const opts = offSenderOptions(tier);
+    tierHasSenders[tier] = opts.length > 0;
+    otPickerOptsHtml[tier] = opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.count})</option>`).join('');
+  }
   tbody.innerHTML = offTargets.map((tg, i) => {
     const isUnknown = villageDb.length && !coordDb[tg.coord];
     const dbTitle = esc(dbOwnerLabel(tg.coord));
     const chips = tg.snobAssignees.map((a, j) =>
       `<span class="chip">${esc(decode(a.name))} ×<input type="number" min="0" value="${a.count || 0}" title="${esc(t('snob_count_title'))}" style="width:32px;background:transparent;border:none;border-bottom:1px solid #7a5c10;color:inherit;font-size:11px;text-align:center;" onchange="updSnobCount(${tg.id},${j},this.value)"><span class="chip-x" onclick="removeSnobAssignee(${tg.id},${j})">✕</span></span>`).join('');
     const senderPicker = senders.length
-      ? `<select class="cell-input" style="width:118px;" onchange="addSnobAssignee(${tg.id}, this.value)">
+      ? `<select class="cell-input" style="width:118px;" onfocus="otFillPicker(this,'snob')" onmousedown="otFillPicker(this,'snob')" onchange="addSnobAssignee(${tg.id}, this.value)">
            <option value="">${t('opt_pick_sender')}</option>
-           ${senders.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.snob})</option>`).join('')}
          </select>`
       : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
     // Off senders: one labeled picker per tier (Complete / 3-4 / 1-2); option labels show
@@ -686,13 +713,11 @@ function renderOffTargets() {
     const TIER_TH = { complete: 'th_complete', tq: 'th_tq', half: 'th_half' };
     const offSenderCell = Object.keys(players).length
       ? ['complete', 'tq', 'half'].map(tier => {
-          const opts = offSenderOptions(tier);
           const tierChips = tg.offAssignees.map((a, j) => a.tier !== tier ? '' :
             `<span class="chip">${esc(decode(a.name))} ×<input type="number" min="0" value="${a.count || 0}" title="${esc(t('off_count_title'))}" style="width:30px;background:transparent;border:none;border-bottom:1px solid #7a5c10;color:inherit;font-size:11px;text-align:center;" onchange="updOffCount(${tg.id},${j},this.value)"><span class="chip-x" onclick="removeOffAssignee(${tg.id},${j})">✕</span></span>`).join('');
-          const picker = opts.length
-            ? `<select class="cell-input" style="width:104px;" onchange="addOffAssignee(${tg.id},'${tier}',this.value)">
+          const picker = tierHasSenders[tier]
+            ? `<select class="cell-input" style="width:104px;" onfocus="otFillPicker(this,'${tier}')" onmousedown="otFillPicker(this,'${tier}')" onchange="addOffAssignee(${tg.id},'${tier}',this.value)">
                  <option value="">${t('opt_pick_sender')}</option>
-                 ${opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.count})</option>`).join('')}
                </select>`
             : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
           return `<div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;margin:1px 0;">

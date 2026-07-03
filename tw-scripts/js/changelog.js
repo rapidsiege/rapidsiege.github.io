@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.24.1', date: '2026-07-03',
+    en: [
+      `<b>⚡ Offensive Targets is fast again.</b> Removing a row, ticking a checkbox, or editing a count on a big target list used to freeze the page for a second or two. Cause: every change rebuilds the table, and each row carried four <b>fully-populated sender dropdowns</b> (every tribe player in each) — tens of thousands of invisible elements. The dropdowns now start empty and load their player list <b>the moment you open one</b> — same options, same behavior, no wait.`,
+    ],
+    es: [
+      `<b>⚡ Objetivos Ofensivos vuelve a ser rápido.</b> Eliminar una fila, marcar una casilla o editar un número en una lista grande de objetivos congelaba la página uno o dos segundos. Causa: cada cambio reconstruye la tabla, y cada fila llevaba cuatro <b>desplegables de remitentes completamente rellenos</b> (todos los jugadores de la tribu en cada uno) — decenas de miles de elementos invisibles. Ahora los desplegables empiezan vacíos y cargan su lista de jugadores <b>en el momento en que abres uno</b> — mismas opciones, mismo comportamiento, sin espera.`,
+    ],
+  },
   { ver: 'v3.24.0', date: '2026-07-02',
     en: [
       `<b>🏃 New "Outbound Offs" tab.</b> A new tab (right of By Villages) lists every offensive village whose <b>off army is currently deployed away</b> — computed as <i>troops − home − returning</i> from your tribe-everything export. The unit columns show the approximate amounts that are <b>out</b> (not home, not on their way back), in the same layout as By Villages (coord, player, type, tier, units). A village is listed when its own axe is at least 2,000 and most of that axe (≥ 50%) is outbound. This <b>needs a tribe-everything export</b> (rows tagged troops / defense / incoming) — a plain tribe-info file shows a hint instead. The top-right <b>Export Coords</b> button copies every outbound village's coordinates (one per line) so you can paste them straight into <b>Offensive Targets → Ignore Coordinates</b>.`,
