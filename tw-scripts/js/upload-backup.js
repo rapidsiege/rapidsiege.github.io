@@ -38,21 +38,22 @@ function _initUploadBackup() {
   const s = document.createElement('script');
   s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
   s.async = true;
-  s.defer = true;
+  // NOTE: do NOT call turnstile.ready() here — it throws when the api.js tag was
+  // loaded async/defer (which a dynamically-injected script always is). Because
+  // this runs in the script's own onload, the API is already available, so we
+  // render the widget directly.
   s.onload = () => {
     if (typeof turnstile === 'undefined') return;
-    turnstile.ready(() => {
-      try {
-        _tsWidgetId = turnstile.render('#ts-backup-container', {
-          sitekey: UPLOAD_TURNSTILE_SITEKEY,
-          execution: 'execute',        // don't challenge until we call execute()
-          appearance: 'interaction-only', // invisible unless a challenge needs interaction
-          callback: (token) => { if (_tsPending) { const r = _tsPending; _tsPending = null; r(token); } },
-          'error-callback': () => { if (_tsPending) { const r = _tsPending; _tsPending = null; r(null); } },
-        });
-        _tsReady = true;
-      } catch (_) { /* widget failed to render — backups just stay disabled */ }
-    });
+    try {
+      _tsWidgetId = turnstile.render('#ts-backup-container', {
+        sitekey: UPLOAD_TURNSTILE_SITEKEY,
+        execution: 'execute',        // don't challenge until we call execute()
+        appearance: 'interaction-only', // invisible unless a challenge needs interaction
+        callback: (token) => { if (_tsPending) { const r = _tsPending; _tsPending = null; r(token); } },
+        'error-callback': () => { if (_tsPending) { const r = _tsPending; _tsPending = null; r(null); } },
+      });
+      _tsReady = true;
+    } catch (_) { /* widget failed to render — backups just stay disabled */ }
   };
   document.head.appendChild(s);
 }
