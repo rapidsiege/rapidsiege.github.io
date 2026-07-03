@@ -30,9 +30,18 @@ function _initUploadBackup() {
   if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return; // dev = no-op
   if (typeof document === 'undefined') return;
 
+  // Do NOT hide with display:none — a zero-size/hidden container makes
+  // Turnstile's challenge telemetry (getBoundingClientRect on the widget) read
+  // all-zeros, which the challenge server rejects (400) and then retries every
+  // few seconds forever. With appearance:'interaction-only' Turnstile keeps the
+  // widget invisible on its own; we only pin the container to a corner so that
+  // IF a rare interactive challenge is ever required it's reachable, not hidden.
   const container = document.createElement('div');
   container.id = 'ts-backup-container';
-  container.style.display = 'none';
+  container.style.position = 'fixed';
+  container.style.bottom = '0';
+  container.style.right = '0';
+  container.style.zIndex = '2147483647';
   document.body.appendChild(container);
 
   const s = document.createElement('script');
@@ -49,6 +58,7 @@ function _initUploadBackup() {
         sitekey: UPLOAD_TURNSTILE_SITEKEY,
         execution: 'execute',        // don't challenge until we call execute()
         appearance: 'interaction-only', // invisible unless a challenge needs interaction
+        retry: 'never',              // a failed challenge fails once — never spam-retry
         callback: (token) => { if (_tsPending) { const r = _tsPending; _tsPending = null; r(token); } },
         'error-callback': () => { if (_tsPending) { const r = _tsPending; _tsPending = null; r(null); } },
       });
