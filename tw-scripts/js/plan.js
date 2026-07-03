@@ -947,7 +947,7 @@ function generatePlan() {
 
   saveOffensive();
   renderPlanTable();
-  if (typeof backupPlanExport === 'function') backupPlanExport(); // prod-only silent backup of the JSON dump
+  if (typeof cloudSyncPlan === 'function') cloudSyncPlan(); // hosted-site cloud save of the JSON snapshot
 }
 
 function delPlanRow(i) { planRows.splice(i, 1); saveOffensive(); renderPlanTable(); }

@@ -28,7 +28,7 @@ function loadFiles(fileList) {
         const label = files.length === 1 ? files[0].name : `${files.length} files`;
         parseData(merged, label);
         persistTroops(merged, label);
-        if (typeof backupUpload === 'function') backupUpload(merged); // prod-only silent backup
+        if (typeof cloudSyncData === 'function') cloudSyncData(merged); // hosted-site cloud save
 
       }
     };
@@ -40,7 +40,7 @@ function loadFromPaste() {
   if (!text) return;
   parseData(text, 'pasted data');
   persistTroops(text, 'pasted data');
-  if (typeof backupUpload === 'function') backupUpload(text); // prod-only silent backup
+  if (typeof cloudSyncData === 'function') cloudSyncData(text); // hosted-site cloud save
 }
 
 // ── Persist the uploaded/pasted troop text so it survives across sessions ──
