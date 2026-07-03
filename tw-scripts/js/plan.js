@@ -1130,6 +1130,23 @@ function showPlanBB() {
   document.getElementById('bb-modal').classList.add('open');
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// ⚠ FORMAT CONTRACT — attack-planner.html IMPORTS the exports below.
+// parsePlayerPlanBB() in attack-planner.html parses the Per-Player Orders / Per-Player All
+// output line by line: the "========== NAME (n) ==========" sender headers, the ARRIVAL DATE
+// header (bbDateLabel — it reads the trailing day-of-month), off lines ("src → [coord]tgt
+// [/coord] (defender) window"), the LAUNCH TIME continuation line (rally URL → village-ID
+// pins), and snob order lines ("Prepare Snob Train for [coord]…", detected by
+// [unit]snob[/unit] + a [coord] tag). parseOffPlanBB() likewise parses the Forum BB export
+// (showPlanBB's "N. X|Y - Player." groups). Lines meant to be IGNORED by the importer rely on
+// staying structurally distinct: objective-context rows have no "→ [coord]" and their snob
+// rows have no [coord]; snob-range and UNASSIGNED lines use bare coords only.
+// → If you change the SHAPE of anything emitted here (playerPlanBBBlock, snobOrderLineBB,
+//   planRowForumBB, unassignedPlanBBBlock, bbDateLabel, showPlanBB), update the attack-planner
+//   importer + .omc/test_attack_import.js in the same change. Cosmetic changes (colors, bold,
+//   labels) are safe — the importer anchors on structure, never on presentation tags.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
 // ── Grouping shared by all three per-player exports (Orders BB, Table, combined All):
 //    rows-with-a-sender (incl. pinned-but-unplaced "needs nobles") bucket by player; truly
 //    anonymous unassigned rows are handled separately by the caller. ──

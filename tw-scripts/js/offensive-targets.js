@@ -604,7 +604,9 @@ function windowOffCounts(wins, total) {
   return counts;
 }
 
-// Localized "Miércoles 10"-style label derived from the arrival date picker
+// Localized "Miércoles 10"-style label derived from the arrival date picker.
+// ⚠ FORMAT CONTRACT: the attack-planner import reads the trailing day-of-month from the
+// "ARRIVAL DATE: <weekday> <day>" header this feeds — see the contract note in js/plan.js.
 function bbDateLabel() {
   if (otCfg.dateISO) {
     const d = new Date(otCfg.dateISO + 'T00:00:00');
