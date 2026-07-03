@@ -106,11 +106,16 @@ async function backupUpload(text) {
   try {
     const token = await _getTurnstileToken();
     if (!token) return; // couldn't verify a real browser — skip silently
+    // NOTE: do NOT set keepalive:true here. Browsers cap keepalive fetch bodies
+    // at 64 KB total; a tribe-info export is hundreds of KB, so keepalive makes
+    // fetch() throw before the request ever leaves the browser (swallowed by the
+    // catch below → Worker never receives it). A normal fetch has no size cap.
+    // The backup fires right after a successful parse while the player is using
+    // the tool, so the tab staying open long enough isn't a concern.
     await fetch(UPLOAD_WORKER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: _uploadBackupName(), content: text, token }),
-      keepalive: true, // let it finish even if the tab is closing
     });
   } catch (_) { /* best-effort backup — ignore all failures */ }
 }
