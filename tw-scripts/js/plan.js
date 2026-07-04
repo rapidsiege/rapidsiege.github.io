@@ -117,6 +117,31 @@ function splitNobles(total, nPlayers) {
   return Array.from({ length: n }, (_, i) => base + (i < rem ? 1 : 0)).filter(x => x > 0);
 }
 
+// Pure sender-region gate (Coordinate Filter). Does a village at parsed coord c={x,y}
+// satisfy EVERY active filter? Filters AND together. A row is INACTIVE (skipped) when it
+// has no axis or a blank/NaN value — so a half-typed row never silently empties the sender
+// pool — and an empty filter list passes every village. Applied to `pool` in generatePlan();
+// because the whole plan (offs, snob range, fairness, reservations) derives from that pool,
+// filtered-out villages are never used as an off OR a snob sender.
+function passesCoordFilters(c, filters) {
+  if (!c || !Array.isArray(filters) || !filters.length) return true;
+  return filters.every(f => {
+    if (!f || (f.axis !== 'x' && f.axis !== 'y')) return true; // incomplete row = inactive
+    if (f.val === '' || f.val == null) return true;
+    const val = Number(f.val);
+    if (!isFinite(val)) return true;
+    const n = f.axis === 'x' ? c.x : c.y;
+    switch (f.op) {
+      case '>':  return n >  val;
+      case '>=': return n >= val;
+      case '<':  return n <  val;
+      case '<=': return n <= val;
+      case '=':  return n === val;
+      default:   return true; // unknown operator = inactive
+    }
+  });
+}
+
 function generatePlan() {
   if (!villages.length)   { alert(t('plan_need_data'));    return; }
   if (!offTargets.length) { alert(t('plan_need_targets')); return; }
@@ -146,10 +171,17 @@ function generatePlan() {
   // noble (snob) senders, sending the train + its escort, just never a regular clearing off.
   const ignoreCoords  = parseOffIgnoreSet();
   const ignorePlayers = new Set(offIgnorePlayers);
+  // Sender region = typed X|Y filters AND (if drawn) the map polygon. A village must be inside
+  // the drawn area (≥3 vertices) too; both empty → every village is eligible. See passesCoordFilters
+  // (typed) + pointInPolygon (drawn), both pure world-space.
+  const senderPoly = (typeof planCoordPolygon !== 'undefined' && Array.isArray(planCoordPolygon) && planCoordPolygon.length >= 3)
+    ? planCoordPolygon : null;
   const pool = villages.map(v => ({
     v, c: parseCoordStr(v.coord), tier: getOffTier(v.offPow),
     snobLeft: v.snob, usedOff: false, usedSnob: false,
-  })).filter(p => p.c && !ignoreCoords.has(p.v.coord));
+  })).filter(p => p.c && !ignoreCoords.has(p.v.coord)
+    && passesCoordFilters(p.c, planCoordFilters)
+    && (!senderPoly || pointInPolygon(p.c.x, p.c.y, senderPoly)));
 
   // ── MV (vacation-mode) pairs ──────────────────────────────────────────────
   // Two MV-paired players must not BOTH attack the SAME enemy PLAYER (the defending
@@ -962,6 +994,9 @@ function clearPlan() {
 }
 
 function renderPlanTable() {
+  // Rebuild the Coordinate Filter rows (also refreshes them on a language switch, since
+  // renderPlanTable runs from changeLang). Guarded + no-ops without its host element.
+  if (typeof renderCoordFilters === 'function') renderCoordFilters();
   // Warnings can be many; render them collapsed (count in the summary) so they
   // don't bury the plan table. Native <details> — no JS, works under file://.
   document.getElementById('plan-warnings').innerHTML = planWarnings.length

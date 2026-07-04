@@ -133,6 +133,8 @@
     <span class="map-tb-sep"></span>
     <button id="map-extract-btn" class="btn btn-ghost btn-sm" onclick="toggleExtractMode()" data-i18n="map_extract">Extract Coordinates</button>
     <span class="map-tb-sep"></span>
+    <button id="map-drawfilter-btn" class="btn btn-ghost btn-sm" onclick="toggleDrawFilterMode()" data-i18n="map_drawfilter">🎯 Draw Coordinate Filter</button>
+    <span class="map-tb-sep"></span>
     <button id="map-barb-btn" class="btn btn-ghost btn-sm" onclick="toggleBarbFinder()" data-i18n="barb_finder">Barb Finder</button>
     <span class="map-tb-sep"></span>
     <button id="map-heatcfg-btn" class="btn btn-ghost btn-sm" onclick="toggleHeatmapConfig()" data-i18n="map_heatmap_config">Heatmap Config</button>
@@ -148,6 +150,13 @@
       <span id="map-extract-count" class="map-extract-count">0</span>
       <button class="btn btn-ghost btn-sm" onclick="copyMapExtract()" data-i18n="map_copy_coords">Copy</button>
       <button class="btn btn-ghost btn-sm" onclick="clearMapExtract()" data-i18n="map_clear_sel">Clear</button>
+    </div>
+    <div id="map-drawfilter-bar" style="display:none;">
+      <span class="map-extract-count" data-i18n="map_drawfilter_label">Filter area:</span>
+      <span id="map-drawfilter-count" class="map-extract-count">0</span>
+      <button class="btn btn-ghost btn-sm" onclick="undoDrawFilterPoint()" data-i18n="map_drawfilter_undo">↶ Undo point</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearCoordPolygon()" data-i18n="map_drawfilter_clear">✕ Clear area</button>
+      <span style="font-size:11px;color:#8a6a3a;" data-i18n="map_drawfilter_hint">Click to add points · need 3+ to enclose an area</span>
     </div>
     <div id="map-groups" style="display:none;">
       <div class="map-groups-head">
@@ -544,6 +553,16 @@
     <span style="font-size:12px;color:#5a3a18;" data-i18n="plan_optimize_note">Auto-optimizes by morale × off power vs. distance. Pin senders per target or tag a target POWER in Offensive Targets.</span>
     <button class="btn btn-primary btn-sm" onclick="generatePlan()" data-i18n="btn_generate">⚡ Generate Plan</button>
   </div>
+  <div style="margin-top:8px;">
+    <button class="btn btn-ghost btn-sm" onclick="toggleCoordFilter()" data-i18n="btn_coord_filter">🎯 Coordinate Filter</button>
+    <span id="pcf-summary" style="font-size:12px;color:#a08050;margin-left:8px;font-weight:600;"></span>
+  </div>
+  <div id="pcf-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:8px;" data-i18n="coord_filter_hint">Only villages whose coordinates satisfy ALL filters below are used as senders (offs and snob trains). Leave empty to use every village.</div>
+    <div id="pcf-host"></div>
+    <button class="btn btn-ghost btn-sm" style="margin-top:4px;" onclick="addCoordFilter()" data-i18n="btn_add_filter">+ Add Filter</button>
+    <div id="pcf-poly" style="margin-top:10px;padding-top:8px;border-top:1px solid #2a1c08;"></div>
+  </div>
   <div id="plan-warnings" style="margin-top:12px;"></div>
   <div id="plan-summary" style="font-size:12px;color:#806030;margin:10px 0;"></div>
   <div class="table-wrap">
@@ -854,7 +873,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.25.0 &nbsp;·&nbsp; 2026-07-03</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.27.0 &nbsp;·&nbsp; 2026-07-04</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

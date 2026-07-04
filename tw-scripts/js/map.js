@@ -91,6 +91,23 @@ function villageAtPixel(px, py) {
   return (typeof coordDb !== 'undefined' && coordDb[coord]) ? coord : null;
 }
 
+// Point-in-polygon (Draw Coordinate Filter). Pure, WORLD-space: (x,y) and every vertex are
+// TW grid coords (0..999), so this is pan/zoom-independent — the render aspect (mapYRatio /
+// mapScaleY) must never enter here. Canonical half-open ray-casting (PNPOLY): even-odd rule,
+// so winding order and self-intersections don't matter, and a vertex sitting exactly on the
+// horizontal ray resolves consistently. Boundary/on-edge villages are NOT guaranteed "inside"
+// (grid coords land on edges often) — a user who wants a border village included draws slightly
+// wider. Fewer than 3 vertices → no area → returns false. `poly` = [{x,y}, …].
+function pointInPolygon(x, y, poly) {
+  if (!Array.isArray(poly) || poly.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
 // Constant screen-pixel dot size by points (stays visible when zoomed out).
 function mapDotSize(points) {
   if (points >= 1000000) return 5;

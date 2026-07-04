@@ -12,6 +12,16 @@ let offTargets   = []; // [{id, coord, player, nComplete, nTq, nHalf, snobPlayer
 let offIgnore        = ''; // raw "Ignore Coordinates" textarea (Offensive Targets) — these villages never send anything
 let offIgnorePlayers = []; // raw player names excluded from the whole plan (no off, no snob, no escort)
 let offMvPairs       = []; // [[rawA, rawB], …] vacation-mode pairs: two paired players can't both attack the SAME enemy player
+// Coordinate Filter (Plan Offensive): layered X|Y bounds that a village must ALL satisfy to be
+// used as a sender (off OR snob train). [{axis:'x'|'y', op:'>'|'>='|'<'|'<='|'=', val:'<number>'}].
+// AND semantics; a row with no axis or a blank/NaN value is inactive; an empty list uses every
+// village. Applied to the sender pool in generatePlan() — see passesCoordFilters() in plan.js.
+let planCoordFilters = [];
+// Draw Coordinate Filter (Map tab): a polygon of world-space {x,y} vertices (TW grid 0..999).
+// When it has ≥3 vertices, a village must be INSIDE it (pointInPolygon) to be used as a sender,
+// on top of any typed planCoordFilters (AND). Drawn/edited on the map; persisted here so it
+// survives reload and rides along with the plan. Empty / <3 pts = no area constraint.
+let planCoordPolygon = [];
 let planRows     = []; // denormalized so a saved plan renders without the troop file loaded
 let planWarnings = [];
 let planReserved = []; // coords of noble-launch villages held out of the offs (excluded from Unused Offs)
@@ -28,6 +38,7 @@ function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&qu
 function saveOffensive() {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
     cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, mvPairs: offMvPairs,
+    coordFilters: planCoordFilters, coordPolygon: planCoordPolygon,
     plan: planRows, warnings: planWarnings, reserved: planReserved, stats: planStats, nextId: otNextId,
   }));
 }
@@ -41,6 +52,10 @@ function loadOffensive() {
       offIgnore        = typeof d.ignore === 'string' ? d.ignore : '';
       offIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
       offMvPairs       = Array.isArray(d.mvPairs) ? d.mvPairs.filter(p => Array.isArray(p) && p.length === 2 && p[0] && p[1] && p[0] !== p[1]) : [];
+      planCoordFilters = Array.isArray(d.coordFilters) ? d.coordFilters.filter(f => f && (f.axis === 'x' || f.axis === 'y')) : [];
+      planCoordPolygon = Array.isArray(d.coordPolygon)
+        ? d.coordPolygon.filter(p => p && p.x != null && p.y != null && p.x !== '' && p.y !== '' && isFinite(p.x) && isFinite(p.y)).map(p => ({ x: +p.x, y: +p.y }))
+        : [];
       planRows     = d.plan || [];
       planWarnings = d.warnings || [];
       planReserved = d.reserved || [];
@@ -102,6 +117,100 @@ function updOffIgnore() {
 function toggleOffIgnore() {
   const el = document.getElementById('ot-ignore-wrap');
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+// ── Coordinate Filter (Plan Offensive) ─────────────────────────────────────
+// Layered X|Y bounds; a village must satisfy EVERY active row to be used as a
+// sender (off + snob). See passesCoordFilters() (plan.js) for the gate itself.
+const COORD_FILTER_OPS = ['>', '>=', '<', '<=', '='];      // stored op values
+const COORD_FILTER_OP_LABEL = { '>': '>', '>=': '≥', '<': '<', '<=': '≤', '=': '=' };
+function toggleCoordFilter() {
+  const el = document.getElementById('pcf-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+function addCoordFilter() {
+  planCoordFilters.push({ axis: 'x', op: '>', val: '' });
+  saveOffensive();
+  renderCoordFilters();
+}
+function removeCoordFilter(idx) {
+  planCoordFilters.splice(idx, 1);
+  saveOffensive();
+  renderCoordFilters();
+}
+// Store the raw string for `val` so a blank/half-typed row stays inactive (never empties the pool).
+// NOTE: never rebuild the rows here — that would recreate the <input>/<select> mid-edit and drop
+// focus after each keystroke. The controls already hold the user's value; we only refresh the
+// summary chip. Row rebuilds happen solely on add/remove (structural changes).
+function updCoordFilter(idx, field, value) {
+  const f = planCoordFilters[idx];
+  if (!f) return;
+  if (field === 'axis') f.axis = (value === 'y') ? 'y' : 'x';
+  else if (field === 'op') f.op = COORD_FILTER_OPS.includes(value) ? value : '>';
+  else if (field === 'val') f.val = value;
+  saveOffensive();
+  updCoordFilterSummary();
+}
+// Refresh only the button-side summary chip (no row rebuild → no focus loss). Includes the
+// map-drawn area so a collapsed panel still advertises every active sender constraint.
+function updCoordFilterSummary() {
+  renderCoordPolygonStatus();
+  const sum = document.getElementById('pcf-summary');
+  if (!sum) return;
+  const parts = [];
+  const s = coordFilterSummary();
+  if (s) parts.push(s);
+  if (coordPolygonActive()) parts.push(t('coord_filter_poly')(planCoordPolygon.length));
+  sum.textContent = parts.length ? t('coord_filter_active')(parts.join('  ∧  ')) : '';
+}
+// True when the drawn filter area is a usable region (≥3 vertices → has interior).
+function coordPolygonActive() {
+  return Array.isArray(planCoordPolygon) && planCoordPolygon.length >= 3;
+}
+// Panel line reflecting the map-drawn area (with a Clear button) so the typed rows AND the
+// polygon are visible in one place — AND-composition is otherwise invisible/surprising.
+function renderCoordPolygonStatus() {
+  const el = document.getElementById('pcf-poly');
+  if (!el) return;
+  if (coordPolygonActive()) {
+    el.innerHTML = `<span style="color:#4fd0c0;font-weight:600;">${esc(t('coord_filter_poly')(planCoordPolygon.length))}</span> `
+      + `<button class="btn btn-ghost btn-sm" onclick="clearCoordPolygon()">${esc(t('coord_filter_clear_area'))}</button>`
+      + `<span style="font-size:12px;color:#5a3a18;margin-left:6px;">${esc(t('coord_filter_poly_hint'))}</span>`;
+  } else {
+    el.innerHTML = `<span style="font-size:12px;color:#5a3a18;">${esc(t('coord_filter_poly_none'))}</span>`;
+  }
+}
+// Clear the drawn area (from the plan panel OR the map). Repaints the map + refreshes the map's
+// draw bar when those are present (both guarded — headless/inactive-tab safe).
+function clearCoordPolygon() {
+  planCoordPolygon = [];
+  saveOffensive();
+  updCoordFilterSummary();
+  if (typeof updateDrawFilterBar === 'function') updateDrawFilterBar();
+  if (typeof repaintMapData === 'function') repaintMapData();
+}
+// One-line summary of the active filters (blank/incomplete rows omitted). '' when none active.
+function coordFilterSummary() {
+  const parts = (planCoordFilters || [])
+    .filter(f => f && (f.axis === 'x' || f.axis === 'y') && f.val !== '' && f.val != null && isFinite(Number(f.val)))
+    .map(f => `${f.axis.toUpperCase()} ${COORD_FILTER_OP_LABEL[f.op] || f.op} ${Number(f.val)}`);
+  return parts.length ? parts.join('  ∧  ') : '';
+}
+function renderCoordFilters() {
+  const host = document.getElementById('pcf-host');
+  if (!host) return; // headless test sandbox / not on this tab
+  const axisOpts = (sel) =>
+    `<option value="x"${sel === 'x' ? ' selected' : ''}>X</option><option value="y"${sel === 'y' ? ' selected' : ''}>Y</option>`;
+  const opOpts = (sel) =>
+    COORD_FILTER_OPS.map(op => `<option value="${op}"${op === sel ? ' selected' : ''}>${COORD_FILTER_OP_LABEL[op]}</option>`).join('');
+  host.innerHTML = planCoordFilters.map((f, i) => `
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+      <select class="cell-input" style="width:60px;" onchange="updCoordFilter(${i},'axis',this.value)">${axisOpts(f.axis)}</select>
+      <select class="cell-input" style="width:60px;" onchange="updCoordFilter(${i},'op',this.value)">${opOpts(f.op)}</select>
+      <input type="number" class="cell-input" style="width:90px;" value="${esc(f.val)}" oninput="updCoordFilter(${i},'val',this.value)">
+      <button class="btn btn-ghost btn-sm" onclick="removeCoordFilter(${i})" title="${esc(t('btn_remove') || 'Remove')}">✕</button>
+    </div>`).join('') || `<div style="font-size:12px;color:#5a3a18;" data-i18n="coord_filter_empty">${t('coord_filter_empty')}</div>`;
+  updCoordFilterSummary();
 }
 function toggleOffIgnorePlayers() {
   const el = document.getElementById('ot-ignore-players-wrap');

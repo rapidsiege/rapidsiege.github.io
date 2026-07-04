@@ -547,6 +547,10 @@
     #map-extract-btn.active { background: #3a2808; color: #f0c040; border-color: #7a5018; }
     #map-extract-bar { position: absolute; left: 8px; bottom: 8px; z-index: 4; display: flex; align-items: center; gap: 8px; background: rgba(14,10,3,.93); border: 1px solid #3a2808; border-radius: 6px; padding: 6px 9px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }
     .map-extract-count { font-size: 12px; color: #f0c040; font-weight: 600; }
+    /* Draw Coordinate Filter: same dock/bar as Extract (they never show at once — one click-tool at a time) */
+    #map-drawfilter-btn.active { background: #123a36; color: #4fd0c0; border-color: #2a7a70; }
+    #map-drawfilter-bar { position: absolute; left: 8px; bottom: 8px; z-index: 4; display: flex; align-items: center; gap: 8px; background: rgba(14,10,3,.93); border: 1px solid #2a5a54; border-radius: 6px; padding: 6px 9px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }
+    #map-drawfilter-bar .map-extract-count { color: #4fd0c0; }
     /* Barb Finder */
     #map-barb-btn.active { background: #3a2808; color: #f0c040; border-color: #7a5018; }
     #map-barb-finder { position: absolute; top: 8px; left: 8px; z-index: 4; width: 250px; max-height: calc(100% - 16px); display: flex; flex-direction: column; background: rgba(14,10,3,.93); border: 1px solid #3a2808; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }

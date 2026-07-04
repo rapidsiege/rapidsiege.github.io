@@ -34,6 +34,8 @@ let mapShowTierTq       = true;      // off-tier filter: show 3/4-off villages (
 let mapShowTierHalf     = true;      // off-tier filter: show 1/2-off villages (default ON)
 let mapExtractMode = false;          // "Extract Coordinates": click villages to collect coords
 let mapSelection = new Set();        // selected 'x|y' coords (rings on the map)
+let mapDrawFilterMode = false;       // "Draw Coordinate Filter": click to place polygon vertices
+let mapDrawCursor = null;            // world {x,y} under the cursor in draw mode (rubber-band preview)
 let mapPrefsLoaded = false;
 let mapMineSeeded = false;           // have we auto-created the "My tribe" group yet?
 const MINE_GROUP_ID = '__mine__';    // stable id of the auto-seeded "My tribe" group
@@ -629,6 +631,8 @@ function paintMap() {
       mapCtx.stroke();
     }
   }
+  // Draw-Coordinate-Filter polygon overlay (drawn whenever it has points, editable in draw mode).
+  drawFilterPolygon(w, h);
   // Barb Finder overlay: orange rings on candidate barbs, blue rings on the snob origins.
   if (barbFinderActive) {
     for (const r of barbResults) drawMapRing(r.coord, w, h, '#ff9d2e', 2);
@@ -723,20 +727,34 @@ function onMapMouseMove(e) {
     paintMap();
     return;
   }
+  // Draw-filter mode: track the world point under the cursor for the rubber-band line; no tooltip.
+  if (mapDrawFilterMode) {
+    mapDrawCursor = screenToWorld(p.x, p.y);
+    hideMapTip();
+    paintMap();
+    return;
+  }
   const coord = villageAtPixel(p.x, p.y);
   if (coord !== mapHoverCoord) { mapHoverCoord = coord; paintMap(); }
   if (coord) showMapTip(coord, e); else hideMapTip();
 }
 
 function onMapMouseUp() {
-  // a click (mousedown→up without panning) in Extract mode toggles the village under it
-  if (mapExtractMode && mapDrag && !mapDrag.moved) {
-    const coord = villageAtPixel(mapDrag.x, mapDrag.y);
-    if (coord) toggleExtractCoord(coord);
+  // A click (mousedown→up without panning) acts on the active click-tool.
+  if (mapDrag && !mapDrag.moved) {
+    if (mapExtractMode) {
+      const coord = villageAtPixel(mapDrag.x, mapDrag.y);
+      if (coord) toggleExtractCoord(coord);
+    } else if (mapDrawFilterMode) {
+      const wld = screenToWorld(mapDrag.x, mapDrag.y);
+      addDrawFilterVertex(
+        Math.max(0, Math.min(MAP_WORLD - 1, Math.round(wld.x))),
+        Math.max(0, Math.min(MAP_WORLD - 1, Math.round(wld.y))));
+    }
   }
   mapDrag = null;
 }
-function onMapMouseLeave() { mapDrag = null; mapHoverCoord = null; hideMapTip(); paintMap(); }
+function onMapMouseLeave() { mapDrag = null; mapHoverCoord = null; mapDrawCursor = null; hideMapTip(); paintMap(); }
 
 function onMapWheel(e) {
   e.preventDefault();
@@ -910,7 +928,10 @@ function setIncomingThreshold(which, val) {
 // ── Extract Coordinates: click villages to collect coords, then copy them ──
 function toggleExtractMode() {
   mapExtractMode = !mapExtractMode;
-  if (mapExtractMode && barbFinderActive) closeBarbFinder(); // one click-panel at a time
+  if (mapExtractMode) {
+    if (barbFinderActive) closeBarbFinder();          // one click-tool at a time
+    if (mapDrawFilterMode) toggleDrawFilterMode();
+  }
   const btn = document.getElementById('map-extract-btn');
   if (btn) btn.classList.toggle('active', mapExtractMode);
   const bar = document.getElementById('map-extract-bar');
@@ -918,6 +939,98 @@ function toggleExtractMode() {
   if (mapCanvas) mapCanvas.style.cursor = mapExtractMode ? 'crosshair' : '';
   updateExtractBar();
   repaintMapData(); // closing the barb finder here must clear its isolation dimming
+}
+
+// ── Draw Coordinate Filter: click to place polygon vertices; the plan then only sends offs
+// (and snob trains) from villages INSIDE the shape. Vertices are stored WORLD-space in
+// planCoordPolygon (offensive-targets.js) so they survive pan/zoom/reload; the gate is
+// pointInPolygon (map.js), composed with the typed X|Y filters under AND in generatePlan().
+function toggleDrawFilterMode() {
+  mapDrawFilterMode = !mapDrawFilterMode;
+  if (mapDrawFilterMode) {
+    if (barbFinderActive) closeBarbFinder();          // one click-tool at a time
+    if (mapExtractMode) toggleExtractMode();
+  } else {
+    mapDrawCursor = null;
+  }
+  const btn = document.getElementById('map-drawfilter-btn');
+  if (btn) btn.classList.toggle('active', mapDrawFilterMode);
+  const bar = document.getElementById('map-drawfilter-bar');
+  if (bar) bar.style.display = mapDrawFilterMode ? '' : 'none';
+  if (mapCanvas) mapCanvas.style.cursor = mapDrawFilterMode ? 'crosshair' : '';
+  updateDrawFilterBar();
+  paintMap();
+}
+// Append a vertex (world x|y), persist, and sync the bar + plan panel + canvas. Additive by
+// design (matches Extract's feel): re-entering draw mode extends the existing shape — Undo/Clear
+// are the way back.
+function addDrawFilterVertex(x, y) {
+  if (typeof planCoordPolygon === 'undefined') return;
+  planCoordPolygon.push({ x, y });
+  saveOffensive();
+  afterDrawFilterChange();
+}
+function undoDrawFilterPoint() {
+  if (typeof planCoordPolygon === 'undefined' || !planCoordPolygon.length) return;
+  planCoordPolygon.pop();
+  saveOffensive();
+  afterDrawFilterChange();
+}
+// Shared post-change sync: bar count, the Plan-Offensive panel reflection, and a cheap repaint.
+function afterDrawFilterChange() {
+  updateDrawFilterBar();
+  if (typeof updCoordFilterSummary === 'function') updCoordFilterSummary();
+  paintMap();
+}
+function updateDrawFilterBar() {
+  const cnt = document.getElementById('map-drawfilter-count');
+  if (cnt) cnt.textContent = t('map_drawfilter_count')(typeof planCoordPolygon !== 'undefined' ? planCoordPolygon.length : 0);
+}
+// Overlay: filled shape (≥3 pts) + edges + vertices, plus a dashed rubber-band from the last
+// vertex to the cursor (and on to the first vertex) while in draw mode. Cheap top-layer draw.
+function drawFilterPolygon(w, h) {
+  const poly = (typeof planCoordPolygon !== 'undefined') ? planCoordPolygon : [];
+  if (!poly.length || !mapCtx) return;
+  const ctx = mapCtx;
+  const pts = poly.map(v => worldToScreen(v.x, v.y));
+  ctx.save();
+  if (pts.length >= 3) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].px, pts[0].py);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].px, pts[i].py);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(79,208,192,0.13)';
+    ctx.fill();
+  }
+  if (pts.length >= 2) {
+    ctx.strokeStyle = '#4fd0c0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].px, pts[0].py);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].px, pts[i].py);
+    if (pts.length >= 3) ctx.closePath();
+    ctx.stroke();
+  }
+  if (mapDrawFilterMode && mapDrawCursor && pts.length) {
+    const c = worldToScreen(mapDrawCursor.x, mapDrawCursor.y);
+    const last = pts[pts.length - 1];
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = 'rgba(79,208,192,0.75)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(last.px, last.py);
+    ctx.lineTo(c.px, c.py);
+    if (pts.length >= 2) { ctx.lineTo(pts[0].px, pts[0].py); } // hint the closing edge
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.fillStyle = '#4fd0c0';
+  for (const s of pts) {
+    ctx.beginPath();
+    ctx.arc(s.px, s.py, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 function toggleExtractCoord(coord) {
   if (mapSelection.has(coord)) mapSelection.delete(coord); else mapSelection.add(coord);
