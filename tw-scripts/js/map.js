@@ -154,22 +154,45 @@ const MAP_COLOR_OWNED = '#a06a2c';  // any other player → brown
 const MAP_COLOR_MINE  = '#3f7fe0';  // default colour of the auto-seeded "My tribe" group
 
 // ── "My tribe(s)" auto-detection (from the loaded tribe-troop file `villages[]`) ──
-// The troop file lists my tribemates' villages by coord (no ids). Join coord→DB to find
-// EVERY ally present among them: we only ever have troop data for our OWN tribes, so all
-// tribes in the file are "ours" (we run several). The render shell seeds an editable "My
-// tribe" colour group with each of those tags (see seedMineGroup). Detection only identifies
-// the tribes — the actual blue colouring then flows through the normal custom-group path, so
-// the user can add/remove tribes or recolour it like any other group.
-let myAllyIds = [];              // all distinct allyIds among troop-file villages (your tribes)
+// The troop file lists my tribemates' villages, each row tagged with its OWNER'S PLAYER
+// NAME (col 1). We resolve EVERY ally present among those owners: we only ever have troop
+// data for our OWN tribes, so all tribes in the file are "ours" (we run several). The render
+// shell seeds an editable "My tribe" colour group with each of those tags (see seedMineGroup),
+// and the cloud-sync filename uses the same set — detection only identifies the tribes; the
+// blue colouring then flows through the normal custom-group path, so the user can add/remove
+// tribes or recolour it like any other group.
+//
+// Resolution goes player NAME → playerId → allyId (via the world DB), NOT village coord →
+// owner. Coord→owner reads the *stale* world-map snapshot, so a village we just CONQUERED
+// still resolves to its previous (enemy) owner until the mirror refreshes — which polluted
+// the my-tribe set (and the cloud filename) with enemy tags. The troop file's owner name is
+// current by construction, so name-based resolution is conquest-proof. Names are matched
+// through decodeName(): the troop export writes the player.txt name field with only `+`→space
+// (leaving `%XX` escapes intact, e.g. Spanish "vakeri%C3%B1o"), while playerDb is already
+// fully decoded — so we decode the troop side to line the two up (verified: all es100 names
+// match). Falls back to no detection when the DB isn't loaded (nothing resolves) — the
+// cloud-sync label then uses its own top-player fallback.
+let myAllyIds = [];              // all distinct allyIds among troop-file owners (your tribes)
 function detectMyTribe() {
   myAllyIds = [];
   if (typeof villages === 'undefined' || !villages.length) return;
+  if (typeof playerDb === 'undefined' || typeof playerAllyDb === 'undefined') return;
+  // Invert playerDb (id→name) into name→id. playerDb names are already decoded, so key on the
+  // lowercased/trimmed name; first id wins (names are unique per world). Rebuilt per call —
+  // detectMyTribe runs only on load / cloud push, so the scan is not hot.
+  const idByName = {};
+  for (const id in playerDb) {
+    const nm = String(playerDb[id] || '').toLowerCase().trim();
+    if (nm && !(nm in idByName)) idByName[nm] = id;
+  }
+  const dec = (typeof decodeName === 'function') ? decodeName : (s => s);
   const seen = {};
   for (const tv of villages) {
-    if (!tv.coord) continue;
-    const dbv = (typeof coordDb !== 'undefined') ? coordDb[tv.coord] : null;
-    if (!dbv) continue;
-    const a = (typeof playerAllyDb !== 'undefined') ? playerAllyDb[dbv.playerId] : null;
+    if (!tv.player) continue;
+    const nm = String(dec(tv.player) || '').toLowerCase().trim();
+    const id = nm ? idByName[nm] : null;
+    if (id == null) continue;
+    const a = playerAllyDb[id];
     if (a && !seen[a]) { seen[a] = true; myAllyIds.push(a); }
   }
 }

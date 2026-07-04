@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.27.1', date: '2026-07-04',
+    en: [
+      `<b>🔤 Fix: player names with special Spanish characters.</b> Player names containing accents or special characters (<b>´ \` ñ ç</b>, etc.) are now decoded correctly when working out which <b>tribe(s)</b> a loaded troop file belongs to — used for the map's auto <b>"My tribe"</b> highlight and for the name of your <b>cloud backups</b>. Previously such names could fail to match the world database, so those players' tribe wasn't recognised.`,
+    ],
+    es: [
+      `<b>🔤 Corrección: nombres de jugador con caracteres especiales españoles.</b> Los nombres de jugador con acentos o caracteres especiales (<b>´ \` ñ ç</b>, etc.) ahora se decodifican correctamente al determinar a qué <b>tribu(s)</b> pertenece un archivo de tropas cargado — usado para el resaltado automático de <b>"Mi tribu"</b> en el mapa y para el nombre de tus <b>copias en la nube</b>. Antes esos nombres podían no coincidir con la base de datos del mundo, y la tribu de esos jugadores no se reconocía.`,
+    ],
+  },
   { ver: 'v3.27.0', date: '2026-07-04',
     en: [
       `<b>🎯 Draw the Coordinate Filter on the map.</b> The Map tab has a new <b>🎯 Draw Coordinate Filter</b> button: click to drop points and trace an <b>area</b> on the map (3+ points enclose a shape; a live dashed line previews the next edge). When you Generate a plan, offs and noble (snob) trains are then sent <b>only from villages inside that shape</b> — the drawn version of the typed Coordinate Filter. A small bar shows the point count with <b>↶ Undo point</b> and <b>✕ Clear area</b>; clicking again <b>extends</b> the current shape. The area is drawn in <b>map coordinates</b>, so it stays put when you pan or zoom, and it's saved with your plan. It also <b>stacks with the typed X/Y filter</b> (a village must satisfy both), and the Plan Offensive → Coordinate Filter panel now shows when a map area is active (with its own Clear). If a player has no in-area village that can send a noble, the usual <b>"no villages in snob range"</b> notice still shows.`,
