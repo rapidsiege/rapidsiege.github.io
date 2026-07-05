@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.28.0', date: '2026-07-05',
+    en: [
+      `<b>🚀 Outbound Offs: plan targets + sharper columns.</b> The <b>Tier</b> badge now rates the <b>outbound army itself</b> (the off power currently flying) instead of the village's own off tier. Two new columns — <b>Off Target</b> and <b>Target Player</b> — show which <b>Plan Offensive</b> target that village's off was assigned to, with the coords linking to the target's <b>in-game village page</b>, so checking that an off is really flying at its assigned coordinates is one click. The columns fill in as soon as a plan is generated (— when the village isn't a sender in the current plan). To make room, the <b>Def Power</b> and <b>Knight</b> columns were removed.`,
+    ],
+    es: [
+      `<b>🚀 Offs Fuera: objetivos del plan + columnas más claras.</b> La insignia de <b>Nivel</b> ahora valora el <b>ejército que está fuera</b> (el poder ofensivo actualmente en vuelo) en lugar del nivel propio de la aldea. Dos columnas nuevas — <b>Objetivo Off</b> y <b>Jugador Objetivo</b> — muestran a qué objetivo del <b>Plan Ofensivo</b> se asignó el off de esa aldea, con las coordenadas enlazando a la <b>página de la aldea en el juego</b>, así comprobar que un off realmente vuela hacia sus coordenadas asignadas es un solo clic. Las columnas se rellenan al generar un plan (— cuando la aldea no es remitente en el plan actual). Para hacer sitio, se eliminaron las columnas <b>Pod. Def.</b> y <b>Paladín</b>.`,
+    ],
+  },
   { ver: 'v3.27.1', date: '2026-07-04',
     en: [
       `<b>🔤 Fix: player names with special Spanish characters.</b> Player names containing accents or special characters (<b>´ \` ñ ç</b>, etc.) are now decoded correctly when working out which <b>tribe(s)</b> a loaded troop file belongs to — used for the map's auto <b>"My tribe"</b> highlight and for the name of your <b>cloud backups</b>. Previously such names could fail to match the world database, so those players' tribe wasn't recognised.`,

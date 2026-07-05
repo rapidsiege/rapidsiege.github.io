@@ -1074,6 +1074,9 @@ function renderPlanTable() {
       <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
     </tr>`;
   }).join('');
+  // The Outbound Offs tab shows each sender's assigned target (Off Target / Target
+  // Player columns), so any plan change must repaint it too. Cheap + idempotent.
+  if (typeof renderOutboundTable === 'function') renderOutboundTable();
 }
 
 // The snob-range text for a snob row, or '' when there's no assigned player to attribute

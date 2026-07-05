@@ -328,13 +328,14 @@ function renderVillagesTable() {
 const OUTBOUND_MIN_AXE  = 2000; // village's own axe must be at least this to count as an off
 const OUTBOUND_FRACTION = 0.5;  // outbound axe must be ≥ this share of the village's axe body
 // Unit columns shown in the Outbound Offs table — pure defensive units (spear/sword/heavy)
-// are dropped since this tab is about offs on the move. Column indices below assume this
-// list; keep the <th> order in the HTML and sortState.outbound in sync.
-const OUTBOUND_UNITS = UNITS.filter(u => !['spear', 'sword', 'heavy'].includes(u));
+// and the knight are dropped since this tab is about offs on the move. Column indices below
+// assume this list; keep the <th> order in the HTML and sortState.outbound in sync.
+const OUTBOUND_UNITS = UNITS.filter(u => !['spear', 'sword', 'heavy', 'knight'].includes(u));
 
 // Pure (no DOM): given owned villages + the station dicts, return the outbound-off rows.
-// Each row carries the per-unit outbound counts, the off/def power of THAT outbound army,
-// and the village's own off power (so the caller can derive its identity tier). A village
+// Each row carries the per-unit outbound counts, the off/def power of THAT outbound army
+// (the Tier badge is derived from outOffPow — the strength of what's out right now), and
+// the village's own off power (kept for callers that want the identity tier). A village
 // with no defense/incoming row falls back to zeros → read as fully deployed (correct for a
 // real export). The caller guards the empty-station case so a plain tribe-info file — where
 // every off would falsely read as 100% out — shows an explanatory state instead of rows.
@@ -364,6 +365,22 @@ function hasStationData() {
   return Object.keys(defenseByCoord).length > 0 || Object.keys(incomingByCoord).length > 0;
 }
 
+// Pure (no DOM): map each Plan-Offensive SENDER coord → its assigned target
+// ({coord, player}) for the Off Target / Target Player columns — the 1-click check
+// that an outbound off is actually flying at its assigned coordinates. Only real
+// off rows count (complete/tq/half — catapult attacks come from def villages and
+// snob trains carry no prescribed origin); unassigned rows are skipped. First row
+// wins (a village's off is assigned at most once).
+function outboundOffTargets(rows) {
+  const by = {};
+  for (const r of rows || []) {
+    if (r.unassigned || !r.srcCoord) continue;
+    if (r.type !== 'complete' && r.type !== 'tq' && r.type !== 'half') continue;
+    if (by[r.srcCoord] == null) by[r.srcCoord] = { coord: r.tCoord, player: r.tPlayer || '' };
+  }
+  return by;
+}
+
 function renderOutboundTable() {
   const tbody = document.getElementById('outbound-tbody');
   if (!tbody) return;
@@ -376,18 +393,24 @@ function renderOutboundTable() {
   }
 
   const search = (document.getElementById('outbound-search')?.value || '').toLowerCase();
+  // Tier reflects the OUTBOUND army's off power (what's flying right now), not the
+  // village's identity tier. tgt = the Plan-Offensive target this village's off was
+  // assigned to (null when no plan / not a sender in it).
+  const tgtBy = outboundOffTargets(typeof planRows !== 'undefined' ? planRows : []);
   let data = computeOutboundOffs(villages, defenseByCoord, incomingByCoord, OUTBOUND_MIN_AXE, OUTBOUND_FRACTION)
-    .map(r => ({ ...r, tier: getOffTier(r.ownOffPow) }));
+    .map(r => ({ ...r, tier: getOffTier(r.outOffPow), tgt: tgtBy[r.coord] || null }));
   const totalOut = data.length;
 
   if (search) data = data.filter(r => r.player.toLowerCase().includes(search) || r.coord.includes(search));
 
-  // Sort — column layout mirrors the <th> order: coord, player, type, TIER, 10 units,
-  // Off (out), Def (out). Tier (3) isn't clickable but keeps its slot so indices line up.
+  // Sort — column layout mirrors the <th> order: coord, player, type, TIER, 6 units,
+  // Off (out), Off Target, Target Player. Tier (3) isn't clickable but keeps its slot
+  // so indices line up.
   const { col, dir } = sortState.outbound;
   if (col >= 0) {
     data.sort((a, b) => {
-      const vals = r => [r.coord, r.player, r.type, r.tier, ...OUTBOUND_UNITS.map(u => r.out[u]), r.outOffPow, r.outDefInf + r.outDefCav];
+      const vals = r => [r.coord, r.player, r.type, r.tier, ...OUTBOUND_UNITS.map(u => r.out[u]), r.outOffPow,
+                         r.tgt ? r.tgt.coord : '', r.tgt ? r.tgt.player : ''];
       const av = vals(a)[col], bv = vals(b)[col];
       if (typeof av === 'string') return dir * av.localeCompare(bv);
       return dir * (bv - av);
@@ -403,6 +426,13 @@ function renderOutboundTable() {
     empty: '<span class="badge badge-empty">—</span>',
   };
 
+  // Off Target links to the target's in-game info page when the world DB is loaded
+  // (villageInfoUrl, plan.js) so "is this off really flying there?" is one click.
+  const tgtCell = tgt => {
+    if (!tgt) return '—';
+    const url = (typeof villageInfoUrl === 'function') ? villageInfoUrl(tgt.coord) : null;
+    return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(tgt.coord)}</a>` : esc(tgt.coord);
+  };
   const rows = data.map(r => `
     <tr>
       <td class="left" style="font-family:monospace;">${r.coord}</td>
@@ -411,7 +441,8 @@ function renderOutboundTable() {
       <td>${TIER_BADGE[r.tier]}</td>
       ${OUTBOUND_UNITS.map(u => numCell(r.out[u])).join('')}
       <td style="color:#e06040;">${fmtM(r.outOffPow)}</td>
-      <td style="color:#60a0e0;" title="${fmtM(r.outDefInf)} inf + ${fmtM(r.outDefCav)} cav">${fmtM(r.outDefInf + r.outDefCav)}</td>
+      <td style="font-family:monospace;">${tgtCell(r.tgt)}</td>
+      <td class="left">${r.tgt && r.tgt.player ? `<span class="player-tag">${esc(r.tgt.player)}</span>` : '—'}</td>
     </tr>
   `).join('');
 
