@@ -1077,6 +1077,8 @@ function renderPlanTable() {
   // The Outbound Offs tab shows each sender's assigned target (Off Target / Target
   // Player columns), so any plan change must repaint it too. Cheap + idempotent.
   if (typeof renderOutboundTable === 'function') renderOutboundTable();
+  // Manage Offensive matches the imported incoming orders against this plan — same deal.
+  if (typeof renderManageTable === 'function') renderManageTable();
 }
 
 // The snob-range text for a snob row, or '' when there's no assigned player to attribute
@@ -1107,6 +1109,23 @@ function planRowIconBB(r) {
   // Complete offs stay rams; 3/4 and 1/2 use axe with the tier tagged in parens.
   if (r.type === 'complete') return '[unit]ram[/unit]';
   return `[unit]axe[/unit] (${t('tier_' + r.type)})`;
+}
+
+// ── Export the plan's target coordinates (one per line) ──
+// Exactly the paste format the "Target Village Orders Exporter" userscript
+// (incomingOrders.js) expects; its .txt/.json export then feeds the Manage
+// Offensive tab. Unique coords, plan order.
+function exportPlanCoords() {
+  if (!planRows.length) { alert(t('empty_no_plan')); return; }
+  const coords = [...new Set(planRows.map(r => r.tCoord))];
+  // Not a BB table — retitle the shared modal (closeBBModal restores the default)
+  const h = document.getElementById('bb-modal-title');
+  if (h) {
+    if (h.dataset) h.dataset.i18n = 'coord_modal_title';
+    h.textContent = t('coord_modal_title');
+  }
+  document.getElementById('bb-output').value = coords.join('\n');
+  document.getElementById('bb-modal').classList.add('open');
 }
 
 // ── Build objective groups from the plan (one per target, in plan order) ──

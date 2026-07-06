@@ -43,6 +43,7 @@
   <div class="tab"         data-tab="target"      onclick="switchTab('target')"     data-i18n="tab_target">⏱ Tribe Timings</div>
   <div class="tab"         data-tab="offtargets"  onclick="switchTab('offtargets')" data-i18n="tab_offtargets">📌 Offensive Targets</div>
   <div class="tab"         data-tab="plan"        onclick="switchTab('plan')"       data-i18n="tab_plan">⚔ Plan Offensive</div>
+  <div class="tab"         data-tab="manageoff"   onclick="switchTab('manageoff')"  data-i18n="tab_manageoff">📊 Manage Offensive</div>
   <div class="tab"         data-tab="deftargets"  onclick="switchTab('deftargets')" data-i18n="tab_deftargets">🛡 Defensive Targets</div>
   <div class="tab"         data-tab="defplan"     onclick="switchTab('defplan')"    data-i18n="tab_defplan">🛡 Plan Defense</div>
   <div class="tab"         data-tab="db"          onclick="switchTab('db')"         data-i18n="tab_db">🗃 Database</div>
@@ -536,6 +537,9 @@
   </div>
   <div id="plan-warnings" style="margin-top:12px;"></div>
   <div id="plan-summary" style="font-size:12px;color:#806030;margin:10px 0;"></div>
+  <div style="margin-bottom:8px;display:flex;justify-content:flex-end;">
+    <button class="btn btn-ghost btn-sm" onclick="exportPlanCoords()" data-i18n="btn_export_plan_coords" data-i18n-title="export_plan_coords_title" title="The plan's target coordinates, one per line — paste into the Target Village Orders Exporter userscript (incomingOrders.js), then import its export in Manage Offensive.">🎯 Export Coordinates</button>
+  </div>
   <div class="table-wrap">
     <table id="plan-table">
       <thead>
@@ -558,6 +562,59 @@
       <tbody id="plan-tbody"></tbody>
     </table>
   </div>
+</div>
+
+<!-- ═══════════════════════════ MANAGE OFFENSIVE (v4.0.0) ═══════════════════════════ -->
+<div class="tab-content" id="tab-manageoff">
+  <div class="section-header">
+    <h2 data-i18n="sec_manageoff">Manage Offensive</h2>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#a08050;cursor:pointer;white-space:nowrap;">
+        <input type="checkbox" id="mo-tip-toggle" checked onchange="updMoTipToggle(this.checked)">
+        <span data-i18n="mo_tip_toggle">Show units in command when hovering</span>
+      </label>
+      <span class="map-tb-sep"></span>
+      <button class="btn btn-primary btn-sm" onclick="toggleMoImport()" data-i18n="btn_mo_import">📥 Import Incoming Orders</button>
+      <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="clearManage()" data-i18n="btn_mo_clear">✕ Clear Import</button>
+    </div>
+  </div>
+  <div id="mo-import-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:8px;" data-i18n="mo_import_hint">Run the Target Village Orders Exporter userscript (incomingOrders.js) on the planned target coordinates, then paste its export here or load the downloaded file. JSON is preferred — it flags noble attacks reliably even for tribe mates; the CSV works too.</div>
+    <textarea id="mo-import-text" rows="6" style="width:100%;box-sizing:border-box;" spellcheck="false" data-i18n-placeholder="mo_import_ph" placeholder="Paste the incoming_orders export (CSV or JSON)…"></textarea>
+    <div style="margin-top:6px;display:flex;gap:8px;">
+      <input type="file" id="mo-import-file" accept=".txt,.json,.csv" style="display:none;" onchange="moLoadFile(this)">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('mo-import-file').click()" data-i18n="btn_load_file">📂 Load File</button>
+      <button class="btn btn-primary btn-sm" onclick="moLoadPaste()" data-i18n="btn_load_pasted">Load Pasted Data</button>
+    </div>
+  </div>
+  <div id="mo-import-status" style="font-size:12px;color:#5a3a18;margin-top:10px;"></div>
+  <div id="mo-summary" style="font-size:12px;color:#806030;margin:10px 0;"></div>
+  <div class="table-wrap">
+    <table id="mo-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th class="left" data-i18n="th_target">Target</th>
+          <th class="left" data-i18n="th_def_player">Defender</th>
+          <th data-i18n="th_type">Type</th>
+          <th class="left" data-i18n="th_source">Source</th>
+          <th class="left" data-i18n="th_player">Player</th>
+          <th data-i18n="th_window">Window</th>
+          <th data-i18n="th_mo_status">Status</th>
+          <th data-i18n="th_mo_power">Power</th>
+          <th class="left" data-i18n="th_mo_origin">Actual Origin</th>
+          <th class="left" data-i18n="th_mo_origin_player">Actual Player</th>
+          <th data-i18n="th_mo_dist_travel">Dist · Travel</th>
+          <th data-i18n="th_mo_arrival">Arrival</th>
+          <th data-i18n="th_mo_timing">Timing</th>
+        </tr>
+      </thead>
+      <tbody id="mo-tbody"></tbody>
+    </table>
+  </div>
+  <!-- Row-hover units tooltip (matched command's travelling units; map-tooltip look) -->
+  <div id="mo-tooltip"></div>
 </div>
 
 <!-- ═══════════════════════════ DEFENSIVE TARGETS (v3.0.0) ═══════════════════════════ -->
@@ -758,6 +815,7 @@
 <script src="js/timings.js"></script>
 <script src="js/offensive-targets.js"></script>
 <script src="js/plan.js"></script>
+<script src="js/manage-offensive.js"></script>
 <script src="js/defensive-targets.js"></script>
 <script src="js/defense-plan.js"></script>
 <script src="js/db.js"></script>
@@ -780,6 +838,10 @@ renderTargetTable();
 // Restore offensive targets + plan from localStorage and render their tabs
 loadOffensive();
 renderOffTargets();
+
+// Restore the imported incoming-orders snapshot BEFORE the first plan render
+// (renderPlanTable tail-calls renderManageTable, which reads it)
+loadManage();
 renderPlanTable();
 
 // Restore defensive targets + defensive plan from localStorage and render their tabs
@@ -832,14 +894,14 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.30.0 &nbsp;·&nbsp; 2026-07-06</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.0.0 &nbsp;·&nbsp; 2026-07-06</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
 <div class="modal-overlay" id="bb-modal" onclick="if(event.target===this)closeBBModal()">
   <div class="modal">
     <div class="modal-header">
-      <h3 data-i18n="bb_modal_title">BB Table — paste into tribe forum</h3>
+      <h3 data-i18n="bb_modal_title" id="bb-modal-title">BB Table — paste into tribe forum</h3>
       <button class="modal-close" onclick="closeBBModal()">✕</button>
     </div>
     <div class="modal-body">

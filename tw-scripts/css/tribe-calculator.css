@@ -499,6 +499,9 @@
     #map-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
     #map-canvas:active { cursor: grabbing; }
     #map-tooltip { position: absolute; display: none; z-index: 5; pointer-events: none; background: #160f04; border: 1px solid #4a3010; border-radius: 5px; padding: 7px 9px; font-size: 12px; color: #d4b483; box-shadow: 0 4px 14px rgba(0,0,0,.55); max-width: 240px; }
+    /* Manage Offensive row-hover units tooltip — same look, but fixed-positioned
+       (follows the cursor across a scrolling table, no wrapper offset math) */
+    #mo-tooltip { position: fixed; display: none; z-index: 50; pointer-events: none; background: #160f04; border: 1px solid #4a3010; border-radius: 5px; padding: 7px 9px; font-size: 12px; color: #d4b483; box-shadow: 0 4px 14px rgba(0,0,0,.55); max-width: 240px; }
     .map-tt-title { font-weight: 600; color: #f0c040; margin-bottom: 4px; }
     .map-tt-coord { color: #a07810; font-family: 'Consolas','Courier New',monospace; }
     .map-tt-cont { color: #7a5a2a; font-size: 11px; }

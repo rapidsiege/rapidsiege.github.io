@@ -281,6 +281,13 @@ function showBBTable(tableId = 'villages-table') {
 
 function closeBBModal() {
   document.getElementById('bb-modal').classList.remove('open');
+  // Reset the title in case an opener overrode it (e.g. Export Coordinates),
+  // so the next BB export shows the default again.
+  const h = document.getElementById('bb-modal-title');
+  if (h) {
+    if (h.dataset) h.dataset.i18n = 'bb_modal_title';
+    h.textContent = t('bb_modal_title');
+  }
 }
 
 function copyBBTable() {

@@ -23,7 +23,7 @@ function changeLang(l) {
   }
   renderTargetTable();
   renderOffTargets();
-  renderPlanTable();
+  renderPlanTable(); // tail-calls renderManageTable, so Manage Offensive re-translates too
   if (typeof renderDefTargets === 'function') renderDefTargets();
   if (typeof renderDefPlanTable === 'function') renderDefPlanTable();
   renderDbTable();
