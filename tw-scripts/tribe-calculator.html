@@ -586,6 +586,8 @@
       <input type="file" id="mo-import-file" accept=".txt,.json,.csv" style="display:none;" onchange="moLoadFile(this)">
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('mo-import-file').click()" data-i18n="btn_load_file">📂 Load File</button>
       <button class="btn btn-primary btn-sm" onclick="moLoadPaste()" data-i18n="btn_load_pasted">Load Pasted Data</button>
+      <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="moCopyScript()" data-i18n="btn_mo_copy_script" data-i18n-title="mo_copy_script_title" title="Copies the quickbar loader for the exporter userscript (incomingOrders.js) to the clipboard.">📋 Copy Script</button>
     </div>
   </div>
   <div id="mo-import-status" style="font-size:12px;color:#5a3a18;margin-top:10px;"></div>

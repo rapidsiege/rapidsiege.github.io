@@ -546,6 +546,23 @@ function moExtraRow(cmd, reason, tCoord) {
 }
 
 // ── Import UI ─────────────────────────────────────────────────────────────────
+// Quickbar loader for the exporter userscript — the "Copy Script" button puts it
+// on the clipboard, ready to paste into a game quickbar entry (or the URL bar).
+const MO_SCRIPT_SNIPPET = "javascript:$.getScript('https://rapidsiege.github.io/tw-scripts/incomingOrders.js?dl=0');";
+function moCopyScript() {
+  const done = () => alert(t('mo_script_copied'));
+  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(MO_SCRIPT_SNIPPET).then(done).catch(() => moFallbackCopy(MO_SCRIPT_SNIPPET, done));
+  else moFallbackCopy(MO_SCRIPT_SNIPPET, done);
+}
+function moFallbackCopy(txt, done) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = txt; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    done();
+  } catch (e) { alert(txt); }
+}
 function toggleMoImport() {
   const el = document.getElementById('mo-import-wrap');
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
