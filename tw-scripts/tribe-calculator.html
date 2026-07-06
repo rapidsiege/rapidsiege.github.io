@@ -12,6 +12,11 @@
 <div class="header">
   <h1>⚔ TW Tribe Calculator</h1>
   <div class="header-right">
+    <span style="display:flex;align-items:center;gap:6px;">
+      <label for="world-select" style="font-size:12px;color:#a08050;font-weight:600;" data-i18n="lbl_world">World:</label>
+      <select id="world-select" onchange="setWorld(this.value)"></select>
+      <span id="world-speeds" data-i18n-title="world_speeds_title" title="World speed · Unit speed" style="font-size:11px;color:#806030;"></span>
+    </span>
     <button id="lang-btn-en" class="btn btn-sm lang-btn lang-active" onclick="changeLang('en')"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 40'%3E%3Crect width='60' height='40' fill='%23012169'/%3E%3Cpath d='M0,0 L60,40 M60,0 L0,40' stroke='%23fff' stroke-width='8'/%3E%3Cpath d='M0,0 L60,40 M60,0 L0,40' stroke='%23C8102E' stroke-width='4'/%3E%3Cpath d='M30,0 V40 M0,20 H60' stroke='%23fff' stroke-width='12'/%3E%3Cpath d='M30,0 V40 M0,20 H60' stroke='%23C8102E' stroke-width='8'/%3E%3C/svg%3E" width="20" height="14" alt="" style="border-radius:2px"> EN</button>
     <button id="lang-btn-es" class="btn btn-sm lang-btn" onclick="changeLang('es')"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 40'%3E%3Crect width='60' height='40' fill='%23C60B1E'/%3E%3Crect y='10' width='60' height='20' fill='%23FFC400'/%3E%3C/svg%3E" width="20" height="14" alt="" style="border-radius:2px"> ES</button>
     <button class="btn btn-file btn-sm" onclick="document.getElementById('file-input').click()" data-i18n="btn_load_file">📂 Load File</button>
@@ -306,17 +311,17 @@
         <tr>
           <th class="left" onclick="sortTable('outbound',0)" data-i18n-th="th_coord">Coord <span class="sort-arrow"></span></th>
           <th class="left" onclick="sortTable('outbound',1)" data-i18n-th="th_player">Player <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('outbound',2)" data-i18n-th="th_type">Type <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',2)" data-i18n-th="th_off_target">Off Target <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',3)" data-i18n-th="th_target_player">Target Player <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',4)" data-i18n-th="th_type">Type <span class="sort-arrow"></span></th>
           <th data-i18n="th_tier">Tier</th>
-          <th onclick="sortTable('outbound',4)" data-i18n-th="th_axe">Axe <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('outbound',5)" data-i18n-th="th_spy">Spy <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('outbound',6)" data-i18n-th="th_light">Light <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('outbound',7)" data-i18n-th="th_ram">Ram <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('outbound',8)" data-i18n-th="th_cat">Cat <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('outbound',9)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('outbound',10)" data-i18n-th="th_off">Off <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('outbound',11)" data-i18n-th="th_off_target">Off Target <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('outbound',12)" data-i18n-th="th_target_player">Target Player <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',6)" data-i18n-th="th_axe">Axe <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',7)" data-i18n-th="th_spy">Spy <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',8)" data-i18n-th="th_light">Light <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',9)" data-i18n-th="th_ram">Ram <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',10)" data-i18n-th="th_cat">Cat <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',11)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('outbound',12)" data-i18n-th="th_off">Off <span class="sort-arrow"></span></th>
         </tr>
       </thead>
       <tbody id="outbound-tbody">
@@ -358,23 +363,6 @@
     </select>
     <label data-i18n="lbl_send_with">Send with:</label>
     <select id="target-pace-unit" onchange="renderTargetTable()"></select>
-    <label data-i18n="lbl_world_speed">World speed:</label>
-    <select id="target-world-speed" onchange="renderTargetTable()">
-      <option value="0.5">0.5×</option>
-      <option value="1">1×</option>
-      <option value="2" selected>2×</option>
-      <option value="3">3×</option>
-      <option value="5">5×</option>
-      <option value="10">10×</option>
-    </select>
-    <label data-i18n="lbl_unit_speed">Unit speed:</label>
-    <select id="target-unit-speed" onchange="renderTargetTable()">
-      <option value="0.25">0.25×</option>
-      <option value="0.5" selected>0.5×</option>
-      <option value="1">1×</option>
-      <option value="2">2×</option>
-      <option value="3">3×</option>
-    </select>
   </div>
   <div class="filter-row" style="margin-top:10px;">
     <input type="text" id="target-search" placeholder="Search player or coord…" oninput="renderTargetTable()">
@@ -521,23 +509,6 @@
     </div>
   </div>
   <div class="filter-row" style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
-    <label data-i18n="lbl_world_speed">World speed:</label>
-    <select id="plan-world-speed" onchange="saveSettings()">
-      <option value="0.5">0.5×</option>
-      <option value="1">1×</option>
-      <option value="2" selected>2×</option>
-      <option value="3">3×</option>
-      <option value="5">5×</option>
-      <option value="10">10×</option>
-    </select>
-    <label data-i18n="lbl_unit_speed">Unit speed:</label>
-    <select id="plan-unit-speed" onchange="saveSettings()">
-      <option value="0.25">0.25×</option>
-      <option value="0.5" selected>0.5×</option>
-      <option value="1">1×</option>
-      <option value="2">2×</option>
-      <option value="3">3×</option>
-    </select>
     <label data-i18n="lbl_min_dist">Off min distance:</label>
     <input type="number" id="plan-min-dist" value="0" min="0" style="width:70px;" title="0 = no minimum" oninput="saveSettings()">
     <label data-i18n="lbl_max_dist">Off max distance:</label>
@@ -665,23 +636,6 @@
     </div>
   </div>
   <div class="filter-row" style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
-    <label data-i18n="lbl_world_speed">World speed:</label>
-    <select id="plan-def-world-speed">
-      <option value="0.5">0.5×</option>
-      <option value="1">1×</option>
-      <option value="2" selected>2×</option>
-      <option value="3">3×</option>
-      <option value="5">5×</option>
-      <option value="10">10×</option>
-    </select>
-    <label data-i18n="lbl_unit_speed">Unit speed:</label>
-    <select id="plan-def-unit-speed">
-      <option value="0.25">0.25×</option>
-      <option value="0.5" selected>0.5×</option>
-      <option value="1">1×</option>
-      <option value="2">2×</option>
-      <option value="3">3×</option>
-    </select>
     <label data-i18n="lbl_def_min_dist">Def min distance:</label>
     <input type="number" id="plan-def-min-dist" value="0" min="0" style="width:70px;" title="0 = no minimum">
     <label data-i18n="lbl_def_max_dist">Def max distance:</label>
@@ -841,6 +795,11 @@ autoloadTroops();
 updateServerNow();
 if (typeof setInterval === 'function') setInterval(updateServerNow, 1000);
 
+// World dropdown: loadSettings() above restored twWorld, so the DB/config loads
+// below already point at the right data/<world>/ folder. In production the option
+// list is then extended asynchronously from data/worlds.json.
+initWorldSelect();
+
 // Village database: render empty state, then load per environment — production
 // (the live site) fetches the web mirror, development restores the local folder
 renderDbTable();
@@ -873,7 +832,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.28.0 &nbsp;·&nbsp; 2026-07-05</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">3.30.0 &nbsp;·&nbsp; 2026-07-06</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

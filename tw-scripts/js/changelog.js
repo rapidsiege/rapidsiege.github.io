@@ -12,6 +12,30 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v3.30.0', date: '2026-07-06',
+    en: [
+      `<b>⚙️ World speeds are now automatic.</b> The manual <b>World speed</b> / <b>Unit speed</b> selectors on Tribe Timings, Plan Offensive and Plan Defense are gone — these values are fixed per world and now come straight from the selected world's configuration. The current values are shown read-only next to the <b>World</b> dropdown (e.g. <b>World Speed: 2x | Unit Speed: 0.5x</b>).`,
+    ],
+    es: [
+      `<b>⚙️ Velocidades del mundo ahora automáticas.</b> Los selectores manuales de <b>Vel. mundo</b> / <b>Vel. unidades</b> en Tiempos de Tribu, Plan Ofensivo y Plan de Defensa han desaparecido — estos valores son fijos por mundo y ahora vienen directamente de la configuración del mundo seleccionado. Los valores actuales se muestran (solo lectura) junto al desplegable <b>Mundo</b> (ej. <b>Velocidad Mundo: 2x | Velocidad Unidades: 0.5x</b>).`,
+    ],
+  },
+  { ver: 'v3.29.0', date: '2026-07-06',
+    en: [
+      `<b>🌍 World selector.</b> A new <b>World</b> dropdown in the top-right (next to the language flags) lets the calculator work on any mirrored world instead of being hardwired to es100. Switching world reloads the village/player database from that world's data folder, reads the world's own configuration (<b>get_config.xml</b>) to set the correct <b>World speed</b> and <b>Unit speed</b> everywhere (Tribe Timings, Plan Offensive, Plan Defense — adding the speed as an option if it isn't a standard one), and points the rally/village links at that world's server. Your choice is remembered.`,
+    ],
+    es: [
+      `<b>🌍 Selector de mundo.</b> Un nuevo desplegable <b>Mundo</b> arriba a la derecha (junto a las banderas de idioma) permite usar la calculadora en cualquier mundo replicado en vez de estar fijada a es100. Al cambiar de mundo se recarga la base de datos de aldeas/jugadores desde la carpeta de datos de ese mundo, se lee la configuración propia del mundo (<b>get_config.xml</b>) para fijar la <b>Vel. mundo</b> y <b>Vel. unidades</b> correctas en todas partes (Tiempos de Tribu, Plan Ofensivo, Plan de Defensa — añadiendo la velocidad como opción si no es una estándar), y los enlaces al juego apuntan al servidor de ese mundo. Tu elección se recuerda.`,
+    ],
+  },
+  { ver: 'v3.28.1', date: '2026-07-06',
+    en: [
+      `<b>🧭 Outbound Offs: column layout polish.</b> The <b>Off Target</b> and <b>Target Player</b> columns moved next to <b>Player</b> (positions 3–4, before Type), and the Off Target link now keeps the same plain text style as the <b>Coord</b> column — underlined only, no link colour.`,
+    ],
+    es: [
+      `<b>🧭 Offs Fuera: retoque del orden de columnas.</b> Las columnas <b>Objetivo Off</b> y <b>Jugador Objetivo</b> se movieron junto a <b>Jugador</b> (posiciones 3–4, antes de Tipo), y el enlace de Objetivo Off ahora mantiene el mismo estilo de texto que la columna <b>Coord.</b> — solo subrayado, sin color de enlace.`,
+    ],
+  },
   { ver: 'v3.28.0', date: '2026-07-05',
     en: [
       `<b>🚀 Outbound Offs: plan targets + sharper columns.</b> The <b>Tier</b> badge now rates the <b>outbound army itself</b> (the off power currently flying) instead of the village's own off tier. Two new columns — <b>Off Target</b> and <b>Target Player</b> — show which <b>Plan Offensive</b> target that village's off was assigned to, with the coords linking to the target's <b>in-game village page</b>, so checking that an off is really flying at its assigned coordinates is one click. The columns fill in as soon as a plan is generated (— when the village isn't a sender in the current plan). To make room, the <b>Def Power</b> and <b>Knight</b> columns were removed.`,

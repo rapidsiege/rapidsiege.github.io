@@ -190,7 +190,7 @@ function getOffTier(offPow) {
 // prefix means the debug export/import already round-trips this key.
 const TRIBE_SETTINGS_KEY = 'tw_tribe_settings';
 // Plan Offensive controls that should survive a refresh (keyed by element id).
-const PLAN_SETTING_IDS = ['plan-world-speed', 'plan-unit-speed', 'plan-min-dist', 'plan-max-dist',
+const PLAN_SETTING_IDS = ['plan-min-dist', 'plan-max-dist',
   'plan-snob-max', 'plan-min-morale-off', 'plan-min-morale', 'plan-cat-count'];
 function saveSettings() {
   const v = id => document.getElementById(id)?.value;
@@ -199,6 +199,8 @@ function saveSettings() {
   try {
     localStorage.setItem(TRIBE_SETTINGS_KEY, JSON.stringify({
       lang: (typeof lang === 'string') ? lang : undefined,
+      world: (typeof twWorld === 'string') ? twWorld : undefined,
+      speeds: { world: twWorldSpeed, unit: twUnitSpeed }, // cache; worlds.json is authoritative
       thresholds: { complete: v('thresh-complete'), tq: v('thresh-tq'), half: v('thresh-half') },
       plan,
     }));
@@ -213,6 +215,14 @@ function loadSettings() {
   if (s.plan) for (const id of PLAN_SETTING_IDS) set(id, s.plan[id]);
   // The init block applies this via changeLang(lang) after loadSettings() sets the global.
   if (s.lang === 'en' || s.lang === 'es') lang = s.lang;
+  // Restore the selected world before the init block builds the dropdown / loads the DB,
+  // and its cached speeds for the window until worlds.json (prod) / the folder's
+  // get_config.xml (dev) delivers the authoritative values.
+  if (s.world && typeof s.world === 'string') twWorld = s.world;
+  if (s.speeds) {
+    if (parseFloat(s.speeds.world) > 0) twWorldSpeed = parseFloat(s.speeds.world);
+    if (parseFloat(s.speeds.unit)  > 0) twUnitSpeed  = parseFloat(s.speeds.unit);
+  }
 }
 
 // ── Off-power tier badge (shown in the Villages table's Tier column) ────────────
@@ -403,14 +413,14 @@ function renderOutboundTable() {
 
   if (search) data = data.filter(r => r.player.toLowerCase().includes(search) || r.coord.includes(search));
 
-  // Sort — column layout mirrors the <th> order: coord, player, type, TIER, 6 units,
-  // Off (out), Off Target, Target Player. Tier (3) isn't clickable but keeps its slot
-  // so indices line up.
+  // Sort — column layout mirrors the <th> order: coord, player, Off Target, Target
+  // Player, type, TIER, 6 units, Off (out). Tier (5) isn't clickable but keeps its
+  // slot so indices line up.
   const { col, dir } = sortState.outbound;
   if (col >= 0) {
     data.sort((a, b) => {
-      const vals = r => [r.coord, r.player, r.type, r.tier, ...OUTBOUND_UNITS.map(u => r.out[u]), r.outOffPow,
-                         r.tgt ? r.tgt.coord : '', r.tgt ? r.tgt.player : ''];
+      const vals = r => [r.coord, r.player, r.tgt ? r.tgt.coord : '', r.tgt ? r.tgt.player : '',
+                         r.type, r.tier, ...OUTBOUND_UNITS.map(u => r.out[u]), r.outOffPow];
       const av = vals(a)[col], bv = vals(b)[col];
       if (typeof av === 'string') return dir * av.localeCompare(bv);
       return dir * (bv - av);
@@ -428,21 +438,22 @@ function renderOutboundTable() {
 
   // Off Target links to the target's in-game info page when the world DB is loaded
   // (villageInfoUrl, plan.js) so "is this off really flying there?" is one click.
+  // The link keeps the Coord column's plain text color — only the underline marks it.
   const tgtCell = tgt => {
     if (!tgt) return '—';
     const url = (typeof villageInfoUrl === 'function') ? villageInfoUrl(tgt.coord) : null;
-    return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(tgt.coord)}</a>` : esc(tgt.coord);
+    return url ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:inherit;">${esc(tgt.coord)}</a>` : esc(tgt.coord);
   };
   const rows = data.map(r => `
     <tr>
       <td class="left" style="font-family:monospace;">${r.coord}</td>
       <td class="left"><span class="player-tag">${decode(r.player)}</span></td>
+      <td style="font-family:monospace;">${tgtCell(r.tgt)}</td>
+      <td class="left">${r.tgt && r.tgt.player ? `<span class="player-tag">${esc(r.tgt.player)}</span>` : '—'}</td>
       <td>${typeBadge[r.type]}</td>
       <td>${TIER_BADGE[r.tier]}</td>
       ${OUTBOUND_UNITS.map(u => numCell(r.out[u])).join('')}
       <td style="color:#e06040;">${fmtM(r.outOffPow)}</td>
-      <td style="font-family:monospace;">${tgtCell(r.tgt)}</td>
-      <td class="left">${r.tgt && r.tgt.player ? `<span class="player-tag">${esc(r.tgt.player)}</span>` : '—'}</td>
     </tr>
   `).join('');
 

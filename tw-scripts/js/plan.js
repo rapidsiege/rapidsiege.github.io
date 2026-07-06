@@ -147,8 +147,8 @@ function generatePlan() {
   if (!offTargets.length) { alert(t('plan_need_targets')); return; }
   offTargets.forEach(normalizeOffTarget);
 
-  const ws      = parseFloat(document.getElementById('plan-world-speed').value) || 1;
-  const us      = parseFloat(document.getElementById('plan-unit-speed').value) || 1;
+  const ws      = twWorldSpeed; // per-world config (World dropdown), not user-editable
+  const us      = twUnitSpeed;
   const maxDist = parseFloat(document.getElementById('plan-max-dist').value) || 0;
   const minDistRaw = parseFloat((document.getElementById('plan-min-dist') || {}).value);
   const minDist = isNaN(minDistRaw) ? 0 : minDistRaw;

@@ -150,8 +150,8 @@ function generateDefPlan() {
   if (!defTargets.length) { alert(t('def_need_targets')); return; }
   defTargets.forEach(normalizeDefTarget);
 
-  const ws = parseFloat((document.getElementById('plan-def-world-speed') || {}).value) || 1;
-  const us = parseFloat((document.getElementById('plan-def-unit-speed')  || {}).value) || 1;
+  const ws = twWorldSpeed; // per-world config (World dropdown), not user-editable
+  const us = twUnitSpeed;
   const minDist = parseFloat((document.getElementById('plan-def-min-dist') || {}).value) || 0;
   const maxDist = parseFloat((document.getElementById('plan-def-max-dist') || {}).value) || 0;
   const ignore  = parseDefIgnoreSet();

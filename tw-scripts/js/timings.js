@@ -94,8 +94,8 @@ function targetTimingData() {
 
   if (!villages.length || !target) return { mode, m, pace, target, data: null };
 
-  const ws     = parseFloat(document.getElementById('target-world-speed').value) || 1;
-  const us     = parseFloat(document.getElementById('target-unit-speed').value) || 1;
+  const ws     = twWorldSpeed; // per-world config (World dropdown), not user-editable
+  const us     = twUnitSpeed;
   const search = (document.getElementById('target-search').value || '').toLowerCase();
   const minPow = parseInt(document.getElementById('target-min-power').value) || 0;
   const minPts = parseInt(document.getElementById('target-min-points').value) || 0;

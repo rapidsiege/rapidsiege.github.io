@@ -21,6 +21,15 @@
     }
     .header h1 { color: #f0c040; font-size: 19px; letter-spacing: 0.5px; white-space: nowrap; }
     .header-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .header-right select {
+      background: #1a1008;
+      border: 1px solid #4a3010;
+      color: #d4b483;
+      padding: 5px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .header-right select:focus { outline: none; border-color: #c0900a; }
 
     /* ── File bar ── */
     .file-bar {

@@ -108,7 +108,7 @@ function buildDebugDump() {
     storage,
     settings: {
       thresholds: { complete: val('thresh-complete'), tq: val('thresh-tq'), half: val('thresh-half') },
-      plan: { worldSpeed: val('plan-world-speed'), unitSpeed: val('plan-unit-speed'),
+      plan: { worldSpeed: twWorldSpeed, unitSpeed: twUnitSpeed, // world config (same dump shape as pre-3.30)
               minDist: val('plan-min-dist'), maxDist: val('plan-max-dist'), snobMax: val('plan-snob-max'),
               minMorale: val('plan-min-morale'), minMoraleOff: val('plan-min-morale-off'),
               catCount: val('plan-cat-count') },
@@ -160,7 +160,10 @@ function importDebugDataFromText(text) {
   const set = (id, v) => { const e = document.getElementById(id); if (e && v != null && v !== '') e.value = v; };
   const s = dump.settings || {};
   if (s.thresholds) { set('thresh-complete', s.thresholds.complete); set('thresh-tq', s.thresholds.tq); set('thresh-half', s.thresholds.half); }
-  if (s.plan) { set('plan-world-speed', s.plan.worldSpeed); set('plan-unit-speed', s.plan.unitSpeed);
+  if (s.plan) { // speeds land on the world-config globals (covers pre-3.30 dumps too)
+                if (parseFloat(s.plan.worldSpeed) > 0) twWorldSpeed = parseFloat(s.plan.worldSpeed);
+                if (parseFloat(s.plan.unitSpeed)  > 0) twUnitSpeed  = parseFloat(s.plan.unitSpeed);
+                updWorldSpeedNote();
                 set('plan-min-dist', s.plan.minDist); set('plan-max-dist', s.plan.maxDist); set('plan-snob-max', s.plan.snobMax);
                 set('plan-min-morale', s.plan.minMorale); set('plan-min-morale-off', s.plan.minMoraleOff);
                 set('plan-cat-count', s.plan.catCount); }

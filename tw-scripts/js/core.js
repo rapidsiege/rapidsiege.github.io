@@ -6,7 +6,7 @@ let troopByCoord = {};  // 'x|y' → owned-troop row (map hover/badges); rebuilt
 let defenseByCoord = {};  // 'x|y' → stationed-troops row (defense type from tribe_everything.txt)
 let incomingByCoord = {}; // 'x|y' → inbound/returning troops row (incoming type)
 let players  = {};   // {playerName: {villages:[], totals:{...}, offPow, defInf, defCav}}
-let sortState = { players: {col:0,dir:1}, villages: {col:14,dir:1}, outbound: {col:10,dir:1} }; // villages: Off Power desc (col 14); outbound: Off desc (col 10)
+let sortState = { players: {col:0,dir:1}, villages: {col:14,dir:1}, outbound: {col:12,dir:1} }; // villages: Off Power desc (col 14); outbound: Off desc (col 12)
 let targetSort = { key: 'dist', dir: 1 }; // default: distance asc
 
 
@@ -28,6 +28,7 @@ function changeLang(l) {
   if (typeof renderDefPlanTable === 'function') renderDefPlanTable();
   renderDbTable();
   updateDbConnectBtn();
+  if (typeof updWorldSpeedNote === 'function') updWorldSpeedNote(); // header speeds note
   if (typeof renderChangelog === 'function') renderChangelog();
   if (typeof saveSettings === 'function') saveSettings(); // persist the language choice
 }

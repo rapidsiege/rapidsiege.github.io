@@ -39,11 +39,114 @@ let dbDirHandle   = null;
 let dbSearchTimer = null;
 
 // ── Environment: 'production' when served over http(s) (the GitHub Pages site,
-//    where a scheduled Action mirrors the world data under data/es100/);
+//    where a scheduled Action mirrors the world data under data/<world>/);
 //    'development' when opened from disk (file://) — uses local files instead.
 const TW_ENV = (typeof location !== 'undefined' && /^https?:$/.test(location.protocol))
   ? 'production' : 'development';
-const TW_DATA_URL = 'data/es100/';
+
+// ── World selection (header "World:" dropdown) ─────────────────────────────
+// Known mirrored worlds + their config (speed/unitSpeed from each world's
+// get_config.xml). In production this map is replaced by data/worlds.json (written
+// by the mirror Action: one entry per data/<world>/ folder, speeds pre-parsed from
+// the XML); this constant is the dev/file:// list and the fetch-failed fallback —
+// when a new world starts being mirrored, add it to the Action's worlds list AND here.
+const TW_WORLDS = { es100: { speed: 2, unitSpeed: 0.5 } };
+let twWorld = Object.keys(TW_WORLDS)[0]; // persisted in tw_tribe_settings (save/loadSettings)
+let twWorldsInfo = { ...TW_WORLDS };
+// The current world's speeds — fixed per world (no manual override since v3.30.0);
+// every travel-time consumer (Tribe Timings, Plan Offensive, Plan Defense) reads
+// these. Start from the default world's fallback entry; loadSettings() then restores
+// the persisted world AND its cached speeds (saved whenever a config was applied), and
+// worlds.json (prod) / the folder's get_config.xml (dev) delivers the authoritative
+// values — so a non-default-world user never actually plans on these initials.
+let twWorldSpeed = TW_WORLDS[twWorld].speed, twUnitSpeed = TW_WORLDS[twWorld].unitSpeed;
+const twDataUrl = () => `data/${twWorld}/`;
+
+// Pure: pull <speed> and <unit_speed> out of a world's get_config.xml (top-level
+// children of <config>; regex is fine on this machine-generated file). Returns
+// { speed, unitSpeed } with nulls for missing tags, or null when neither parses.
+function parseWorldConfig(xml) {
+  const num = tag => {
+    const m = String(xml || '').match(new RegExp('<' + tag + '>\\s*([0-9.]+)\\s*</' + tag + '>'));
+    const v = m ? parseFloat(m[1]) : NaN;
+    return isNaN(v) || v <= 0 ? null : v;
+  };
+  const speed = num('speed'), unitSpeed = num('unit_speed');
+  return speed == null && unitSpeed == null ? null : { speed, unitSpeed };
+}
+
+// Read-only "World Speed: 2x | Unit Speed: 0.5x" note next to the header dropdown
+// (re-rendered by changeLang on language switch).
+function updWorldSpeedNote() {
+  const n = document.getElementById('world-speeds');
+  if (n) n.textContent = t('world_speeds_note')(twWorldSpeed, twUnitSpeed);
+}
+
+// Adopt a world's speeds (from twWorldsInfo or a parsed get_config.xml). Speeds are
+// per-world facts — there is no manual override; each field only moves on a valid value.
+function applyWorldConfig(cfg) {
+  if (!cfg) return false;
+  let changed = false;
+  if (cfg.speed > 0)     { twWorldSpeed = cfg.speed; changed = true; }
+  if (cfg.unitSpeed > 0) { twUnitSpeed = cfg.unitSpeed; changed = true; }
+  if (!changed) return false;
+  updWorldSpeedNote();
+  saveSettings();       // speeds persist as the pre-fetch cache
+  renderTargetTable();  // Tribe Timings renders live travel times
+  return true;
+}
+
+function fillWorldSelect() {
+  const sel = document.getElementById('world-select');
+  if (!sel) return;
+  const worlds = [...new Set([...Object.keys(twWorldsInfo), twWorld])];
+  sel.innerHTML = worlds.map(w =>
+    `<option value="${esc(w)}"${w === twWorld ? ' selected' : ''}>${esc(w)}</option>`).join('');
+  sel.value = twWorld;
+}
+
+// Populate the header dropdown: the static map immediately, then (prod only) the
+// live manifest of mirrored data/<world>/ folders — which also carries each world's
+// speeds, so prod never needs to touch get_config.xml itself.
+async function initWorldSelect() {
+  fillWorldSelect();
+  updWorldSpeedNote();
+  if (TW_ENV !== 'production' || typeof fetch !== 'function') return;
+  try {
+    const info = await fetch('data/worlds.json').then(r => r.ok ? r.json() : null);
+    if (info && typeof info === 'object' && !Array.isArray(info) && Object.keys(info).length) {
+      twWorldsInfo = info;
+      fillWorldSelect();
+      applyWorldConfig(twWorldsInfo[twWorld]); // authoritative speeds for the saved world
+    }
+  } catch {}
+}
+
+// Dev only: read get_config.xml from the connected DB folder (the mirror layout) so
+// file:// picks up real speeds too. Prod gets speeds from worlds.json instead.
+async function loadWorldConfigFromDir() {
+  if (!dbDirHandle) return;
+  try {
+    const f = await dbDirHandle.getFileHandle('get_config.xml').then(h => h.getFile());
+    applyWorldConfig(parseWorldConfig(await f.text()));
+  } catch {}
+}
+
+// Header dropdown handler: switch world → persist, apply that world's speeds,
+// re-point the rally/info server URL, reload the DB from the new mirror folder (prod).
+function setWorld(w) {
+  w = String(w || '').trim();
+  if (!w || w === twWorld) return;
+  twWorld = w;
+  saveSettings();
+  applyWorldConfig(twWorldsInfo[w] || null);
+  otCfg.serverUrl = `${w}.guerrastribales.es`;
+  const su = document.getElementById('setting-server-url');
+  if (su) su.value = otCfg.serverUrl;
+  saveOffensive();
+  if (TW_ENV === 'production') loadDbFromWeb();
+  else loadWorldConfigFromDir();
+}
 
 // Format the mirror's last-updated ISO timestamp as UTC + browser-local + game-server clocks.
 // Falls back to the raw text if it doesn't parse.
@@ -61,11 +164,12 @@ function fmtUpdatedStamp(raw) {
 
 async function loadDbFromWeb() {
   try {
+    const base = twDataUrl();
     const [vText, pText, updated, aText] = await Promise.all([
-      fetch(TW_DATA_URL + 'village.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }),
-      fetch(TW_DATA_URL + 'player.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }),
-      fetch(TW_DATA_URL + 'last-updated.txt').then(r => r.ok ? r.text() : '').catch(() => ''),
-      fetch(TW_DATA_URL + 'ally.txt').then(r => r.ok ? r.text() : '').catch(() => ''),
+      fetch(base + 'village.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }),
+      fetch(base + 'player.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }),
+      fetch(base + 'last-updated.txt').then(r => r.ok ? r.text() : '').catch(() => ''),
+      fetch(base + 'ally.txt').then(r => r.ok ? r.text() : '').catch(() => ''),
     ]);
     setDbData(vText, pText, aText);
     if (updated.trim()) {
@@ -176,6 +280,7 @@ async function loadDbFromDir() {
       dbDirHandle.getFileHandle('ally.txt').then(h => h.getFile()).catch(() => null),
     ]);
     setDbData(await vFile.text(), await pFile.text(), aFile ? await aFile.text() : '');
+    loadWorldConfigFromDir(); // folder may carry the world's get_config.xml → speeds
   } catch (e) {
     document.getElementById('db-status').textContent = t('db_not_found');
   }
