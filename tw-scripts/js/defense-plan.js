@@ -143,6 +143,11 @@ function updDefEnemyDist() {
   defEnemyDist = el ? Math.max(0, parseInt(el.value, 10) || 0) : 0;
   saveDefensive();
 }
+function updDefFarFirst() {
+  const el = document.getElementById('plan-def-far-first');
+  defFarFirst = !!(el && el.checked);
+  saveDefensive();
+}
 function toggleDefEnemy() {
   const el = document.getElementById('dp-enemy-wrap');
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
@@ -232,14 +237,20 @@ function generateDefPlan() {
   // whole ignored players), inside the map-drawn area if one exists (passesCoordPolygon —
   // shared with Plan Offensive, honours "Select Reverse"; typed X|Y filters stay
   // offensive-only), not within the enemy-tribe radius, holding at least
-  // DEF_SENDER_MIN_POP farm pop in defensive troops (small garrisons are left alone).
-  // cap = def farm-pop. Ignored / filtered / enemy-adjacent / sub-threshold villages are
-  // excluded here so they inflate neither the candidate pool NOR a player's capacity weight.
-  const senders = villages.map(v => ({
-    v, c: parseCoordStr(v.coord), tag: dbTribeAt(v.coord),
-    stock: { spear: v.spear || 0, sword: v.sword || 0, spy: v.spy || 0, heavy: v.heavy || 0 },
-    cap: defPop(v),
-  })).filter(s => s.c && !ignore.has(s.v.coord) && !ignorePl.has(s.v.player)
+  // DEF_SENDER_MIN_POP farm pop of AVAILABLE defense (small garrisons are left alone).
+  // v4.5.0: stock AND cap are the AVAILABLE units (defAvailUnits — at home or incoming,
+  // capped at own troops), not the player's total troops: defense that is deployed
+  // elsewhere is never assigned, so no order ever implies recalling support. Without
+  // station data defAvailUnits falls back to raw troops (pre-4.5 behavior). Ignored /
+  // filtered / enemy-adjacent / sub-threshold villages are excluded here so they inflate
+  // neither the candidate pool NOR a player's capacity weight.
+  const senders = villages.map(v => {
+    const stock = defAvailUnits(v);
+    return {
+      v, c: parseCoordStr(v.coord), tag: dbTribeAt(v.coord),
+      stock, cap: DEF_OBJ_UNITS.reduce((s, u) => s + stock[u] * POP[u], 0),
+    };
+  }).filter(s => s.c && !ignore.has(s.v.coord) && !ignorePl.has(s.v.player)
     && passesCoordPolygon(s.c.x, s.c.y)
     && !nearEnemy(s) && s.cap >= DEF_SENDER_MIN_POP);
 
@@ -337,13 +348,19 @@ function generateDefPlan() {
     // ── Pass B — spread each player's allocation across their villages, keeping every
     // emitted order ≥ DEF_MIN_PACKET_POP farm pop (fewer, meatier trips). Use only as many
     // villages as that floor allows — k = ⌊totalPop / minPacket⌋, capped at the count of
-    // eligible villages — least-drained first (global per-village evenness). If those few
-    // can't hold a type (stock), it spills to the next eligible villages. ──
+    // eligible villages — least-drained first (global per-village evenness). With
+    // "Prioritize Sending From Far Villages" (defFarFirst) the pick order is instead
+    // FARTHEST-from-this-target first (drain ties, then coord), so leftover defense pools
+    // in the villages nearest the targets, ready to reinforce fastest. Player shares
+    // (Pass A) are untouched either way. If the chosen few can't hold a type (stock), it
+    // spills to the next eligible villages. ──
     for (const P in playerGive) {
       const give = playerGive[P];
       const candSet = new Set();
       for (const u of DEF_OBJ_UNITS) if (eligByType[u] && eligByType[u][P]) for (const si of eligByType[u][P]) candSet.add(si);
-      const cand = [...candSet].sort((a, b) => (vSentPop[a] - vSentPop[b]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1));
+      const cand = [...candSet].sort(defFarFirst
+        ? ((a, b) => (dist(senders[b], T) - dist(senders[a], T)) || (vSentPop[a] - vSentPop[b]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1))
+        : ((a, b) => (vSentPop[a] - vSentPop[b]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1)));
       const totalPop = DEF_OBJ_UNITS.reduce((s, u) => s + (give[u] || 0) * POP[u], 0);
       const k = Math.min(cand.length, Math.max(1, Math.floor(totalPop / DEF_MIN_PACKET_POP)));
       for (const u of DEF_OBJ_UNITS) {

@@ -12,6 +12,22 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.5.0', date: '2026-07-07',
+    en: [
+      `<b>📤 Prioritize Sending From Far Villages (Plan Defense).</b> A new checkbox next to Generate Defense: when on, each player's support is drawn from their villages <b>furthest from the target</b> first (instead of most-evenly). Who sends how much doesn't change — the capacity balancing stays — only <b>which of their villages</b> the troops leave from. The point: leftover defense pools in the villages <b>nearest</b> the targets, where it can reinforce fastest and is easiest to replenish. The setting is remembered.`,
+    ],
+    es: [
+      `<b>📤 Priorizar Envío Desde Aldeas Lejanas (Plan de Defensa).</b> Nueva casilla junto a Generar Defensa: al activarla, el apoyo de cada jugador se envía primero desde sus aldeas <b>más alejadas del objetivo</b> (en vez de repartirse de la forma más uniforme). Quién envía cuánto no cambia — el balanceo por capacidad se mantiene — solo <b>desde cuáles de sus aldeas</b> salen las tropas. El objetivo: la defensa sobrante se acumula en las aldeas <b>más cercanas</b> a los objetivos, donde puede reforzar más rápido y es más fácil de reponer. La opción se recuerda.`,
+    ],
+  },
+  { ver: 'v4.4.1', date: '2026-07-07',
+    en: [
+      `<b>🛡 Plan Defense now allocates only AVAILABLE defense.</b> Support orders are drawn from what each village actually has at home or incoming — defense deployed elsewhere is never assigned, so no order ever implies recalling support. The whole balancing follows suit: a player's capacity share is their <b>available</b> def pop (not their total troops), and the ≥4,000-pop sender floor now means 4,000 pop <b>available</b>. The "Support per Player" summary should no longer show red over-asks. With a plain tribe-info file (no garrison data) everything behaves as before.`,
+    ],
+    es: [
+      `<b>🛡 El Plan de Defensa ahora solo asigna defensa DISPONIBLE.</b> Las órdenes de apoyo salen de lo que cada pueblo tiene realmente en casa o en camino — la defensa desplegada fuera nunca se asigna, así que ninguna orden implica retirar apoyo. Todo el balanceo sigue la misma regla: la cuota de capacidad de un jugador es su pob. def. <b>disponible</b> (no sus tropas totales), y el mínimo de ≥4.000 pob. para remitentes ahora significa 4.000 pob. <b>disponibles</b>. El resumen "Apoyo por Jugador" ya no debería mostrar excesos en rojo. Con un archivo simple de tropas (sin datos de guarnición) todo se comporta como antes.`,
+    ],
+  },
   { ver: 'v4.4.0', date: '2026-07-07',
     en: [
       `<b>🎯 Draw Coordinate Filter now applies to Plan Defense too.</b> The area you draw on the Map restricts defensive support senders exactly like offensive ones: villages outside it are never asked to send support (they simply drop out of the pool, so they don't skew anyone's capacity share either). A teal note next to the Generate Defense button shows whenever a map area is active, so the shared filter can't surprise you.`,

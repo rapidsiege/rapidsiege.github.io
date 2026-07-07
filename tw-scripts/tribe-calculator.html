@@ -716,6 +716,10 @@
     <input type="number" id="plan-def-min-dist" value="0" min="0" style="width:70px;" title="0 = no minimum">
     <label data-i18n="lbl_def_max_dist">Def max distance:</label>
     <input type="number" id="plan-def-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited">
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;" data-i18n-title="def_far_first_t" title="Support is drawn from each player's villages FURTHEST from the target first, so leftover defense sits nearest the targets — ready to reinforce quickly and easy to replenish.">
+      <input type="checkbox" id="plan-def-far-first" onchange="updDefFarFirst()">
+      <span data-i18n="lbl_def_far_first">Prioritize Sending From Far Villages</span>
+    </label>
     <button class="btn btn-primary btn-sm" onclick="generateDefPlan()" data-i18n="btn_def_generate">🛡 Generate Defense</button>
     <span id="dp-poly-note" style="font-size:12px;color:#4fd0c0;font-weight:600;"></span>
   </div>
@@ -742,7 +746,7 @@
     </table>
   </div>
   <div id="defplan-player-summary"></div>
-  <p style="font-size:12px;color:#5a3a18;margin-top:12px;" data-i18n="defplan_note">Intra-tribe support only, from villages with ≥4,000 def pop. Bigger defenders send more; troops are spread evenly across a player's villages, ≥400 pop per order.</p>
+  <p style="font-size:12px;color:#5a3a18;margin-top:12px;" data-i18n="defplan_note">Intra-tribe support only, from villages with ≥4,000 def pop AVAILABLE (at home or incoming — defense deployed elsewhere is never recalled). Bigger defenders send more; troops are spread evenly across a player's villages, ≥400 pop per order.</p>
 </div>
 
 <!-- ═══════════════════════════ DATABASE ═══════════════════════════ -->
@@ -915,7 +919,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.4.0 &nbsp;·&nbsp; 2026-07-07</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.5.0 &nbsp;·&nbsp; 2026-07-07</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

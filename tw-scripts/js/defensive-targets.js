@@ -18,17 +18,14 @@ let defIgnore        = ''; // raw "Ignore Coordinates" textarea (Plan Defense) �
 let defIgnorePlayers = []; // raw player names whose villages never send support (Plan Defense)
 let defEnemyTribes   = ''; // raw "Enemy Tribes" textarea (Plan Defense) — one tribe tag/name per line
 let defEnemyDist     = 0;  // "Distance from enemy tribes" (fields); 0 = filter off
+let defFarFirst      = false; // "Prioritize Sending From Far Villages" — source each player's share farthest-from-target first
 let defPlanRows      = []; // generated support assignments (Plan Defense)
 let defPlanWarnings  = [];
 let dtNextId         = 1;
 
-// Farm population a village's defensive troops occupy (the 4 objective types only).
-// Drives capacity-proportional sender load in Plan Defense ("most def troops send more").
-function defPop(v) { return DEF_OBJ_UNITS.reduce((s, u) => s + (v[u] || 0) * POP[u], 0); }
-
 function saveDefensive() {
   localStorage.setItem(DT_STORE_KEY, JSON.stringify({
-    cfg: dtCfg, targets: defTargets, ignore: defIgnore, ignorePlayers: defIgnorePlayers, enemyTribes: defEnemyTribes, enemyDist: defEnemyDist,
+    cfg: dtCfg, targets: defTargets, ignore: defIgnore, ignorePlayers: defIgnorePlayers, enemyTribes: defEnemyTribes, enemyDist: defEnemyDist, farFirst: defFarFirst,
     plan: defPlanRows, warnings: defPlanWarnings, nextId: dtNextId,
   }));
 }
@@ -43,6 +40,7 @@ function loadDefensive() {
       defIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
       defEnemyTribes  = typeof d.enemyTribes === 'string' ? d.enemyTribes : '';
       defEnemyDist    = Math.max(0, parseInt(d.enemyDist, 10) || 0);
+      defFarFirst     = d.farFirst === true;
       defPlanRows     = d.plan || [];
       defPlanWarnings = d.warnings || [];
       dtNextId        = d.nextId || (Math.max(0, ...defTargets.map(x => x.id)) + 1);
@@ -59,6 +57,8 @@ function loadDefensive() {
   const enm = document.getElementById('dp-enemy-input');
   if (enm) enm.value = defEnemyTribes;
   setVal('plan-def-enemy-dist', defEnemyDist || 0);
+  const ff = document.getElementById('plan-def-far-first');
+  if (ff) ff.checked = defFarFirst;
   renderDefIgnorePlayers();
   updDefPolyNote(); // a saved map-area filter must be visible from the first paint
 }
