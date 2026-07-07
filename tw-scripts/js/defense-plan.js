@@ -68,6 +68,59 @@ function toggleDefIgnore() {
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
+// Anti-surprise (v4.4.0): the map-drawn coordinate filter is SHARED with Plan Offensive and
+// silently restricts defense senders too — advertise it next to the Generate button whenever
+// an area is active (mirrors the Plan-Off #pcf-summary chip).
+function updDefPolyNote() {
+  const el = document.getElementById('dp-poly-note');
+  if (!el) return;
+  el.textContent = (typeof coordPolygonActive === 'function' && coordPolygonActive())
+    ? t('coord_filter_active')(coordPolygonLabel()) : '';
+}
+
+// ── Ignore Players (Plan Defense): whole players held home — none of their villages
+// send support. Mirrors the Offensive Targets picker (chips + select); state lives in
+// defensive-targets.js (defIgnorePlayers) and is applied to the sender pool in
+// generateDefPlan(). ──
+function toggleDefIgnorePlayers() {
+  const el = document.getElementById('dp-ignore-players-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+// Loaded troop-file players not already ignored, alphabetical (label shows village count).
+function defIgnorePlayerOptions() {
+  const ig = new Set(defIgnorePlayers);
+  return Object.keys(players)
+    .filter(name => !ig.has(name))
+    .map(name => ({ name, villages: players[name].villages.length }))
+    .sort((a, b) => decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
+}
+function addDefIgnorePlayer(name) {
+  if (!name || defIgnorePlayers.includes(name)) return;
+  defIgnorePlayers.push(name);
+  saveDefensive(); renderDefIgnorePlayers();
+}
+function removeDefIgnorePlayer(idx) {
+  defIgnorePlayers.splice(idx, 1);
+  saveDefensive(); renderDefIgnorePlayers();
+}
+// Chip list of ignored players + picker (same chip/select markup as the offensive one).
+function renderDefIgnorePlayers() {
+  const host = document.getElementById('dp-ignore-players-host');
+  if (!host) return;
+  if (!Object.keys(players).length && !defIgnorePlayers.length) {
+    host.innerHTML = `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+    return;
+  }
+  const chips = defIgnorePlayers.map((name, i) =>
+    `<span class="chip">${esc(decode(name))}<span class="chip-x" onclick="removeDefIgnorePlayer(${i})">✕</span></span>`).join('');
+  const opts = defIgnorePlayerOptions();
+  const picker = `<select class="cell-input" style="width:170px;" onchange="addDefIgnorePlayer(this.value)">
+       <option value="">${t('opt_pick_ignore_player')}</option>
+       ${opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('')}
+     </select>`;
+  host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}${picker}</div>`;
+}
+
 // ── Enemy Tribes: bar senders too close to a hostile tribe's villages ──
 // The "Enemy Tribes" textarea holds tribe tags/names (one per line); "Distance from enemy
 // tribes" is a field radius. A sender within that radius of ANY village owned by ANY listed
@@ -155,6 +208,7 @@ function generateDefPlan() {
   const minDist = parseFloat((document.getElementById('plan-def-min-dist') || {}).value) || 0;
   const maxDist = parseFloat((document.getElementById('plan-def-max-dist') || {}).value) || 0;
   const ignore  = parseDefIgnoreSet();
+  const ignorePl = new Set(defIgnorePlayers);
   const enemyDist = parseFloat((document.getElementById('plan-def-enemy-dist') || {}).value) || 0;
   const enemySet  = parseDefEnemySet();
 
@@ -174,16 +228,20 @@ function generateDefPlan() {
   }
   const nearEnemy = s => enemyCoords.length > 0 && enemyCoords.some(e => distXY(s.c, e) <= enemyDist);
 
-  // Senders: our troop villages with a parseable coord, not on the ignore list, not within
-  // the enemy-tribe radius, holding at least DEF_SENDER_MIN_POP farm pop in defensive troops
-  // (small garrisons are left alone). cap = def farm-pop. Ignored / enemy-adjacent / sub-
-  // threshold villages are excluded here so they inflate neither the candidate pool NOR a
-  // player's capacity weight.
+  // Senders: our troop villages with a parseable coord, not on the ignore list (coords OR
+  // whole ignored players), inside the map-drawn area if one exists (passesCoordPolygon —
+  // shared with Plan Offensive, honours "Select Reverse"; typed X|Y filters stay
+  // offensive-only), not within the enemy-tribe radius, holding at least
+  // DEF_SENDER_MIN_POP farm pop in defensive troops (small garrisons are left alone).
+  // cap = def farm-pop. Ignored / filtered / enemy-adjacent / sub-threshold villages are
+  // excluded here so they inflate neither the candidate pool NOR a player's capacity weight.
   const senders = villages.map(v => ({
     v, c: parseCoordStr(v.coord), tag: dbTribeAt(v.coord),
     stock: { spear: v.spear || 0, sword: v.sword || 0, spy: v.spy || 0, heavy: v.heavy || 0 },
     cap: defPop(v),
-  })).filter(s => s.c && !ignore.has(s.v.coord) && !nearEnemy(s) && s.cap >= DEF_SENDER_MIN_POP);
+  })).filter(s => s.c && !ignore.has(s.v.coord) && !ignorePl.has(s.v.player)
+    && passesCoordPolygon(s.c.x, s.c.y)
+    && !nearEnemy(s) && s.cap >= DEF_SENDER_MIN_POP);
 
   const capByPlayer = {};
   for (const s of senders) capByPlayer[s.v.player] = (capByPlayer[s.v.player] || 0) + s.cap;
@@ -362,6 +420,8 @@ function renderDefPlanTable() {
   if (!tbody) return;
   if (!defPlanRows.length) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="11">${t('empty_no_def_plan')}</td></tr>`;
+    renderDefPlayerSummary(); // clears the per-player summary too
+    updDefPolyNote();
     return;
   }
   let lastT = null;
@@ -392,6 +452,76 @@ function renderDefPlanTable() {
       <td>${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">🛡</a>` : '—'}<button class="btn btn-ghost btn-sm" style="margin-left:4px;" onclick="delDefPlanRow(${i})">✕</button></td>
     </tr>`;
   }).join('');
+  renderDefPlayerSummary();
+  updDefPolyNote();
+}
+
+// ── Per-player support summary (v4.2.0): sending vs actually-available defense ──────────
+// "Available" mirrors Outbound Offs' station math (troops − defense − incoming = deployed):
+// per unit, available = stationed defense + incoming, capped at the village's OWN troops —
+// so own troops deployed elsewhere don't count, and support from other players garrisoned
+// in the village never inflates the owner's numbers. Without station data (a plain
+// tribe-info file, no defense/incoming rows) the math is meaningless — fall back to own
+// troops (the rendered note says so).
+function defAvailUnits(v) {
+  const station = hasStationData();
+  const de  = station ? (defenseByCoord[v.coord]  || {}) : null;
+  const inc = station ? (incomingByCoord[v.coord] || {}) : null;
+  const avail = {};
+  for (const u of DEF_OBJ_UNITS)
+    avail[u] = station ? Math.min(v[u] || 0, (de[u] || 0) + (inc[u] || 0)) : (v[u] || 0);
+  return avail;
+}
+
+// Pure seam: [{player, avail:{spear,sword,spy,heavy}, sending:{…}}] for every player with
+// any available defense or any assigned send, biggest available def-pop first. Keyed by
+// DECODED name — plan rows carry a decoded srcPlayer while troop rows are raw.
+function computeDefPlayerSummary(rows, vils) {
+  const by = {};
+  const entry = name => by[name] || (by[name] = {
+    player: name,
+    avail:   { spear: 0, sword: 0, spy: 0, heavy: 0 },
+    sending: { spear: 0, sword: 0, spy: 0, heavy: 0 },
+  });
+  for (const v of vils || []) {
+    const a = defAvailUnits(v), e = entry(decode(v.player));
+    for (const u of DEF_OBJ_UNITS) e.avail[u] += a[u];
+  }
+  for (const r of rows || []) {
+    const e = entry(r.srcPlayer);
+    for (const u of DEF_OBJ_UNITS) e.sending[u] += (r.units && r.units[u]) || 0;
+  }
+  const pop = tally => DEF_OBJ_UNITS.reduce((s, u) => s + tally[u] * POP[u], 0);
+  return Object.values(by)
+    .filter(e => pop(e.avail) > 0 || pop(e.sending) > 0)
+    .sort((a, b) => (pop(b.avail) - pop(a.avail)) || a.player.toLowerCase().localeCompare(b.player.toLowerCase()));
+}
+
+// Rendered under the plan table (tail-called from renderDefPlanTable, so it refreshes on
+// generate / row delete / clear / language switch). Needs the troop file — a plan restored
+// from localStorage alone has nothing to summarize against.
+function renderDefPlayerSummary() {
+  const host = document.getElementById('defplan-player-summary');
+  if (!host) return;
+  if (!defPlanRows.length || !villages.length) { host.innerHTML = ''; return; }
+  const data = computeDefPlayerSummary(defPlanRows, villages);
+  if (!data.length) { host.innerHTML = ''; return; }
+  const totals = { player: t('def_sum_total'), avail: { spear: 0, sword: 0, spy: 0, heavy: 0 }, sending: { spear: 0, sword: 0, spy: 0, heavy: 0 } };
+  for (const e of data) for (const u of DEF_OBJ_UNITS) { totals.avail[u] += e.avail[u]; totals.sending[u] += e.sending[u]; }
+  const cells = e => DEF_OBJ_UNITS.map(u => {
+    const over = e.sending[u] > e.avail[u];
+    return `<td><span style="${over ? 'color:#e06040;font-weight:600;' : ''}"${over ? ` title="${esc(t('def_sum_over_title'))}"` : ''}>${e.sending[u].toLocaleString()}</span><span style="color:#5a3a18;"> / ${e.avail[u].toLocaleString()}</span></td>`;
+  }).join('');
+  host.innerHTML = `
+    <div style="font-size:13px;color:#a08050;font-weight:600;margin:16px 0 4px;">${esc(t('def_sum_title'))}</div>
+    <div style="font-size:12px;color:#5a3a18;margin-bottom:8px;">${esc(t(hasStationData() ? 'def_sum_note' : 'def_sum_note_nostation'))}</div>
+    <div class="table-wrap"><table>
+      <thead><tr><th class="left">${t('th_player')}</th>${DEF_OBJ_UNITS.map(u => `<th>${twIcon(u)}</th>`).join('')}</tr></thead>
+      <tbody>
+        ${data.map(e => `<tr><td class="left"><span class="player-tag">${esc(e.player)}</span></td>${cells(e)}</tr>`).join('')}
+        <tr style="font-weight:600;"><td class="left" style="border-top:2px solid #7a5c10;">${esc(totals.player)}</td>${cells(totals).replace(/<td>/g, '<td style="border-top:2px solid #7a5c10;">')}</tr>
+      </tbody>
+    </table></div>`;
 }
 
 // ── Per-player BB export: origin → destination support, with the pre-filled rally URL ──

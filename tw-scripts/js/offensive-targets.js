@@ -18,10 +18,14 @@ let offMvPairs       = []; // [[rawA, rawB], …] vacation-mode pairs: two paire
 // village. Applied to the sender pool in generatePlan() — see passesCoordFilters() in plan.js.
 let planCoordFilters = [];
 // Draw Coordinate Filter (Map tab): a polygon of world-space {x,y} vertices (TW grid 0..999).
-// When it has ≥3 vertices, a village must be INSIDE it (pointInPolygon) to be used as a sender,
-// on top of any typed planCoordFilters (AND). Drawn/edited on the map; persisted here so it
-// survives reload and rides along with the plan. Empty / <3 pts = no area constraint.
+// When it has ≥3 vertices, a village must be INSIDE it (pointInPolygon) to be used as a sender
+// — in Plan Offensive on top of any typed planCoordFilters (AND), and (v4.4.0) in Plan Defense
+// too (the typed filters stay offensive-only). "Select Reverse" (map draw bar) flips the gate:
+// with planCoordPolygonInv true a sender must be OUTSIDE the shape. Drawn/edited on the map;
+// persisted here so it survives reload and rides along with the plan. Empty / <3 pts = no
+// area constraint either way. Gate = passesCoordPolygon (map.js).
 let planCoordPolygon = [];
+let planCoordPolygonInv = false;
 let planRows     = []; // denormalized so a saved plan renders without the troop file loaded
 let planWarnings = [];
 let planReserved = []; // coords of noble-launch villages held out of the offs (excluded from Unused Offs)
@@ -38,7 +42,7 @@ function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&qu
 function saveOffensive() {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
     cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, mvPairs: offMvPairs,
-    coordFilters: planCoordFilters, coordPolygon: planCoordPolygon,
+    coordFilters: planCoordFilters, coordPolygon: planCoordPolygon, coordPolygonInv: planCoordPolygonInv,
     plan: planRows, warnings: planWarnings, reserved: planReserved, stats: planStats, nextId: otNextId,
   }));
 }
@@ -53,6 +57,7 @@ function loadOffensive() {
       offIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
       offMvPairs       = Array.isArray(d.mvPairs) ? d.mvPairs.filter(p => Array.isArray(p) && p.length === 2 && p[0] && p[1] && p[0] !== p[1]) : [];
       planCoordFilters = Array.isArray(d.coordFilters) ? d.coordFilters.filter(f => f && (f.axis === 'x' || f.axis === 'y')) : [];
+      planCoordPolygonInv = d.coordPolygonInv === true;
       planCoordPolygon = Array.isArray(d.coordPolygon)
         ? d.coordPolygon.filter(p => p && p.x != null && p.y != null && p.x !== '' && p.y !== '' && isFinite(p.x) && isFinite(p.y)).map(p => ({ x: +p.x, y: +p.y }))
         : [];
@@ -160,12 +165,17 @@ function updCoordFilterSummary() {
   const parts = [];
   const s = coordFilterSummary();
   if (s) parts.push(s);
-  if (coordPolygonActive()) parts.push(t('coord_filter_poly')(planCoordPolygon.length));
+  if (coordPolygonActive()) parts.push(coordPolygonLabel());
   sum.textContent = parts.length ? t('coord_filter_active')(parts.join('  ∧  ')) : '';
 }
 // True when the drawn filter area is a usable region (≥3 vertices → has interior).
 function coordPolygonActive() {
   return Array.isArray(planCoordPolygon) && planCoordPolygon.length >= 3;
+}
+// Chip/label text for the drawn area — says "outside" when Select Reverse is on, so every
+// place that advertises the filter (Plan-Off chip + panel line, Plan-Def note) agrees.
+function coordPolygonLabel() {
+  return t(planCoordPolygonInv ? 'coord_filter_poly_inv' : 'coord_filter_poly')(planCoordPolygon.length);
 }
 // Panel line reflecting the map-drawn area (with a Clear button) so the typed rows AND the
 // polygon are visible in one place — AND-composition is otherwise invisible/surprising.
@@ -173,7 +183,7 @@ function renderCoordPolygonStatus() {
   const el = document.getElementById('pcf-poly');
   if (!el) return;
   if (coordPolygonActive()) {
-    el.innerHTML = `<span style="color:#4fd0c0;font-weight:600;">${esc(t('coord_filter_poly')(planCoordPolygon.length))}</span> `
+    el.innerHTML = `<span style="color:#4fd0c0;font-weight:600;">${esc(coordPolygonLabel())}</span> `
       + `<button class="btn btn-ghost btn-sm" onclick="clearCoordPolygon()">${esc(t('coord_filter_clear_area'))}</button>`
       + `<span style="font-size:12px;color:#5a3a18;margin-left:6px;">${esc(t('coord_filter_poly_hint'))}</span>`;
   } else {
@@ -184,9 +194,11 @@ function renderCoordPolygonStatus() {
 // draw bar when those are present (both guarded — headless/inactive-tab safe).
 function clearCoordPolygon() {
   planCoordPolygon = [];
+  planCoordPolygonInv = false; // no area → nothing to reverse; a stale inversion would surprise
   saveOffensive();
   updCoordFilterSummary();
   if (typeof updateDrawFilterBar === 'function') updateDrawFilterBar();
+  if (typeof updDefPolyNote === 'function') updDefPolyNote();
   if (typeof repaintMapData === 'function') repaintMapData();
 }
 // One-line summary of the active filters (blank/incomplete rows omitted). '' when none active.

@@ -563,6 +563,7 @@
     #map-drawfilter-btn.active { background: #123a36; color: #4fd0c0; border-color: #2a7a70; }
     #map-drawfilter-bar { position: absolute; left: 8px; bottom: 8px; z-index: 4; display: flex; align-items: center; gap: 8px; background: rgba(14,10,3,.93); border: 1px solid #2a5a54; border-radius: 6px; padding: 6px 9px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }
     #map-drawfilter-bar .map-extract-count { color: #4fd0c0; }
+    #map-drawfilter-rev.active { background: #123a36; color: #4fd0c0; border-color: #2a7a70; }
     /* Barb Finder */
     #map-barb-btn.active { background: #3a2808; color: #f0c040; border-color: #7a5018; }
     #map-barb-finder { position: absolute; top: 8px; left: 8px; z-index: 4; width: 250px; max-height: calc(100% - 16px); display: flex; flex-direction: column; background: rgba(14,10,3,.93); border: 1px solid #3a2808; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }
@@ -574,6 +575,10 @@
        .map-barb-head / .map-barb-close / .map-barb-body for the chrome. */
     #map-heatcfg { position: absolute; top: 8px; left: 8px; z-index: 4; width: 220px; max-height: calc(100% - 16px); display: flex; flex-direction: column; background: rgba(14,10,3,.93); border: 1px solid #3a2808; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }
     #map-heatcfg-btn.active { background: #3a2808; color: #f0c040; border-color: #7a5018; }
+    /* Player Filter flying menu — same left-side dock + chrome as the Barb Finder (reuses
+       .map-barb-head / .map-barb-close / .map-barb-body / .map-barb-sel / .map-barb-list). */
+    #map-player-filter { position: absolute; top: 8px; left: 8px; z-index: 4; width: 250px; max-height: calc(100% - 16px); display: flex; flex-direction: column; background: rgba(14,10,3,.93); border: 1px solid #3a2808; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }
+    #map-pfilter-btn.active, #map-tpfilter-btn.active { background: #3a2808; color: #f0c040; border-color: #7a5018; }
     .map-heatcfg-inc { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
     /* Off-tier filter chips: a horizontal row of clickable tier badges. Full colour = shown;
        click to fade (.off) and hide that tier's villages on the map. */

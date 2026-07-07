@@ -12,6 +12,40 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.4.0', date: '2026-07-07',
+    en: [
+      `<b>🎯 Draw Coordinate Filter now applies to Plan Defense too.</b> The area you draw on the Map restricts defensive support senders exactly like offensive ones: villages outside it are never asked to send support (they simply drop out of the pool, so they don't skew anyone's capacity share either). A teal note next to the Generate Defense button shows whenever a map area is active, so the shared filter can't surprise you.`,
+      `<b>⇄ Select Reverse.</b> A new button in the map's drawing bar (next to Undo point / Clear area) flips the drawn area: senders must be OUTSIDE the shape instead of inside — draw a circle around the front line and reverse it to send only from the safe hinterland. The map tint moves to the selected side, the button stays highlighted while reversed, and every filter chip (Plan Offensive and Plan Defense) switches to "outside map area". Clearing the area also resets the reversal.`,
+    ],
+    es: [
+      `<b>🎯 El Filtro de Coordenadas Dibujado ahora también aplica al Plan de Defensa.</b> El área que dibujas en el Mapa restringe los remitentes de apoyo defensivo igual que los ofensivos: a los pueblos fuera de ella nunca se les pide enviar apoyo (simplemente salen del grupo de candidatos, así que tampoco distorsionan la cuota de capacidad de nadie). Una nota verde azulada junto al botón Generar Defensa aparece siempre que hay un área activa, para que el filtro compartido no te sorprenda.`,
+      `<b>⇄ Selección Inversa.</b> Un nuevo botón en la barra de dibujo del mapa (junto a Deshacer punto / Borrar área) invierte el área dibujada: los remitentes deben estar FUERA de la forma en vez de dentro — dibuja un círculo alrededor del frente e inviértelo para enviar solo desde la retaguardia segura. El tinte del mapa se mueve al lado seleccionado, el botón queda resaltado mientras está invertido, y todas las etiquetas del filtro (Plan Ofensivo y Plan de Defensa) cambian a "fuera del área del mapa". Borrar el área también restablece la inversión.`,
+    ],
+  },
+  { ver: 'v4.3.0', date: '2026-07-07',
+    en: [
+      `<b>👤 Filter Player on the Map.</b> Two new toolbar buttons: <b>Filter Player</b> searches ANY player in the world database (type a name, pick from the matches), and <b>Filter Tribe Player</b> picks among the players in the loaded tribe troop file. Selecting a player works like the Barb Finder's isolation: the map centers on their villages, which stay lit while everyone else fades out. Clear the filter (or close the panel) to light the map back up.`,
+    ],
+    es: [
+      `<b>👤 Filtrar Jugador en el Mapa.</b> Dos botones nuevos en la barra: <b>Filtrar Jugador</b> busca CUALQUIER jugador de la base de datos del mundo (escribe un nombre y elige entre las coincidencias), y <b>Filtrar Jugador de la Tribu</b> elige entre los jugadores del archivo de tropas cargado. Seleccionar un jugador funciona como el aislamiento del Buscador de Bárbaros: el mapa se centra en sus pueblos, que quedan iluminados mientras el resto se atenúa. Quita el filtro (o cierra el panel) para volver a iluminar el mapa.`,
+    ],
+  },
+  { ver: 'v4.2.0', date: '2026-07-07',
+    en: [
+      `<b>📊 Support per Player summary (Plan Defense).</b> After generating a defense, a new table under the plan shows, per player and unit type, how much they're <b>sending / how much they actually have available</b>. Availability uses the same logic as Outbound Offs: only defense that's at home or incoming counts — own troops deployed elsewhere don't — and support stationed by other players never counts above the village's own troops. A player asked to send more than they have available shows the number in red. With a plain tribe-info file (no garrison data) the right side falls back to owned troops, and the note above the table says so.`,
+    ],
+    es: [
+      `<b>📊 Resumen Apoyo por Jugador (Plan de Defensa).</b> Tras generar una defensa, una nueva tabla bajo el plan muestra, por jugador y tipo de unidad, cuánto <b>envía / cuánto tiene realmente disponible</b>. La disponibilidad usa la misma lógica que Offs Fuera: solo cuenta la defensa que está en casa o en camino — las tropas propias desplegadas fuera no — y el apoyo estacionado por otros jugadores nunca cuenta por encima de las tropas propias del pueblo. Si a un jugador se le pide enviar más de lo que tiene disponible, el número se muestra en rojo. Con un archivo simple de tropas (sin datos de guarnición) el lado derecho vuelve a las tropas que posee, y la nota sobre la tabla lo indica.`,
+    ],
+  },
+  { ver: 'v4.1.0', date: '2026-07-07',
+    en: [
+      `<b>🙅 Ignore Players in Defensive Targets.</b> A new <b>Ignore Players</b> button next to Ignore Coordinates — pick whole players (same chip picker as the Offensive Targets one) whose villages must keep their defense at home. When you <b>Plan Defense</b>, none of their villages send any support, and they don't inflate anyone's capacity share either. The list is remembered with the rest of the defensive plan.`,
+    ],
+    es: [
+      `<b>🙅 Ignorar Jugadores en Objetivos Defensivos.</b> Nuevo botón <b>Ignorar Jugadores</b> junto a Ignorar Coordenadas — elige jugadores enteros (el mismo selector de fichas que el de Objetivos Ofensivos) cuyas aldeas deben mantener su defensa en casa. Al <b>Planear Defensa</b>, ninguna de sus aldeas envía apoyo, y tampoco inflan la cuota de capacidad de nadie. La lista se recuerda con el resto del plan defensivo.`,
+    ],
+  },
   { ver: 'v4.0.0', date: '2026-07-06',
     en: [
       `<b>📊 New "Manage Offensive" tab</b> (between Plan Offensive and Defensive Targets) — see how the operation is REALLY going. Run the <b>Target Village Orders Exporter</b> userscript (incomingOrders.js) on the planned target coordinates and import its export (JSON preferred, CSV also works): every visible incoming attack is matched against the generated plan. Each planned attack shows its status — <b>✓ Sent</b> (exact origin village), <b>↷ Sent from another village</b> (same player switched offs), <b>⏳ Not sent yet</b> (launch window still open) or <b>✗ Missing</b> — plus the real origin, distance/travel from it, the millisecond arrival and whether it lands <b>in the window, early or late</b>. A noble train renders <b>one row per noble</b> (👑 Snob 1/4, 2/4, …), each with its own arrival and timing verdict.`,

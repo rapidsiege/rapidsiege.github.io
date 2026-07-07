@@ -108,6 +108,16 @@ function pointInPolygon(x, y, poly) {
   return inside;
 }
 
+// Does world point x|y pass the drawn map-area filter? The ONE gate both plan generators use
+// (Plan Offensive AND Plan Defense — v4.4.0). True when no usable area is drawn (<3 vertices);
+// otherwise the point must be inside the polygon — or OUTSIDE it when "Select Reverse"
+// (planCoordPolygonInv, offensive-targets.js) is on.
+function passesCoordPolygon(x, y) {
+  if (typeof planCoordPolygon === 'undefined' || !Array.isArray(planCoordPolygon) || planCoordPolygon.length < 3) return true;
+  const inside = pointInPolygon(x, y, planCoordPolygon);
+  return (typeof planCoordPolygonInv !== 'undefined' && planCoordPolygonInv) ? !inside : inside;
+}
+
 // Constant screen-pixel dot size by points (stays visible when zoomed out).
 function mapDotSize(points) {
   if (points >= 1000000) return 5;

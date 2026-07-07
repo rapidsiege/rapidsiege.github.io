@@ -143,6 +143,10 @@
     <span class="map-tb-sep"></span>
     <button id="map-barb-btn" class="btn btn-ghost btn-sm" onclick="toggleBarbFinder()" data-i18n="barb_finder">Barb Finder</button>
     <span class="map-tb-sep"></span>
+    <button id="map-pfilter-btn" class="btn btn-ghost btn-sm" onclick="togglePlayerFilter('db')" data-i18n="map_pfilter">👤 Filter Player</button>
+    <span class="map-tb-sep"></span>
+    <button id="map-tpfilter-btn" class="btn btn-ghost btn-sm" onclick="togglePlayerFilter('tribe')" data-i18n="map_tpfilter">👥 Filter Tribe Player</button>
+    <span class="map-tb-sep"></span>
     <button id="map-heatcfg-btn" class="btn btn-ghost btn-sm" onclick="toggleHeatmapConfig()" data-i18n="map_heatmap_config">Heatmap Config</button>
     <span class="map-tb-sep"></span>
     <label class="map-tb-check"><input type="checkbox" id="map-show-barbs" checked onchange="setMapShowBarbs(this.checked)"><span data-i18n="map_show_barbs">Show Barbs</span></label>
@@ -162,6 +166,7 @@
       <span id="map-drawfilter-count" class="map-extract-count">0</span>
       <button class="btn btn-ghost btn-sm" onclick="undoDrawFilterPoint()" data-i18n="map_drawfilter_undo">↶ Undo point</button>
       <button class="btn btn-ghost btn-sm" onclick="clearCoordPolygon()" data-i18n="map_drawfilter_clear">✕ Clear area</button>
+      <button class="btn btn-ghost btn-sm" id="map-drawfilter-rev" onclick="toggleDrawFilterReverse()" data-i18n="map_drawfilter_reverse" data-i18n-title="map_drawfilter_reverse_t" title="Senders must be OUTSIDE the drawn area instead of inside.">⇄ Select Reverse</button>
       <span style="font-size:11px;color:#8a6a3a;" data-i18n="map_drawfilter_hint">Click to add points · need 3+ to enclose an area</span>
     </div>
     <div id="map-groups" style="display:none;">
@@ -178,6 +183,13 @@
         <button class="map-barb-close" onclick="toggleBarbFinder()" title="Close">✕</button>
       </div>
       <div id="map-barb-body" class="map-barb-body"></div>
+    </div>
+    <div id="map-player-filter" style="display:none;">
+      <div class="map-barb-head">
+        <span id="map-pfilter-title">👤 Filter Player</span>
+        <button class="map-barb-close" onclick="closePlayerFilter()" title="Close">✕</button>
+      </div>
+      <div id="map-pfilter-body" class="map-barb-body"></div>
     </div>
     <div id="map-heatcfg" style="display:none;">
       <div class="map-barb-head">
@@ -641,6 +653,7 @@
     <input type="text" id="dt-add-coord" placeholder="500|500" style="width:90px;font-family:'Consolas','Courier New',monospace;" onkeydown="if(event.key==='Enter')addDefTarget()">
     <button class="btn btn-primary btn-sm" onclick="addDefTarget()" data-i18n="btn_add_target">+ Add Target</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleDefIgnore()" data-i18n="btn_ignore_coords">🚫 Ignore Coordinates</button>
+    <button class="btn btn-ghost btn-sm" onclick="toggleDefIgnorePlayers()" data-i18n="btn_ignore_players">🙅 Ignore Players</button>
     <label data-i18n="lbl_enemy_dist">Distance from enemy tribes:</label>
     <input type="number" id="plan-def-enemy-dist" value="0" min="0" style="width:70px;" title="0 = off" oninput="updDefEnemyDist()">
     <button class="btn btn-ghost btn-sm" onclick="toggleDefEnemy()" data-i18n="btn_enemy_tribes">⚔ Enemy Tribes</button>
@@ -654,6 +667,10 @@
   <div id="dp-ignore-wrap" style="display:none;margin-top:10px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="def_ignore_hint">Paste coordinates (one per line) that must keep their defense at home — front-line villages near the enemy. These are never used as senders.</div>
     <textarea id="dp-ignore-input" style="width:100%;height:80px;background:#120d03;border:1px solid #3a2808;color:#d4b483;font-family:'Consolas','Courier New',monospace;font-size:12px;padding:8px 10px;border-radius:4px;resize:vertical;" placeholder="500|500&#10;501|499" oninput="updDefIgnore()"></textarea>
+  </div>
+  <div id="dp-ignore-players-wrap" style="display:none;margin-top:10px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="def_ignore_players_hint">Pick whole players to keep home in Plan Defense — none of their villages are used as support senders. Requires the tribe troop file.</div>
+    <div id="dp-ignore-players-host"></div>
   </div>
   <div id="dp-enemy-wrap" style="display:none;margin-top:10px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="def_enemy_hint">Enter enemy tribe tags or names (one per line). Any village within the distance above of ANY village owned by these tribes is held home — never used as a sender. Requires the village database.</div>
@@ -700,6 +717,7 @@
     <label data-i18n="lbl_def_max_dist">Def max distance:</label>
     <input type="number" id="plan-def-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited">
     <button class="btn btn-primary btn-sm" onclick="generateDefPlan()" data-i18n="btn_def_generate">🛡 Generate Defense</button>
+    <span id="dp-poly-note" style="font-size:12px;color:#4fd0c0;font-weight:600;"></span>
   </div>
   <div id="defplan-warnings" style="margin-top:12px;"></div>
   <div id="defplan-summary" style="font-size:12px;color:#806030;margin:10px 0;"></div>
@@ -723,6 +741,7 @@
       <tbody id="defplan-tbody"></tbody>
     </table>
   </div>
+  <div id="defplan-player-summary"></div>
   <p style="font-size:12px;color:#5a3a18;margin-top:12px;" data-i18n="defplan_note">Intra-tribe support only, from villages with ≥4,000 def pop. Bigger defenders send more; troops are spread evenly across a player's villages, ≥400 pop per order.</p>
 </div>
 
@@ -896,7 +915,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.0.0 &nbsp;·&nbsp; 2026-07-06</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.4.0 &nbsp;·&nbsp; 2026-07-07</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

@@ -292,6 +292,10 @@ function isDimmed(v) {
     const coord = v.x + '|' + v.y;
     if (!barbPlayerCoords.has(coord) && !barbVillageMatches(v, barbBonusMode, barbBonusType)) return true;
   }
+  // Player Filter isolation: once a player is picked, only THEIR villages stay lit.
+  // Same only-when-selected guard as the barb finder (opening the panel alone must
+  // not grey the whole map).
+  if (playerFilterActive && playerFilterCoords.size && !playerFilterCoords.has(v.x + '|' + v.y)) return true;
   if (offTierFiltered(v)) return true; // Heatmap Config off-tier filter (Complete / 3-4 / 1-2)
   if (villageRoleFiltered(v)) return true; // Defensive-only / Offensive-only focus filters
   return false;
@@ -976,15 +980,27 @@ function undoDrawFilterPoint() {
   saveOffensive();
   afterDrawFilterChange();
 }
-// Shared post-change sync: bar count, the Plan-Offensive panel reflection, and a cheap repaint.
+// Shared post-change sync: bar count, the Plan-Offensive panel reflection, the Plan-Defense
+// note, and a cheap repaint.
 function afterDrawFilterChange() {
   updateDrawFilterBar();
   if (typeof updCoordFilterSummary === 'function') updCoordFilterSummary();
+  if (typeof updDefPolyNote === 'function') updDefPolyNote();
   paintMap();
 }
 function updateDrawFilterBar() {
   const cnt = document.getElementById('map-drawfilter-count');
   if (cnt) cnt.textContent = t('map_drawfilter_count')(typeof planCoordPolygon !== 'undefined' ? planCoordPolygon.length : 0);
+  const rev = document.getElementById('map-drawfilter-rev');
+  if (rev) rev.classList.toggle('active', typeof planCoordPolygonInv !== 'undefined' && planCoordPolygonInv);
+}
+// "Select Reverse": flip the drawn area's direction — senders must be OUTSIDE the shape.
+// State lives with the polygon (planCoordPolygonInv, offensive-targets.js) and persists.
+function toggleDrawFilterReverse() {
+  if (typeof planCoordPolygonInv === 'undefined') return;
+  planCoordPolygonInv = !planCoordPolygonInv;
+  saveOffensive();
+  afterDrawFilterChange();
 }
 // Overlay: filled shape (≥3 pts) + edges + vertices, plus a dashed rubber-band from the last
 // vertex to the cursor (and on to the first vertex) while in draw mode. Cheap top-layer draw.
@@ -995,12 +1011,17 @@ function drawFilterPolygon(w, h) {
   const pts = poly.map(v => worldToScreen(v.x, v.y));
   ctx.save();
   if (pts.length >= 3) {
+    // Select Reverse fills the OUTSIDE instead: full-canvas rect + polygon subpaths under
+    // the even-odd rule shade everything but the shape, so the tint always covers the
+    // region senders are drawn from.
+    const inv = typeof planCoordPolygonInv !== 'undefined' && planCoordPolygonInv;
     ctx.beginPath();
+    if (inv) ctx.rect(0, 0, w, h);
     ctx.moveTo(pts[0].px, pts[0].py);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].px, pts[i].py);
     ctx.closePath();
     ctx.fillStyle = 'rgba(79,208,192,0.13)';
-    ctx.fill();
+    ctx.fill('evenodd');
   }
   if (pts.length >= 2) {
     ctx.strokeStyle = '#4fd0c0';
@@ -1081,6 +1102,7 @@ function toggleBarbFinder() {
   barbFinderActive = !barbFinderActive;
   if (barbFinderActive && mapExtractMode) toggleExtractMode(); // one click-panel at a time
   if (barbFinderActive && heatcfgActive) closeHeatmapConfig();  // shares the left dock with Heatmap Config
+  if (barbFinderActive && playerFilterActive) closePlayerFilter(); // …and with the Player Filter
   const btn = document.getElementById('map-barb-btn');
   if (btn) btn.classList.toggle('active', barbFinderActive);
   const panel = document.getElementById('map-barb-finder');
@@ -1102,6 +1124,7 @@ let heatcfgActive = false;
 function toggleHeatmapConfig() {
   heatcfgActive = !heatcfgActive;
   if (heatcfgActive && barbFinderActive) closeBarbFinder(); // one left-dock panel at a time
+  if (heatcfgActive && playerFilterActive) closePlayerFilter();
   const btn = document.getElementById('map-heatcfg-btn');
   if (btn) btn.classList.toggle('active', heatcfgActive);
   const panel = document.getElementById('map-heatcfg');
@@ -1112,6 +1135,156 @@ function closeHeatmapConfig() {
   heatcfgActive = false;
   const btn = document.getElementById('map-heatcfg-btn'); if (btn) btn.classList.remove('active');
   const panel = document.getElementById('map-heatcfg'); if (panel) panel.style.display = 'none';
+}
+
+// ── Player Filter (v4.3.0): highlight ONE player's villages, fade everyone else ─────────
+// Two toolbar entry points, one shared left-dock panel: "Filter Player" searches ANY
+// player in the world DB (type-ahead), "Filter Tribe Player" picks among the loaded
+// troop-file players (select). Selecting a player reuses the Barb Finder's isolation
+// look: their villages stay lit, isDimmed() fades everything else. Ephemeral — never
+// persisted (a stale filter greying the map on reload would read as a bug).
+let playerFilterActive = false;
+let playerFilterMode   = 'db';       // 'db' (any DB player) | 'tribe' (troop-file players)
+let playerFilterName   = '';         // display name of the selected player ('' = none)
+let playerFilterCoords = new Set();  // the selected player's village coords (stay lit)
+let playerFilterQuery  = '';         // live search text (db mode)
+const PF_LIMIT = 30;                 // max type-ahead rows shown
+
+function togglePlayerFilter(mode) {
+  if (playerFilterActive && mode !== playerFilterMode) {
+    // panel already open — the other button just switches mode (selection resets)
+    playerFilterMode = mode;
+    playerFilterQuery = '';
+    clearPlayerFilterSel();
+    syncPlayerFilterButtons();
+    renderPlayerFilter();
+    repaintMapData();
+    return;
+  }
+  playerFilterActive = !playerFilterActive;
+  playerFilterMode = mode;
+  if (playerFilterActive) {
+    if (barbFinderActive) closeBarbFinder(); // one left-dock panel at a time
+    if (heatcfgActive) closeHeatmapConfig();
+    playerFilterQuery = '';
+  } else {
+    clearPlayerFilterSel();
+  }
+  const panel = document.getElementById('map-player-filter');
+  if (panel) panel.style.display = playerFilterActive ? '' : 'none';
+  syncPlayerFilterButtons();
+  if (playerFilterActive) renderPlayerFilter();
+  repaintMapData(); // apply / clear the isolation dimming
+}
+function closePlayerFilter() {
+  playerFilterActive = false;
+  clearPlayerFilterSel();
+  const panel = document.getElementById('map-player-filter'); if (panel) panel.style.display = 'none';
+  syncPlayerFilterButtons();
+  repaintMapData(); // callers (other panels' toggles) don't repaint for us
+}
+function clearPlayerFilterSel() { playerFilterName = ''; playerFilterCoords = new Set(); }
+function clearPlayerFilter() { // the panel's "Clear filter" button
+  clearPlayerFilterSel();
+  renderPlayerFilter();
+  repaintMapData();
+}
+function syncPlayerFilterButtons() {
+  const pb = document.getElementById('map-pfilter-btn');
+  if (pb) pb.classList.toggle('active', playerFilterActive && playerFilterMode === 'db');
+  const tb = document.getElementById('map-tpfilter-btn');
+  if (tb) tb.classList.toggle('active', playerFilterActive && playerFilterMode === 'tribe');
+}
+
+// Build the panel for the current mode. The db-mode search input is only built here —
+// keystrokes refill just the list (pfFillList) so the input never loses focus.
+function renderPlayerFilter() {
+  const body = document.getElementById('map-pfilter-body');
+  if (!body) return;
+  const title = document.getElementById('map-pfilter-title');
+  if (title) title.textContent = t(playerFilterMode === 'db' ? 'map_pfilter' : 'map_tpfilter');
+  const selHtml = playerFilterName
+    ? `<div class="map-barb-count">${esc(t('pf_selected')(playerFilterName, playerFilterCoords.size))}</div>`
+      + `<button class="btn btn-ghost btn-sm" onclick="clearPlayerFilter()">${esc(t('pf_clear'))}</button>`
+    : '';
+  if (playerFilterMode === 'tribe') {
+    const names = (typeof players !== 'undefined') ? Object.keys(players) : [];
+    if (!names.length && !playerFilterName) {
+      body.innerHTML = `<div class="map-barb-empty">${esc(t('pf_need_troops'))}</div>`;
+      return;
+    }
+    const sorted = names.map(n => ({ raw: n, disp: decode(n), count: players[n].villages.length }))
+      .sort((a, b) => a.disp.toLowerCase().localeCompare(b.disp.toLowerCase()));
+    const opts = `<option value="">${esc(t('opt_pick_mv_player'))}</option>` + sorted.map(p =>
+      `<option value="${esc(p.raw)}"${p.disp === playerFilterName ? ' selected' : ''}>${esc(p.disp)} (${p.count})</option>`).join('');
+    body.innerHTML = `<select class="map-barb-sel" onchange="pfPickTribe(this.value)">${opts}</select>` + selHtml;
+    return;
+  }
+  // db mode — needs the world DB to know every player
+  if (typeof villageDb === 'undefined' || !villageDb.length) {
+    body.innerHTML = `<div class="map-barb-empty">${esc(t('pf_need_db'))}</div>`;
+    return;
+  }
+  body.innerHTML =
+      `<input id="map-pfilter-search" class="map-barb-sel" type="text" placeholder="${esc(t('pf_search_ph'))}" value="${esc(playerFilterQuery)}" oninput="pfSearch(this.value)">`
+    + `<div id="map-pfilter-list" class="map-barb-list"></div>`
+    + selHtml;
+  pfFillList();
+}
+
+function pfSearch(v) { playerFilterQuery = v; pfFillList(); }
+
+// Refill just the type-ahead list from the current query (never rebuilds the input).
+function pfFillList() {
+  const list = document.getElementById('map-pfilter-list');
+  if (!list) return;
+  const q = playerFilterQuery.trim().toLowerCase();
+  if (!q) { list.innerHTML = `<div class="map-barb-empty">${esc(t('pf_type_hint'))}</div>`; return; }
+  const hits = [];
+  for (const id in playerDb) {
+    if (playerDb[id].toLowerCase().includes(q)) hits.push({ id, name: playerDb[id] });
+  }
+  if (!hits.length) { list.innerHTML = `<div class="map-barb-empty">${esc(t('pf_no_results'))}</div>`; return; }
+  hits.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+  const shown = hits.slice(0, PF_LIMIT);
+  // village counts for the shown players, in one villageDb pass
+  const want = new Set(shown.map(h => h.id)), counts = {};
+  for (const v of villageDb) if (want.has(v.playerId)) counts[v.playerId] = (counts[v.playerId] || 0) + 1;
+  list.innerHTML = shown.map(h =>
+    `<div class="map-barb-row" onclick="pfPick('${esc(h.id)}')">`
+      + `<span class="map-barb-coord">${esc(h.name)}</span>`
+      + `<span class="map-barb-dist">${counts[h.id] || 0}</span>`
+      + `</div>`).join('')
+    + (hits.length > shown.length ? `<div class="map-barb-empty">${esc(t('pf_more')(hits.length - shown.length))}</div>` : '');
+}
+
+// Select a world-DB player: their villages come from villageDb by playerId.
+function pfPick(playerId) {
+  playerFilterName = playerDb[playerId] || '?';
+  playerFilterCoords = new Set();
+  for (const v of villageDb) if (v.playerId === playerId) playerFilterCoords.add(v.x + '|' + v.y);
+  renderPlayerFilter();
+  pfFocusPlayer();
+  repaintMapData();
+}
+// Select a troop-file player: their villages come from the loaded .txt.
+function pfPickTribe(rawName) {
+  if (!rawName) { clearPlayerFilter(); return; }
+  const pv = (typeof players !== 'undefined' && players[rawName]) ? players[rawName].villages : [];
+  playerFilterName = decode(rawName);
+  playerFilterCoords = new Set(pv.map(v => v.coord));
+  renderPlayerFilter();
+  pfFocusPlayer();
+  repaintMapData();
+}
+// Center the view on the selected player's centroid (no zoom change), like focusBarb.
+function pfFocusPlayer() {
+  if (!playerFilterCoords.size || !mapCanvas) return;
+  let sx = 0, sy = 0;
+  for (const c of playerFilterCoords) { const m = c.split('|'); sx += +m[0]; sy += +m[1]; }
+  const n = playerFilterCoords.size;
+  mapView.panX = mapCanvas.width / 2 - (sx / n) * mapView.scale;
+  mapView.panY = mapCanvas.height / 2 - (sy / n) * mapScaleY();
 }
 
 function setBarbPlayer(v) { barbPlayer = v; updateBarbResults(); }

@@ -171,17 +171,15 @@ function generatePlan() {
   // noble (snob) senders, sending the train + its escort, just never a regular clearing off.
   const ignoreCoords  = parseOffIgnoreSet();
   const ignorePlayers = new Set(offIgnorePlayers);
-  // Sender region = typed X|Y filters AND (if drawn) the map polygon. A village must be inside
-  // the drawn area (≥3 vertices) too; both empty → every village is eligible. See passesCoordFilters
-  // (typed) + pointInPolygon (drawn), both pure world-space.
-  const senderPoly = (typeof planCoordPolygon !== 'undefined' && Array.isArray(planCoordPolygon) && planCoordPolygon.length >= 3)
-    ? planCoordPolygon : null;
+  // Sender region = typed X|Y filters AND (if drawn) the map polygon. Both empty → every
+  // village is eligible. See passesCoordFilters (typed) + passesCoordPolygon (drawn, honours
+  // "Select Reverse" inversion), both pure world-space.
   const pool = villages.map(v => ({
     v, c: parseCoordStr(v.coord), tier: getOffTier(v.offPow),
     snobLeft: v.snob, usedOff: false, usedSnob: false,
   })).filter(p => p.c && !ignoreCoords.has(p.v.coord)
     && passesCoordFilters(p.c, planCoordFilters)
-    && (!senderPoly || pointInPolygon(p.c.x, p.c.y, senderPoly)));
+    && passesCoordPolygon(p.c.x, p.c.y));
 
   // ── MV (vacation-mode) pairs ──────────────────────────────────────────────
   // Two MV-paired players must not BOTH attack the SAME enemy PLAYER (the defending
