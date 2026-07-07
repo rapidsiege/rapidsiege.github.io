@@ -149,6 +149,9 @@
     <span class="map-tb-sep"></span>
     <button id="map-heatcfg-btn" class="btn btn-ghost btn-sm" onclick="toggleHeatmapConfig()" data-i18n="map_heatmap_config">Heatmap Config</button>
     <span class="map-tb-sep"></span>
+    <button id="map-ow-btn" class="btn btn-ghost btn-sm" onclick="toggleOverwatchMode()" data-i18n="map_overwatch">🛡 Overwatch Mode</button>
+    <button id="map-owcfg-btn" class="btn btn-ghost btn-sm" style="display:none;" onclick="toggleOwConfig()" data-i18n="map_owcfg">⚙ Overwatch Config</button>
+    <span class="map-tb-sep"></span>
     <label class="map-tb-check"><input type="checkbox" id="map-show-barbs" checked onchange="setMapShowBarbs(this.checked)"><span data-i18n="map_show_barbs">Show Barbs</span></label>
     <label class="map-tb-check"><input type="checkbox" id="map-night-mode" checked onchange="setMapNightMode(this.checked)"><span data-i18n="map_night_mode">Night Mode</span></label>
     <span style="font-size:12px;color:#5a3a18;" data-i18n="map_hint">Drag to pan · scroll to zoom · hover for details</span>
@@ -252,6 +255,13 @@
           </div>
         </details>
       </div>
+    </div>
+    <div id="map-owcfg" style="display:none;">
+      <div class="map-barb-head">
+        <span data-i18n="map_owcfg_title">🛡 Overwatch Config</span>
+        <button class="map-barb-close" onclick="toggleOwConfig()" title="Close">✕</button>
+      </div>
+      <div id="map-owcfg-body" class="map-barb-body"></div>
     </div>
     <div id="map-empty">
       <p data-i18n="map_need_db">Load the village database to see the map.</p>
@@ -706,6 +716,8 @@
     <div style="display:flex;gap:8px;">
       <button class="btn btn-ghost btn-sm" onclick="showDefPlayerBB()" data-i18n="btn_export_player_orders">⬇ Export Per-Player Orders</button>
       <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="showDefPmExport()" data-i18n="btn_export_pms">✉ Export PMs</button>
+      <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="exportTable('defplan-table','tribe_def_plan.csv')">⬇ Export CSV</button>
       <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="clearDefPlan()" data-i18n="btn_clear_targets">✕ Clear All</button>
@@ -919,10 +931,22 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.5.0 &nbsp;·&nbsp; 2026-07-07</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.7.0 &nbsp;·&nbsp; 2026-07-07</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
+<div class="modal-overlay" id="pm-modal" onclick="if(event.target===this)closePmModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 data-i18n="pm_modal_title">✉ Export PMs — click a player to copy their orders</h3>
+      <button class="modal-close" onclick="closePmModal()">✕</button>
+    </div>
+    <div class="modal-body" id="pm-modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closePmModal()" data-i18n="btn_close">Close</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="bb-modal" onclick="if(event.target===this)closeBBModal()">
   <div class="modal">
     <div class="modal-header">

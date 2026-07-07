@@ -12,6 +12,26 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.7.0', date: '2026-07-07',
+    en: [
+      `<b>✉ Export PMs (Plan Defense).</b> A new button next to Export Per-Player Orders opens a panel with <b>one button per player</b>: clicking it copies that player's support orders to the clipboard, ready to paste into an in-game message — and the button turns green with a checkmark so you always know who you've already messaged. Orders use the same lines as the forum export (coord links, troops, SEND link, depart/arrive times).`,
+      `<b>Numbered orders + automatic splitting at the game's bracket limit.</b> Every order is numbered (1., 2., 3.…) so a player always knows where they are. A message stays under <b>4,500 brackets</b> (the game caps at ~5,000), leaving you room to add a few words of your own; a player whose orders exceed that gets numbered parts — "(1/2)", "(2/2)" — each with its own copy button, with the numbering continuing across parts. Small counters show each message's orders, characters and brackets.`,
+    ],
+    es: [
+      `<b>✉ Exportar MPs (Plan de Defensa).</b> Un nuevo botón junto a Exportar Órdenes por Jugador abre un panel con <b>un botón por jugador</b>: al pulsarlo copia las órdenes de apoyo de ese jugador al portapapeles, listas para pegar en un mensaje del juego — y el botón se pone verde con una marca para que siempre sepas a quién has escrito ya. Las órdenes usan las mismas líneas que el export del foro (enlaces de coordenadas, tropas, enlace ENVIAR, horas de salida/llegada).`,
+      `<b>Órdenes numeradas + división automática en el límite de corchetes del juego.</b> Cada orden va numerada (1., 2., 3.…) para que el jugador siempre sepa por dónde va. Cada mensaje se queda por debajo de <b>4.500 corchetes</b> (el juego permite ~5.000), dejándote margen para añadir unas palabras propias; un jugador cuyas órdenes lo superen recibe partes numeradas — "(1/2)", "(2/2)" — cada una con su propio botón de copia, y la numeración continúa entre partes. Unos contadores pequeños muestran las órdenes, caracteres y corchetes de cada mensaje.`,
+    ],
+  },
+  { ver: 'v4.6.0', date: '2026-07-07',
+    en: [
+      `<b>🛡 Overwatch Mode on the Map.</b> A new toolbar button colors every village with defense data by the <b>stack stationed in it</b> (from the tribe export's garrison info). Zoomed in, each village shows two colored triangles — <b>left = defense stationed now, right = including en-route support</b> — plus its incoming-attack count and the total stack in thousands next to a farm icon. Zoomed out, villages are tinted by the total-stack color, so weak spots on the front read at a glance.`,
+      `<b>⚙ Overwatch Config.</b> While the mode is on, a config button opens a panel (top-left, like Heatmap Config) to tune everything: the four stack thresholds (empty / small / medium / big), the five tier colors, and the per-unit weights used to count a stack (spear/sword 1, heavy cav 4, catapult 2, paladin 2 by default). All settings and the mode itself are remembered.`,
+    ],
+    es: [
+      `<b>🛡 Modo Overwatch en el Mapa.</b> Un nuevo botón de la barra colorea cada aldea con datos de defensa según el <b>stack estacionado en ella</b> (de la info de guarnición del export de la tribu). De cerca, cada aldea muestra dos triángulos de color — <b>izquierdo = defensa estacionada ahora, derecho = incluyendo apoyo en camino</b> — más su número de ataques entrantes y el stack total en miles junto a un icono de granja. De lejos, las aldeas se tiñen con el color del stack total, así los puntos débiles del frente se ven de un vistazo.`,
+      `<b>⚙ Config Overwatch.</b> Con el modo activo, un botón de configuración abre un panel (arriba a la izquierda, como Config Mapa de Calor) para ajustarlo todo: los cuatro umbrales de stack (vacío / pequeño / medio / grande), los cinco colores por nivel y el peso por unidad con el que se cuenta un stack (lanza/espada 1, cab. pesada 4, catapulta 2, paladín 2 por defecto). Todos los ajustes y el propio modo se recuerdan.`,
+    ],
+  },
   { ver: 'v4.5.0', date: '2026-07-07',
     en: [
       `<b>📤 Prioritize Sending From Far Villages (Plan Defense).</b> A new checkbox next to Generate Defense: when on, each player's support is drawn from their villages <b>furthest from the target</b> first (instead of most-evenly). Who sends how much doesn't change — the capacity balancing stays — only <b>which of their villages</b> the troops leave from. The point: leftover defense pools in the villages <b>nearest</b> the targets, where it can reinforce fastest and is easiest to replenish. The setting is remembered.`,

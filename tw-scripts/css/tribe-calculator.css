@@ -407,6 +407,14 @@
       gap: 8px;
     }
 
+    /* ── ✉ Export PMs modal (Plan Defense, v4.7.0): one copy-button per message part;
+       .pm-done = copied (green + checkmark, set by copyDefPm). ── */
+    .pm-hint { font-size: 12px; color: #a08050; line-height: 1.4; margin-bottom: 10px; }
+    .pm-row { display: flex; align-items: center; gap: 10px; padding: 3px 0; }
+    .pm-player-btn { min-width: 200px; text-align: left; }
+    .pm-player-btn.pm-done { background: #16320f; color: #8fd06f; border-color: #3f7d2e; }
+    .pm-meta { font-size: 11px; color: #5a3a18; white-space: nowrap; }
+
     /* ── Mass-edit modal rows (Edit Selected Rows) ── */
     .mass-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid #2e1e08; }
     .mass-row:last-child { border-bottom: none; }
@@ -579,6 +587,17 @@
        .map-barb-head / .map-barb-close / .map-barb-body / .map-barb-sel / .map-barb-list). */
     #map-player-filter { position: absolute; top: 8px; left: 8px; z-index: 4; width: 250px; max-height: calc(100% - 16px); display: flex; flex-direction: column; background: rgba(14,10,3,.93); border: 1px solid #3a2808; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }
     #map-pfilter-btn.active, #map-tpfilter-btn.active { background: #3a2808; color: #f0c040; border-color: #7a5018; }
+    /* Overwatch Mode (v4.6.0): config panel shares the left dock + chrome (.map-barb-head /
+       .map-barb-body); compact threshold rows + a per-unit weight grid. */
+    #map-ow-btn.active, #map-owcfg-btn.active { background: #3a2808; color: #f0c040; border-color: #7a5018; }
+    #map-owcfg { position: absolute; top: 8px; left: 8px; z-index: 4; width: 240px; max-height: calc(100% - 16px); display: flex; flex-direction: column; background: rgba(14,10,3,.93); border: 1px solid #3a2808; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }
+    .map-ow-hint { font-size: 11px; color: #a08050; line-height: 1.35; }
+    .map-ow-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: #d4b483; }
+    .map-ow-row input { width: 64px; font-size: 12px; padding: 2px 3px; background: #1c1306; color: #d4b483; border: 1px solid #3a2808; border-radius: 4px; text-align: center; }
+    .map-ow-weights { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+    .map-ow-w { display: flex; align-items: center; gap: 2px; }
+    .map-ow-w .tw-ic { width: 13px; height: 13px; margin-right: 0; flex: 0 0 auto; }
+    .map-ow-w input { width: 100%; min-width: 0; font-size: 11px; padding: 1px 2px; background: #1c1306; color: #d4b483; border: 1px solid #3a2808; border-radius: 4px; text-align: center; }
     .map-heatcfg-inc { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
     /* Off-tier filter chips: a horizontal row of clickable tier badges. Full colour = shown;
        click to fade (.off) and hide that tier's villages on the map. */

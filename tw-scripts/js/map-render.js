@@ -83,6 +83,62 @@ function incomingHaloRadius(n, scale) {
   const rCount = Math.min(MAP_INCOMING_COUNT_CAP, MAP_INCOMING_COUNT_FLOOR + MAP_INCOMING_COUNT_K * Math.sqrt(Math.max(1, n)));
   return Math.max(rZoom, rCount);
 }
+// ── Overwatch Mode (v4.6.0) — port of the "Overwatch" userscript's stack map view ──
+// Colors each tribe village by the DEFENSE STATIONED in it (the tribe export's defense
+// tab → defenseByCoord), measured as a "stack" population via configurable per-unit
+// weights. Zoomed in, two half-tile triangles per village: LEFT = stationed now,
+// RIGHT = incl. en-route support (incomingByCoord — the userscript's current/total
+// split); plus the incoming-attack count (att icon, top-left) and the total stack in
+// thousands (farm icon, bottom). Zoomed out, the village square is tinted by the
+// TOTAL-stack tier color so weak spots read across the whole front. The userscript's
+// wall level is NOT in the export → deliberately omitted (user decision 2026-07-07).
+// Thresholds/colors/weights live in owCfg (persisted in the map prefs blob), edited
+// from the Overwatch Config panel (left dock). Only villages WITH a defense row get
+// the overlay — everything else renders exactly as usual.
+const OW_DEFAULTS = {
+  min: 500, small: 20000, medium: 40000, big: 60000, // stack thresholds (userscript defaults)
+  colors: { empty: '#75ffff', low: '#000000', small: '#ff0000', medium: '#ffff00', big: '#00ff00' },
+  // Stack weight per unit (the userscript's unit "pop values"): def units count, off/scout
+  // units don't. es100 has no archer/marcher; militia never appears in the export.
+  weights: { spear: 1, sword: 1, axe: 0, spy: 0, light: 0, heavy: 4, ram: 0, catapult: 2, knight: 2, snob: 0 },
+};
+let mapOverwatchMode = false;
+function owDefaultCfg() {
+  return { min: OW_DEFAULTS.min, small: OW_DEFAULTS.small, medium: OW_DEFAULTS.medium, big: OW_DEFAULTS.big,
+           colors: { ...OW_DEFAULTS.colors }, weights: { ...OW_DEFAULTS.weights } };
+}
+let owCfg = owDefaultCfg();
+// Stack population of one parsed troop row under per-unit weights. Pure.
+function owStackPop(row, weights) {
+  weights = weights || owCfg.weights;
+  if (!row) return 0;
+  return UNITS.reduce((s, u) => s + (row[u] || 0) * (weights[u] || 0), 0);
+}
+// stack → tier id ('empty' | 'low' | 'small' | 'medium' | 'big'). Boundaries are
+// inclusive-up (stack == threshold lands in the HIGHER tier) — the original script's
+// strict </> comparisons left exact-threshold stacks colorless. Pure: cfg defaults to
+// the global (the harness passes it explicitly).
+function owTier(stack, cfg) {
+  cfg = cfg || owCfg;
+  if (stack < cfg.min)    return 'empty';
+  if (stack < cfg.small)  return 'low';
+  if (stack < cfg.medium) return 'small';
+  if (stack < cfg.big)    return 'medium';
+  return 'big';
+}
+// Overwatch data for one coord: cur = stationed stack, tot = cur + en-route, inc =
+// incoming-attack count (troopByCoord's optional Incoming column). null when the export
+// has no defense row for the village — only defense-tab villages participate. Pure.
+function owVillageData(coord) {
+  const def = (typeof defenseByCoord !== 'undefined') ? defenseByCoord[coord] : null;
+  if (!def) return null;
+  const inb = (typeof incomingByCoord !== 'undefined') ? incomingByCoord[coord] : null;
+  const cur = owStackPop(def, owCfg.weights);
+  const tot = cur + owStackPop(inb, owCfg.weights);
+  const tt = (typeof troopByCoord !== 'undefined') ? troopByCoord[coord] : null;
+  return { cur, tot, inc: (tt && tt.incoming) || 0 };
+}
+
 // ── Plan-overlay halos (Plan Offensive / Plan Defense) ───────────────────────────
 // Same radial-glow + count-bloom model as incoming (reuses incomingHaloRadius), drawn as
 // post-passes OVER the village sprites: neon green over offensive objectives, dark blue over
@@ -255,6 +311,20 @@ function loadMapPrefs() {
     mapShowTierTq       = p.showTierTq       !== false;
     mapShowTierHalf     = p.showTierHalf     !== false;
     mapMineSeeded = !!p.mineSeeded;
+    // Overwatch Mode: toggle defaults OFF; cfg keeps a default for any missing/bad entry.
+    mapOverwatchMode = p.owMode === true;
+    owCfg = owDefaultCfg();
+    if (p.owCfg && typeof p.owCfg === 'object') {
+      ['min', 'small', 'medium', 'big'].forEach(k => {
+        const n = parseInt(p.owCfg[k]);
+        if (Number.isFinite(n) && n >= 0) owCfg[k] = n;
+      });
+      if (p.owCfg.colors) for (const k in OW_DEFAULTS.colors) if (hexToRgb(p.owCfg.colors[k])) owCfg.colors[k] = p.owCfg.colors[k];
+      if (p.owCfg.weights) for (const k in OW_DEFAULTS.weights) {
+        const n = parseFloat(p.owCfg.weights[k]);
+        if (Number.isFinite(n) && n >= 0) owCfg.weights[k] = n;
+      }
+    }
     if (p.incomingThresholds) ['yellow','orange','red'].forEach(k => {
       const n = parseInt(p.incomingThresholds[k]);
       if (Number.isFinite(n) && n >= 1) mapIncomingThresholds[k] = n;
@@ -271,7 +341,7 @@ function loadMapPrefs() {
 function saveMapPrefs() {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ showIncoming: mapShowIncoming, showOffPlan: mapShowOffPlan, showDefPlan: mapShowDefPlan, showOffLines: mapShowOffLines, showDefLines: mapShowDefLines, showSnobRes: mapShowSnobRes, showUnusedOff: mapShowUnusedOff, showSupSenders: mapShowSupSenders, showOffSenders: mapShowOffSenders, showDefOnly: mapShowDefVillagesOnly, showOffOnly: mapShowOffVillagesOnly, showBarbs: mapShowBarbs, nightMode: mapNightMode, showTierComplete: mapShowTierComplete, showTierTq: mapShowTierTq, showTierHalf: mapShowTierHalf, colors: mapColors, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds }));
+    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ showIncoming: mapShowIncoming, showOffPlan: mapShowOffPlan, showDefPlan: mapShowDefPlan, showOffLines: mapShowOffLines, showDefLines: mapShowDefLines, showSnobRes: mapShowSnobRes, showUnusedOff: mapShowUnusedOff, showSupSenders: mapShowSupSenders, showOffSenders: mapShowOffSenders, showDefOnly: mapShowDefVillagesOnly, showOffOnly: mapShowOffVillagesOnly, showBarbs: mapShowBarbs, nightMode: mapNightMode, showTierComplete: mapShowTierComplete, showTierTq: mapShowTierTq, showTierHalf: mapShowTierHalf, colors: mapColors, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds, owMode: mapOverwatchMode, owCfg }));
   } catch (e) { /* ignore quota/serialization errors */ }
 }
 
@@ -375,6 +445,63 @@ function loadMapBadges() {
   }
 }
 
+// ── Overwatch tile icons (att = incoming attacks, farm = the stack readout) ──
+let mapOwIcons = {};
+function loadOwIcons() {
+  if (Object.keys(mapOwIcons).length || typeof Image === 'undefined') return;
+  const repaint = () => { if (mapInited && isMapTabActive() && villageDb.length) { renderMapOffscreen(); paintMap(); } };
+  const srcs = { att: 'icons/map/att.webp', farm: 'icons/buildings/farm.webp' }; // buildings farm (user pick)
+  for (const k in srcs) {
+    const img = new Image();
+    img.onload = repaint;
+    img.onerror = () => {}; // missing icon → the text still renders
+    img.src = srcs[k];
+    mapOwIcons[k] = img;
+  }
+}
+
+// Overwatch tile overlay (zoomed in): two half-tile triangles — LEFT = stationed stack
+// tier, RIGHT = incl. en-route — at the userscript's 0.5 alpha so the sprite shows
+// through; then the incoming-attack icon + count (top-left, only when > 0) and the farm
+// icon + total stack in thousands (bottom). Offsets are the userscript's 53×38-tile
+// pixel positions expressed as tile fractions so they scale with zoom.
+function drawOwTile(ctx, cx, cy, dw, dh, owd) {
+  const cL = hexToRgb(owCfg.colors[owTier(owd.cur)]) || [0, 0, 0];
+  const cR = hexToRgb(owCfg.colors[owTier(owd.tot)]) || [0, 0, 0];
+  ctx.fillStyle = `rgba(${cL[0]},${cL[1]},${cL[2]},0.5)`;
+  ctx.beginPath();
+  ctx.moveTo(cx - dw / 2, cy - dh / 2); ctx.lineTo(cx + dw / 2, cy - dh / 2); ctx.lineTo(cx - dw / 2, cy + dh / 2);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = `rgba(${cR[0]},${cR[1]},${cR[2]},0.5)`;
+  ctx.beginPath();
+  ctx.moveTo(cx + dw / 2, cy - dh / 2); ctx.lineTo(cx + dw / 2, cy + dh / 2); ctx.lineTo(cx - dw / 2, cy + dh / 2);
+  ctx.closePath(); ctx.fill();
+  const icon = Math.max(9, Math.min(16, dw * 0.28));
+  const fs = Math.max(8, Math.min(12, dw * 0.2));
+  if (owd.inc > 0) {
+    drawOwIcon(ctx, mapOwIcons.att, cx - dw * 0.36, cy - dh * 0.32, icon);
+    drawOwText(ctx, String(owd.inc), cx - dw * 0.09, cy - dh * 0.21, fs);
+  }
+  drawOwIcon(ctx, mapOwIcons.farm, cx - dw * 0.36, cy + dh * 0.26, icon);
+  drawOwText(ctx, Math.floor(owd.tot / 1000) + 'k', cx - dw * 0.04, cy + dh * 0.37, fs);
+}
+function drawOwIcon(ctx, img, x, y, size) {
+  if (img && img.complete && img.naturalWidth) ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
+}
+// White text with a dark halo (same legibility trick as drawMapOffTag).
+function drawOwText(ctx, text, x, y, fs) {
+  ctx.font = `bold ${fs}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = Math.max(2, fs * 0.3);
+  ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(text, x, y);
+  ctx.textAlign = 'start';
+  ctx.textBaseline = 'alphabetic';
+}
+
 function mapEls() {
   return {
     wrap:    document.getElementById('map-wrap'),
@@ -416,6 +543,7 @@ function initMap() {
   syncMapToolbar();
   loadMapSprites();
   loadMapBadges();
+  loadOwIcons();
   resizeMapCanvas();
 }
 
@@ -445,21 +573,29 @@ function renderMapOffscreen() {
     const s = worldToScreen(v.x, v.y);
     if (s.px < -margin || s.py < -margin || s.px > w + margin || s.py > h + margin) continue; // cull
     mapOffCtx.globalAlpha = isDimmed(v) ? MAP_DIM_ALPHA : 1;
+    const owd = mapOverwatchMode ? owVillageData(v.x + '|' + v.y) : null; // Overwatch overlay data (null = normal render)
     if (spriteMode) {
       const img = mapSprites[mapSpriteKey(v)];
       if (img && img.complete && img.naturalWidth) mapOffCtx.drawImage(img, s.px - dw / 2, s.py - dh / 2, dw, dh);
-      // zoomed-in: a small group-color dot on the top-left of each NON-barbarian village
-      if (v.playerId && v.playerId !== '0') drawMapColorDot(mapOffCtx, s.px - dw / 2, s.py - dh / 2, dw, dh, colorForVillage(v));
-      // zoomed-in: off-power tier tag under the orb (only where this village's troops are loaded)
-      const tt = (typeof troopByCoord !== 'undefined') ? troopByCoord[v.x + '|' + v.y] : null;
-      if (tt && typeof getOffTier === 'function')
-        drawMapOffTag(mapOffCtx, s.px - dw / 2, s.py - dh / 2, dw, dh, getOffTier(tt.offPow));
-      // zoomed-in: off/def + snob badges for villages whose troops we've loaded
-      const badge = villageTroopBadge(v.x + '|' + v.y);
-      if (badge) drawMapTroopBadges(mapOffCtx, s.px - dw / 2, s.py - dh / 2, dw, dh, badge);
+      if (owd) {
+        // Overwatch Mode replaces the orb/tier-tag/badges on villages WITH defense data
+        // (the triangles + icons need the whole tile); everything else keeps the usual look.
+        drawOwTile(mapOffCtx, s.px, s.py, dw, dh, owd);
+      } else {
+        // zoomed-in: a small group-color dot on the top-left of each NON-barbarian village
+        if (v.playerId && v.playerId !== '0') drawMapColorDot(mapOffCtx, s.px - dw / 2, s.py - dh / 2, dw, dh, colorForVillage(v));
+        // zoomed-in: off-power tier tag under the orb (only where this village's troops are loaded)
+        const tt = (typeof troopByCoord !== 'undefined') ? troopByCoord[v.x + '|' + v.y] : null;
+        if (tt && typeof getOffTier === 'function')
+          drawMapOffTag(mapOffCtx, s.px - dw / 2, s.py - dh / 2, dw, dh, getOffTier(tt.offPow));
+        // zoomed-in: off/def + snob badges for villages whose troops we've loaded
+        const badge = villageTroopBadge(v.x + '|' + v.y);
+        if (badge) drawMapTroopBadges(mapOffCtx, s.px - dw / 2, s.py - dh / 2, dw, dh, badge);
+      }
     } else {
-      // zoomed out: fill the field so dots tile edge-to-edge → colors read from a distance
-      mapOffCtx.fillStyle = colorForVillage(v); // group → barb → other
+      // zoomed out: fill the field so dots tile edge-to-edge → colors read from a distance.
+      // Overwatch Mode tints defense-data villages by their TOTAL-stack tier instead.
+      mapOffCtx.fillStyle = owd ? owCfg.colors[owTier(owd.tot)] : colorForVillage(v); // ow → group → barb → other
       mapOffCtx.fillRect(s.px - dot.dw / 2, s.py - dot.dh / 2, dot.dw, dot.dh);
     }
   }
@@ -911,6 +1047,7 @@ function syncMapToolbar() {
   syncTierChips();
   syncMapColorInputs();
   syncIncomingInputs();
+  syncOwButtons();
 }
 
 // Reflect the persisted thresholds into the toolbar inputs (init + after normalization).
@@ -926,6 +1063,100 @@ function setIncomingThreshold(which, val) {
   if (Number.isFinite(n) && n >= 1) mapIncomingThresholds[which] = n;
   saveMapPrefs();
   syncIncomingInputs(); // snap bad input back to the stored value
+  repaintMapData();
+}
+
+// ── Overwatch Mode: toolbar toggle + Overwatch Config panel (left dock) ─────────────
+// The mode toggle persists (like Night Mode); the config panel shares the left dock +
+// chrome with Heatmap Config / Barb Finder / Player Filter (one at a time). Its opener
+// button only shows while the mode is active.
+let owCfgActive = false;
+function toggleOverwatchMode() {
+  mapOverwatchMode = !mapOverwatchMode;
+  if (!mapOverwatchMode && owCfgActive) closeOwConfig();
+  saveMapPrefs();
+  syncOwButtons();
+  repaintMapData();
+}
+function syncOwButtons() {
+  const btn = document.getElementById('map-ow-btn');
+  if (btn) btn.classList.toggle('active', mapOverwatchMode);
+  const cfgBtn = document.getElementById('map-owcfg-btn');
+  if (cfgBtn) cfgBtn.style.display = mapOverwatchMode ? '' : 'none';
+}
+function toggleOwConfig() {
+  owCfgActive = !owCfgActive;
+  if (owCfgActive) {
+    if (barbFinderActive) closeBarbFinder();   // one left-dock panel at a time
+    if (heatcfgActive) closeHeatmapConfig();
+    if (playerFilterActive) closePlayerFilter();
+  }
+  const btn = document.getElementById('map-owcfg-btn');
+  if (btn) btn.classList.toggle('active', owCfgActive);
+  const panel = document.getElementById('map-owcfg');
+  if (panel) panel.style.display = owCfgActive ? '' : 'none';
+  if (owCfgActive) renderOwConfig();
+}
+function closeOwConfig() {
+  owCfgActive = false;
+  const btn = document.getElementById('map-owcfg-btn'); if (btn) btn.classList.remove('active');
+  const panel = document.getElementById('map-owcfg'); if (panel) panel.style.display = 'none';
+}
+
+// Build the Overwatch Config panel: stack thresholds, tier colors, per-unit weights.
+// Rebuilt on open + after Reset only; individual edits never rebuild the rows (focus
+// stays in the input — same rule as the typed coordinate filters).
+function renderOwConfig() {
+  const body = document.getElementById('map-owcfg-body');
+  if (!body) return;
+  const ic = (typeof twIcon === 'function') ? twIcon : () => '';
+  const thRow = (k, lbl) =>
+    `<label class="map-ow-row"><span>${esc(lbl)}</span><input type="number" min="0" id="map-ow-th-${k}" value="${owCfg[k]}" onchange="setOwThreshold('${k}', this.value)"></label>`;
+  const colRow = (k, lbl) =>
+    `<label class="map-color-row"><input type="color" id="map-ow-c-${k}" value="${esc(owCfg.colors[k])}" onchange="setOwColor('${k}', this.value)"><span>${esc(lbl)}</span></label>`;
+  const wCell = u =>
+    `<label class="map-ow-w" title="${esc(u)}">${ic(u)}<input type="number" min="0" step="0.5" id="map-ow-w-${u}" value="${owCfg.weights[u]}" onchange="setOwWeight('${u}', this.value)"></label>`;
+  body.innerHTML =
+      `<div class="map-ow-hint">${esc(t('ow_hint'))}</div>`
+    + `<div class="map-heatcfg-shead">${esc(t('ow_thresholds'))}</div>`
+    + thRow('min', t('ow_th_min')) + thRow('small', t('ow_th_small'))
+    + thRow('medium', t('ow_th_medium')) + thRow('big', t('ow_th_big'))
+    + `<div class="map-heatcfg-sep"></div>`
+    + `<div class="map-heatcfg-shead">${esc(t('ow_colors'))}</div>`
+    + colRow('empty', t('ow_c_empty')) + colRow('low', t('ow_c_low')) + colRow('small', t('ow_c_small'))
+    + colRow('medium', t('ow_c_medium')) + colRow('big', t('ow_c_big'))
+    + `<div class="map-heatcfg-sep"></div>`
+    + `<div class="map-heatcfg-shead">${esc(t('ow_weights'))}</div>`
+    + `<div class="map-ow-weights">` + UNITS.map(wCell).join('') + `</div>`
+    + `<button class="map-grp-new map-color-reset" onclick="resetOwConfig()">${esc(t('ow_reset'))}</button>`;
+}
+// Edit handlers: validate, persist, snap bad input back to the stored value, repaint.
+function setOwThreshold(k, val) {
+  const n = parseInt(val);
+  if (['min', 'small', 'medium', 'big'].includes(k) && Number.isFinite(n) && n >= 0) owCfg[k] = n;
+  saveMapPrefs();
+  const el = document.getElementById('map-ow-th-' + k);
+  if (el) el.value = owCfg[k];
+  repaintMapData();
+}
+function setOwColor(k, hex) {
+  if (!(k in OW_DEFAULTS.colors) || !hexToRgb(hex)) return;
+  owCfg.colors[k] = hex;
+  saveMapPrefs();
+  repaintMapData();
+}
+function setOwWeight(u, val) {
+  const n = parseFloat(val);
+  if ((u in OW_DEFAULTS.weights) && Number.isFinite(n) && n >= 0) owCfg.weights[u] = n;
+  saveMapPrefs();
+  const el = document.getElementById('map-ow-w-' + u);
+  if (el) el.value = owCfg.weights[u];
+  repaintMapData();
+}
+function resetOwConfig() {
+  owCfg = owDefaultCfg();
+  saveMapPrefs();
+  renderOwConfig();
   repaintMapData();
 }
 
@@ -1103,6 +1334,7 @@ function toggleBarbFinder() {
   if (barbFinderActive && mapExtractMode) toggleExtractMode(); // one click-panel at a time
   if (barbFinderActive && heatcfgActive) closeHeatmapConfig();  // shares the left dock with Heatmap Config
   if (barbFinderActive && playerFilterActive) closePlayerFilter(); // …and with the Player Filter
+  if (barbFinderActive && owCfgActive) closeOwConfig();            // …and with Overwatch Config
   const btn = document.getElementById('map-barb-btn');
   if (btn) btn.classList.toggle('active', barbFinderActive);
   const panel = document.getElementById('map-barb-finder');
@@ -1125,6 +1357,7 @@ function toggleHeatmapConfig() {
   heatcfgActive = !heatcfgActive;
   if (heatcfgActive && barbFinderActive) closeBarbFinder(); // one left-dock panel at a time
   if (heatcfgActive && playerFilterActive) closePlayerFilter();
+  if (heatcfgActive && owCfgActive) closeOwConfig();
   const btn = document.getElementById('map-heatcfg-btn');
   if (btn) btn.classList.toggle('active', heatcfgActive);
   const panel = document.getElementById('map-heatcfg');
@@ -1166,6 +1399,7 @@ function togglePlayerFilter(mode) {
   if (playerFilterActive) {
     if (barbFinderActive) closeBarbFinder(); // one left-dock panel at a time
     if (heatcfgActive) closeHeatmapConfig();
+    if (owCfgActive) closeOwConfig();
     playerFilterQuery = '';
   } else {
     clearPlayerFilterSel();

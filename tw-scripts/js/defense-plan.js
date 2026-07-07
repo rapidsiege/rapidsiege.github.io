@@ -541,6 +541,20 @@ function renderDefPlayerSummary() {
     </table></div>`;
 }
 
+// One order line of the per-player export (shared by the forum BB dump AND the PM export,
+// so a player reads the same line either way).
+function defPlanRowLine(r) {
+  const url     = rallyUrl(r.srcCoord, r.tCoord, r.units);
+  const urlPart = url ? ` — [url=${url}]${t('def_bb_send')}[/url]` : '';
+  const def     = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
+  let line = `${r.srcCoord} → [coord]${r.tCoord}[/coord]${def}: ${defUnitsBB(r.units)}${urlPart}`;
+  if (r.arriveMs !== null) {
+    line += ` [b][color=#ff0e0e]${t('def_bb_depart')(fmtServerDT(r.departMs))}[/color][/b]`
+          + ` [color=#2e2eff]${t('def_bb_arrive')(fmtServerDT(r.arriveMs))}[/color]`;
+  }
+  return line;
+}
+
 // ── Per-player BB export: origin → destination support, with the pre-filled rally URL ──
 function showDefPlayerBB() {
   if (!defPlanRows.length) { alert(t('empty_no_def_plan')); return; }
@@ -552,20 +566,96 @@ function showDefPlayerBB() {
   for (const name of names) {
     const rows = byPlayer[name];
     bb += `========== ${name} (${rows.length}) ==========\n`;
-    for (const r of rows) {
-      const url     = rallyUrl(r.srcCoord, r.tCoord, r.units);
-      const urlPart = url ? ` — [url=${url}]${t('def_bb_send')}[/url]` : '';
-      const def     = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
-      const troops  = defUnitsBB(r.units);
-      let line = `${r.srcCoord} → [coord]${r.tCoord}[/coord]${def}: ${troops}${urlPart}`;
-      if (r.arriveMs !== null) {
-        line += ` [b][color=#ff0e0e]${t('def_bb_depart')(fmtServerDT(r.departMs))}[/color][/b]`
-              + ` [color=#2e2eff]${t('def_bb_arrive')(fmtServerDT(r.arriveMs))}[/color]`;
-      }
-      bb += line + '\n';
-    }
+    for (const r of rows) bb += defPlanRowLine(r) + '\n';
     bb += '\n';
   }
   document.getElementById('bb-output').value = bb.trimEnd() + '\n';
   document.getElementById('bb-modal').classList.add('open');
+}
+
+// ── ✉ Export PMs (v4.7.0): one in-game message per player, split at the bracket limit ──
+// A TW message allows ~5,000 of each bracket character; we pack to 4,500 so the user has
+// room to prepend their own text. Brackets are the ONLY split criterion (user-confirmed —
+// PMs are not character-limited in practice). Splitting is by whole order lines (BB never
+// breaks mid-tag); a player whose plan exceeds the limit gets "(1/2), (2/2)…" parts, each
+// its own copy button.
+const PM_MAX_BRACKETS = 4500;
+
+// The limiting bracket count of a text: max of '[' and ']' occurrences. Pure.
+function pmBracketCount(text) {
+  let open = 0, close = 0;
+  for (const ch of String(text || '')) { if (ch === '[') open++; else if (ch === ']') close++; }
+  return Math.max(open, close);
+}
+
+// Greedy line packing under the bracket limit. A line that alone exceeds it still ships
+// as its own part (nothing smaller to split to). Counts are tracked incrementally. Pure.
+function pmSplitParts(lines, maxBrackets) {
+  const parts = [];
+  let cur = [], open = 0, close = 0;
+  for (const line of lines) {
+    let lo = 0, lc = 0;
+    for (const ch of line) { if (ch === '[') lo++; else if (ch === ']') lc++; }
+    if (cur.length && Math.max(open + lo, close + lc) > maxBrackets) {
+      parts.push(cur.join('\n'));
+      cur = [line]; open = lo; close = lc;
+    } else {
+      cur.push(line); open += lo; close += lc;
+    }
+  }
+  if (cur.length) parts.push(cur.join('\n'));
+  return parts;
+}
+
+// Pure seam: [{player, parts: [messageText…]}] from the current plan, players A→Z (same
+// grouping as showDefPlayerBB). Every order line is numbered ("1. ", "2. "…) continuing
+// across parts, so a player reading message 2/2 knows which order they're at. The
+// "===== name (N) =====" header opens the FIRST part only (user decision) — glued to the
+// first order line so the packer can never orphan it into a part of its own.
+function defPmMessages(maxBrackets) {
+  maxBrackets = maxBrackets || PM_MAX_BRACKETS;
+  const byPlayer = {};
+  for (const r of defPlanRows) (byPlayer[r.srcPlayer] || (byPlayer[r.srcPlayer] = [])).push(r);
+  return Object.keys(byPlayer).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+    .map(name => {
+      const rows = byPlayer[name];
+      const lines = rows.map((r, i) => `${i + 1}. ${defPlanRowLine(r)}`);
+      lines[0] = `========== ${name} (${rows.length}) ==========\n` + lines[0];
+      return { player: name, parts: pmSplitParts(lines, maxBrackets) };
+    });
+}
+
+// Modal: one copy-button per message part; clicking copies that PM to the clipboard and
+// marks the button done (green + checkmark). Done-state is per-open on purpose — reopening
+// rebuilds from the current plan, whose messages may have changed.
+let defPmExport = [];
+function showDefPmExport() {
+  if (!defPlanRows.length) { alert(t('empty_no_def_plan')); return; }
+  defPmExport = defPmMessages();
+  const body = document.getElementById('pm-modal-body');
+  if (!body) return;
+  body.innerHTML = `<div class="pm-hint">${esc(t('pm_hint'))}</div>` + defPmExport.map((m, pi) =>
+    m.parts.map((text, k) => {
+      const label = m.parts.length > 1 ? `${m.player} (${k + 1}/${m.parts.length})` : m.player;
+      return `<div class="pm-row">
+        <button class="btn btn-ghost btn-sm pm-player-btn" onclick="copyDefPm(${pi}, ${k}, this)">📋 ${esc(label)}</button>
+        <span class="pm-meta">${esc(t('pm_meta')(text.split('\n').length, text.length, pmBracketCount(text)))}</span>
+      </div>`;
+    }).join('')
+  ).join('');
+  document.getElementById('pm-modal').classList.add('open');
+}
+function closePmModal() { document.getElementById('pm-modal').classList.remove('open'); }
+function copyDefPm(pi, k, btn) {
+  const m = defPmExport[pi];
+  if (!m || m.parts[k] == null) return;
+  const text = m.parts[k];
+  const mark = () => {
+    if (!btn) return;
+    btn.classList.add('pm-done');
+    btn.textContent = btn.textContent.replace(/^📋/, '✓');
+  };
+  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(text).then(mark).catch(() => mapFallbackCopy(text, mark));
+  else mapFallbackCopy(text, mark); // shared hidden-textarea fallback (map-render.js)
 }
