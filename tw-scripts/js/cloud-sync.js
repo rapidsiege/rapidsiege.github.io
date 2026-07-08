@@ -171,11 +171,16 @@ async function cloudSyncData(text) {
 // Cloud-save the full "Export Data (JSON)" snapshot (called from generatePlan()
 // and generateDefPlan()). Reuses buildDebugDump() — the exact object the manual
 // Export button serialises — so the complete state is captured on each generate.
+// MINIFIED here (no `null, 2` indent): pretty-printing inflates the payload ~1.6×,
+// and this dump already runs ~1.5 MB against the endpoint's 2 MB cap — the extra
+// whitespace is what tips a plan-with-manage-import over the limit (a silent 413,
+// no upload). The manual exportDebugData() download keeps the indent for humans;
+// the machine-read cloud copy doesn't need it (importDebugDataFromText parses either).
 async function cloudSyncPlan() {
   if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return; // local = no-op
   if (typeof buildDebugDump !== 'function') return;
   let jsonText;
-  try { jsonText = JSON.stringify(buildDebugDump(), null, 2); }
+  try { jsonText = JSON.stringify(buildDebugDump()); }
   catch (_) { return; } // couldn't build the snapshot — skip
   return _cloudPush(jsonText, 'plan');
 }
