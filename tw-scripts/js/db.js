@@ -35,6 +35,7 @@ let playerAllyDb  = {}; // playerId → allyId
 let allyDb        = {}; // allyId  → {name, tag}
 let coordDb       = {}; // "x|y" → village record
 let playerPointsDb = {}; // playerId → total village points (for offensive morale)
+let dbRawText     = null; // { village, player, ally } raw text of the last-loaded DB (for full-DB export)
 let dbDirHandle   = null;
 let dbSearchTimer = null;
 
@@ -223,6 +224,7 @@ function dbTribeTag(v) {
 }
 
 function setDbData(vText, pText, aText) {
+  dbRawText = { village: vText, player: pText, ally: aText || '' }; // kept in memory for full-DB export
   const { names, allies } = parsePlayerDb(pText);
   playerDb     = names;
   playerAllyDb = allies;
@@ -280,6 +282,7 @@ async function loadDbFromDir() {
       dbDirHandle.getFileHandle('ally.txt').then(h => h.getFile()).catch(() => null),
     ]);
     setDbData(await vFile.text(), await pFile.text(), aFile ? await aFile.text() : '');
+    try { localStorage.removeItem('tw_tribe_db'); } catch {} // real folder supersedes an imported snapshot
     loadWorldConfigFromDir(); // folder may carry the world's get_config.xml → speeds
   } catch (e) {
     document.getElementById('db-status').textContent = t('db_not_found');
@@ -323,6 +326,19 @@ function updateDbConnectBtn() {
   document.getElementById('db-refresh-btn').style.display = dbDirHandle ? '' : 'none';
 }
 
+// DB bootstrap for the init block. Production always (re)loads the live es100 mirror, so it
+// never freezes to a stale snapshot. Development prefers an imported full-DB snapshot
+// (tw_tribe_db — written ONLY by a debug import) when present, reproducing a tribemate's exact
+// world data with no folder pick; otherwise it restores the remembered folder as before.
+function autoloadDb() {
+  if (typeof TW_ENV !== 'undefined' && TW_ENV === 'production') { loadDbFromWeb(); return; }
+  try {
+    const d = JSON.parse(localStorage.getItem('tw_tribe_db') || 'null');
+    if (d && d.village && d.player) { setDbData(d.village, d.player, d.ally || ''); return; }
+  } catch {}
+  tryAutoLoadDb();
+}
+
 // Fallback for browsers without the File System Access API
 function loadDbFromFileInput(input) {
   const files = [...(input.files || [])];
@@ -349,6 +365,7 @@ function loadDbFromFileInput(input) {
     }
     if (vText === null || pText === null) { alert(t('alert_select_both')); return; }
     setDbData(vText, pText, aText || '');
+    try { localStorage.removeItem('tw_tribe_db'); } catch {} // real files supersede an imported snapshot
   });
   input.value = '';
 }

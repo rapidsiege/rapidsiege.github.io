@@ -51,30 +51,11 @@ function appVersion() {
   const el = document.getElementById('app-version');
   return el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
 }
-// Rebuild villages/players/troopByCoord from a flat villages array (import path),
-// reusing the same derived-field + aggregate helpers as parseData so they never diverge.
-// Data only — the caller repaints (via changeLang).
-function rebuildTroopsFromVillages(vils) {
-  villages = vils.map(v => { const u = { ...v }; applyVilDerived(u); return u; });
-  players = {}; troopByCoord = {}; defenseByCoord = {}; incomingByCoord = {};
-  for (const v of villages) {
-    troopByCoord[v.coord] = v;
-    if (!players[v.player]) players[v.player] = { villages: [], totals: Object.fromEntries(UNITS.map(u => [u, 0])), offPow: 0, defInf: 0, defCav: 0 };
-    players[v.player].villages.push(v);
-  }
-  Object.keys(players).forEach(recomputePlayerAggregate);
-  if (villages.length) {
-    document.getElementById('file-dot').className = 'file-status-dot dot-ok';
-    const txt = document.getElementById('file-status-text');
-    txt.textContent = t('imported_troops'); txt.className = 'connected';
-    document.getElementById('file-summary').textContent = `${villages.length} villages · ${Object.keys(players).length} players`;
-    document.getElementById('overview-drop').style.display = 'none';
-    document.getElementById('overview-content').style.display = '';
-  }
-}
-
 // Build the full debug snapshot object (separated from the download so it's unit-testable).
-function buildDebugDump() {
+// opts.includeDbRaw adds the FULL world-DB raw text (village/player/ally) so a manual export
+// round-trips the whole database, not just the referenced-coord subset. It's off by default
+// so the prod cloud-sync plan dump (which calls this with no args) stays lean.
+function buildDebugDump(opts) {
   // every tw_tribe* localStorage key (forward-compatible if more are added later)
   const storage = {};
   for (let i = 0; i < localStorage.length; i++) {
@@ -100,7 +81,7 @@ function buildDebugDump() {
     }
     db = { coord, players: names, points: playerPointsDb, status: (document.getElementById('db-status') || {}).textContent || '' };
   }
-  return {
+  const dump = {
     _meta: {
       tool: 'tribe-calculator', version: appVersion(), env: TW_ENV, lang,
       exportedAt: new Date().toISOString(), troopVillages: villages.length, dbVillages: villageDb.length,
@@ -117,11 +98,17 @@ function buildDebugDump() {
     troops: villages.length ? { villages } : null,
     db,
   };
+  // Full world-DB raw text (manual export only). On import this becomes tw_tribe_db and the
+  // page reload re-derives the whole DB from it (dev), so the database "sits the same".
+  if (opts && opts.includeDbRaw && typeof dbRawText !== 'undefined' && dbRawText && dbRawText.village) {
+    dump.dbRaw = dbRawText;
+  }
+  return dump;
 }
 
 function exportDebugData() {
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-  downloadFile(JSON.stringify(buildDebugDump(), null, 2), `tribe-calculator-debug-${stamp}.json`, 'application/json');
+  downloadFile(JSON.stringify(buildDebugDump({ includeDbRaw: true }), null, 2), `tribe-calculator-debug-${stamp}.json`, 'application/json');
 }
 
 function importDebugData(input) {
@@ -132,8 +119,65 @@ function importDebugData(input) {
   reader.readAsText(file);
 }
 
+// Write an imported dump's saved state into localStorage, REPLACING the user's current
+// tw_tribe* state wholesale (a backup is taken first). Data only — no in-memory rebuild and
+// no rendering: the caller reloads the page so the normal page-init autoloaders
+// (loadSettings / loadOffensive / loadManage / loadDefensive / autoloadTroops / autoloadDb)
+// re-derive EVERYTHING from these keys through the exact same path a fresh session uses.
+// That one code path is why the map's stationed/inbound troops (defenseByCoord/incomingByCoord),
+// Overwatch prefs and the Manage Offensive tab now survive an import — the old bespoke
+// re-derive rebuilt only owned troops and silently dropped them. Split out from
+// importDebugDataFromText so it is unit-testable without triggering a real reload.
+function applyDebugImport(dump) {
+  const isOurs = k => k && k.indexOf('tw_tribe') === 0 && k.indexOf('tw_tribe_backup') !== 0;
+  const ourKeys = () => { const ks = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (isOurs(k)) ks.push(k); } return ks; };
+  // back up the current tw_tribe* state first (recoverable from devtools, and used to roll
+  // back below); a single key, overwritten each import, so backups can't accumulate. Then
+  // CLEAR the old state so a subsystem absent from the dump (e.g. no defensive targets)
+  // doesn't linger — faithful replace.
+  const backup = {};
+  try {
+    for (const k of ourKeys()) backup[k] = localStorage.getItem(k);
+    localStorage.setItem('tw_tribe_backup', JSON.stringify({ savedAt: new Date().toISOString(), keys: backup }));
+    for (const k of Object.keys(backup)) localStorage.removeItem(k);
+  } catch {}
+  // Write the new state as one unit. If any write throws (e.g. localStorage quota exceeded on
+  // a big DB), roll back to the pre-import state and fail — never reload into a half-written
+  // mix that would silently drop whole subsystems (troops gone → blank map, no error).
+  try {
+    for (const [k, v] of Object.entries(dump.storage || {})) {
+      localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+    }
+    // full world-DB snapshot (raw text) → tw_tribe_db, re-derived on reload by autoloadDb (dev
+    // only; prod always reloads the live mirror). Present only in manual exports.
+    if (dump.dbRaw && dump.dbRaw.village) localStorage.setItem('tw_tribe_db', JSON.stringify(dump.dbRaw));
+    // Back-compat: very old dumps kept settings only in the structured `settings` block with no
+    // tw_tribe_settings key. Synthesize it (mapping to saveSettings' shape) so loadSettings()
+    // restores thresholds/plan/lang on reload.
+    if (!(dump.storage && dump.storage.tw_tribe_settings) && dump.settings) {
+      const s = dump.settings, p = s.plan || {}, plan = {};
+      const map = { 'plan-min-dist': p.minDist, 'plan-max-dist': p.maxDist, 'plan-snob-max': p.snobMax,
+        'plan-min-morale-off': p.minMoraleOff, 'plan-min-morale': p.minMorale, 'plan-cat-count': p.catCount };
+      for (const k in map) if (map[k] != null) plan[k] = map[k];
+      localStorage.setItem('tw_tribe_settings', JSON.stringify({
+        lang: s.lang, speeds: { world: p.worldSpeed, unit: p.unitSpeed },
+        thresholds: s.thresholds || {}, plan,
+      }));
+    }
+  } catch (e) {
+    try { // roll back: drop the partial write, restore the pre-import keys
+      for (const k of ourKeys()) localStorage.removeItem(k);
+      for (const [k, v] of Object.entries(backup)) localStorage.setItem(k, v);
+    } catch {}
+    return false;
+  }
+  return true;
+}
+
 // Validate BEFORE touching localStorage so a malformed/foreign file can't half-write and
-// corrupt the user's own saved state. Returns true on success (used by the test harness).
+// corrupt the user's own saved state. On success, write the state and reload so every
+// subsystem re-derives from storage exactly as on a normal load. Returns true on success
+// (the test harness relies on this; it has no `location`, so no reload fires there).
 function importDebugDataFromText(text) {
   let dump;
   try { dump = JSON.parse(text); }
@@ -142,51 +186,9 @@ function importDebugDataFromText(text) {
     alert(t('import_not_ours')); return false;
   }
   if (!confirm(t('import_confirm'))) return false;
-  // back up the current tw_tribe* state first (recoverable from devtools if needed);
-  // a single key, overwritten each import, so backups can't accumulate
-  try {
-    const backup = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.indexOf('tw_tribe') === 0 && k.indexOf('tw_tribe_backup') !== 0) backup[k] = localStorage.getItem(k);
-    }
-    localStorage.setItem('tw_tribe_backup', JSON.stringify({ savedAt: new Date().toISOString(), keys: backup }));
-  } catch {}
-  // restore localStorage keys
-  for (const [k, v] of Object.entries(dump.storage || {})) {
-    localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
-  }
-  // restore DOM-only settings (tiers + plan params)
-  const set = (id, v) => { const e = document.getElementById(id); if (e && v != null && v !== '') e.value = v; };
-  const s = dump.settings || {};
-  if (s.thresholds) { set('thresh-complete', s.thresholds.complete); set('thresh-tq', s.thresholds.tq); set('thresh-half', s.thresholds.half); }
-  if (s.plan) { // speeds land on the world-config globals (covers pre-3.30 dumps too)
-                if (parseFloat(s.plan.worldSpeed) > 0) twWorldSpeed = parseFloat(s.plan.worldSpeed);
-                if (parseFloat(s.plan.unitSpeed)  > 0) twUnitSpeed  = parseFloat(s.plan.unitSpeed);
-                updWorldSpeedNote();
-                set('plan-min-dist', s.plan.minDist); set('plan-max-dist', s.plan.maxDist); set('plan-snob-max', s.plan.snobMax);
-                set('plan-min-morale', s.plan.minMorale); set('plan-min-morale-off', s.plan.minMoraleOff);
-                set('plan-cat-count', s.plan.catCount); }
-  // world-DB subset (coord records + player names/points) so Optimize/morale, defenders
-  // and tooltips resolve for the relevant coords without the live mirror
-  if (dump.db && dump.db.coord) {
-    coordDb = dump.db.coord;
-    playerPointsDb = dump.db.points || {};
-    playerDb = { ...playerDb, ...(dump.db.players || {}) };
-    villageDb = Object.values(coordDb); // non-empty → morale "dbReady"
-  }
-  // troop data (rebuild via the shared helpers); left untouched when the dump has none
-  if (dump.troops && Array.isArray(dump.troops.villages)) rebuildTroopsFromVillages(dump.troops.villages);
-  // re-init the offensive + defensive state from the freshly written localStorage, then repaint
-  loadOffensive();
-  if (typeof loadDefensive === 'function') loadDefensive();
-  if (typeof loadMapPrefs === 'function') loadMapPrefs();
-  if (typeof syncMapToolbar === 'function') syncMapToolbar();
-  changeLang((s.lang === 'es' || s.lang === 'en') ? s.lang : lang); // applyLang + full re-render
-  if (typeof mapDetectAndSeed === 'function') mapDetectAndSeed();
-  if (typeof mapRefresh === 'function') mapRefresh();
-  renderTierTables();
+  if (!applyDebugImport(dump)) { alert(t('import_failed')); return false; } // rolled back to pre-import state
   alert(t('import_done'));
+  if (typeof location !== 'undefined' && location && typeof location.reload === 'function') location.reload();
   return true;
 }
 

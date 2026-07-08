@@ -909,10 +909,9 @@ if (TW_ENV === 'production') {
   }
   const note = document.getElementById('db-note');
   if (note) { note.setAttribute('data-i18n', 'db_note_prod'); note.textContent = t('db_note_prod'); }
-  loadDbFromWeb();
-} else {
-  tryAutoLoadDb();
 }
+// prod → live mirror; dev → imported DB snapshot (tw_tribe_db) if present, else the saved folder
+autoloadDb();
 
 // Apply the saved language (loadSettings() set the global above) — translates the static
 // DOM, sets the active flag button, and repaints every tab in the restored language.
@@ -931,7 +930,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.7.0 &nbsp;·&nbsp; 2026-07-07</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.8.0 &nbsp;·&nbsp; 2026-07-08</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

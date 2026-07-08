@@ -12,6 +12,16 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.8.0', date: '2026-07-08',
+    en: [
+      `<b>💾 Export / Import now round-trips EVERYTHING.</b> Export Data (JSON) captures your full saved state — offensive & defensive targets, the plan, settings, troops, the Manage Offensive orders, map & Overwatch preferences, and now the <b>entire world database</b> — in one file. Import writes it all back and <b>reloads the page</b> to apply it, so the imported situation is reproduced exactly as a fresh session would build it.`,
+      `<b>Fixes disappearing map troops on import.</b> Previously an import rebuilt only owned troops, so the map tooltip's <b>Troops In Village</b> and <b>Inbound Troops</b> (and Overwatch stacks) vanished until you reloaded. They now survive the import. Your previous state is still backed up in localStorage first. In production the database keeps loading the live daily mirror (fresher than any snapshot); the exported database is used when reproducing a file locally.`,
+    ],
+    es: [
+      `<b>💾 Exportar / Importar ahora conserva TODO.</b> Exportar datos (JSON) captura todo tu estado guardado — objetivos ofensivos y defensivos, el plan, ajustes, tropas, las órdenes de Gestión Ofensiva, preferencias de mapa y Overwatch, y ahora la <b>base de datos completa del mundo</b> — en un solo archivo. Importar lo escribe todo de vuelta y <b>recarga la página</b> para aplicarlo, reproduciendo la situación importada tal como la construiría una sesión nueva.`,
+      `<b>Arregla las tropas del mapa que desaparecían al importar.</b> Antes una importación reconstruía solo las tropas propias, así que las <b>Tropas en la Aldea</b> y <b>Tropas Entrantes</b> del mapa (y los stacks de Overwatch) desaparecían hasta recargar. Ahora sobreviven a la importación. Tu estado anterior se respalda antes en localStorage. En producción la base de datos sigue cargándose del mirror diario en vivo (más reciente que cualquier copia); la base exportada se usa al reproducir un archivo en local.`,
+    ],
+  },
   { ver: 'v4.7.0', date: '2026-07-07',
     en: [
       `<b>✉ Export PMs (Plan Defense).</b> A new button next to Export Per-Player Orders opens a panel with <b>one button per player</b>: clicking it copies that player's support orders to the clipboard, ready to paste into an in-game message — and the button turns green with a checkmark so you always know who you've already messaged. Orders use the same lines as the forum export (coord links, troops, SEND link, depart/arrive times).`,
