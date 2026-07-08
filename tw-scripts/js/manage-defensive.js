@@ -304,7 +304,12 @@ function mdBuildRows(supTargets, orders, planRows, opts) {
     const station = de[coord];
     for (const u of DEF_OBJ_UNITS) g.totals[u] = station ? (station[u] || 0) : (g.ownUnits[u] + g.stationed[u]);
   }
-  return order.map(c => byCoord[c]);
+  // Only surface villages actually relevant to defense coordination: a Defense-Plan
+  // target, OR a village holding ally support, OR one with inbound support (ordered or
+  // inferred). A village showing only its OWNER'S troops (self-defense — no plan, no ally
+  // support stationed or inbound) is dropped; its lone Totals row is just noise here.
+  return order.map(c => byCoord[c])
+    .filter(g => g.hasPlan || g.supportRows.length > 0 || mdPop(g.incoming) > 0);
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────

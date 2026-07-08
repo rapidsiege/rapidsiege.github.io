@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.10.1', date: '2026-07-08',
+    en: [
+      `<b>🛡 Manage Defense hides self-defense-only villages.</b> The Manage Defense table now lists a village only when it's a <b>Defense Plan target</b> or actually holds/expects <b>ally support</b> (stationed or inbound). Villages showing nothing but their own garrison — no plan, no support in or on the way — are no longer listed, so the table stays focused on what needs coordinating.`,
+    ],
+    es: [
+      `<b>🛡 Gestionar Defensa oculta las aldeas con solo autodefensa.</b> La tabla de Gestionar Defensa ahora muestra una aldea únicamente cuando es <b>objetivo de un Plan de Defensa</b> o realmente tiene/espera <b>apoyo aliado</b> (estacionado o en camino). Las aldeas que solo muestran su propia guarnición — sin plan y sin apoyo entrante o presente — ya no aparecen, de modo que la tabla se centra en lo que hay que coordinar.`,
+    ],
+  },
   { ver: 'v4.10.0', date: '2026-07-08',
     en: [
       `<b>🗂 Tabs are now grouped into menus.</b> The long single row of tabs has been organised into six top-level menus — <b>Troops Overview</b>, <b>Map</b>, <b>Tribe Timings</b>, <b>Offensive</b>, <b>Defense</b> and <b>Settings</b>. Clicking a menu opens its first tab and reveals that menu's sub-tabs in a second row beneath the menus, so related views sit together and the bar is far less cluttered.`,
