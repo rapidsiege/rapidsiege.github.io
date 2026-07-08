@@ -2,7 +2,7 @@
 // Maintained by Vanquished
 //
 // v3 — adds building levels + a structured parse → serialize split so every view can
-// export as .txt AND .json. Modes:
+// export as .txt AND .json. Units/buildings change based on world settings. Modes:
 //   members_troops    "Read troops of the village"          — a village's own army
 //   members_defense   "Read defenses in the village"        — everything stationed there ("en el pueblo")
 //   members_incoming  "Read incoming troops of the village" — troops en route to it   ("en camino")
@@ -10,10 +10,9 @@
 //   members_buildings "Read all buildings"                  — 16 building levels per village
 //   everything        "Read everything (JSON only)"         — all troops + buildings, one object per village
 //
-// txt CONTRACT (do NOT reorder): the tribe-calculator's js/data-load.js parses the troop
-// .txt positionally as  Coords, Player, [Type], <units in game_data.units order>, [IncomingAttacks].
-// The three troop views + all_troops keep exactly that layout. Buildings .txt and every .json
-// are new formats with no downstream consumer, so they carry extra fields (village, points, id).
+// Units .txt positionally as  Coords, Player, [Type], <units in game_data.units order>, [IncomingAttacks].
+// Buildings .txt positionally as Coords, Player, Village, Points, <buildings in header order>.
+// .json exports are more free-formated based on mode, but contain all relevant information with similar structures.
 
 /* ─────────────────────────── UI ─────────────────────────── */
 
