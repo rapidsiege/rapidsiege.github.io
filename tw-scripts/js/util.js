@@ -193,10 +193,42 @@ function importDebugDataFromText(text) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// TABS
+// TABS (two-level: menu groups → sub-tabs)
+// ──────────────────────────────────────────────────────────────
+// TAB_GROUPS is the single source of truth for the group→sub mapping — keep it
+// in sync with the .tab-groups / .tab-subs markup in tribe-calculator.html.
+// Clicking a group opens its FIRST sub-tab; switchTab activates the parent group,
+// shows that group's sub-tabs (hiding the sub-bar entirely for single-tab groups),
+// highlights the selected sub-tab, and reveals the matching content.
 // ══════════════════════════════════════════════════════════════
+const TAB_GROUPS = [
+  { id: 'overview',  tabs: ['overview', 'players', 'villages', 'rankings'] },
+  { id: 'map',       tabs: ['map'] },
+  { id: 'timings',   tabs: ['target'] },
+  { id: 'offensive', tabs: ['offtargets', 'plan', 'manageoff', 'outbound'] },
+  { id: 'defense',   tabs: ['deftargets', 'defplan', 'managedef'] },
+  { id: 'settings',  tabs: ['settings', 'changelog', 'db'] },
+];
+function tabGroupOf(id) {
+  const g = TAB_GROUPS.find(grp => grp.tabs.indexOf(id) !== -1);
+  return g ? g.id : null;
+}
+function switchGroup(gid) {
+  const g = TAB_GROUPS.find(grp => grp.id === gid);
+  if (g) switchTab(g.tabs[0]);
+}
 function switchTab(id) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
+  if (typeof document === 'undefined' || !document.querySelectorAll) return;
+  const gid = tabGroupOf(id);
+  const group = TAB_GROUPS.find(grp => grp.id === gid);
+  document.querySelectorAll('.tabgroup').forEach(t =>
+    t.classList.toggle('active', t.dataset.group === gid));
+  document.querySelectorAll('.tab-subs .tab').forEach(t => {
+    t.classList.toggle('grp-active', t.dataset.group === gid);  // visible within the active group
+    t.classList.toggle('active', t.dataset.tab === id);         // the selected sub-tab
+  });
+  const subs = document.getElementById('tab-subs');
+  if (subs) subs.classList.toggle('single', !group || group.tabs.length < 2);
   document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + id));
   if (id === 'map' && typeof onMapTabShown === 'function') onMapTabShown();
 }

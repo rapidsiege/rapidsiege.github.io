@@ -49,14 +49,36 @@
     #file-status-text.connected { color: #70c080; }
     .file-bar-actions { display: flex; gap: 8px; margin-left: auto; }
 
-    /* ── Tabs ── */
-    .tabs {
+    /* ── Tabs (two-level: menu-group row + sub-tab row) ── */
+    .tab-groups {
+      display: flex;
+      background: #140c05;
+      border-bottom: 1px solid #3a2609;
+      padding: 0 20px;
+      overflow-x: auto;
+    }
+    .tabgroup {
+      padding: 12px 20px;
+      cursor: pointer;
+      color: #9a7844;
+      border-bottom: 3px solid transparent;
+      font-weight: 600;
+      font-size: 14px;
+      transition: color .15s, background .15s;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .tabgroup:hover { color: #e0b860; }
+    .tabgroup.active { color: #f0c040; background: #1a1008; border-bottom-color: #f0c040; }
+
+    .tab-subs {
       display: flex;
       background: #1a1008;
       border-bottom: 2px solid #4a3010;
       padding: 0 20px;
       overflow-x: auto;
     }
+    .tab-subs.single { display: none; }   /* single-tab groups have nothing to navigate */
     .tab {
       padding: 11px 22px;
       cursor: pointer;
@@ -68,6 +90,8 @@
       user-select: none;
       white-space: nowrap;
     }
+    .tab-subs .tab { display: none; }
+    .tab-subs .tab.grp-active { display: flex; align-items: center; gap: 5px; }
     .tab:hover { color: #c8a060; }
     .tab.active { color: #f0c040; border-bottom-color: #f0c040; }
 

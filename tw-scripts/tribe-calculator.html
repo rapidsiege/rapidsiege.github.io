@@ -33,23 +33,40 @@
 </div>
 
 <!-- ═══════════════════════════ TABS ═══════════════════════════ -->
-<div class="tabs">
-  <div class="tab active"  data-tab="overview"    onclick="switchTab('overview')"   data-i18n="tab_overview">Overview</div>
-  <div class="tab"         data-tab="map"         onclick="switchTab('map')"        data-i18n="tab_map">🗺 Map</div>
-  <div class="tab"         data-tab="players"     onclick="switchTab('players')"    data-i18n="tab_players">By Player</div>
-  <div class="tab"         data-tab="villages"    onclick="switchTab('villages')"   data-i18n="tab_byvillages">By Villages</div>
-  <div class="tab"         data-tab="outbound"    onclick="switchTab('outbound')"   data-i18n="tab_outbound">Outbound Offs</div>
-  <div class="tab"         data-tab="rankings"    onclick="switchTab('rankings')"   data-i18n="tab_rankings">Rankings</div>
-  <div class="tab"         data-tab="target"      onclick="switchTab('target')"     data-i18n="tab_target">⏱ Tribe Timings</div>
-  <div class="tab"         data-tab="offtargets"  onclick="switchTab('offtargets')" data-i18n="tab_offtargets">📌 Offensive Targets</div>
-  <div class="tab"         data-tab="plan"        onclick="switchTab('plan')"       data-i18n="tab_plan">⚔ Plan Offensive</div>
-  <div class="tab"         data-tab="manageoff"   onclick="switchTab('manageoff')"  data-i18n="tab_manageoff">📊 Manage Offensive</div>
-  <div class="tab"         data-tab="deftargets"  onclick="switchTab('deftargets')" data-i18n="tab_deftargets">🛡 Defensive Targets</div>
-  <div class="tab"         data-tab="defplan"     onclick="switchTab('defplan')"    data-i18n="tab_defplan">🛡 Plan Defense</div>
-  <div class="tab"         data-tab="managedef"   onclick="switchTab('managedef')"><img class="tw-ic" src="icons/map/support.webp" alt=""><span data-i18n="tab_managedef">Manage Defense</span></div>
-  <div class="tab"         data-tab="db"          onclick="switchTab('db')"         data-i18n="tab_db">🗃 Database</div>
-  <div class="tab"         data-tab="settings"    onclick="switchTab('settings')"   data-i18n="tab_settings">⚙ Settings</div>
-  <div class="tab"         data-tab="changelog"   onclick="switchTab('changelog')"  data-i18n="tab_changelog">📋 Changelog</div>
+<!-- Two-level nav. Top row = menu groups (switchGroup opens the group's first tab).
+     Second row = the active group's sub-tabs; only shown for multi-tab groups.
+     The group↔sub mapping is TAB_GROUPS in js/util.js — keep both in sync. -->
+<div class="tab-groups">
+  <div class="tabgroup" data-group="overview"  onclick="switchGroup('overview')"  data-i18n="grp_overview">👥 Troops Overview</div>
+  <div class="tabgroup" data-group="map"        onclick="switchGroup('map')"       data-i18n="grp_map">🗺 Map</div>
+  <div class="tabgroup" data-group="timings"    onclick="switchGroup('timings')"   data-i18n="grp_timings">⏱ Tribe Timings</div>
+  <div class="tabgroup" data-group="offensive"  onclick="switchGroup('offensive')" data-i18n="grp_offensive">⚔ Offensive</div>
+  <div class="tabgroup" data-group="defense"    onclick="switchGroup('defense')"   data-i18n="grp_defense">🛡 Defense</div>
+  <div class="tabgroup" data-group="settings"   onclick="switchGroup('settings')"  data-i18n="grp_settings">⚙ Settings</div>
+</div>
+<div class="tab-subs" id="tab-subs">
+  <!-- Troops Overview -->
+  <div class="tab" data-tab="overview"    data-group="overview"  onclick="switchTab('overview')"   data-i18n="tab_overview">Overview</div>
+  <div class="tab" data-tab="players"     data-group="overview"  onclick="switchTab('players')"    data-i18n="tab_players">By Player</div>
+  <div class="tab" data-tab="villages"    data-group="overview"  onclick="switchTab('villages')"   data-i18n="tab_byvillages">By Villages</div>
+  <div class="tab" data-tab="rankings"    data-group="overview"  onclick="switchTab('rankings')"   data-i18n="tab_rankings">Rankings</div>
+  <!-- Map -->
+  <div class="tab" data-tab="map"         data-group="map"       onclick="switchTab('map')"        data-i18n="tab_map">🗺 Map</div>
+  <!-- Tribe Timings -->
+  <div class="tab" data-tab="target"      data-group="timings"   onclick="switchTab('target')"     data-i18n="tab_target">⏱ Tribe Timings</div>
+  <!-- Offensive -->
+  <div class="tab" data-tab="offtargets"  data-group="offensive" onclick="switchTab('offtargets')" data-i18n="tab_offtargets">📌 Offensive Targets</div>
+  <div class="tab" data-tab="plan"        data-group="offensive" onclick="switchTab('plan')"       data-i18n="tab_plan">⚔ Plan Offensive</div>
+  <div class="tab" data-tab="manageoff"   data-group="offensive" onclick="switchTab('manageoff')"  data-i18n="tab_manageoff">📊 Manage Offensive</div>
+  <div class="tab" data-tab="outbound"    data-group="offensive" onclick="switchTab('outbound')"   data-i18n="tab_outbound">Outbound Offs</div>
+  <!-- Defense -->
+  <div class="tab" data-tab="deftargets"  data-group="defense"   onclick="switchTab('deftargets')" data-i18n="tab_deftargets">🛡 Defensive Targets</div>
+  <div class="tab" data-tab="defplan"     data-group="defense"   onclick="switchTab('defplan')"    data-i18n="tab_defplan">🛡 Plan Defense</div>
+  <div class="tab" data-tab="managedef"   data-group="defense"   onclick="switchTab('managedef')"><img class="tw-ic" src="icons/map/support.webp" alt=""><span data-i18n="tab_managedef">Manage Defense</span></div>
+  <!-- Settings -->
+  <div class="tab" data-tab="settings"    data-group="settings"  onclick="switchTab('settings')"   data-i18n="tab_settings">⚙ Settings</div>
+  <div class="tab" data-tab="changelog"   data-group="settings"  onclick="switchTab('changelog')"  data-i18n="tab_changelog">📋 Changelog</div>
+  <div class="tab" data-tab="db"          data-group="settings"  onclick="switchTab('db')"         data-i18n="tab_db">🗃 Database</div>
 </div>
 
 <!-- ═══════════════════════════ OVERVIEW ═══════════════════════════ -->
@@ -980,6 +997,10 @@ autoloadDb();
 // DOM, sets the active flag button, and repaints every tab in the restored language.
 changeLang(lang);
 
+// Initialise the two-level nav: open the first group (Troops Overview → Overview).
+// Single source of truth for the group/sub-tab active state (see switchTab in util.js).
+switchTab('overview');
+
 // Allow dropping files anywhere on the page
 document.addEventListener('dragover', e => e.preventDefault());
 document.addEventListener('drop', e => {
@@ -993,7 +1014,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.9.0 &nbsp;·&nbsp; 2026-07-08</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.10.0 &nbsp;·&nbsp; 2026-07-08</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

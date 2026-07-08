@@ -12,6 +12,16 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.10.0', date: '2026-07-08',
+    en: [
+      `<b>🗂 Tabs are now grouped into menus.</b> The long single row of tabs has been organised into six top-level menus — <b>Troops Overview</b>, <b>Map</b>, <b>Tribe Timings</b>, <b>Offensive</b>, <b>Defense</b> and <b>Settings</b>. Clicking a menu opens its first tab and reveals that menu's sub-tabs in a second row beneath the menus, so related views sit together and the bar is far less cluttered.`,
+      `<b>What's where.</b> <b>Troops Overview</b> holds Overview, By Player, By Villages and Rankings. <b>Offensive</b> gathers Offensive Targets, Plan Offensive, Manage Offensive and Outbound Offs. <b>Defense</b> gathers Defensive Targets, Plan Defense and Manage Defense. <b>Settings</b> now also holds the Changelog and the Database. Map and Tribe Timings each open directly to their single view.`,
+    ],
+    es: [
+      `<b>🗂 Las pestañas ahora se agrupan en menús.</b> La larga fila única de pestañas se ha organizado en seis menús principales — <b>Tropas</b>, <b>Mapa</b>, <b>Tiempos de Tribu</b>, <b>Ofensiva</b>, <b>Defensa</b> y <b>Config.</b> Al pulsar un menú se abre su primera pestaña y aparecen sus sub-pestañas en una segunda fila bajo los menús, de modo que las vistas relacionadas quedan juntas y la barra está mucho menos saturada.`,
+      `<b>Qué hay en cada uno.</b> <b>Tropas</b> contiene Resumen, Por Jugador, Por Aldea y Rankings. <b>Ofensiva</b> reúne Objetivos Ofensivos, Planear Ofensiva, Gestionar Ofensiva y Offs Fuera. <b>Defensa</b> reúne Objetivos Defensivos, Planear Defensa y Gestionar Defensa. <b>Config.</b> incluye ahora también el Registro de Cambios y la Base de Datos. Mapa y Tiempos de Tribu abren directamente a su única vista.`,
+    ],
+  },
   { ver: 'v4.9.0', date: '2026-07-08',
     en: [
       `<b>🛡 New "Manage Defense" tab.</b> The defensive twin of Manage Offensive. <b>Import Support</b> loads the villageSupports.js export (the support currently <b>stationed</b> in each allied village, broken down by origin); <b>Import Support Orders</b> loads the incomingOrders.js export, keeping only <b>support movements en route</b> (attacks ignored). Each Copy-Script button puts the matching quickbar loader on your clipboard. The table is village-keyed and works with or without a plan.`,
