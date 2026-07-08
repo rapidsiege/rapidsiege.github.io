@@ -11,7 +11,7 @@ let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00
 let offTargets   = []; // [{id, coord, player, nComplete, nTq, nHalf, snobPlayers, nobles, offWindows:[{win,count}], winSnob, snobMode, snobAssignees:[{name,count}]}]
 let offIgnore        = ''; // raw "Ignore Coordinates" textarea (Offensive Targets) — these villages never send anything
 let offIgnorePlayers = []; // raw player names excluded from the whole plan (no off, no snob, no escort)
-let offMvPairs       = []; // [[rawA, rawB], …] vacation-mode pairs: two paired players can't both attack the SAME enemy player
+let mvPairs          = []; // [[rawA, rawB], …] vacation-mode pairs — SHARED by Plan Offensive AND Plan Defense (edited from either the Offensive-Targets or Defensive-Targets picker; persisted here in tw_tribe_offensive). Offensive rule: two paired players can't both attack the SAME enemy player. Defensive rule: they can't both support the SAME target, nor support a village their partner owns.
 // Coordinate Filter (Plan Offensive): layered X|Y bounds that a village must ALL satisfy to be
 // used as a sender (off OR snob train). [{axis:'x'|'y', op:'>'|'>='|'<'|'<='|'=', val:'<number>'}].
 // AND semantics; a row with no axis or a blank/NaN value is inactive; an empty list uses every
@@ -41,7 +41,7 @@ function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&qu
 
 function saveOffensive() {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
-    cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, mvPairs: offMvPairs,
+    cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, mvPairs,
     coordFilters: planCoordFilters, coordPolygon: planCoordPolygon, coordPolygonInv: planCoordPolygonInv,
     plan: planRows, warnings: planWarnings, reserved: planReserved, stats: planStats, nextId: otNextId,
   }));
@@ -55,7 +55,7 @@ function loadOffensive() {
       offTargets   = d.targets || [];
       offIgnore        = typeof d.ignore === 'string' ? d.ignore : '';
       offIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
-      offMvPairs       = Array.isArray(d.mvPairs) ? d.mvPairs.filter(p => Array.isArray(p) && p.length === 2 && p[0] && p[1] && p[0] !== p[1]) : [];
+      mvPairs          = Array.isArray(d.mvPairs) ? d.mvPairs.filter(p => Array.isArray(p) && p.length === 2 && p[0] && p[1] && p[0] !== p[1]) : [];
       planCoordFilters = Array.isArray(d.coordFilters) ? d.coordFilters.filter(f => f && (f.axis === 'x' || f.axis === 'y')) : [];
       planCoordPolygonInv = d.coordPolygonInv === true;
       planCoordPolygon = Array.isArray(d.coordPolygon)
@@ -275,28 +275,30 @@ function mvPlayerOptions() {
     .sort((a, b) => decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
 }
 function mvPairExists(a, b) {
-  return offMvPairs.some(p => (p[0] === a && p[1] === b) || (p[0] === b && p[1] === a));
+  return mvPairs.some(p => (p[0] === a && p[1] === b) || (p[0] === b && p[1] === a));
 }
 function addMvPairFromSelects() {
   const a = (document.getElementById('ot-mv-a') || {}).value;
   const b = (document.getElementById('ot-mv-b') || {}).value;
   if (!a || !b || a === b || mvPairExists(a, b)) return;
-  offMvPairs.push([a, b]);
+  mvPairs.push([a, b]);
   saveOffensive(); renderOffMvPlayers();
+  if (typeof renderDefMvPlayers === 'function') renderDefMvPlayers(); // shared list — keep the Defensive-Targets picker in sync
 }
 function removeMvPair(idx) {
-  offMvPairs.splice(idx, 1);
+  mvPairs.splice(idx, 1);
   saveOffensive(); renderOffMvPlayers();
+  if (typeof renderDefMvPlayers === 'function') renderDefMvPlayers();
 }
 // Chip list of pairs ("A ↔ B") + two player pickers and an Add Pair button.
 function renderOffMvPlayers() {
   const host = document.getElementById('ot-mv-players-host');
   if (!host) return;
-  if (!Object.keys(players).length && !offMvPairs.length) {
+  if (!Object.keys(players).length && !mvPairs.length) {
     host.innerHTML = `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
     return;
   }
-  const chips = offMvPairs.map((pr, i) =>
+  const chips = mvPairs.map((pr, i) =>
     `<span class="chip">${esc(decode(pr[0]))} ↔ ${esc(decode(pr[1]))}<span class="chip-x" onclick="removeMvPair(${i})">✕</span></span>`).join('');
   const optHtml = mvPlayerOptions().map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('');
   const sel = id => `<select id="${id}" class="cell-input" style="width:150px;"><option value="">${t('opt_pick_mv_player')}</option>${optHtml}</select>`;

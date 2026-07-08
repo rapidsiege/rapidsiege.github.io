@@ -186,11 +186,12 @@ function generatePlan() {
   // player, across all their villages) — a game limit during vacation mode + 48h after.
   // Enforced per defender: the first of a pair committed against a defending player CLAIMS
   // it; the partner is then blocked from that defender in every pass. Raw sender namespace
-  // throughout (p.v.player) to match offMvPairs and the pool; the claim key is the defending
+  // throughout (p.v.player) to match mvPairs and the pool; the claim key is the defending
   // player string (never compared to a sender name, only bucketed). Ownerless defenders
   // (no DB / barbarian → blank player) are exempt (no real player to double-attack).
+  // mvPairs is the SHARED off/def vacation-mode list (defined in offensive-targets.js).
   const mvPartners = new Map(); // raw player -> Set of its raw MV partners
-  for (const pair of (typeof offMvPairs !== 'undefined' ? offMvPairs : [])) {
+  for (const pair of (typeof mvPairs !== 'undefined' ? mvPairs : [])) {
     if (!Array.isArray(pair) || pair.length !== 2) continue;
     const [a, b] = pair;
     if (!a || !b || a === b) continue;

@@ -682,6 +682,7 @@
     <button class="btn btn-primary btn-sm" onclick="addDefTarget()" data-i18n="btn_add_target">+ Add Target</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleDefIgnore()" data-i18n="btn_ignore_coords">🚫 Ignore Coordinates</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleDefIgnorePlayers()" data-i18n="btn_ignore_players">🙅 Ignore Players</button>
+    <button class="btn btn-ghost btn-sm" onclick="toggleDefMvPlayers()" data-i18n="btn_mv_players">🏖 MV Players</button>
     <label data-i18n="lbl_enemy_dist">Distance from enemy tribes:</label>
     <input type="number" id="plan-def-enemy-dist" value="0" min="0" style="width:70px;" title="0 = off" oninput="updDefEnemyDist()">
     <button class="btn btn-ghost btn-sm" onclick="toggleDefEnemy()" data-i18n="btn_enemy_tribes">⚔ Enemy Tribes</button>
@@ -699,6 +700,10 @@
   <div id="dp-ignore-players-wrap" style="display:none;margin-top:10px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="def_ignore_players_hint">Pick whole players to keep home in Plan Defense — none of their villages are used as support senders. Requires the tribe troop file.</div>
     <div id="dp-ignore-players-host"></div>
+  </div>
+  <div id="dp-mv-players-wrap" style="display:none;margin-top:10px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="def_mv_players_hint">Pair players who are in vacation mode (MV): two paired players will never both support the SAME target, and neither may support a village owned by their partner — a game limit during vacation mode and for 48h after. They stay fully pickable otherwise. Requires the tribe troop file.</div>
+    <div id="dp-mv-players-host"></div>
   </div>
   <div id="dp-enemy-wrap" style="display:none;margin-top:10px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="def_enemy_hint">Enter enemy tribe tags or names (one per line). Any village within the distance above of ANY village owned by these tribes is held home — never used as a sender. Requires the village database.</div>
@@ -1014,7 +1019,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.10.1 &nbsp;·&nbsp; 2026-07-08</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.11.0 &nbsp;·&nbsp; 2026-07-08</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

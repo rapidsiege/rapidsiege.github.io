@@ -301,6 +301,26 @@ function generateDefPlan() {
     return tot(B) - tot(A);
   });
 
+  // ── MV (vacation-mode) pairs ──────────────────────────────────────────────
+  // Two MV-paired players must NOT (rule 1) both support the SAME target village, nor
+  // (rule 2) support a village their partner OWNS. Pair members are RAW player names
+  // (match senders' s.v.player and the troop-file `players` keys); a DECODED mirror is
+  // used to compare against a target's defender (dbOwnerName → decoded). When the pair
+  // list is empty this whole block is inert and Pass A runs byte-for-byte as before.
+  // mvPairs is the SHARED off/def vacation-mode list (defined in offensive-targets.js).
+  const mvPartners = new Map();        // raw player -> Set<raw partner>
+  const mvPartnersDecoded = new Map(); // raw player -> Set<decoded partner name>
+  for (const pair of (typeof mvPairs !== 'undefined' ? mvPairs : [])) {
+    if (!Array.isArray(pair) || pair.length !== 2) continue;
+    const [a, b] = pair;
+    if (!a || !b || a === b) continue;
+    const link = (x, y) => {
+      let s = mvPartners.get(x); if (!s) mvPartners.set(x, s = new Set()); s.add(y);
+      let d = mvPartnersDecoded.get(x); if (!d) mvPartnersDecoded.set(x, d = new Set()); d.add(decode(y));
+    };
+    link(a, b); link(b, a);
+  }
+
   const packets = {}; // `${senderIdx}#${T.i}` → {si, T, units}
   const commit = (T, si, u, q) => {
     if (q <= 0) return;
@@ -312,6 +332,38 @@ function generateDefPlan() {
   };
 
   for (const T of order) {
+    // ── MV exclusions for THIS target (raw player names barred from supporting it) ──
+    // Rule 2 (unconditional): a player whose partner OWNS T can't support it. Rule 1:
+    // among partners who could BOTH genuinely fill a demanded type of T, keep the one able
+    // to send MORE of the DEMANDED types (so a spear-poor/heavy-rich partner doesn't win a
+    // spear-only ask), exclude the other from THIS target only; ties → decoded-name order.
+    const mvExcluded = new Set();
+    if (mvPartners.size) {
+      // Reachable demanded-type pop per player for T (the rule-1 keep metric); a player is
+      // "eligible" for MV resolution iff this is > 0 (they can actually contribute to T).
+      const demandPop = {};
+      for (const s of senders) {
+        if (!sameTribe(s, T) || !inBand(s, T)) continue;
+        let pop = 0;
+        for (const u of DEF_OBJ_UNITS)
+          if ((T.tg[u] || 0) > 0 && s.stock[u] > 0 && typeArriveOk(s, T, u)) pop += s.stock[u] * POP[u];
+        if (pop > 0) demandPop[s.v.player] = (demandPop[s.v.player] || 0) + pop;
+      }
+      const def = T.tg.defender ? decode(T.tg.defender) : '';
+      if (def) for (const P in demandPop) {
+        const partners = mvPartnersDecoded.get(P);
+        if (partners && partners.has(def)) mvExcluded.add(P);
+      }
+      for (const pair of mvPairs) {
+        const [a, b] = pair;
+        if (!(a in demandPop) || !(b in demandPop)) continue;
+        if (mvExcluded.has(a) || mvExcluded.has(b)) continue;
+        const keepA = demandPop[a] > demandPop[b]
+          || (demandPop[a] === demandPop[b] && decode(a).toLowerCase() <= decode(b).toLowerCase());
+        mvExcluded.add(keepA ? b : a);
+      }
+    }
+
     // ── Pass A — player-level allocation per unit type. Weight = remaining def-pop
     // capacity (→ equal drain ratio: bigger defenders send proportionally more), capped
     // by each player's reachable stock of that type. Excess that no player can cover is a
@@ -324,7 +376,7 @@ function generateDefPlan() {
       const byP = {};
       for (let si = 0; si < senders.length; si++) {
         const s = senders[si];
-        if (s.stock[u] > 0 && sameTribe(s, T) && inBand(s, T) && typeArriveOk(s, T, u))
+        if (s.stock[u] > 0 && sameTribe(s, T) && inBand(s, T) && typeArriveOk(s, T, u) && !mvExcluded.has(s.v.player))
           (byP[s.v.player] || (byP[s.v.player] = [])).push(si);
       }
       eligByType[u] = byP;

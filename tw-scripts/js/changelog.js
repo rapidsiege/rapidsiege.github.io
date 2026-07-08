@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.11.0', date: '2026-07-08',
+    en: [
+      `<b>🏖 MV Players on Defensive Targets.</b> Defensive Targets now has the same <b>MV Players</b> pairing as Offensive Targets — tuned for support. Two players you pair as vacation-mode (MV) partners will never both send support to the <b>same target</b>, and neither will ever send support to a village <b>owned by their partner</b>. Enforced when you Generate the defense plan. The <b>pair list is shared</b> with Offensive Targets — set a pair on either tab and it applies to both plans. Requires the tribe troop file.`,
+    ],
+    es: [
+      `<b>🏖 Jugadores MV en Objetivos Defensivos.</b> Objetivos Defensivos ahora tiene el mismo emparejamiento de <b>Jugadores MV</b> que Objetivos Ofensivos — adaptado al apoyo. Dos jugadores que emparejes como pareja en modo vacaciones (MV) nunca enviarán ambos apoyo al <b>mismo objetivo</b>, y ninguno enviará apoyo a una aldea <b>propiedad de su pareja</b>. Se aplica al Generar el plan de defensa. La <b>lista de parejas es compartida</b> con Objetivos Ofensivos — define una pareja en cualquiera de las dos pestañas y se aplica a ambos planes. Requiere el archivo de tropas de la tribu.`,
+    ],
+  },
   { ver: 'v4.10.1', date: '2026-07-08',
     en: [
       `<b>🛡 Manage Defense hides self-defense-only villages.</b> The Manage Defense table now lists a village only when it's a <b>Defense Plan target</b> or actually holds/expects <b>ally support</b> (stationed or inbound). Villages showing nothing but their own garrison — no plan, no support in or on the way — are no longer listed, so the table stays focused on what needs coordinating.`,

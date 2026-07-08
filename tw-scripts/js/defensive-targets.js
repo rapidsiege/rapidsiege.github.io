@@ -19,6 +19,9 @@ let defIgnorePlayers = []; // raw player names whose villages never send support
 let defEnemyTribes   = ''; // raw "Enemy Tribes" textarea (Plan Defense) — one tribe tag/name per line
 let defEnemyDist     = 0;  // "Distance from enemy tribes" (fields); 0 = filter off
 let defFarFirst      = false; // "Prioritize Sending From Far Villages" — source each player's share farthest-from-target first
+// NOTE: MV (vacation-mode) pairs are SHARED with Plan Offensive — the single source of truth is
+// `mvPairs` (declared + persisted in offensive-targets.js / tw_tribe_offensive). The Defensive-
+// Targets picker below edits that same list; there is deliberately no separate defensive copy.
 let defPlanRows      = []; // generated support assignments (Plan Defense)
 let defPlanWarnings  = [];
 let dtNextId         = 1;
@@ -60,6 +63,7 @@ function loadDefensive() {
   const ff = document.getElementById('plan-def-far-first');
   if (ff) ff.checked = defFarFirst;
   renderDefIgnorePlayers();
+  renderDefMvPlayers();
   updDefPolyNote(); // a saved map-area filter must be visible from the first paint
 }
 
@@ -147,6 +151,49 @@ function clearDefTargets() {
 
 // Defender + tribe are DB-derived: refresh every target the database knows about
 // (called from setDbData when the world DB resolves).
+// ── MV (vacation-mode) pairs — SHARED with Plan Offensive. This picker edits the same
+// `mvPairs` list defined in offensive-targets.js (persisted in tw_tribe_offensive via
+// saveOffensive), so a pair added on either tab applies to BOTH plans. Defensive rule
+// (enforced in generateDefPlan): two paired players may not both support the SAME target,
+// nor support a village their partner owns. Mirrors the offensive picker markup. ──
+function toggleDefMvPlayers() {
+  const el = document.getElementById('dp-mv-players-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+function defMvPairExists(a, b) {
+  return mvPairs.some(p => (p[0] === a && p[1] === b) || (p[0] === b && p[1] === a));
+}
+function addDefMvPairFromSelects() {
+  const a = (document.getElementById('dp-mv-a') || {}).value;
+  const b = (document.getElementById('dp-mv-b') || {}).value;
+  if (!a || !b || a === b || defMvPairExists(a, b)) return;
+  mvPairs.push([a, b]);
+  saveOffensive(); renderDefMvPlayers();          // shared list lives in the offensive blob
+  if (typeof renderOffMvPlayers === 'function') renderOffMvPlayers(); // keep the Offensive-Targets picker in sync
+}
+function removeDefMvPair(idx) {
+  mvPairs.splice(idx, 1);
+  saveOffensive(); renderDefMvPlayers();
+  if (typeof renderOffMvPlayers === 'function') renderOffMvPlayers();
+}
+// Chip list of pairs ("A ↔ B") + two player pickers and an Add Pair button. Reuses the
+// offensive mvPlayerOptions() (every loaded player, alphabetical) — pairs are raw names.
+function renderDefMvPlayers() {
+  const host = document.getElementById('dp-mv-players-host');
+  if (!host) return;
+  if (!Object.keys(players).length && !mvPairs.length) {
+    host.innerHTML = `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+    return;
+  }
+  const chips = mvPairs.map((pr, i) =>
+    `<span class="chip">${esc(decode(pr[0]))} ↔ ${esc(decode(pr[1]))}<span class="chip-x" onclick="removeDefMvPair(${i})">✕</span></span>`).join('');
+  const optHtml = mvPlayerOptions().map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('');
+  const sel = id => `<select id="${id}" class="cell-input" style="width:150px;"><option value="">${t('opt_pick_mv_player')}</option>${optHtml}</select>`;
+  host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}`
+    + `${sel('dp-mv-a')}<span style="color:#806030;">↔</span>${sel('dp-mv-b')}`
+    + `<button class="btn btn-ghost btn-sm" onclick="addDefMvPairFromSelects()">${t('btn_add_mv_pair')}</button></div>`;
+}
+
 function refreshDefTargetsFromDb() {
   if (!villageDb.length) return;
   let changed = false;
