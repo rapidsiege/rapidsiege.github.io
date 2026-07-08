@@ -439,6 +439,7 @@ function renderDefPlanTable() {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="11">${t('empty_no_def_plan')}</td></tr>`;
     renderDefPlayerSummary(); // clears the per-player summary too
     updDefPolyNote();
+    if (typeof renderManageDefTable === 'function') renderManageDefTable(); // Manage Defense reads the plan
     return;
   }
   let lastT = null;
@@ -471,6 +472,7 @@ function renderDefPlanTable() {
   }).join('');
   renderDefPlayerSummary();
   updDefPolyNote();
+  if (typeof renderManageDefTable === 'function') renderManageDefTable(); // Manage Defense reads the plan
 }
 
 // ── Per-player support summary (v4.2.0): sending vs actually-available defense ──────────

@@ -46,6 +46,7 @@
   <div class="tab"         data-tab="manageoff"   onclick="switchTab('manageoff')"  data-i18n="tab_manageoff">📊 Manage Offensive</div>
   <div class="tab"         data-tab="deftargets"  onclick="switchTab('deftargets')" data-i18n="tab_deftargets">🛡 Defensive Targets</div>
   <div class="tab"         data-tab="defplan"     onclick="switchTab('defplan')"    data-i18n="tab_defplan">🛡 Plan Defense</div>
+  <div class="tab"         data-tab="managedef"   onclick="switchTab('managedef')"><img class="tw-ic" src="icons/map/support.webp" alt=""><span data-i18n="tab_managedef">Manage Defense</span></div>
   <div class="tab"         data-tab="db"          onclick="switchTab('db')"         data-i18n="tab_db">🗃 Database</div>
   <div class="tab"         data-tab="settings"    onclick="switchTab('settings')"   data-i18n="tab_settings">⚙ Settings</div>
   <div class="tab"         data-tab="changelog"   onclick="switchTab('changelog')"  data-i18n="tab_changelog">📋 Changelog</div>
@@ -761,6 +762,64 @@
   <p style="font-size:12px;color:#5a3a18;margin-top:12px;" data-i18n="defplan_note">Intra-tribe support only, from villages with ≥4,000 def pop AVAILABLE (at home or incoming — defense deployed elsewhere is never recalled). Bigger defenders send more; troops are spread evenly across a player's villages, ≥400 pop per order.</p>
 </div>
 
+<!-- ═══════════════════════════ MANAGE DEFENSE (v4.9.0) ═══════════════════════════ -->
+<div class="tab-content" id="tab-managedef">
+  <div class="section-header">
+    <h2><img class="tw-ic" src="icons/map/support.webp" alt=""> <span data-i18n="sec_managedef">Manage Defense</span></h2>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-primary btn-sm" onclick="toggleMdSupImport()" data-i18n="btn_md_import_sup">📥 Import Support</button>
+      <button class="btn btn-primary btn-sm" onclick="toggleMdOrdImport()" data-i18n="btn_md_import_ord">📥 Import Support Orders</button>
+      <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="clearManageDef()" data-i18n="btn_md_clear">✕ Clear Import</button>
+    </div>
+  </div>
+  <div id="md-sup-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:8px;" data-i18n="md_sup_hint">Run the Village Supports Exporter userscript (villageSupports.js) on your allied villages, then paste its export here or load the downloaded file. It lists the support currently stationed in each village, broken down by origin.</div>
+    <textarea id="md-sup-text" rows="6" style="width:100%;box-sizing:border-box;" spellcheck="false" data-i18n-placeholder="md_sup_ph" placeholder="Paste the village_supports export (CSV or JSON)…"></textarea>
+    <div style="margin-top:6px;display:flex;gap:8px;">
+      <input type="file" id="md-sup-file" accept=".txt,.json,.csv" style="display:none;" onchange="mdLoadFile(this,'sup')">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('md-sup-file').click()" data-i18n="btn_load_file">📂 Load File</button>
+      <button class="btn btn-primary btn-sm" onclick="mdLoadSupPaste()" data-i18n="btn_load_pasted">Load Pasted Data</button>
+      <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="mdCopySup()" data-i18n="btn_md_copy_sup" data-i18n-title="md_copy_sup_title" title="Copies the quickbar loader for the Village Supports Exporter userscript (villageSupports.js) to the clipboard.">📋 Copy Script</button>
+    </div>
+  </div>
+  <div id="md-ord-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:8px;" data-i18n="md_ord_hint">Run the Target Village Orders Exporter userscript (incomingOrders.js) on your allied villages, then paste its export here or load the file. Only SUPPORT movements are imported — attacks are ignored. Without this, incoming support is estimated from the tribe export's inbound-troops data.</div>
+    <textarea id="md-ord-text" rows="6" style="width:100%;box-sizing:border-box;" spellcheck="false" data-i18n-placeholder="md_ord_ph" placeholder="Paste the incoming_orders export (CSV or JSON)…"></textarea>
+    <div style="margin-top:6px;display:flex;gap:8px;">
+      <input type="file" id="md-ord-file" accept=".txt,.json,.csv" style="display:none;" onchange="mdLoadFile(this,'ord')">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('md-ord-file').click()" data-i18n="btn_load_file">📂 Load File</button>
+      <button class="btn btn-primary btn-sm" onclick="mdLoadOrdPaste()" data-i18n="btn_load_pasted">Load Pasted Data</button>
+      <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="mdCopyOrd()" data-i18n="btn_md_copy_ord" data-i18n-title="md_copy_ord_title" title="Copies the quickbar loader for the Target Village Orders Exporter userscript (incomingOrders.js) to the clipboard.">📋 Copy Script</button>
+    </div>
+  </div>
+  <div id="md-import-status" style="font-size:12px;color:#5a3a18;margin-top:10px;"></div>
+  <div id="md-summary" style="font-size:12px;color:#806030;margin:10px 0;"></div>
+  <div class="table-wrap">
+    <table id="md-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th class="left" data-i18n="th_target">Target</th>
+          <th class="left" data-i18n="th_def_player">Defender</th>
+          <th data-i18n="th_type">Type</th>
+          <th class="left" data-i18n="th_mo_origin">Actual Origin</th>
+          <th class="left" data-i18n="th_mo_origin_player">Actual Player</th>
+          <th data-i18n-th="th_spear">Spears</th>
+          <th data-i18n-th="th_sword">Swords</th>
+          <th data-i18n-th="th_spy">Scouts</th>
+          <th data-i18n-th="th_heavy">Heavy Cav</th>
+          <th data-i18n="th_mo_arrival">Arrival</th>
+          <th data-i18n="th_mo_status">Status</th>
+        </tr>
+      </thead>
+      <tbody id="md-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- ═══════════════════════════ DATABASE ═══════════════════════════ -->
 <div class="tab-content" id="tab-db">
   <div class="section-header">
@@ -855,6 +914,7 @@
 <script src="js/manage-offensive.js"></script>
 <script src="js/defensive-targets.js"></script>
 <script src="js/defense-plan.js"></script>
+<script src="js/manage-defensive.js"></script>
 <script src="js/db.js"></script>
 <script src="js/cloud-sync.js"></script>
 <script src="js/util.js"></script>
@@ -884,6 +944,9 @@ renderPlanTable();
 // Restore defensive targets + defensive plan from localStorage and render their tabs
 loadDefensive();
 renderDefTargets();
+// Restore the imported support / support-orders snapshot BEFORE the first defense-plan render
+// (renderDefPlanTable tail-calls renderManageDefTable, which reads it)
+loadManageDef();
 renderDefPlanTable();
 
 // Restore the troop data uploaded in a previous session (re-parses the stored text;
@@ -930,7 +993,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.8.0 &nbsp;·&nbsp; 2026-07-08</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.9.0 &nbsp;·&nbsp; 2026-07-08</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

@@ -12,6 +12,16 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.9.0', date: '2026-07-08',
+    en: [
+      `<b>🛡 New "Manage Defense" tab.</b> The defensive twin of Manage Offensive. <b>Import Support</b> loads the villageSupports.js export (the support currently <b>stationed</b> in each allied village, broken down by origin); <b>Import Support Orders</b> loads the incomingOrders.js export, keeping only <b>support movements en route</b> (attacks ignored). Each Copy-Script button puts the matching quickbar loader on your clipboard. The table is village-keyed and works with or without a plan.`,
+      `<b>Tracks stationed + incoming support against your Defense Plan.</b> Each village opens with a gold <b>Totals</b> row (all troops in the village, matching the tribe export's defense row), then every stationed support stack and every inbound support order. Order status is graded against the plan: <b>Matches plan</b>, <b>Different origin</b>, <b>Different target</b>, <b>Duplicate support</b>, <b>Wrong amount</b>, <b>Not in plan</b>, or <b>Extra support</b>. Without the orders file, incoming support is <b>estimated</b> from the tribe export's inbound-troops data. When a Defense Plan exists, a red <b>Remaining Incoming Support</b> row shows what's still owed — plan minus stationed minus incoming.`,
+    ],
+    es: [
+      `<b>🛡 Nueva pestaña "Gestionar Defensa".</b> La gemela defensiva de Gestionar Ofensiva. <b>Importar Apoyos</b> carga la exportación de villageSupports.js (el apoyo actualmente <b>estacionado</b> en cada pueblo aliado, desglosado por origen); <b>Importar Órdenes Apoyo</b> carga la de incomingOrders.js, quedándose solo con los <b>movimientos de apoyo en camino</b> (los ataques se ignoran). Cada botón Copiar Script deja el cargador de barra rápida correspondiente en tu portapapeles. La tabla se organiza por pueblo y funciona con o sin plan.`,
+      `<b>Sigue el apoyo estacionado + entrante frente a tu Plan Defensivo.</b> Cada pueblo abre con una fila dorada de <b>Totales</b> (todas las tropas del pueblo, coincide con la fila de defensa de la exportación de tribu), luego cada stack de apoyo estacionado y cada orden de apoyo entrante. El estado de cada orden se evalúa contra el plan: <b>Según plan</b>, <b>Origen distinto</b>, <b>Objetivo distinto</b>, <b>Apoyo duplicado</b>, <b>Cantidad distinta</b>, <b>Fuera del plan</b> o <b>Apoyo extra</b>. Sin el archivo de órdenes, el apoyo entrante se <b>estima</b> a partir de las tropas entrantes de la exportación de tribu. Cuando existe un Plan Defensivo, una fila roja de <b>Apoyo Entrante Restante</b> muestra lo que aún falta — plan menos estacionado menos entrante.`,
+    ],
+  },
   { ver: 'v4.8.0', date: '2026-07-08',
     en: [
       `<b>💾 Export / Import now round-trips EVERYTHING.</b> Export Data (JSON) captures your full saved state — offensive & defensive targets, the plan, settings, troops, the Manage Offensive orders, map & Overwatch preferences, and now the <b>entire world database</b> — in one file. Import writes it all back and <b>reloads the page</b> to apply it, so the imported situation is reproduced exactly as a fresh session would build it.`,
