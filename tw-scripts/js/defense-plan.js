@@ -403,6 +403,7 @@ function generateDefPlan() {
 
   saveDefensive();
   renderDefPlanTable();
+  if (typeof cloudSyncPlan === 'function') cloudSyncPlan(); // hosted-site cloud save of the JSON snapshot
 }
 
 function delDefPlanRow(i) { defPlanRows.splice(i, 1); saveDefensive(); renderDefPlanTable(); }

@@ -507,6 +507,7 @@ function mdImportSup(text) {
   mdSupTargets = parsed.targets;
   mdSupAt = parsed.exportedAt || Math.floor(Date.now() / 1000);
   saveManageDef(); renderManageDefTable();
+  if (typeof cloudSyncManageDef === 'function') cloudSyncManageDef(text, 'support'); // hosted-site cloud save
   const el = document.getElementById('md-sup-wrap'); if (el) el.style.display = 'none';
 }
 function mdImportOrd(text) {
@@ -515,6 +516,7 @@ function mdImportOrd(text) {
   mdOrders = parsed.orders;
   mdOrdAt = parsed.exportedAt || Math.floor(Date.now() / 1000);
   saveManageDef(); renderManageDefTable();
+  if (typeof cloudSyncManageDef === 'function') cloudSyncManageDef(text, 'orders'); // hosted-site cloud save
   const el = document.getElementById('md-ord-wrap'); if (el) el.style.display = 'none';
 }
 function mdLoadSupPaste() { const el = document.getElementById('md-sup-text'); mdImportSup(el ? el.value : ''); }

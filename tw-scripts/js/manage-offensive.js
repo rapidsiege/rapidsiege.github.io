@@ -575,6 +575,7 @@ function moImportText(text) {
   moImportedAt = parsed.exportedAt || Math.floor(Date.now() / 1000);
   saveManage();
   renderManageTable();
+  if (typeof cloudSyncManageOff === 'function') cloudSyncManageOff(text); // hosted-site cloud save
   const el = document.getElementById('mo-import-wrap');
   if (el) el.style.display = 'none';
 }

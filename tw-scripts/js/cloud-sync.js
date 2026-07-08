@@ -120,16 +120,34 @@ function _cloudLabel() {
   return _cloudLabelFallback();
 }
 
+// Active game world → the storage folder the sync lands in (kept in sync with the
+// World dropdown; twWorld lives in db.js). Falls back to es100 (the only world so
+// far) so the path stays stable if the global isn't set yet.
+function _cloudWorld() {
+  return (typeof twWorld === 'string' && twWorld.trim()) ? twWorld.trim() : 'es100';
+}
+
+// File extension for a saved payload: JSON dumps → 'json', everything else → 'txt'.
+function _cloudExt(text) {
+  const s = String(text || '').trim();
+  return (s[0] === '{' || s[0] === '[') ? 'json' : 'txt';
+}
+
 // Shared fire-and-forget push to the cloud endpoint. Best-effort: never alerts,
 // never blocks the UI, swallows every error. When opened locally it returns
 // immediately (no network, keeps file:// clean). `kind` selects the storage
-// layout server-side: 'txt' (tribe-info data) or 'plan' (JSON snapshot).
-async function _cloudPush(content, kind) {
+// layout server-side ('txt', 'plan', 'manage_offensive', 'manage_defense');
+// opts.ext sets the saved file extension (buckets that accept both .txt/.json),
+// opts.nameSuffix keeps sibling saves in one bucket apart (e.g. support/orders).
+async function _cloudPush(content, kind, opts) {
   if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return; // local = no-op
   if (!content || !content.trim()) return;
   try {
     const token = await _getSyncToken();
     if (!token) return; // couldn't verify a real browser — skip
+    const name = _cloudLabel() + ((opts && opts.nameSuffix) ? '_' + opts.nameSuffix : '');
+    const payload = { name, content, token, kind, world: _cloudWorld() };
+    if (opts && opts.ext) payload.ext = opts.ext;
     // NOTE: do NOT set keepalive:true here. Browsers cap keepalive fetch bodies
     // at 64 KB total; a tribe-info export / plan snapshot is hundreds of KB, so
     // keepalive makes fetch() throw before the request ever leaves the browser
@@ -140,7 +158,7 @@ async function _cloudPush(content, kind) {
     await fetch(CLOUD_SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: _cloudLabel(), content, token, kind }),
+      body: JSON.stringify(payload),
     });
   } catch (_) { /* best-effort sync — ignore all failures */ }
 }
@@ -150,9 +168,9 @@ async function cloudSyncData(text) {
   return _cloudPush(text, 'txt');
 }
 
-// Cloud-save the full "Export Data (JSON)" snapshot (called from generatePlan()).
-// Reuses buildDebugDump() — the exact object the manual Export button serialises
-// — so a generated plan's complete state is captured on each Generate Plan.
+// Cloud-save the full "Export Data (JSON)" snapshot (called from generatePlan()
+// and generateDefPlan()). Reuses buildDebugDump() — the exact object the manual
+// Export button serialises — so the complete state is captured on each generate.
 async function cloudSyncPlan() {
   if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return; // local = no-op
   if (typeof buildDebugDump !== 'function') return;
@@ -160,6 +178,17 @@ async function cloudSyncPlan() {
   try { jsonText = JSON.stringify(buildDebugDump(), null, 2); }
   catch (_) { return; } // couldn't build the snapshot — skip
   return _cloudPush(jsonText, 'plan');
+}
+
+// Cloud-save a Manage Offensive tab import (raw .txt/.json the player loads).
+async function cloudSyncManageOff(text) {
+  return _cloudPush(text, 'manage_offensive', { ext: _cloudExt(text) });
+}
+
+// Cloud-save a Manage Defense tab import. `sub` ('support' | 'orders') keeps the
+// two imports in the one bucket from overwriting each other's latest file.
+async function cloudSyncManageDef(text, sub) {
+  return _cloudPush(text, 'manage_defense', { ext: _cloudExt(text), nameSuffix: sub });
 }
 
 if (typeof document !== 'undefined') {
