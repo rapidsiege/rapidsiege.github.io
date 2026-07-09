@@ -39,6 +39,26 @@ let otNextId     = 1;
 
 function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
+// ── Snob (noble-launch) capability — Smithy-level driven when a tribeInfo v3 buildings/everything
+// JSON is loaded (buildingsByCoord), else the legacy points heuristic. Shared by the per-target
+// snob picker here AND the noble-launch reservations in plan.js. MASTER RULE: smith known → gate on
+// SNOB_SMITH_MIN; smith unknown → legacy points (unknown points pass) → with no buildings JSON the
+// whole plan behaves byte-for-byte as before. ────────────────────────────────────────────────────
+function buildingsLoaded() {
+  return typeof buildingsByCoord !== 'undefined' && Object.keys(buildingsByCoord).length > 0;
+}
+function smithLevelAt(coord) {
+  const b = (typeof buildingsByCoord !== 'undefined') ? buildingsByCoord[coord] : null;
+  return b && typeof b.smith === 'number' ? b.smith : null;
+}
+function snobCapable(coord) {
+  const lv = smithLevelAt(coord);
+  if (lv !== null) return lv >= SNOB_SMITH_MIN;   // smith known → it IS the signal
+  const dbv = coordDb[coord];
+  const pts = dbv && typeof dbv.points === 'number' ? dbv.points : null;
+  return pts === null || pts > SNOB_RANGE_MIN_POINTS;   // unknown → legacy points heuristic
+}
+
 function saveOffensive() {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
     cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, mvPairs,
@@ -751,6 +771,41 @@ function snobSenderOptions() {
     .sort((a, b) => decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
 }
 
+// Per-target snob senders (buildings JSON loaded): ALL loaded players, A–Z, each annotated with
+// how many villages with a KNOWN Smithy ≥ SNOB_SMITH_MIN they have within noble range (getSnobMax
+// fields, 0 = no distance gate) of `tg`'s coord. Returns [{name, n, minDist, maxDist, unknown}]:
+// n/min/max count ONLY smith-known-capable villages (the label's whole point is real smith data —
+// no points fallback here, unlike the plan engine's snobCapable); `unknown` is true when the player
+// has in-range villages but NONE with building info (they don't share it → label "(?)"), so n === 0
+// with unknown false genuinely means "no Smithy-ready village in range" ("(0)"). Returns null when
+// there's no buildings data at all or `tg`'s coord doesn't parse → the caller falls back to the
+// legacy full list (snob counts). Pure (no DOM) → headless-testable.
+function snobSenderOptionsForTarget(tg) {
+  if (!buildingsLoaded()) return null;
+  const tc = tg && parseCoordStr(tg.coord);
+  if (!tc) return null;
+  const snobMax = (typeof getSnobMax === 'function') ? getSnobMax() : 70;
+  const out = [];
+  for (const [name, p] of Object.entries(players)) {
+    let n = 0, unknownInRange = 0, min = Infinity, max = 0;
+    for (const v of p.villages) {
+      const c = parseCoordStr(v.coord);
+      if (!c) continue;
+      const d = distXY(c, tc);
+      if (snobMax > 0 && d > snobMax) continue;
+      const lv = smithLevelAt(v.coord);
+      if (lv === null) { unknownInRange++; continue; }
+      if (lv < SNOB_SMITH_MIN) continue;
+      n++;
+      if (d < min) min = d;
+      if (d > max) max = d;
+    }
+    out.push({ name, n, minDist: min, maxDist: max, unknown: n === 0 && unknownInRange > 0 });
+  }
+  out.sort((a, b) => decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
+  return out;
+}
+
 function addSnobAssignee(id, name) {
   if (!name) return;
   const tg = offTargets.find(x => x.id === id);
@@ -938,16 +993,45 @@ function updateDatePreview() {
 
 // Option HTML for the sender pickers, rebuilt by renderOffTargets() once per render and
 // injected per-<select> on demand by otFillPicker().
-let otPickerOptsHtml = { snob: '', complete: '', tq: '', half: '' };
+let otPickerOptsHtml = { snob: '', complete: '', tq: '', half: '', snobByTarget: {} };
 
 // Fill a sender <select> with its option list only when the user actually opens it.
 // onfocus + onmousedown both point here: whichever fires first fills the list before the
 // native dropdown paints; the dataset guard makes every later call a no-op. The options
 // reset naturally on the next re-render (the tbody — and thus the select — is rebuilt).
-function otFillPicker(sel, kind) {
+// The snob picker is PER-TARGET when a buildings JSON is loaded (only in-range Smithy-≥19
+// senders, labeled with village count + closest–farthest distance); its HTML is computed once
+// per target and cached in otPickerOptsHtml.snobByTarget[tgId]. Without buildings (or a bad
+// coord) it falls back to the shared legacy list (otPickerOptsHtml.snob).
+function otFillPicker(sel, kind, tgId) {
   if (sel.dataset.filled) return;
   sel.dataset.filled = '1';
-  sel.insertAdjacentHTML('beforeend', otPickerOptsHtml[kind] || '');
+  let html = otPickerOptsHtml[kind] || '';
+  if (kind === 'snob' && tgId != null) {
+    if (otPickerOptsHtml.snobByTarget[tgId] === undefined) {
+      const tg = offTargets.find(x => x.id === tgId);
+      const opts = tg ? snobSenderOptionsForTarget(tg) : null;
+      if (opts === null) {
+        html = otPickerOptsHtml.snob; // no buildings loaded / unparseable coord → legacy full list
+      } else {
+        // All players, A–Z: (n, closest–farthest) = Smithy-≥19 villages in noble range;
+        // (0) = none in range; (?) = the player doesn't share building info.
+        html = opts.map(s => {
+          let info;
+          if (s.unknown) info = '?';
+          else if (!s.n) info = '0';
+          else if (s.n === 1) info = `1, ${Math.round(s.minDist)}`;
+          else info = `${s.n}, ${Math.round(s.minDist)}–${Math.round(s.maxDist)}`;
+          return `<option value="${esc(s.name)}">${esc(decode(s.name))} (${info})</option>`;
+        }).join('');
+        sel.title = t('snob_picker_filtered_title');
+      }
+      otPickerOptsHtml.snobByTarget[tgId] = html;
+    } else {
+      html = otPickerOptsHtml.snobByTarget[tgId];
+    }
+  }
+  sel.insertAdjacentHTML('beforeend', html);
 }
 
 // ── "Offs assigned" summary (the line under the table) ───────────────────────
@@ -1031,6 +1115,7 @@ function renderOffTargets() {
   // of the row loop (it walks every player's villages — it used to run per row × 3 tiers).
   const senders = snobSenderOptions();
   otPickerOptsHtml.snob = senders.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.snob})</option>`).join('');
+  otPickerOptsHtml.snobByTarget = {}; // per-target snob lists are rebuilt lazily — reset (targets/villages/smith may have changed)
   const tierHasSenders = {};
   for (const tier of ['complete', 'tq', 'half']) {
     const opts = offSenderOptions(tier);
@@ -1043,7 +1128,7 @@ function renderOffTargets() {
     const chips = tg.snobAssignees.map((a, j) =>
       `<span class="chip">${esc(decode(a.name))} ×<input type="number" min="0" value="${a.count || 0}" title="${esc(t('snob_count_title'))}" style="width:32px;background:transparent;border:none;border-bottom:1px solid #7a5c10;color:inherit;font-size:11px;text-align:center;" onchange="updSnobCount(${tg.id},${j},this.value)"><span class="chip-x" onclick="removeSnobAssignee(${tg.id},${j})">✕</span></span>`).join('');
     const senderPicker = senders.length
-      ? `<select class="cell-input" style="width:118px;" onfocus="otFillPicker(this,'snob')" onmousedown="otFillPicker(this,'snob')" onchange="addSnobAssignee(${tg.id}, this.value)">
+      ? `<select class="cell-input" style="width:118px;" onfocus="otFillPicker(this,'snob',${tg.id})" onmousedown="otFillPicker(this,'snob',${tg.id})" onchange="addSnobAssignee(${tg.id}, this.value)">
            <option value="">${t('opt_pick_sender')}</option>
          </select>`
       : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;

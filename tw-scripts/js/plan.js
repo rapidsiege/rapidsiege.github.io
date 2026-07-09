@@ -1,4 +1,11 @@
 // ── Plan generation ──────────────────────────────────────────
+// Noble max travel range (fields), from the Plan Offensive "snob max" input; default 70 (es100),
+// 0 = disabled (no distance gate). Shared by generatePlan() and the per-target snob picker so both
+// use the same range when deciding who can noble a target.
+function getSnobMax() {
+  const raw = parseFloat((document.getElementById('plan-snob-max') || {}).value);
+  return isNaN(raw) ? 70 : raw;
+}
 function parseWindowStr(s) {
   const m = String(s || '').match(/(\d{1,2}):(\d{2})\s*[\/\-–]\s*(\d{1,2}):(\d{2})/);
   return m ? { f: +m[1] * 60 + +m[2], to: +m[3] * 60 + +m[4] } : null;
@@ -258,18 +265,18 @@ function generatePlan() {
     : []);
   const okOffDist = (p, tc) => !tooClose.has(p) && (maxDist <= 0 || distXY(p.c, tc) <= maxDist);
   // Nobles have a hard travel limit in the game (70 fields on es100)
-  const snobMaxRaw = parseFloat((document.getElementById('plan-snob-max') || {}).value);
-  const snobMax = isNaN(snobMaxRaw) ? 70 : snobMaxRaw;
+  const snobMax = getSnobMax();
   const okSnobDist = (p, tc) => snobMax <= 0 || distXY(p.c, tc) <= snobMax;
   // Snob targets are mostly ASSIGNED to a player who then recruits the noble, so every snob
-  // row lists that player's own villages within noble range of the objective that are big
-  // enough to plausibly hold an Academy (> SNOB_RANGE_MIN_POINTS points; unknown points pass,
-  // mirroring reserveEligible). Closest first. rawName is the encoded pool key (p.v.player).
-  const snobAcademyOk = p => {
-    const dbv = coordDb[p.v.coord];
-    const pts = dbv && typeof dbv.points === 'number' ? dbv.points : null;
-    return pts === null || pts > SNOB_RANGE_MIN_POINTS;
-  };
+  // row lists that player's own villages within noble range of the objective that can plausibly
+  // hold an Academy. When a buildings JSON is loaded that's a real Smithy ≥ SNOB_SMITH_MIN gate;
+  // otherwise it's the legacy > SNOB_RANGE_MIN_POINTS heuristic (unknown → passes). snobCapable
+  // (offensive-targets.js) encapsulates both. Closest first. rawName is the encoded pool key.
+  const snobAcademyOk = p => snobCapable(p.v.coord);
+  // Weaker smith gate for spots that never had a points heuristic (escort picks, the recruit-here
+  // hint): a KNOWN Smithy below SNOB_SMITH_MIN disqualifies, unknown passes — so without a
+  // buildings JSON these behave exactly as before (no new points gate sneaks in).
+  const smithOkOrUnknown = p => { const lv = smithLevelAt(p.v.coord); return lv === null || lv >= SNOB_SMITH_MIN; };
   // Recommended launch villages for a needNobles / out-of-range snob row: the player's own
   // villages within noble range AND still launchable in time (okSnobTime — honours the Earliest
   // send floor / now), academy-plausible. Closest first. Time-gated so we never suggest recruiting
@@ -368,6 +375,9 @@ function generatePlan() {
   // range + pace govern, since the off travels with the noble). Reserved up front so the
   // off passes leave it free for the split-off. Applies even to pinned senders who don't
   // own the noble yet (needNobles): the slot is held until they recruit one.
+  // An escort village launches the noble too, so with a buildings JSON loaded a KNOWN Smithy below
+  // SNOB_SMITH_MIN disqualifies it (the next closest capable off takes the slot); unknown Smithy
+  // passes (smithOkOrUnknown — escorts never had a points gate, don't introduce one).
   const escortReserved = new Set();
   for (const T of targets) {
     // One reserved escort village per train, in spec order (null = none in range).
@@ -377,7 +387,7 @@ function generatePlan() {
     if (!T.c || (T.tg.snobMode || 'solo') !== 'escorted') continue;
     for (const { name: want } of targetTrainSpec(T.tg)) {
       const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !tooClose.has(p)
-        && tiers.includes(p.tier) && okSnobDist(p, T.c) && okSnobTime(p, T)
+        && tiers.includes(p.tier) && okSnobDist(p, T.c) && okSnobTime(p, T) && smithOkOrUnknown(p)
         && (want ? p.v.player === want : !ignorePlayers.has(p.v.player)))
         .sort((a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (b.v.offPow - a.v.offPow))[0];
       const p = pick(['complete', 'tq']) || pick(['half']);
@@ -504,7 +514,9 @@ function generatePlan() {
             // None of their snob villages reach — recommend the player's OWN villages
             // that ARE within snob range (closest first), where recruiting a noble would
             // put a train in range. By this branch's premise none of these hold snobs yet.
-            const recruit = pool.filter(p => p.v.player === want && okSnobDist(p, T.c) && okSnobTime(p, T))
+            // smithOkOrUnknown: never recommend recruiting at a village whose KNOWN Smithy
+            // can't take an Academy (mirrors the rangeVills/snobAcademyOk gate).
+            const recruit = pool.filter(p => p.v.player === want && okSnobDist(p, T.c) && okSnobTime(p, T) && smithOkOrUnknown(p))
               .sort((a, b) => distXY(a.c, T.c) - distXY(b.c, T.c));
             if (recruit.length) {
               const CAP = 6;
@@ -582,8 +594,13 @@ function generatePlan() {
   // from the world DB (coordDb[coord].points); when the DB isn't loaded the points are
   // unknown and treated as passing, so the pop gate alone applies. A close but tiny/empty
   // village is skipped, and the next-closest qualifying village takes the slot instead.
+  // When a buildings JSON is loaded, Smithy level is the real Academy signal: a village with a
+  // known Smithy < SNOB_SMITH_MIN can't launch a noble and is never reserved (the pop gate still
+  // applies first). Unknown Smithy → the legacy points heuristic (RESERVE_MIN_POINTS, unknown → ok).
   const reserveEligible = p => {
     if ((p.v.popUsed || 0) < RESERVE_MIN_POP) return false;
+    const lv = smithLevelAt(p.v.coord);
+    if (lv !== null) return lv >= SNOB_SMITH_MIN;
     const dbv = coordDb[p.v.coord];
     const pts = dbv && typeof dbv.points === 'number' ? dbv.points : null;
     return pts === null || pts >= RESERVE_MIN_POINTS;

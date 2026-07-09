@@ -30,6 +30,14 @@ const RESERVE_MIN_POP    = 4000;
 // points are hidden (probably no Academy). Points need the world DB; unknown → shown.
 const SNOB_RANGE_MIN_POINTS = 5000;
 
+// When a tribeInfo v3 buildings/everything JSON is loaded, per-village Smithy level is the REAL
+// signal for whether a village can launch a noble (the Academy — snob building — needs Smithy 20,
+// and 19 is one level away → treated as ready-in-time per the user's rule). Villages at or below
+// this Smithy level are never used as noble-launch / escort / recommended villages, nor listed as
+// eligible snob senders. When the buildings JSON isn't loaded, smith is UNKNOWN → the legacy points
+// heuristics (SNOB_RANGE_MIN_POINTS / RESERVE_MIN_POINTS) apply, so behaviour is unchanged.
+const SNOB_SMITH_MIN = 19;
+
 // Plan Defense: a village only sends support if it has at least this much farm pop in
 // defensive troops (spear/sword/spy/heavy) — small garrisons are left alone. And every
 // emitted support order carries at least this much farm pop, so a player's contribution

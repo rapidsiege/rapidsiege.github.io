@@ -20,16 +20,26 @@ function loadFiles(fileList) {
     reader.onload = ev => {
       results[i] = ev.target.result;
       if (++done === files.length) {
+        // A tribeInfo v3 JSON export (everything / all_troops / buildings / single-view) is
+        // converted to the tribe_all_troops CSV shape parseData already reads, and any building
+        // levels are collected into a batch-local map. Later JSON files win on overlapping coords
+        // (Object.assign), mirroring the multi-file last-file-wins convention elsewhere.
+        const bldgs = {};
+        let sawJson = false;
+        const texts = results.map(text => {
+          const ej = (typeof parseEverythingJson === 'function') ? parseEverythingJson(text) : null;
+          if (!ej) return text;
+          sawJson = true;
+          Object.assign(bldgs, ej.buildings);
+          return ej.csv;
+        });
         // merge: keep first header, strip headers from subsequent files
         const isHeader = line => /^coords?[,\t]/i.test(line.trim());
-        const merged = results.map((text, idx) =>
+        const merged = texts.map((text, idx) =>
           idx === 0 ? text : text.split('\n').filter(l => !isHeader(l)).join('\n')
         ).join('\n');
         const label = files.length === 1 ? files[0].name : `${files.length} files`;
-        parseData(merged, label);
-        persistTroops(merged, label);
-        if (typeof cloudSyncData === 'function') cloudSyncData(merged); // hosted-site cloud save
-
+        finishTroopLoad(merged, label, sawJson, bldgs);
       }
     };
     reader.readAsText(file);
@@ -38,9 +48,44 @@ function loadFiles(fileList) {
 function loadFromPaste() {
   const text = document.getElementById('paste-input').value.trim();
   if (!text) return;
-  parseData(text, 'pasted data');
-  persistTroops(text, 'pasted data');
-  if (typeof cloudSyncData === 'function') cloudSyncData(text); // hosted-site cloud save
+  const ej = (typeof parseEverythingJson === 'function') ? parseEverythingJson(text) : null;
+  const bldgs = {};
+  let merged = text, sawJson = false;
+  if (ej) { sawJson = true; Object.assign(bldgs, ej.buildings); merged = ej.csv; }
+  finishTroopLoad(merged, 'pasted data', sawJson, bldgs);
+}
+
+// Shared tail of loadFiles/loadFromPaste. `merged` is already in the CSV shape parseData reads
+// (any JSON exports converted upstream); `sawJson`/`bldgs` carry building levels from a tribeInfo
+// v3 JSON in the batch. Rule for buildingsByCoord: a buildings-ONLY drop (JSON with no troop rows,
+// no accompanying troop text) ENRICHES the existing troops with building levels without re-parsing
+// (which would wipe the loaded army); ANY other batch sets buildingsByCoord to exactly this batch's
+// buildings ({} when the batch had none — stale smith levels never linger to silently gate a plan).
+function finishTroopLoad(merged, label, sawJson, bldgs) {
+  const isHeaderLine = line => /^coords?[,\t]/i.test(line.trim());
+  const hasTroopData = merged.split('\n').some(l => { const s = l.trim(); return s && !isHeaderLine(l); });
+  if (sawJson && !hasTroopData && Object.keys(bldgs).length) {
+    buildingsByCoord = bldgs;            // enrichment-only: keep troops, attach/refresh smith levels
+    persistBuildings();
+    updateBuildingsStatus();
+    if (typeof renderOffTargets === 'function') renderOffTargets(); // snob picker labels depend on smith levels
+    return;
+  }
+  buildingsByCoord = sawJson ? bldgs : {};
+  parseData(merged, label);
+  persistTroops(merged, label);
+  updateBuildingsStatus();
+  if (typeof cloudSyncData === 'function') cloudSyncData(merged); // hosted-site cloud save (CSV; the raw JSON is not synced)
+}
+
+// Append/refresh a "🏰 buildings: N villages" note on the file-summary line (idempotent — strips a
+// prior 🏰 suffix first, so repeated loads never stack). No-op suffix when no buildings are loaded.
+function updateBuildingsStatus() {
+  const el = document.getElementById('file-summary');
+  if (!el) return;
+  const base = (el.textContent || '').replace(/\s*·\s*🏰.*$/, '');
+  const n = Object.keys(buildingsByCoord).length;
+  el.textContent = n ? (base ? `${base} · 🏰 ${t('buildings_loaded')(n)}` : `🏰 ${t('buildings_loaded')(n)}`) : base;
 }
 
 // ── Persist the uploaded/pasted troop text so it survives across sessions ──
@@ -50,7 +95,17 @@ function loadFromPaste() {
 const TROOP_KEY = 'tw_tribe_troops';
 function persistTroops(text, filename) {
   if (!villages.length) return; // don't persist a parse that produced nothing
-  lsSaveC(TROOP_KEY, { text, filename, savedAt: new Date().toISOString() }); // compressed — raw troop text is highly compressible
+  const payload = { text, filename, savedAt: new Date().toISOString() };
+  if (Object.keys(buildingsByCoord).length) payload.buildings = buildingsByCoord; // building levels ride along (from a tribeInfo v3 JSON)
+  lsSaveC(TROOP_KEY, payload); // compressed — raw troop text is highly compressible
+}
+// Attach the current building levels to the already-stored troop payload (buildings-only JSON drop).
+// If nothing is stored yet there's no army to enrich, so it stays session-only (no synthetic save).
+function persistBuildings() {
+  const d = lsLoadC(TROOP_KEY);
+  if (!d || !d.text) return;
+  d.buildings = buildingsByCoord;
+  lsSaveC(TROOP_KEY, d);
 }
 function autoloadTroops() {
   if (villages.length) return; // a real upload this session takes precedence
@@ -58,13 +113,15 @@ function autoloadTroops() {
   if (!d || !d.text) return;
   parseData(d.text, d.filename || t('imported_troops'));
   if (villages.length) {
+    buildingsByCoord = d.buildings || {}; // restore smith levels alongside the troops (empty if the save predates buildings)
+    updateBuildingsStatus();
     const txt = document.getElementById('file-status-text');
     if (txt) txt.textContent += ` · ${t('troops_restored')}`;
   }
 }
 
 function clearData() {
-  villages = []; players = {};
+  villages = []; players = {}; buildingsByCoord = {};
   try { localStorage.removeItem(TROOP_KEY); } catch {} // also drop the persisted copy
   document.getElementById('file-dot').className = 'file-status-dot dot-off';
   document.getElementById('file-status-text').textContent = t('status_no_file');
@@ -132,6 +189,48 @@ function deriveStationRow(coord, player, units) {
   const r = { coord, player, ...units };
   applyVilDerived(r); // offPow / defInf / defCav (+ type / popUsed, harmless here)
   return r;
+}
+
+// Convert a tribeInfo v3 JSON export ("everything" / "all_troops" / "buildings" / single-view) into
+// the tribe_all_troops CSV shape parseData already understands, plus a compact per-village building
+// map — so the calculator ingests the JSON without ever storing the (multi-MB) raw text: it's parsed
+// on load into the same lightweight village rows a .txt would produce. Returns null for anything
+// that isn't a tribeInfo v3 JSON (leading '{' + a `villages` array), so plain-CSV loads fall through
+// unchanged. Each present block maps to a CSV row type: troops→troops (+ trailing incoming_attacks),
+// in_village→defense, enroute→incoming. Units are read by OUR UNITS keys (extra archer-world units
+// are ignored, matching the CSV path); missing keys → 0. Pure — no DOM. { csv, buildings, nTroops,
+// nBuildings }.
+function parseEverythingJson(text) {
+  const s = String(text || '').trim();
+  if (s[0] !== '{') return null;
+  let obj;
+  try { obj = JSON.parse(s); } catch { return null; }
+  if (!obj || !Array.isArray(obj.villages)) return null;
+  const COORD_RE = /^\d{1,3}\|\d{1,3}$/;
+  const unitCsv = block => UNITS.map(u => (block && block[u] != null ? (parseInt(block[u]) || 0) : 0)).join(',');
+  const rows = [];
+  const buildings = {};
+  let nTroops = 0, nBuildings = 0;
+  for (const v of obj.villages) {
+    const coord = (v && typeof v.coords === 'string') ? v.coords.trim() : '';
+    if (!COORD_RE.test(coord)) continue;
+    const player = (v.player != null ? v.player : '').toString();
+    if (v.troops) {
+      const inc = v.incoming_attacks != null ? (parseInt(v.incoming_attacks) || 0) : '';
+      rows.push(`${coord},${player},troops,${unitCsv(v.troops)},${inc},`);
+      nTroops++;
+    }
+    if (v.in_village) rows.push(`${coord},${player},defense,${unitCsv(v.in_village)},,`);
+    if (v.enroute)    rows.push(`${coord},${player},incoming,${unitCsv(v.enroute)},,`);
+    if (v.buildings && typeof v.buildings === 'object') {
+      const b = {};
+      for (const k in v.buildings) { const n = parseInt(v.buildings[k]); if (!isNaN(n)) b[k] = n; }
+      buildings[coord] = b;
+      nBuildings++;
+    }
+  }
+  const csv = 'Coords,Player,Type,' + UNITS.join(',') + ',IncomingAttacks,\n' + rows.join('\n');
+  return { csv, buildings, nTroops, nBuildings };
 }
 
 function parseData(text, filename) {

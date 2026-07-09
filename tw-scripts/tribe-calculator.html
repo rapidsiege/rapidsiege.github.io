@@ -21,7 +21,7 @@
     <button id="lang-btn-es" class="btn btn-sm lang-btn" onclick="changeLang('es')"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 40'%3E%3Crect width='60' height='40' fill='%23C60B1E'/%3E%3Crect y='10' width='60' height='20' fill='%23FFC400'/%3E%3C/svg%3E" width="20" height="14" alt="" style="border-radius:2px"> ES</button>
     <button class="btn btn-file btn-sm" onclick="document.getElementById('file-input').click()" data-i18n="btn_load_file">📂 Load File</button>
     <button class="btn btn-ghost btn-sm" onclick="clearData()" data-i18n="btn_clear">✕ Clear</button>
-    <input type="file" id="file-input" accept=".txt,.csv" multiple onchange="handleFileInput(this)">
+    <input type="file" id="file-input" accept=".txt,.csv,.json" multiple onchange="handleFileInput(this)">
   </div>
 </div>
 
@@ -1059,7 +1059,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.14.0 &nbsp;·&nbsp; 2026-07-09</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.15.0 &nbsp;·&nbsp; 2026-07-10</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

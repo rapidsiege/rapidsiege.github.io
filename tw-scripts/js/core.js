@@ -5,6 +5,7 @@ let villages = [];   // [{coord, player, spear, sword, axe, spy, light, heavy, r
 let troopByCoord = {};  // 'x|y' → owned-troop row (map hover/badges); rebuilt in parseData
 let defenseByCoord = {};  // 'x|y' → stationed-troops row (defense type from tribe_everything.txt)
 let incomingByCoord = {}; // 'x|y' → inbound/returning troops row (incoming type)
+let buildingsByCoord = {}; // 'x|y' → building levels {main,barracks,…,smith,…} from a tribeInfo v3 JSON export (empty unless an "everything"/buildings JSON was loaded). Lives+dies with the upload batch that carried it. Used by the snob-capability gates (smith level ≥ SNOB_SMITH_MIN).
 let players  = {};   // {playerName: {villages:[], totals:{...}, offPow, defInf, defCav}}
 let sortState = { players: {col:0,dir:1}, villages: {col:14,dir:1}, outbound: {col:12,dir:1} }; // villages: Off Power desc (col 14); outbound: Off desc (col 12)
 let targetSort = { key: 'dist', dir: 1 }; // default: distance asc
@@ -33,7 +34,7 @@ function changeLang(l) {
   if (typeof saveSettings === 'function') saveSettings(); // persist the language choice
 }
 
-// ── Unit/stat icons (icons/units/ folder; see .claude/PLAN.md for the deploy note) ──
+// ── Unit/stat icons (icons/units/ folder; see .claude/PLAN-tribe-calculator.md for the deploy note) ──
 const ICON_KEYS = new Set(['spear','sword','axe','spy','light','heavy','ram','catapult','knight','snob','off','def','def_cav']);
 function twIcon(key, cls) {
   return ICON_KEYS.has(key) ? `<img class="tw-ic${cls ? ' ' + cls : ''}" src="icons/units/${key}.png" alt="">` : '';
