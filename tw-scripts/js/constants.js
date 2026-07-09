@@ -37,6 +37,16 @@ const SNOB_RANGE_MIN_POINTS = 5000;
 const DEF_SENDER_MIN_POP = 4000;
 const DEF_MIN_PACKET_POP = 400;
 
+// Plan Defense "Support Packs" mode: instead of Max Efficiency's real-pop packet floor
+// (DEF_MIN_PACKET_POP with POP weights), each support order targets a minimum "farm size"
+// using configurable per-unit farm weights — so orders come in chunky packs (e.g. ≥125 heavy
+// at weight 4 / size 500) rather than many tiny ones. Weights mirror Overwatch's convention
+// (heavy = 4, not its real 6). Spy defaults to its real pop (2). User-editable in the UI.
+// `max` = 0 → unlimited (no per-order cap). When > 0 it's a SOFT ceiling on the farm size of a
+// single origin→destination order: excess spills to the player's other villages, and is only
+// exceeded when no eligible village has room left (coverage always wins).
+const DP_PACK_DEFAULTS = { size: 500, max: 0, weights: { spear: 1, sword: 1, spy: 2, heavy: 4 } };
+
 // Catapult target buildings offered in the Offensive Targets catapult cell, in display order.
 // Values are the in-game building keys (the rally-point confirm-page <select name="building">
 // option values), so they drop straight into the rally URL's &building= param. Labels are i18n

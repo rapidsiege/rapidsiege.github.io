@@ -19,6 +19,14 @@ let defIgnorePlayers = []; // raw player names whose villages never send support
 let defEnemyTribes   = ''; // raw "Enemy Tribes" textarea (Plan Defense) — one tribe tag/name per line
 let defEnemyDist     = 0;  // "Distance from enemy tribes" (fields); 0 = filter off
 let defFarFirst      = false; // "Prioritize Sending From Far Villages" — source each player's share farthest-from-target first
+// "Config Support Size" — pack sizing mode for the defensive plan.
+//   'eff'   = Max Efficiency (default): the classic DEF_MIN_PACKET_POP / real-POP floor, unchanged.
+//   'packs' = Support Packs: cap contributing players per target so each order is ≥ dpPackSize
+//             "farm", weighted by dpPackWeights (Overwatch-style: heavy 4, not 6).
+let dpMode           = 'eff';
+let dpPackSize       = DP_PACK_DEFAULTS.size;
+let dpPackMax        = DP_PACK_DEFAULTS.max; // 0 = unlimited; soft per-order farm ceiling
+let dpPackWeights    = { ...DP_PACK_DEFAULTS.weights };
 // NOTE: MV (vacation-mode) pairs are SHARED with Plan Offensive — the single source of truth is
 // `mvPairs` (declared + persisted in offensive-targets.js / tw_tribe_offensive). The Defensive-
 // Targets picker below edits that same list; there is deliberately no separate defensive copy.
@@ -29,6 +37,7 @@ let dtNextId         = 1;
 function saveDefensive() {
   localStorage.setItem(DT_STORE_KEY, JSON.stringify({
     cfg: dtCfg, targets: defTargets, ignore: defIgnore, ignorePlayers: defIgnorePlayers, enemyTribes: defEnemyTribes, enemyDist: defEnemyDist, farFirst: defFarFirst,
+    packMode: dpMode, packSize: dpPackSize, packMax: dpPackMax, packWeights: dpPackWeights,
     plan: defPlanRows, warnings: defPlanWarnings, nextId: dtNextId,
   }));
 }
@@ -44,6 +53,14 @@ function loadDefensive() {
       defEnemyTribes  = typeof d.enemyTribes === 'string' ? d.enemyTribes : '';
       defEnemyDist    = Math.max(0, parseInt(d.enemyDist, 10) || 0);
       defFarFirst     = d.farFirst === true;
+      dpMode          = d.packMode === 'packs' ? 'packs' : 'eff';
+      dpPackSize      = Math.max(1, parseInt(d.packSize, 10) || DP_PACK_DEFAULTS.size);
+      dpPackMax       = Math.max(0, parseInt(d.packMax, 10) || 0);
+      dpPackWeights   = { ...DP_PACK_DEFAULTS.weights };
+      if (d.packWeights) for (const u of DEF_OBJ_UNITS) {
+        const n = parseFloat(d.packWeights[u]);
+        if (Number.isFinite(n) && n > 0) dpPackWeights[u] = n;
+      }
       defPlanRows     = d.plan || [];
       defPlanWarnings = d.warnings || [];
       dtNextId        = d.nextId || (Math.max(0, ...defTargets.map(x => x.id)) + 1);
@@ -62,6 +79,7 @@ function loadDefensive() {
   setVal('plan-def-enemy-dist', defEnemyDist || 0);
   const ff = document.getElementById('plan-def-far-first');
   if (ff) ff.checked = defFarFirst;
+  renderDpPackCfg();
   renderDefIgnorePlayers();
   renderDefMvPlayers();
   updDefPolyNote(); // a saved map-area filter must be visible from the first paint

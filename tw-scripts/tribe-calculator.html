@@ -755,8 +755,42 @@
       <input type="checkbox" id="plan-def-far-first" onchange="updDefFarFirst()">
       <span data-i18n="lbl_def_far_first">Prioritize Sending From Far Villages</span>
     </label>
+    <button class="btn btn-ghost btn-sm" id="dp-packcfg-btn" onclick="toggleDpPackCfg()" data-i18n-title="dp_packcfg_t" title="Choose how support orders are sized: Max Efficiency (precise, many small orders) or Support Packs (chunky orders of at least a chosen farm size).">⚙ Config Support Size</button>
     <button class="btn btn-primary btn-sm" onclick="generateDefPlan()" data-i18n="btn_def_generate">🛡 Generate Defense</button>
     <span id="dp-poly-note" style="font-size:12px;color:#4fd0c0;font-weight:600;"></span>
+  </div>
+  <div id="dp-packcfg-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+        <input type="radio" name="dp-mode" id="dp-mode-eff" value="eff" onchange="setDpMode('eff')">
+        <span data-i18n="dp_mode_eff">Max Efficiency</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+        <input type="radio" name="dp-mode" id="dp-mode-packs" value="packs" onchange="setDpMode('packs')">
+        <span data-i18n="dp_mode_packs">Support Packs</span>
+      </label>
+      <span style="font-size:12px;color:#806030;" data-i18n="dp_mode_hint">Max Efficiency = precise, many small orders. Support Packs = fewer, chunkier orders (≥ a min farm size).</span>
+    </div>
+    <div id="dp-packcfg-body" style="display:none;margin-top:10px;">
+      <div style="font-size:12px;color:#806030;margin-bottom:8px;" data-i18n="dp_pack_hint">Each support order will carry at least this much "farm size", measured with the per-unit farm weights below (Overwatch-style — Heavy Cav counts as 4, not its real 6). E.g. min 500 with Heavy 4 ⇒ orders of ≥125 Heavy Cav.</div>
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:5px;"><span data-i18n="dp_pack_size">Min farm size:</span>
+          <input type="number" id="dp-pack-size" min="1" step="50" value="500" style="width:80px;" onchange="setDpPackSize(this.value)"></label>
+        <label style="display:flex;align-items:center;gap:5px;" data-i18n-title="dp_pack_max_t" title="Soft ceiling on a single origin→destination order. Excess spills to the sender's other villages; exceeded only when nowhere else has room. 0 = unlimited."><span data-i18n="dp_pack_max">Max farm size:</span>
+          <input type="number" id="dp-pack-max" min="0" step="50" value="0" style="width:80px;" onchange="setDpPackMax(this.value)"></label>
+        <span class="map-tb-sep"></span>
+        <span style="font-size:12px;color:#806030;" data-i18n="dp_pack_weights">Farm per unit:</span>
+        <label style="display:flex;align-items:center;gap:4px;"><span data-i18n="th_spear">Spears</span>
+          <input type="number" id="dp-pack-w-spear" min="0.5" step="0.5" value="1" style="width:56px;" onchange="setDpPackWeight('spear', this.value)"></label>
+        <label style="display:flex;align-items:center;gap:4px;"><span data-i18n="th_sword">Swords</span>
+          <input type="number" id="dp-pack-w-sword" min="0.5" step="0.5" value="1" style="width:56px;" onchange="setDpPackWeight('sword', this.value)"></label>
+        <label style="display:flex;align-items:center;gap:4px;"><span data-i18n="th_spy">Scouts</span>
+          <input type="number" id="dp-pack-w-spy" min="0.5" step="0.5" value="2" style="width:56px;" onchange="setDpPackWeight('spy', this.value)"></label>
+        <label style="display:flex;align-items:center;gap:4px;"><span data-i18n="th_heavy">Heavy Cav</span>
+          <input type="number" id="dp-pack-w-heavy" min="0.5" step="0.5" value="4" style="width:56px;" onchange="setDpPackWeight('heavy', this.value)"></label>
+        <button class="btn btn-ghost btn-sm" onclick="resetDpPackWeights()" data-i18n="ow_reset">↺ Reset defaults</button>
+      </div>
+    </div>
   </div>
   <div id="defplan-warnings" style="margin-top:12px;"></div>
   <div id="defplan-summary" style="font-size:12px;color:#806030;margin:10px 0;"></div>
@@ -1022,7 +1056,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.12.0 &nbsp;·&nbsp; 2026-07-09</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.13.0 &nbsp;·&nbsp; 2026-07-09</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

@@ -148,6 +148,53 @@ function updDefFarFirst() {
   defFarFirst = !!(el && el.checked);
   saveDefensive();
 }
+
+// ── "Config Support Size" panel (Max Efficiency vs Support Packs) ──────────────
+function toggleDpPackCfg() {
+  const el = document.getElementById('dp-packcfg-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+function setDpMode(mode) {
+  dpMode = mode === 'packs' ? 'packs' : 'eff';
+  saveDefensive(); renderDpPackCfg();
+}
+function setDpPackSize(v) {
+  dpPackSize = Math.max(1, parseInt(v, 10) || DP_PACK_DEFAULTS.size);
+  saveDefensive();
+  const el = document.getElementById('dp-pack-size'); if (el) el.value = dpPackSize;
+}
+function setDpPackMax(v) {
+  dpPackMax = Math.max(0, parseInt(v, 10) || 0); // 0 = unlimited
+  saveDefensive();
+  const el = document.getElementById('dp-pack-max'); if (el) el.value = dpPackMax;
+}
+function setDpPackWeight(u, v) {
+  const n = parseFloat(v);
+  if (DEF_OBJ_UNITS.includes(u) && Number.isFinite(n) && n > 0) dpPackWeights[u] = n;
+  saveDefensive();
+  const el = document.getElementById('dp-pack-w-' + u); if (el) el.value = dpPackWeights[u];
+}
+function resetDpPackWeights() {
+  dpPackSize = DP_PACK_DEFAULTS.size;
+  dpPackMax = DP_PACK_DEFAULTS.max;
+  dpPackWeights = { ...DP_PACK_DEFAULTS.weights };
+  saveDefensive(); renderDpPackCfg();
+}
+// Sync the config panel inputs + mode radios + Support-Packs body visibility to state.
+function renderDpPackCfg() {
+  const packs = dpMode === 'packs';
+  const rEff = document.getElementById('dp-mode-eff'), rPk = document.getElementById('dp-mode-packs');
+  if (rEff) rEff.checked = !packs;
+  if (rPk) rPk.checked = packs;
+  const body = document.getElementById('dp-packcfg-body');
+  if (body) body.style.display = packs ? '' : 'none';
+  const sz = document.getElementById('dp-pack-size'); if (sz) sz.value = dpPackSize;
+  const mx = document.getElementById('dp-pack-max'); if (mx) mx.value = dpPackMax;
+  for (const u of DEF_OBJ_UNITS) { const el = document.getElementById('dp-pack-w-' + u); if (el) el.value = dpPackWeights[u]; }
+  // Reflect the active mode on the trigger button so it's visible without opening the panel.
+  const btn = document.getElementById('dp-packcfg-btn');
+  if (btn) btn.textContent = '⚙ ' + t(packs ? 'dp_mode_packs' : 'dp_mode_eff');
+}
 function toggleDefEnemy() {
   const el = document.getElementById('dp-enemy-wrap');
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
@@ -321,6 +368,13 @@ function generateDefPlan() {
     link(a, b); link(b, a);
   }
 
+  // "Support Packs" sizing mode — see setDpMode. 'eff' leaves the allocation byte-for-byte.
+  const packsMode = dpMode === 'packs';
+  // One pack of type u = this many units — the fewest whole units whose farm size ≥ dpPackSize
+  // (heavy@4 → 125, spear@1 → 500, spy@2 → 250). Allocating in whole packs is what makes each
+  // order chunky: a player physically can't receive a sub-pack sliver, so no 20-heavy dribble.
+  const packUnitsOf = u => Math.max(1, Math.ceil(dpPackSize / (dpPackWeights[u] || 1)));
+
   const packets = {}; // `${senderIdx}#${T.i}` → {si, T, units}
   const commit = (T, si, u, q) => {
     if (q <= 0) return;
@@ -381,19 +435,55 @@ function generateDefPlan() {
       }
       eligByType[u] = byP;
       const names = Object.keys(byP);
-      const pItems = names.map(P => ({
-        weight: Math.max(1e-6, (capByPlayer[P] || 0) - (sentByPlayer[P] || 0)),
-        cap: byP[P].reduce((s, si) => s + senders[si].stock[u], 0),
-      }));
-      const pAlloc = apportionCapped(n, pItems);
+      const rankP = P => Math.max(1e-6, (capByPlayer[P] || 0) - (sentByPlayer[P] || 0)); // remaining def-pop capacity
+      const stockOf = P => byP[P].reduce((s, si) => s + senders[si].stock[u], 0);
+      const record = (P, q) => {
+        if (q <= 0) return;
+        (playerGive[P] || (playerGive[P] = { spear: 0, sword: 0, spy: 0, heavy: 0 }))[u] += q;
+        sentByPlayer[P] = (sentByPlayer[P] || 0) + q * POP[u];
+      };
+      const givenU = P => (playerGive[P] && playerGive[P][u]) || 0;
+      // Apportion `qty` across `list` by capacity weight, capped by each player's REMAINING stock
+      // (stock − already given this type); records the drain. Returns units placed.
+      const apportion = (list, qty) => {
+        if (qty <= 0 || !list.length) return 0;
+        const alloc = apportionCapped(qty, list.map(P => ({ weight: rankP(P), cap: stockOf(P) - givenU(P) })));
+        let placed = 0;
+        list.forEach((P, pi) => { if (alloc[pi] > 0) { record(P, alloc[pi]); placed += alloc[pi]; } });
+        return placed;
+      };
+      const totalStock = names.reduce((s, P) => s + stockOf(P), 0);
+      const target = Math.min(n, totalStock); // coverage target — identical to Max Efficiency
       let assigned = 0;
-      names.forEach((P, pi) => {
-        const give = pAlloc[pi];
-        if (give <= 0) return;
-        (playerGive[P] || (playerGive[P] = { spear: 0, sword: 0, spy: 0, heavy: 0 }))[u] += give;
-        sentByPlayer[P] = (sentByPlayer[P] || 0) + give * POP[u];
-        assigned += give;
-      });
+
+      if (!packsMode) {
+        assigned = apportion(names, n); // Max Efficiency — one capacity-weighted pass (unchanged)
+      } else {
+        // Support Packs: hand out WHOLE packs first (capacity-weighted, integer packs → no sub-pack
+        // slivers), then fold the coverage remainder into existing contributors (their orders stay
+        // ≥ a pack), spilling to new senders only when contributors are stock-full. A demand smaller
+        // than one pack ships as a single sub-pack order (best-effort "at least this size").
+        const pu = packUnitsOf(u);
+        const packs = Math.min(Math.floor(n / pu), names.reduce((s, P) => s + Math.floor(stockOf(P) / pu), 0));
+        if (packs > 0) {
+          const pa = apportionCapped(packs, names.map(P => ({ weight: rankP(P), cap: Math.floor(stockOf(P) / pu) })));
+          names.forEach((P, pi) => { if (pa[pi] > 0) { record(P, pa[pi] * pu); assigned += pa[pi] * pu; } });
+        }
+        let rem = target - assigned;
+        if (rem > 0) { // fold into current contributors first (keeps their order ≥ pack)
+          const contribs = names.filter(P => givenU(P) > 0 && stockOf(P) - givenU(P) > 0);
+          if (contribs.length) assigned += apportion(contribs, rem);
+        }
+        rem = target - assigned;
+        if (rem > 0) { // concentrate any spill onto the fewest new senders that still form packs
+          const rest = names.filter(P => givenU(P) === 0 && stockOf(P) > 0)
+            .sort((a, b) => (rankP(b) - rankP(a)) || (decode(a).toLowerCase() < decode(b).toLowerCase() ? -1 : 1));
+          const restK = Math.max(1, Math.floor(rem / pu));
+          assigned += apportion(rest.slice(0, restK), rem);
+          rem = target - assigned;
+          if (rem > 0) assigned += apportion(rest.slice(restK), rem); // final coverage spill (over pack-sizing)
+        }
+      }
       if (assigned < n) defPlanWarnings.push(t('warn_def_short')(t('th_' + u), n - assigned, T.tg.coord));
     }
 
@@ -413,13 +503,68 @@ function generateDefPlan() {
       const cand = [...candSet].sort(defFarFirst
         ? ((a, b) => (dist(senders[b], T) - dist(senders[a], T)) || (vSentPop[a] - vSentPop[b]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1))
         : ((a, b) => (vSentPop[a] - vSentPop[b]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1)));
-      const totalPop = DEF_OBJ_UNITS.reduce((s, u) => s + (give[u] || 0) * POP[u], 0);
-      const k = Math.min(cand.length, Math.max(1, Math.floor(totalPop / DEF_MIN_PACKET_POP)));
+      // ── Support Packs with a MAX farm size (dpPackMax > 0): bin-fill instead of apportioning.
+      // Villages are filled ONE AT A TIME up to the max (weighted farm, all types together), in
+      // cand priority order, so each origin→destination order lands in [min, max] by construction.
+      // A sub-min tail is FOLDED back into the already-filled villages (softly exceeding the max —
+      // it's the softer bound) instead of shipping as a tiny order. Only stock geometry can force
+      // an order outside the band: a lone village holding everything (over), or a leftover no
+      // filled village has the troops to absorb (under). Coverage always wins — everything Pass A
+      // allocated is placed, exactly as in the apportioning paths.
+      if (packsMode && dpPackMax > 0) {
+        const binMax = Math.max(dpPackSize, dpPackMax); // a max below the min is meaningless
+        const remGive = { ...give };
+        const remW = () => DEF_OBJ_UNITS.reduce((s, u) => s + (remGive[u] || 0) * (dpPackWeights[u] || 0), 0);
+        const eligSets = {};
+        for (const u of DEF_OBJ_UNITS) eligSets[u] = new Set((eligByType[u] && eligByType[u][P]) || []);
+        // Weighted farm this village could still absorb (stock ∩ remaining give, eligible types).
+        const pourable = si => DEF_OBJ_UNITS.reduce((s, u) =>
+          s + (eligSets[u].has(si) ? Math.min(senders[si].stock[u], remGive[u] || 0) * (dpPackWeights[u] || 0) : 0), 0);
+        const fill = (si, room) => { // pour ≤ room farm of remGive into si; returns farm poured
+          let poured = 0;
+          for (const u of DEF_OBJ_UNITS) {
+            if ((remGive[u] || 0) <= 0 || !eligSets[u].has(si)) continue;
+            const W = dpPackWeights[u] || 1;
+            const q = Math.min(senders[si].stock[u], remGive[u], Math.floor((room - poured) / W));
+            if (q > 0) { commit(T, si, u, q); remGive[u] -= q; poured += q * W; }
+          }
+          return poured;
+        };
+        const opened = new Set();
+        for (const si of cand) {
+          const left = remW();
+          if (left <= 0) break;
+          if (left < dpPackSize && opened.size) break;             // sub-min tail → fold below
+          if (pourable(si) < Math.min(dpPackSize, left)) continue; // stock-poor village: last resort only
+          if (fill(si, binMax) > 0) opened.add(si);
+        }
+        // Remainder: filled villages absorb it first (soft-exceeding max, spread evenly); untouched
+        // villages only when the filled ones are out of troops (forced small order — nowhere else).
+        const foldInto = list => {
+          for (const u of DEF_OBJ_UNITS) {
+            if ((remGive[u] || 0) <= 0) continue;
+            const l = list.filter(si => eligSets[u].has(si) && senders[si].stock[u] > 0);
+            if (!l.length) continue;
+            const a = apportionCapped(remGive[u], l.map(si => ({ weight: 1, cap: senders[si].stock[u] })));
+            l.forEach((si, j) => { if (a[j] > 0) { commit(T, si, u, a[j]); remGive[u] -= a[j]; } });
+          }
+        };
+        foldInto(cand.filter(si => opened.has(si)));
+        foldInto(cand.filter(si => !opened.has(si)));
+        continue; // this player is fully placed
+      }
+
+      // Village-split floor. Max Efficiency: k villages by the classic real-POP / 400 floor, shared
+      // across types. Support Packs: split each type across ⌊give_u / packUnits⌋ villages so each
+      // village order carries ≥ one whole pack of that type. Either way, spill onward if stock-short.
+      const kEff = Math.min(cand.length, Math.max(1, Math.floor(
+        DEF_OBJ_UNITS.reduce((s, u) => s + (give[u] || 0) * POP[u], 0) / DEF_MIN_PACKET_POP)));
       for (const u of DEF_OBJ_UNITS) {
         const need = give[u] || 0;
         if (need <= 0) continue;
         const eligSet = new Set(eligByType[u][P]);
         const elig = cand.filter(si => eligSet.has(si));
+        const k = packsMode ? Math.min(elig.length, Math.max(1, Math.floor(need / packUnitsOf(u)))) : kEff;
         const primary = elig.slice(0, k), spill = elig.slice(k);
         const a1 = apportionCapped(need, primary.map(si => ({ weight: 1, cap: senders[si].stock[u] })));
         primary.forEach((si, j) => commit(T, si, u, a1[j]));
