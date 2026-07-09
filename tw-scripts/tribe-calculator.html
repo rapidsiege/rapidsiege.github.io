@@ -833,10 +833,10 @@
     </div>
   </div>
   <div id="md-sup-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
-    <div style="font-size:12px;color:#806030;margin-bottom:8px;" data-i18n="md_sup_hint">Run the Village Supports Exporter userscript (villageSupports.js) on your allied villages, then paste its export here or load the downloaded file. It lists the support currently stationed in each village, broken down by origin.</div>
+    <div style="font-size:12px;color:#806030;margin-bottom:8px;" data-i18n="md_sup_hint">Run the Village Supports Exporter userscript (villageSupports.js) on your allied villages, then paste its export here or load the downloaded file(s). You can select several batch files at once — they are merged (a village in two files keeps the last file's data). It lists the support currently stationed in each village, broken down by origin.</div>
     <textarea id="md-sup-text" rows="6" style="width:100%;box-sizing:border-box;" spellcheck="false" data-i18n-placeholder="md_sup_ph" placeholder="Paste the village_supports export (CSV or JSON)…"></textarea>
     <div style="margin-top:6px;display:flex;gap:8px;">
-      <input type="file" id="md-sup-file" accept=".txt,.json,.csv" style="display:none;" onchange="mdLoadFile(this,'sup')">
+      <input type="file" id="md-sup-file" accept=".txt,.json,.csv" multiple style="display:none;" onchange="mdLoadFile(this,'sup')">
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('md-sup-file').click()" data-i18n="btn_load_file">📂 Load File</button>
       <button class="btn btn-primary btn-sm" onclick="mdLoadSupPaste()" data-i18n="btn_load_pasted">Load Pasted Data</button>
       <span class="map-tb-sep"></span>
@@ -844,10 +844,10 @@
     </div>
   </div>
   <div id="md-ord-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
-    <div style="font-size:12px;color:#806030;margin-bottom:8px;" data-i18n="md_ord_hint">Run the Target Village Orders Exporter userscript (incomingOrders.js) on your allied villages, then paste its export here or load the file. Only SUPPORT movements are imported — attacks are ignored. Without this, incoming support is estimated from the tribe export's inbound-troops data.</div>
+    <div style="font-size:12px;color:#806030;margin-bottom:8px;" data-i18n="md_ord_hint">Run the Target Village Orders Exporter userscript (incomingOrders.js) on your allied villages, then paste its export here or load the file(s). You can select several batch files at once — they are merged (a village in two files keeps the last file's orders). Only SUPPORT movements are imported — attacks are ignored. Without this, incoming support is estimated from the tribe export's inbound-troops data.</div>
     <textarea id="md-ord-text" rows="6" style="width:100%;box-sizing:border-box;" spellcheck="false" data-i18n-placeholder="md_ord_ph" placeholder="Paste the incoming_orders export (CSV or JSON)…"></textarea>
     <div style="margin-top:6px;display:flex;gap:8px;">
-      <input type="file" id="md-ord-file" accept=".txt,.json,.csv" style="display:none;" onchange="mdLoadFile(this,'ord')">
+      <input type="file" id="md-ord-file" accept=".txt,.json,.csv" multiple style="display:none;" onchange="mdLoadFile(this,'ord')">
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('md-ord-file').click()" data-i18n="btn_load_file">📂 Load File</button>
       <button class="btn btn-primary btn-sm" onclick="mdLoadOrdPaste()" data-i18n="btn_load_pasted">Load Pasted Data</button>
       <span class="map-tb-sep"></span>
@@ -1056,7 +1056,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.13.0 &nbsp;·&nbsp; 2026-07-09</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.13.1 &nbsp;·&nbsp; 2026-07-09</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

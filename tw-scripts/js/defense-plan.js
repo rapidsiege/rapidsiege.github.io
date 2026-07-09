@@ -370,10 +370,14 @@ function generateDefPlan() {
 
   // "Support Packs" sizing mode — see setDpMode. 'eff' leaves the allocation byte-for-byte.
   const packsMode = dpMode === 'packs';
+  // Pack farm weight of a unit. Weights are guaranteed positive by the UI/load guards; the
+  // fallback only keeps the math sane should a future path ever write a 0/undefined weight
+  // (single definition so remW/pourable/fill can never disagree on the degenerate case).
+  const packWOf = u => (dpPackWeights[u] > 0 ? dpPackWeights[u] : 1);
   // One pack of type u = this many units — the fewest whole units whose farm size ≥ dpPackSize
   // (heavy@4 → 125, spear@1 → 500, spy@2 → 250). Allocating in whole packs is what makes each
   // order chunky: a player physically can't receive a sub-pack sliver, so no 20-heavy dribble.
-  const packUnitsOf = u => Math.max(1, Math.ceil(dpPackSize / (dpPackWeights[u] || 1)));
+  const packUnitsOf = u => Math.max(1, Math.ceil(dpPackSize / packWOf(u)));
 
   const packets = {}; // `${senderIdx}#${T.i}` → {si, T, units}
   const commit = (T, si, u, q) => {
@@ -452,8 +456,6 @@ function generateDefPlan() {
         list.forEach((P, pi) => { if (alloc[pi] > 0) { record(P, alloc[pi]); placed += alloc[pi]; } });
         return placed;
       };
-      const totalStock = names.reduce((s, P) => s + stockOf(P), 0);
-      const target = Math.min(n, totalStock); // coverage target — identical to Max Efficiency
       let assigned = 0;
 
       if (!packsMode) {
@@ -463,6 +465,7 @@ function generateDefPlan() {
         // slivers), then fold the coverage remainder into existing contributors (their orders stay
         // ≥ a pack), spilling to new senders only when contributors are stock-full. A demand smaller
         // than one pack ships as a single sub-pack order (best-effort "at least this size").
+        const target = Math.min(n, names.reduce((s, P) => s + stockOf(P), 0)); // coverage target — identical to Max Efficiency
         const pu = packUnitsOf(u);
         const packs = Math.min(Math.floor(n / pu), names.reduce((s, P) => s + Math.floor(stockOf(P) / pu), 0));
         if (packs > 0) {
@@ -512,19 +515,22 @@ function generateDefPlan() {
       // filled village has the troops to absorb (under). Coverage always wins — everything Pass A
       // allocated is placed, exactly as in the apportioning paths.
       if (packsMode && dpPackMax > 0) {
-        const binMax = Math.max(dpPackSize, dpPackMax); // a max below the min is meaningless
+        // Ceiling never below the min NOR below any single unit's weight — a binMax smaller than
+        // one heavy's farm would let fill() place nothing and silently reroute everything through
+        // the fold-back (coverage would still hold, but the [min,max] band would be bypassed).
+        const binMax = Math.max(dpPackSize, dpPackMax, ...DEF_OBJ_UNITS.map(packWOf));
         const remGive = { ...give };
-        const remW = () => DEF_OBJ_UNITS.reduce((s, u) => s + (remGive[u] || 0) * (dpPackWeights[u] || 0), 0);
+        const remW = () => DEF_OBJ_UNITS.reduce((s, u) => s + (remGive[u] || 0) * packWOf(u), 0);
         const eligSets = {};
         for (const u of DEF_OBJ_UNITS) eligSets[u] = new Set((eligByType[u] && eligByType[u][P]) || []);
         // Weighted farm this village could still absorb (stock ∩ remaining give, eligible types).
         const pourable = si => DEF_OBJ_UNITS.reduce((s, u) =>
-          s + (eligSets[u].has(si) ? Math.min(senders[si].stock[u], remGive[u] || 0) * (dpPackWeights[u] || 0) : 0), 0);
+          s + (eligSets[u].has(si) ? Math.min(senders[si].stock[u], remGive[u] || 0) * packWOf(u) : 0), 0);
         const fill = (si, room) => { // pour ≤ room farm of remGive into si; returns farm poured
           let poured = 0;
           for (const u of DEF_OBJ_UNITS) {
             if ((remGive[u] || 0) <= 0 || !eligSets[u].has(si)) continue;
-            const W = dpPackWeights[u] || 1;
+            const W = packWOf(u);
             const q = Math.min(senders[si].stock[u], remGive[u], Math.floor((room - poured) / W));
             if (q > 0) { commit(T, si, u, q); remGive[u] -= q; poured += q * W; }
           }

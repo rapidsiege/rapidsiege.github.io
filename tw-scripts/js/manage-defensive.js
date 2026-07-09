@@ -71,6 +71,10 @@ function mdPop(units) { return DEF_OBJ_UNITS.reduce((s, u) => s + ((units && uni
 // CSV : header Target,TargetVillage,TargetOwner,Type,OriginCoords,OriginVillage,OriginPlayer,<unit cols…>
 //       where Type 'own' = the village's own_units row, 'support' = one stationed support stack.
 // Returns {targets, exportedAt} or null when nothing parseable.
+// Coords land in HTML ids/inline handlers, so BOTH import formats gate them through this
+// (the CSV paths always did; the JSON paths now match — a malformed/corrupt export is dropped
+// per-target instead of flowing quote-unescaped into the markup).
+const MD_COORD_RE = /^\d{1,3}\|\d{1,3}$/;
 function mdParseSupports(text) {
   const s = String(text || '').trim();
   if (!s) return null;
@@ -79,22 +83,22 @@ function mdParseSupports(text) {
     let data;
     try { data = JSON.parse(s); } catch { return null; }
     if (!data || !Array.isArray(data.targets)) return null;
-    const targets = data.targets.map(tg => ({
-      coord: tg.coords || '', village: tg.village || '', owner: tg.player || '', status: tg.status || 'ok',
+    const targets = data.targets.filter(tg => MD_COORD_RE.test(tg.coords || '')).map(tg => ({
+      coord: tg.coords, village: tg.village || '', owner: tg.player || '', status: tg.status || 'ok',
       ownUnits: tg.own_units ? mkUnits(tg.own_units) : null,
       supports: (tg.supports || []).map(sp => ({
         originCoord: sp.origin_coords || '', originVillage: sp.origin_village || '',
         originPlayer: sp.origin_player || '', units: mkUnits(sp.units),
       })),
     }));
-    return { targets, exportedAt: data.exported_at || 0 };
+    return targets.length ? { targets, exportedAt: data.exported_at || 0 } : null;
   }
   // CSV
   const lines = s.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim());
   if (!lines.length) return null;
   const head = lines[0].split(',');
   const col = name => head.indexOf(name);
-  if (col('Target') !== 0 || col('Type') === -1 || col('OriginCoords') === -1) return null;
+  if (col('Target') !== 0 || col('Type') === -1 || col('OriginCoords') === -1 || col('OriginPlayer') === -1) return null;
   // Unit columns = every header after OriginPlayer.
   const unitStart = col('OriginPlayer') + 1;
   const unitNames = head.slice(unitStart);
@@ -135,27 +139,29 @@ function mdParseOrders(text) {
     try { data = JSON.parse(s); } catch { return null; }
     if (!data || !Array.isArray(data.targets)) return null;
     const orders = [];
-    const coords = []; // every village the scan visited (even with 0 support en route)
+    const coords = new Set(); // every village the scan visited (even with 0 support en route)
     for (const tg of data.targets) {
-      if (tg.coords) coords.push(tg.coords);
+      if (!MD_COORD_RE.test(tg.coords || '')) continue; // malformed coord → drop the whole target
+      coords.add(tg.coords);
       for (const c of (tg.commands || [])) {
         if (c.type !== 'support') continue;
         orders.push({
-          id: c.id || '', target: tg.coords || '',
+          id: c.id || '', target: tg.coords,
           originCoord: c.origin_coords || '', originVillage: c.origin_village || '',
           originPlayer: c.origin_player || '', arrival: c.arrival || '',
           arrivalMs: moParseArrivalMs(c.arrival), units: mkUnits(c.units),
         });
       }
     }
-    return { orders, exportedAt: data.exported_at || 0, coords };
+    return { orders, exportedAt: data.exported_at || 0, coords: [...coords] };
   }
   // CSV
   const lines = s.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim());
   if (!lines.length) return null;
   const head = lines[0].split(',');
   const col = name => head.indexOf(name);
-  if (col('Target') !== 0 || col('Type') === -1 || col('OriginCoords') === -1) return null;
+  if (col('Target') !== 0 || col('Type') === -1 || col('OriginCoords') === -1
+    || (col('ArrivesIn') === -1 && col('Arrival') === -1)) return null;
   const unitStart = (col('ArrivesIn') !== -1 ? col('ArrivesIn') : col('Arrival')) + 1;
   const unitNames = head.slice(unitStart);
   const f = (row, name) => { const i = col(name); return i === -1 ? '' : (row[i] || '').trim(); };
@@ -447,9 +453,11 @@ function renderManageDefTable() {
   const impEl = document.getElementById('md-import-status');
 
   const planRows = (typeof defPlanRows !== 'undefined') ? defPlanRows : [];
-  // Every coord we might infer inbound support for (villages present in the troop file) — used to
-  // surface support-receiving villages that aren't order-covered. Order-covered coords are excluded.
-  const allCoords = (typeof villages !== 'undefined') ? villages.map(v => v.coord) : null;
+  // Every coord we might infer inbound support for — used to surface support-receiving villages
+  // that aren't order-covered. mdInferIncoming is nonzero ONLY where the tribe export has an
+  // "incoming" row, so iterate exactly those coords instead of every village in the troop file
+  // (this render runs on each import/generate/lang-switch; the world scan was thousands of calls).
+  const allCoords = (typeof incomingByCoord !== 'undefined') ? Object.keys(incomingByCoord) : null;
   mdGroups = mdBuildRows(mdSupTargets, mdOrders, planRows, { allCoords, ordCoords: mdOrdCoords });
 
   // Import status line
@@ -468,11 +476,11 @@ function renderManageDefTable() {
 
   // Summary tallies. Missing (not-sent) counts only order-covered villages; def-pop-owed sums
   // the rest of the plan targets (which show the aggregate Remaining instead of per-sender rows).
-  let nSupport = 0, nIncoming = 0, nMissing = 0;
+  let nSupport = 0, nIncoming = 0, nMissing = 0, anyInferred = false;
   const totStationed = mdZero(), totRemaining = mdZero();
   for (const g of mdGroups) {
     if (g.supportRows.length) nSupport++;
-    if (mdPop(g.incoming) > 0) nIncoming++;
+    if (mdPop(g.incoming) > 0) { nIncoming++; if (!g.hasOrders) anyInferred = true; }
     mdAddUnits(totStationed, g.stationed);
     if (g.hasPlan && g.hasOrders) nMissing += g.missingRows.length;
     else if (g.hasPlan) mdAddUnits(totRemaining, g.remaining);
@@ -481,7 +489,9 @@ function renderManageDefTable() {
   if (sumEl) {
     const chips = [
       t('md_sum_support')(nSupport),
-      t('md_sum_incoming')(nIncoming, mdOrders.length ? '' : t('md_sum_est')),
+      // "(est.)" whenever ANY counted village's incoming is inferred (per-village gating means a
+      // partial order import can mix real and inferred incoming in the same tally).
+      t('md_sum_incoming')(nIncoming, anyInferred ? t('md_sum_est') : ''),
       t('md_sum_stationed')(Math.round(mdPop(totStationed)).toLocaleString()),
     ];
     if (anyPlan && nMissing > 0)
@@ -636,33 +646,108 @@ function mdFallbackCopy(txt, done) {
 function toggleMdSupImport() { const el = document.getElementById('md-sup-wrap'); if (el) el.style.display = el.style.display === 'none' ? '' : 'none'; }
 function toggleMdOrdImport() { const el = document.getElementById('md-ord-wrap'); if (el) el.style.display = el.style.display === 'none' ? '' : 'none'; }
 
-function mdImportSup(text) {
-  const parsed = mdParseSupports(text);
-  if (!parsed || !parsed.targets.length) { alert(t('md_sup_fail')); return; }
-  mdSupTargets = parsed.targets;
-  mdSupAt = parsed.exportedAt || Math.floor(Date.now() / 1000);
+// ── Multi-file merge (pure — harness-tested) ──────────────────────────────────
+// Several batch exports selected at once are merged AFTER parsing (text concatenation would
+// break JSON files and repeated CSV headers; formats can even be mixed in one selection).
+// Per-village the LAST file wins — a later batch re-scanning a village is the fresher snapshot.
+// Village order = first-seen across files; exportedAt = the newest file's stamp.
+function mdMergeSupImports(parsedList) {
+  const byCoord = {}; const order = [];
+  let newest = 0;
+  for (const p of parsedList) {
+    for (const tg of p.targets) {
+      if (!byCoord[tg.coord]) order.push(tg.coord);
+      byCoord[tg.coord] = tg;
+    }
+    newest = Math.max(newest, p.exportedAt || 0);
+  }
+  return { targets: order.map(c => byCoord[c]), exportedAt: newest };
+}
+// Orders merge: a file re-covering a coord REPLACES that coord's orders (never double-counts a
+// movement seen in two overlapping batches); coords = deduped union, first-seen order.
+function mdMergeOrdImports(parsedList) {
+  const byCoord = {}; const order = [];
+  let newest = 0;
+  for (const p of parsedList) {
+    for (const c of p.coords) {
+      if (!byCoord[c]) order.push(c);
+      byCoord[c] = []; // this file's snapshot of c starts fresh
+    }
+    for (const o of p.orders) (byCoord[o.target] || (byCoord[o.target] = [])).push(o);
+    newest = Math.max(newest, p.exportedAt || 0);
+  }
+  return { orders: order.flatMap(c => byCoord[c]), coords: order, exportedAt: newest };
+}
+
+// Re-importable JSON of the current state, in the exporters' own field names — what the cloud
+// backup receives for a multi-file import (the N raw source files no longer exist as one text).
+function mdSupToJson() {
+  return JSON.stringify({ exported_at: mdSupAt, targets: mdSupTargets.map(tg => ({
+    coords: tg.coord, village: tg.village, player: tg.owner, status: tg.status,
+    own_units: tg.ownUnits || undefined,
+    supports: (tg.supports || []).map(sp => ({ origin_coords: sp.originCoord,
+      origin_village: sp.originVillage, origin_player: sp.originPlayer, units: sp.units })),
+  })) });
+}
+function mdOrdToJson() {
+  const byTarget = {};
+  for (const o of mdOrders) (byTarget[o.target] || (byTarget[o.target] = [])).push(o);
+  return JSON.stringify({ exported_at: mdOrdAt, targets: mdOrdCoords.map(c => ({
+    coords: c, commands: (byTarget[c] || []).map(o => ({ id: o.id, type: 'support',
+      origin_coords: o.originCoord, origin_village: o.originVillage,
+      origin_player: o.originPlayer, arrival: o.arrival, units: o.units })),
+  })) });
+}
+
+// files = [{name, text}] in selection order. Any unparseable file aborts the WHOLE import
+// (state untouched) with a filename-specific alert — no silent partial imports.
+function mdImportSupFiles(files) {
+  const parsedList = [];
+  for (const f of files) {
+    const parsed = mdParseSupports(f.text);
+    if (!parsed || !parsed.targets.length) { alert(f.name ? t('md_sup_fail_file')(f.name) : t('md_sup_fail')); return; }
+    parsedList.push(parsed);
+  }
+  if (!parsedList.length) return;
+  const merged = mdMergeSupImports(parsedList);
+  mdSupTargets = merged.targets;
+  mdSupAt = merged.exportedAt || Math.floor(Date.now() / 1000);
   saveManageDef(); renderManageDefTable();
-  if (typeof cloudSyncManageDef === 'function') cloudSyncManageDef(text, 'support'); // hosted-site cloud save
+  if (typeof cloudSyncManageDef === 'function') // hosted-site cloud save — original text for a
+    cloudSyncManageDef(files.length === 1 ? files[0].text : mdSupToJson(), 'support'); // single source, merged JSON otherwise
   const el = document.getElementById('md-sup-wrap'); if (el) el.style.display = 'none';
 }
-function mdImportOrd(text) {
-  const parsed = mdParseOrders(text);
-  if (!parsed || (!parsed.orders.length && !(parsed.coords && parsed.coords.length))) { alert(t('md_ord_fail')); return; }
-  mdOrders = parsed.orders;
-  mdOrdCoords = parsed.coords || Array.from(new Set(parsed.orders.map(o => o.target).filter(Boolean)));
-  mdOrdAt = parsed.exportedAt || Math.floor(Date.now() / 1000);
+function mdImportOrdFiles(files) {
+  const parsedList = [];
+  for (const f of files) {
+    const parsed = mdParseOrders(f.text);
+    if (!parsed || (!parsed.orders.length && !(parsed.coords && parsed.coords.length))) { alert(f.name ? t('md_ord_fail_file')(f.name) : t('md_ord_fail')); return; }
+    parsedList.push(parsed);
+  }
+  if (!parsedList.length) return;
+  const merged = mdMergeOrdImports(parsedList);
+  mdOrders = merged.orders;
+  mdOrdCoords = merged.coords;
+  mdOrdAt = merged.exportedAt || Math.floor(Date.now() / 1000);
   saveManageDef(); renderManageDefTable();
-  if (typeof cloudSyncManageDef === 'function') cloudSyncManageDef(text, 'orders'); // hosted-site cloud save
+  if (typeof cloudSyncManageDef === 'function')
+    cloudSyncManageDef(files.length === 1 ? files[0].text : mdOrdToJson(), 'orders');
   const el = document.getElementById('md-ord-wrap'); if (el) el.style.display = 'none';
 }
+function mdImportSup(text) { mdImportSupFiles([{ name: '', text }]); }
+function mdImportOrd(text) { mdImportOrdFiles([{ name: '', text }]); }
 function mdLoadSupPaste() { const el = document.getElementById('md-sup-text'); mdImportSup(el ? el.value : ''); }
 function mdLoadOrdPaste() { const el = document.getElementById('md-ord-text'); mdImportOrd(el ? el.value : ''); }
 function mdLoadFile(input, which) {
-  const file = input.files && input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => (which === 'ord' ? mdImportOrd : mdImportSup)(e.target.result);
-  reader.readAsText(file);
+  const files = Array.from(input.files || []);
+  if (!files.length) return;
+  Promise.all(files.map(f => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve({ name: f.name, text: e.target.result });
+    reader.onerror = () => reject(f.name);
+    reader.readAsText(f);
+  }))).then(list => (which === 'ord' ? mdImportOrdFiles : mdImportSupFiles)(list))
+    .catch(name => alert(t(which === 'ord' ? 'md_ord_fail_file' : 'md_sup_fail_file')(name)));
   input.value = '';
 }
 function clearManageDef() {
