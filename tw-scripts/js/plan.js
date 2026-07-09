@@ -13,6 +13,15 @@ function serverWallMs(dateISO, minutes) {
   const off = parseFloat(otCfg.serverUtcOffset);
   return Date.UTC(+m[1], +m[2] - 1, +m[3]) + minutes * 60000 - (isNaN(off) ? 2 : off) * 3600000;
 }
+// Epoch ms of the optional "Earliest send" datetime-local (Plan Offensive), read on the SAME
+// server wall clock as the windows. null when unset/malformed → the plan uses serverNowMs() as
+// the only send floor (original behaviour). When set, it raises that floor, shrinking range for
+// far villages (and snobs): a launch can't be scheduled before this time.
+function earliestSendMs() {
+  const m = String(otCfg.earliestSendISO || '').match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return null;
+  return serverWallMs(m[1], (+m[2]) * 60 + (+m[3]));
+}
 function serverNowStr() {
   const off = parseFloat(otCfg.serverUtcOffset);
   const d = new Date(serverNowMs() + (isNaN(off) ? 2 : off) * 3600000);
@@ -261,9 +270,14 @@ function generatePlan() {
     const pts = dbv && typeof dbv.points === 'number' ? dbv.points : null;
     return pts === null || pts > SNOB_RANGE_MIN_POINTS;
   };
+  // Recommended launch villages for a needNobles / out-of-range snob row: the player's own
+  // villages within noble range AND still launchable in time (okSnobTime — honours the Earliest
+  // send floor / now), academy-plausible. Closest first. Time-gated so we never suggest recruiting
+  // a noble somewhere the train couldn't leave early enough to arrive. okSnobTime is defined below
+  // but this closure only runs during the snob loop, after it's initialised.
   const snobRangeVills = (rawName, T) =>
     (!rawName || !T || !T.c) ? []
-      : pool.filter(p => p.v.player === rawName && okSnobDist(p, T.c) && snobAcademyOk(p))
+      : pool.filter(p => p.v.player === rawName && okSnobDist(p, T.c) && okSnobTime(p, T) && snobAcademyOk(p))
             .sort((a, b) => distXY(a.c, T.c) - distXY(b.c, T.c))
             .map(p => p.v.coord);
 
@@ -282,11 +296,26 @@ function generatePlan() {
     const sw = parseWindowStr(T.tg.winSnob || wins[wins.length - 1] || '');
     T.snobEndMin = sw ? sw.to : null;
   }
+  // Earliest send floor. A launch can never be scheduled before "now", nor (when the user set
+  // an Earliest send time) before that time. The gate below vets each village's latest possible
+  // launch (land − travel) against this floor: villages needing more travel than
+  // (window END − floor) can't arrive in the window without launching too early → out of range.
+  // Applies to offs AND snobs (okOffTime/okSnobTime share okTime). max(now, …) keeps a past
+  // earliest-send from ever loosening reality.
+  const esMs = earliestSendMs();
+  const sendFloorMs = esMs === null ? serverNowMs() : Math.max(serverNowMs(), esMs);
+  // If the earliest-send is at/after a target's whole arrival window, nothing can reach it
+  // (max travel = window end − floor ≤ 0) — flag it so the target doesn't just silently empty.
+  if (esMs !== null) for (const T of targets) {
+    if (!T.c || T.offEndMin === null || T.offEndMin === undefined) continue;
+    const landMs = serverWallMs(otCfg.dateISO, T.offEndMin);
+    if (landMs !== null && esMs >= landMs) planWarnings.push(t('warn_earliest_after_window')(T.tg.coord));
+  }
   const okTime = (p, T, endMin, baseMin) => {
     if (endMin === null || endMin === undefined) return true;
     const landMs = serverWallMs(otCfg.dateISO, endMin);
     if (landMs === null) return true;
-    return landMs - travelTimeMin(distXY(p.c, T.c), baseMin, ws, us) * 60000 >= serverNowMs();
+    return landMs - travelTimeMin(distXY(p.c, T.c), baseMin, ws, us) * 60000 >= sendFloorMs;
   };
   const okOffTime  = (p, T) => okTime(p, T, T.offEndMin,  PLAN_BASE_MIN.off);
   const okSnobTime = (p, T) => okTime(p, T, T.snobEndMin, PLAN_BASE_MIN.snob);
@@ -475,7 +504,7 @@ function generatePlan() {
             // None of their snob villages reach — recommend the player's OWN villages
             // that ARE within snob range (closest first), where recruiting a noble would
             // put a train in range. By this branch's premise none of these hold snobs yet.
-            const recruit = pool.filter(p => p.v.player === want && okSnobDist(p, T.c))
+            const recruit = pool.filter(p => p.v.player === want && okSnobDist(p, T.c) && okSnobTime(p, T))
               .sort((a, b) => distXY(a.c, T.c) - distXY(b.c, T.c));
             if (recruit.length) {
               const CAP = 6;
@@ -936,7 +965,7 @@ function generatePlan() {
     if (r.unassigned || r.type === 'snob' || r.type === 'catapult') continue;
     const pw = parseWindowStr(r.window);
     const landMs = pw ? serverWallMs(otCfg.dateISO, pw.to) : null;
-    if (landMs !== null && landMs - r.travel * 60000 < serverNowMs()) {
+    if (landMs !== null && landMs - r.travel * 60000 < sendFloorMs) {
       r.late = true;
       planWarnings.push(t('warn_row_late')(r.srcCoord, r.tCoord));
     }
@@ -946,7 +975,7 @@ function generatePlan() {
   // 1-2) by each village's OWN tier. Computed HERE (after every off pass) so `usedOff` /
   // `isEscort` are final. Over OFF-CAPABLE villages only (tier !== 'none' — a defensive/empty
   // village isn't an off). The buckets PARTITION each tier's gross village count so the footer
-  // reconciles exactly: gross[tier] = assigned + heldDist + heldNoble + heldSplit + unused + ignored.
+  // reconciles exactly: gross[tier] = assigned + heldDist + heldNoble + heldSplit + heldLate + unused + ignored.
   //   • ignored    = excluded from the pool by the Ignore Coordinates / Ignore Players lists
   //   • assigned   = an off committed in the plan (usedOff, not the escort)
   //   • split-off  = the village whose off rides WITH a noble as the escort (usedOff + isEscort)
@@ -959,6 +988,19 @@ function generatePlan() {
   // back is off-limits to the off passes (offBlocked), so it's "reserved", NOT "unused".
   // That's why the held buckets key on escortReserved/snobReserved (plus the actual launched
   // escort via isEscort), so `unused` means genuinely free, and the partition still reconciles.
+  // A village is "outside earliest launch date" (heldLate) when it's within off-distance of at
+  // least one target but is too LATE for every such target (fails okOffTime) — i.e. timing is the
+  // ONLY thing stopping it, so pushing the arrival date (or the Earliest send) later would free
+  // it. Villages out of DISTANCE range everywhere are a different reason and stay in `unused`.
+  const offLate = p => {
+    let reachable = false;
+    for (const T of targets) {
+      if (!T.c || !okOffDist(p, T.c)) continue;
+      reachable = true;
+      if (okOffTime(p, T)) return false; // in time for at least one reachable target → not late
+    }
+    return reachable;
+  };
   planStats = emptyPlanStats();
   for (const v of villages) {
     const tier = getOffTier(v.offPow);
@@ -973,7 +1015,8 @@ function generatePlan() {
     else if (snobReserved.has(p))                           s.heldNoble++;     // held free for a noble launch
     else if (p.usedOff)                                     s.assigned++;      // an off committed in the plan
     else if (tooClose.has(p))                               s.heldDist++;      // blanket min-distance holdback
-    else                                                    s.unused++;        // genuinely free / not needed / unreachable
+    else if (offLate(p))                                    s.heldLate++;      // reachable by distance but too late everywhere
+    else                                                    s.unused++;        // genuinely free / not needed / out of distance range
   }
 
   saveOffensive();
@@ -1010,12 +1053,12 @@ function renderPlanTable() {
   if (planRows.length && planStats) {
     // One line per off tier, behind a collapsible toggle (native <details>, file://-safe).
     const segs = ['complete', 'tq', 'half'].map(tier => {
-      const s = planStats[tier] || { assigned: 0, heldDist: 0, heldNoble: 0, heldSplit: 0, unused: 0, ignored: 0 };
+      const s = planStats[tier] || { assigned: 0, heldDist: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, unused: 0, ignored: 0 };
       // [N] = gross count of villages of this tier tribe-wide (same denominator as the
       // Offensive Targets footer — total selectable offs, before any holdback/reservation).
       const gross = villages.filter(v => getOffTier(v.offPow) === tier).length;
       return `<span class="badge ${TIER_BADGE[tier]}">${t('tier_' + tier)} [${gross}]</span> `
-        + esc(t('plan_offs_summary')(s.assigned, s.heldDist, s.heldNoble, s.heldSplit, s.unused, s.ignored));
+        + esc(t('plan_offs_summary')(s.assigned, s.heldDist, s.heldNoble, s.heldSplit, s.unused, s.ignored, s.heldLate));
     });
     summary += `<details style="margin-top:6px;"><summary style="cursor:pointer;">${esc(t('btn_show_off_counts'))}</summary>`
       + `<div style="margin-top:4px;line-height:1.9;">${segs.join('<br>')}</div></details>`;

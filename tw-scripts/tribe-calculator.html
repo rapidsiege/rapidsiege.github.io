@@ -550,6 +550,8 @@
     </div>
   </div>
   <div class="filter-row" style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <label data-i18n="lbl_earliest_send">Earliest send:</label>
+    <input type="datetime-local" id="plan-earliest-send" style="width:200px;" data-i18n-title="earliest_send_title" title="Optional. The earliest server time you could actually launch. A village is only in range if it can still arrive within the target window when launched no earlier than this — so max travel = window end − earliest send. Applies to snob trains too. Leave blank to allow launching from now." onchange="updOTCfg('earliestSendISO', this.value)">
     <label data-i18n="lbl_min_dist">Off min distance:</label>
     <input type="number" id="plan-min-dist" value="0" min="0" style="width:70px;" title="0 = no minimum" oninput="saveSettings()">
     <label data-i18n="lbl_max_dist">Off max distance:</label>
@@ -1057,7 +1059,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.13.3 &nbsp;·&nbsp; 2026-07-09</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.14.0 &nbsp;·&nbsp; 2026-07-09</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

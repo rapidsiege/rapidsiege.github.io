@@ -31,7 +31,7 @@ let planWarnings = [];
 let planReserved = []; // coords of noble-launch villages held out of the offs (excluded from Unused Offs)
 // Off-pool holdback breakdown for the Plan summary footer, per off tier (off-capable villages only).
 function emptyPlanStats() {
-  const t = () => ({ assigned: 0, heldDist: 0, heldNoble: 0, heldSplit: 0, unused: 0, ignored: 0 });
+  const t = () => ({ assigned: 0, heldDist: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, unused: 0, ignored: 0 });
   return { complete: t(), tq: t(), half: t() };
 }
 let planStats    = emptyPlanStats();
@@ -71,6 +71,8 @@ function loadOffensive() {
   // normalize targets saved by older versions
   offTargets.forEach(normalizeOffTarget);
   document.getElementById('ot-date').value = otCfg.dateISO || '';
+  const esInput = document.getElementById('plan-earliest-send'); // Plan Offensive tab, but stored in otCfg (round-trips with the plan)
+  if (esInput) esInput.value = otCfg.earliestSendISO || '';
   setWinInputs('ot-def-winoff', otCfg.defWinOff);
   setWinInputs('ot-def-winsnob', otCfg.defWinSnob);
   for (const id of ['ot-def-winoff-fix', 'ot-def-winsnob-fix']) {
