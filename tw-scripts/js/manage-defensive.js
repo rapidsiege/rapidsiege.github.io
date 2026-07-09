@@ -25,10 +25,21 @@ let mdSupTargets = []; // villageSupports: [{coord, village, owner, status, ownU
 let mdOrders     = []; // incomingOrders (support only): [{id, target, originCoord, originVillage, originPlayer, arrival, arrivalMs, units}]
 let mdSupAt      = 0;   // unix seconds of the villageSupports import (0 = none)
 let mdOrdAt      = 0;   // unix seconds of the incomingOrders import (0 = none)
+let mdOrdCoords  = []; // target coords COVERED by the incomingOrders import (incl. scanned-but-empty
+                       // villages) — the per-village gate for "Still not sent" rows. A village here has
+                       // real inbound-order data; one absent falls back to inferred incoming + aggregate.
+
+// Collapse/expand state for the table. Villages are collapsed by default (one summary row
+// each) — detail rows are built ONLY for expanded coords, so a big plan doesn't render
+// thousands of rows up front. renderManageDefTable() recomputes mdGroups/mdVmap on a data
+// change; renderMdTableBody() paints from them and is re-run cheaply on every toggle.
+let mdGroups   = [];    // last-built village groups (mdBuildRows output)
+let mdExpanded = {};    // coord → true for expanded villages
+let mdVmap     = null;  // Map(order → plan-match verdict) for the current groups
 
 function saveManageDef() {
   localStorage.setItem(MD_STORE_KEY, JSON.stringify({
-    supTargets: mdSupTargets, orders: mdOrders, supAt: mdSupAt, ordAt: mdOrdAt,
+    supTargets: mdSupTargets, orders: mdOrders, supAt: mdSupAt, ordAt: mdOrdAt, ordCoords: mdOrdCoords,
   }));
 }
 function loadManageDef() {
@@ -39,6 +50,9 @@ function loadManageDef() {
       mdOrders     = Array.isArray(d.orders) ? d.orders : [];
       mdSupAt      = d.supAt || 0;
       mdOrdAt      = d.ordAt || 0;
+      // Back-compat: older saves lack ordCoords → derive from the orders' targets.
+      mdOrdCoords  = Array.isArray(d.ordCoords) ? d.ordCoords
+        : Array.from(new Set(mdOrders.map(o => o.target).filter(Boolean)));
     }
   } catch {}
 }
@@ -121,7 +135,9 @@ function mdParseOrders(text) {
     try { data = JSON.parse(s); } catch { return null; }
     if (!data || !Array.isArray(data.targets)) return null;
     const orders = [];
+    const coords = []; // every village the scan visited (even with 0 support en route)
     for (const tg of data.targets) {
+      if (tg.coords) coords.push(tg.coords);
       for (const c of (tg.commands || [])) {
         if (c.type !== 'support') continue;
         orders.push({
@@ -132,7 +148,7 @@ function mdParseOrders(text) {
         });
       }
     }
-    return { orders, exportedAt: data.exported_at || 0 };
+    return { orders, exportedAt: data.exported_at || 0, coords };
   }
   // CSV
   const lines = s.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim());
@@ -144,10 +160,12 @@ function mdParseOrders(text) {
   const unitNames = head.slice(unitStart);
   const f = (row, name) => { const i = col(name); return i === -1 ? '' : (row[i] || '').trim(); };
   const orders = [];
+  const coordSet = {}; // every Target coord seen in the CSV (any row type = scanned)
   for (let i = 1; i < lines.length; i++) {
     const row = lines[i].split(',');
     const coord = (row[0] || '').trim();
     if (!/^\d{1,3}\|\d{1,3}$/.test(coord)) continue;
+    coordSet[coord] = true;
     if (f(row, 'Type') !== 'support') continue;
     const u = {};
     unitNames.forEach((name, k) => { u[name] = parseInt(row[unitStart + k], 10) || 0; });
@@ -157,7 +175,9 @@ function mdParseOrders(text) {
       originPlayer: f(row, 'OriginPlayer'), arrival, arrivalMs: moParseArrivalMs(arrival), units: u,
     });
   }
-  return orders.length ? { orders, exportedAt: 0 } : null;
+  const coords = Object.keys(coordSet);
+  // Accept an import that scanned villages even if none had support en route (all "not sent").
+  return (orders.length || coords.length) ? { orders, exportedAt: 0, coords } : null;
 }
 
 // ── Inferred inbound support from tribe_everything.txt ────────────────────────
@@ -178,6 +198,41 @@ function mdInferIncoming(coord) {
   const own = (typeof troopByCoord !== 'undefined' && troopByCoord[coord]) || {};
   for (const u of DEF_OBJ_UNITS) z[u] = Math.max(0, (inc[u] || 0) - (own[u] || 0));
   return z;
+}
+
+// ── Estimated STATIONED ally support from tribe_everything.txt ────────────────
+// Symmetric to mdInferIncoming, but for support already sitting in the village: the
+// per-type EXCESS of the "defense" row (troops stationed in the village) over the
+// owner's own troops is (heuristically) allied support. In practice the tribe export
+// only sees the EXPORTING account's own troops, so for foreign-owned allied villages
+// this reads ~0 (a stale/own-only snapshot) — it's a placeholder that gets REPLACED by
+// the exact per-origin sum the moment an "Import Support" (villageSupports.js) file is
+// loaded. Defensive types only. No station data (plain tribe-info file) → all zeros.
+function mdEstimateStationed(coord) {
+  const z = mdZero();
+  if (typeof hasStationData !== 'function' || !hasStationData()) return z;
+  const def = (typeof defenseByCoord !== 'undefined' && defenseByCoord[coord]) || null;
+  if (!def) return z;
+  const own = (typeof troopByCoord !== 'undefined' && troopByCoord[coord]) || {};
+  for (const u of DEF_OBJ_UNITS) z[u] = Math.max(0, (def[u] || 0) - (own[u] || 0));
+  return z;
+}
+
+// ── "Who has already sent?" (pure) ────────────────────────────────────────────
+// A plan row (src→tgt) counts as SENT once any support carrying defensive units has
+// left that origin for that target — whether it has arrived (stationed, villageSupports)
+// or is still en route (incoming order). Returns tCoord → Set(originCoord). Amount/timing
+// are deliberately ignored: a partial or wrong-amount sender is "sent" (and still surfaces
+// on its own incoming row via the classifier); only true non-senders become "Still not sent".
+function mdSentOrigins(supTargets, orders) {
+  const map = {};
+  const add = (tgt, origin) => { (map[tgt] || (map[tgt] = new Set())).add(origin); };
+  for (const tg of (supTargets || [])) {
+    if (!tg.coord) continue;
+    for (const sp of (tg.supports || [])) if (mdPop(sp.units) > 0) add(tg.coord, sp.originCoord);
+  }
+  for (const o of (orders || [])) if (o.target && mdPop(o.units) > 0) add(o.target, o.originCoord);
+  return map;
 }
 
 // ── Plan-match verdicts for inbound support orders (pure — harness-tested) ────
@@ -229,20 +284,25 @@ function mdClassifyOrders(orders, planRows) {
 }
 
 // ── Pure aggregator (harness-tested): fold the three sources into per-village rows ─
-// Returns [{coord, owner, village, hasPlan, planNeed, stationed, incoming, remaining,
-//           supportRows:[…], orderRows:[…], inferredIncoming, deadlineMs}] village-keyed.
-// `estimate` = true when no Support Orders were imported (→ incoming from mdInferIncoming).
+// Returns [{coord, owner, village, hasPlan, hasOrders, planNeed, stationed, incoming, remaining,
+//           supportRows:[…], orderRows:[…], missingRows:[…], inferredIncoming, deadlineMs}] village-keyed.
+// PER-VILLAGE order awareness: a village whose coord is in opts.ordCoords (covered by the
+// incomingOrders import — even if 0 support was en route) shows real per-order incoming +
+// per-sender "not sent"; every OTHER village falls back to inferred incoming (mdInferIncoming)
+// and the aggregate Remaining. So importing orders for one village never expands the rest.
 function mdBuildRows(supTargets, orders, planRows, opts) {
   opts = opts || {};
-  const estimate = !orders || !orders.length;
+  // Villages with real inbound-order data. Fallback (tests/back-compat): the orders' own targets.
+  const ordCoords = new Set(opts.ordCoords || (orders || []).map(o => o.target).filter(Boolean));
   const byCoord = {}; const order = [];
   const get = coord => {
     if (!byCoord[coord]) {
       byCoord[coord] = {
-        coord, owner: '', village: '', hasPlan: false,
+        coord, owner: '', village: '', hasPlan: false, hasSupImport: false, hasOrders: false,
         planNeed: mdZero(), stationed: mdZero(), incoming: mdZero(), remaining: mdZero(),
-        ownUnits: mdZero(), totals: mdZero(),
+        ownUnits: mdZero(), support: mdZero(), supportEst: mdZero(),
         supportRows: [], orderRows: [], inferredIncoming: mdZero(), deadlineMs: null,
+        planList: [], missingRows: [],
       };
       order.push(coord);
     }
@@ -253,6 +313,7 @@ function mdBuildRows(supTargets, orders, planRows, opts) {
   for (const tg of (supTargets || [])) {
     if (!tg.coord) continue;
     const g = get(tg.coord);
+    g.hasSupImport = true; // this village WAS seen by an Import Support file → g.stationed is authoritative
     g.owner = g.owner || tg.owner; g.village = g.village || tg.village;
     if (tg.ownUnits) mdAddUnits(g.ownUnits, tg.ownUnits); // own troops at home (villageSupports own_units row)
     for (const sp of (tg.supports || [])) {
@@ -262,47 +323,56 @@ function mdBuildRows(supTargets, orders, planRows, opts) {
     }
   }
 
-  // Plan need + deadline (defPlanRows already carry arriveMs).
+  // Plan need + deadline (defPlanRows already carry arriveMs). Keep the per-row list so we
+  // can show which individual senders still owe support (missing rows) — not just the net.
   for (const r of (planRows || [])) {
     const g = get(r.tCoord);
     g.hasPlan = true;
     g.owner = g.owner || r.tPlayer;
+    g.planList.push(r);
     mdAddUnits(g.planNeed, r.units);
     if (r.arriveMs != null && (g.deadlineMs == null || r.arriveMs < g.deadlineMs)) g.deadlineMs = r.arriveMs;
   }
 
-  // Inbound support: per-order rows when imported, else one inferred estimate per village.
-  if (!estimate) {
-    for (const o of orders) {
-      if (!o.target || mdPop(o.units) <= 0) continue; // support order with no def units → skip
-      const g = get(o.target);
-      g.orderRows.push(o);
-      mdAddUnits(g.incoming, o.units);
-    }
-  } else {
-    for (const coord of Object.keys(byCoord)) {
-      const est = mdInferIncoming(coord);
-      byCoord[coord].inferredIncoming = est;
-      mdAddUnits(byCoord[coord].incoming, est);
-    }
-    // A village with inferred inbound support but no station/plan yet still deserves a row.
-    if (opts.allCoords) for (const coord of opts.allCoords) {
-      if (byCoord[coord]) continue;
-      const est = mdInferIncoming(coord);
-      if (mdPop(est) > 0) { const g = get(coord); g.inferredIncoming = est; mdAddUnits(g.incoming, est); }
-    }
+  // Inbound support — per village. Villages covered by the orders import get real per-order rows;
+  // every other village infers its incoming from the tribe .txt (defense/incoming rows).
+  for (const o of (orders || [])) {
+    if (!o.target || mdPop(o.units) <= 0) continue; // support order with no def units → skip
+    const g = get(o.target);
+    g.orderRows.push(o);
+    mdAddUnits(g.incoming, o.units);
+  }
+  for (const coord of Object.keys(byCoord)) {
+    if (ordCoords.has(coord)) continue; // real order data → don't infer
+    const est = mdInferIncoming(coord);
+    byCoord[coord].inferredIncoming = est;
+    mdAddUnits(byCoord[coord].incoming, est);
+  }
+  // A village with inferred inbound support but no station/plan/orders yet still deserves a row.
+  if (opts.allCoords) for (const coord of opts.allCoords) {
+    if (byCoord[coord] || ordCoords.has(coord)) continue;
+    const est = mdInferIncoming(coord);
+    if (mdPop(est) > 0) { const g = get(coord); g.inferredIncoming = est; mdAddUnits(g.incoming, est); }
   }
 
   // Remaining = plan − (stationed + incoming), floored at 0.
-  // Totals = all troops physically in the village (own + support) — the tribe export's
-  // "defense" row (defenseByCoord) is authoritative and matches the .txt; without station
-  // data, fall back to own_units + stationed support from the villageSupports import.
-  const de = (typeof defenseByCoord !== 'undefined') ? defenseByCoord : {};
+  // Support = ally support stationed in the village (NOT the owner's own troops). When an
+  // Import Support file has been loaded for the village, g.stationed is the exact per-origin
+  // sum; otherwise we show a placeholder ESTIMATE inferred from the tribe .txt (defense − own,
+  // ~0 in practice — the .txt can't see foreign support), replaced the moment support is imported.
+  // Missing rows = the individual plan senders that have NOT sent yet (neither stationed nor incoming);
+  // only meaningful/rendered for order-covered villages (g.hasOrders).
+  const sent = mdSentOrigins(supTargets, orders);
   for (const coord of order) {
     const g = byCoord[coord];
-    for (const u of DEF_OBJ_UNITS) g.remaining[u] = Math.max(0, g.planNeed[u] - g.stationed[u] - g.incoming[u]);
-    const station = de[coord];
-    for (const u of DEF_OBJ_UNITS) g.totals[u] = station ? (station[u] || 0) : (g.ownUnits[u] + g.stationed[u]);
+    g.hasOrders = ordCoords.has(coord);
+    g.support = g.hasSupImport ? g.stationed : mdZero();
+    g.supportEst = g.hasSupImport ? mdZero() : mdEstimateStationed(coord);
+    // Remaining incoming support still needed = plan − (support already there, real or estimated) − incoming.
+    const supportShown = g.hasSupImport ? g.stationed : g.supportEst;
+    for (const u of DEF_OBJ_UNITS) g.remaining[u] = Math.max(0, g.planNeed[u] - supportShown[u] - g.incoming[u]);
+    const sset = sent[coord];
+    g.missingRows = g.planList.filter(r => !(sset && sset.has(r.srcCoord)));
   }
   // Only surface villages actually relevant to defense coordination: a Defense-Plan
   // target, OR a village holding ally support, OR one with inbound support (ordered or
@@ -355,6 +425,20 @@ function mdOrderStatus(verdict) {
   const s = MD_VERDICT_STYLE[verdict] || MD_VERDICT_STYLE.inbound;
   return `<span style="color:${s.c};${s.b ? 'font-weight:600;' : ''}">${esc(t(s.k))}</span>`;
 }
+// Planned arrival moment for a missing sender (server date-time, from defPlanRows.arriveMs).
+function mdPlanArrivalCell(ms) {
+  const s = (typeof fmtServerDT === 'function') ? fmtServerDT(ms) : '';
+  return `<span style="font-family:monospace;font-size:11px;color:#60a0e0;">${esc(s || '—')}</span>`;
+}
+// "Still not sent" verdict for a missing plan row, with the pre-filled rally-point send link
+// (degrades to plain text when the world DB / server URL isn't available — same as the plan table).
+function mdNotSentStatus(r) {
+  const label = `<span style="color:#e69090;font-weight:600;">${esc(t('md_st_not_sent'))}</span>`;
+  const url = (typeof rallyUrl === 'function') ? rallyUrl(r.srcCoord, r.tCoord, r.units) : null;
+  return url
+    ? label + `<br><a href="${esc(url)}" target="_blank" rel="noopener" style="color:#7fb8e6;">${esc(t('md_send'))}</a>`
+    : label;
+}
 
 function renderManageDefTable() {
   const sumEl = document.getElementById('md-summary');
@@ -363,10 +447,10 @@ function renderManageDefTable() {
   const impEl = document.getElementById('md-import-status');
 
   const planRows = (typeof defPlanRows !== 'undefined') ? defPlanRows : [];
-  const estimate = !mdOrders.length;
-  // Every coord we might infer inbound support for (villages present in the troop file).
-  const allCoords = (estimate && typeof villages !== 'undefined') ? villages.map(v => v.coord) : null;
-  const groups = mdBuildRows(mdSupTargets, mdOrders, planRows, { allCoords });
+  // Every coord we might infer inbound support for (villages present in the troop file) — used to
+  // surface support-receiving villages that aren't order-covered. Order-covered coords are excluded.
+  const allCoords = (typeof villages !== 'undefined') ? villages.map(v => v.coord) : null;
+  mdGroups = mdBuildRows(mdSupTargets, mdOrders, planRows, { allCoords, ordCoords: mdOrdCoords });
 
   // Import status line
   if (impEl) {
@@ -376,27 +460,32 @@ function renderManageDefTable() {
     impEl.textContent = parts.join('  ·  ');
   }
 
-  if (!groups.length) {
+  if (!mdGroups.length) {
     if (sumEl) sumEl.innerHTML = `<span style="color:#a08050;">${esc(t('md_need_import'))}</span>`;
     tbody.innerHTML = `<tr class="empty-row"><td colspan="12">${t('md_need_import')}</td></tr>`;
     return;
   }
 
-  // Summary tallies
-  let nSupport = 0, nIncoming = 0;
-  const totStationed = mdZero(), totIncoming = mdZero(), totRemaining = mdZero();
-  for (const g of groups) {
+  // Summary tallies. Missing (not-sent) counts only order-covered villages; def-pop-owed sums
+  // the rest of the plan targets (which show the aggregate Remaining instead of per-sender rows).
+  let nSupport = 0, nIncoming = 0, nMissing = 0;
+  const totStationed = mdZero(), totRemaining = mdZero();
+  for (const g of mdGroups) {
     if (g.supportRows.length) nSupport++;
     if (mdPop(g.incoming) > 0) nIncoming++;
-    mdAddUnits(totStationed, g.stationed); mdAddUnits(totIncoming, g.incoming); mdAddUnits(totRemaining, g.remaining);
+    mdAddUnits(totStationed, g.stationed);
+    if (g.hasPlan && g.hasOrders) nMissing += g.missingRows.length;
+    else if (g.hasPlan) mdAddUnits(totRemaining, g.remaining);
   }
-  const anyPlan = groups.some(g => g.hasPlan);
+  const anyPlan = mdGroups.some(g => g.hasPlan);
   if (sumEl) {
     const chips = [
       t('md_sum_support')(nSupport),
-      t('md_sum_incoming')(nIncoming, estimate ? t('md_sum_est') : ''),
+      t('md_sum_incoming')(nIncoming, mdOrders.length ? '' : t('md_sum_est')),
       t('md_sum_stationed')(Math.round(mdPop(totStationed)).toLocaleString()),
     ];
+    if (anyPlan && nMissing > 0)
+      chips.push(`<span style="color:#e06040;font-weight:600;">${esc(t('md_sum_missing')(nMissing))}</span>`);
     if (anyPlan && mdPop(totRemaining) > 0)
       chips.push(`<span style="color:#e06040;font-weight:600;">${esc(t('md_sum_remaining')(Math.round(mdPop(totRemaining)).toLocaleString()))}</span>`);
     sumEl.innerHTML = chips.map(c => c.startsWith('<span') ? c : esc(c)).join(' · ');
@@ -405,36 +494,71 @@ function renderManageDefTable() {
   // Classify every inbound order against the plan once (consumes slots across all targets),
   // then look each order's verdict up by reference (g.orderRows hold the same objects).
   const verdicts = mdClassifyOrders(mdOrders, planRows);
-  const vmap = new Map();
-  mdOrders.forEach((o, i) => vmap.set(o, verdicts[i]));
+  mdVmap = new Map();
+  mdOrders.forEach((o, i) => mdVmap.set(o, verdicts[i]));
 
+  // Fresh data render → expand the villages the user actually imported orders for (that's what
+  // they want to inspect); everything else collapses to a summary row. A lone group auto-expands.
+  mdExpanded = {};
+  for (const g of mdGroups) if (g.hasOrders) mdExpanded[g.coord] = true;
+  if (mdGroups.length === 1) mdExpanded[mdGroups[0].coord] = true;
+  renderMdTableBody();
+}
+
+// Paint the tbody from mdGroups + mdExpanded (+ mdVmap). Collapsed villages contribute ONE
+// summary row; expanded villages also emit their detail rows. Cheap to re-run on every toggle.
+function renderMdTableBody() {
+  const tbody = document.getElementById('md-tbody');
+  if (!tbody) return;
+  const blankMeta = `<td></td><td></td><td></td>`; // detail rows: #/Target/Owner carried by the summary row
   const cells = [];
-  let firstGroup = true, groupNum = 0;
-  for (const g of groups) {
-    const rowsHtml = [];
-    const myNum = ++groupNum; // sequential per rendered village (rolled back below if the group is empty)
-    let head = true; // #/Target/Owner only on the group's first line
-    const meta = () => {
-      const c = `<td style="color:#806030;">${head ? myNum : ''}</td>`
-        + `<td class="left" style="font-family:monospace;">${head ? mdCoordLink(g.coord) : ''}</td>`
-        + `<td class="left">${head && g.owner ? `<span class="player-tag">${esc(g.owner)}</span>` : ''}</td>`;
-      head = false;
-      return c;
-    };
+  let groupNum = 0, firstGroup = true;
 
-    // Totals (main row) — all troops physically in the village (own + support), matching
-    // the tribe export's "defense" row. Carries the #/Target/Owner header for the group.
-    if (mdPop(g.totals) > 0) {
-      rowsHtml.push(`<tr style="background:rgba(240,192,64,0.05);">${meta()}`
-        + `<td><span class="badge" style="background:#3a2c0a;color:#f0c040;">Σ ${esc(t('md_ty_totals'))}</span></td>`
-        + `<td class="left" colspan="2" style="color:#806030;font-size:12px;">${esc(t('md_totals_note'))}</td>`
-        + mdUnitCells(g.totals, 'color:#f0c040;font-weight:600;')
-        + `<td>—</td><td>—</td></tr>`);
+  for (const g of mdGroups) {
+    const myNum = ++groupNum;
+    const expanded = !!mdExpanded[g.coord];
+    const supIsEst = !g.hasSupImport;
+    const supVal = supIsEst ? g.supportEst : g.support;
+
+    // Support summary row (click to expand/collapse) — carries #/Target/Owner + the Support totals.
+    const caret = `<span style="color:#c0a060;">${expanded ? '▼' : '▶'}</span>`;
+    const supStatus = supIsEst ? `<span style="color:#60a0e0;">${esc(t('md_st_estimated'))}</span>` : '—';
+    cells.push(`<tr class="md-grp-head" onclick="mdToggleGroup('${g.coord}')" title="${esc(t('md_grp_toggle'))}"`
+      + ` style="cursor:pointer;background:rgba(240,192,64,0.05);${firstGroup ? '' : 'border-top:2px solid #7a5c10;'}">`
+      + `<td style="color:#806030;">${myNum}</td>`
+      + `<td class="left" style="font-family:monospace;">${caret} ${mdCoordLink(g.coord)}</td>`
+      + `<td class="left">${g.owner ? `<span class="player-tag">${esc(g.owner)}</span>` : ''}</td>`
+      + `<td><span class="badge" style="background:#3a2c0a;color:#f0c040;">🛡 ${esc(supIsEst ? t('md_ty_support_est') : t('md_ty_support'))}</span></td>`
+      + `<td class="left" colspan="2" style="color:#806030;font-size:12px;">${esc(supIsEst ? t('md_support_est_note') : t('md_support_note'))}</td>`
+      + mdUnitCells(supVal, 'color:#f0c040;font-weight:600;')
+      + `<td>—</td><td>${supStatus}</td></tr>`);
+    firstGroup = false;
+
+    // Remaining summary row (always visible for plan villages) — the aggregate incoming support still
+    // needed: plan − support(shown) − incoming, per type. Status = "N not sent" (order-covered) or
+    // "X units missing" (aggregate), green "covered" when nothing is left.
+    if (g.hasPlan) {
+      const owed = mdPop(g.remaining) > 0;
+      const covStatus = g.hasOrders
+        ? (g.missingRows.length > 0
+            ? `<span style="color:#e69090;font-weight:600;">${esc(t('md_grp_not_sent')(g.missingRows.length))}</span>`
+            : `<span style="color:#7fdca0;font-weight:600;">${esc(t('md_grp_covered'))}</span>`)
+        : (owed
+            ? `<span style="color:#e69090;font-weight:600;">${esc(t('md_grp_missing')(Math.round(mdPop(g.remaining)).toLocaleString()))}</span>`
+            : `<span style="color:#7fdca0;font-weight:600;">${esc(t('md_grp_covered'))}</span>`);
+      cells.push(`<tr class="md-grp-head" onclick="mdToggleGroup('${g.coord}')" style="cursor:pointer;background:${owed ? 'rgba(192,64,32,0.06)' : 'rgba(64,192,96,0.05)'};">`
+        + blankMeta
+        + `<td><span class="badge" style="background:${owed ? '#3a1414' : '#1d3a24'};color:${owed ? '#e69090' : '#7fdca0'};">${owed ? '⚠' : '✓'} ${esc(t('md_ty_remaining'))}</span></td>`
+        + `<td class="left" colspan="2" style="color:${owed ? '#e0a020' : '#5a8a5a'};font-size:12px;">${esc(owed ? t('md_remaining_note') : t('md_covered_note'))}</td>`
+        + mdUnitCells(g.remaining, owed ? 'color:#e69090;font-weight:600;' : 'color:#5a8a5a;')
+        + `<td>—</td><td>${covStatus}</td></tr>`);
     }
+    if (!expanded) continue;
 
-    // Stationed support rows (one per origin)
+    // ── Detail rows (blank #/Target/Owner) ──
+    // Stationed support (one per origin)
     for (const sp of g.supportRows) {
-      rowsHtml.push(`<tr>${meta()}`
+      cells.push(`<tr>${blankMeta}`
         + `<td><span class="badge" style="background:#1d3a24;color:#7fdca0;">🛡 ${esc(t('md_ty_stationed'))}</span></td>`
         + `<td class="left" style="font-family:monospace;">${esc(sp.originCoord || '—')}`
           + (sp.originVillage ? `<div style="color:#806030;font-size:11px;">${esc(sp.originVillage)}</div>` : '') + `</td>`
@@ -443,11 +567,11 @@ function renderManageDefTable() {
         + `<td>—</td><td><span style="color:#7fdca0;">${esc(t('md_st_here'))}</span></td></tr>`);
     }
 
-    // Inbound support rows
-    if (!estimate) {
+    // Inbound support (per-order when this village's orders were imported, else one inferred estimate)
+    if (g.hasOrders) {
       for (const o of g.orderRows) {
-        const verdict = vmap.get(o) || 'inbound';
-        rowsHtml.push(`<tr>${meta()}`
+        const verdict = (mdVmap && mdVmap.get(o)) || 'inbound';
+        cells.push(`<tr>${blankMeta}`
           + `<td><span class="badge" style="background:#14263a;color:#7fb8e6;">⏳ ${esc(t('md_ty_incoming'))}</span></td>`
           + `<td class="left" style="font-family:monospace;">${esc(o.originCoord || '—')}`
             + (o.originVillage ? `<div style="color:#806030;font-size:11px;">${esc(o.originVillage)}</div>` : '') + `</td>`
@@ -457,32 +581,38 @@ function renderManageDefTable() {
           + `<td>${mdOrderStatus(verdict)}${g.deadlineMs != null ? '<br>' + mdTimingCell(o.arrivalMs, g.deadlineMs) : ''}</td></tr>`);
       }
     } else if (mdPop(g.incoming) > 0) {
-      rowsHtml.push(`<tr>${meta()}`
+      cells.push(`<tr>${blankMeta}`
         + `<td><span class="badge" style="background:#14263a;color:#7fb8e6;">⏳ ${esc(t('md_ty_incoming_est'))}</span></td>`
         + `<td class="left" style="color:#806030;">—</td><td class="left">—</td>`
         + mdUnitCells(g.incoming)
         + `<td>—</td><td><span style="color:#60a0e0;">${esc(t('md_st_estimated'))}</span></td></tr>`);
     }
 
-    // Remaining (only meaningful with a plan) — red when anything is still owed, green when covered.
-    if (g.hasPlan) {
-      const owed = mdPop(g.remaining) > 0;
-      rowsHtml.push(`<tr style="background:${owed ? 'rgba(192,64,32,0.08)' : 'rgba(64,192,96,0.06)'};">${meta()}`
-        + `<td><span class="badge" style="background:${owed ? '#3a1414' : '#1d3a24'};color:${owed ? '#e69090' : '#7fdca0'};">${owed ? '⚠' : '✓'} ${esc(t('md_ty_remaining'))}</span></td>`
-        + `<td class="left" colspan="2" style="color:${owed ? '#e0a020' : '#5a8a5a'};font-size:12px;">${esc(owed ? t('md_remaining_note') : t('md_covered_note'))}</td>`
-        + mdUnitCells(g.remaining, owed ? 'color:#e69090;font-weight:600;' : 'color:#5a8a5a;')
-        + `<td>—</td><td>—</td></tr>`);
+    // Plan detail: order-covered village → a red "Still not sent" row per non-sender (rally link).
+    // Other villages show no per-sender rows; their aggregate coverage is on the summary Status.
+    if (g.hasPlan && g.hasOrders) {
+      for (const r of g.missingRows) {
+        cells.push(`<tr style="background:rgba(192,64,32,0.08);">${blankMeta}`
+          + `<td><span class="badge" style="background:#3a1414;color:#e69090;">⚠ ${esc(t('md_ty_not_sent'))}</span></td>`
+          + `<td class="left" style="font-family:monospace;">${mdCoordLink(r.srcCoord)}</td>`
+          + `<td class="left">${r.srcPlayer ? `<span class="player-tag">${esc(r.srcPlayer)}</span>` : '—'}</td>`
+          + mdUnitCells(r.units, 'color:#e69090;')
+          + `<td>${r.arriveMs != null ? mdPlanArrivalCell(r.arriveMs) : '—'}</td>`
+          + `<td>${mdNotSentStatus(r)}</td></tr>`);
+      }
     }
-
-    if (!rowsHtml.length) { groupNum--; continue; } // nothing to show → don't consume a number
-    if (!firstGroup) rowsHtml[0] = rowsHtml[0].replace('<tr>', '<tr style="border-top:2px solid #7a5c10">')
-      .replace('<tr style="background', '<tr style="border-top:2px solid #7a5c10;background');
-    firstGroup = false;
-    cells.push(...rowsHtml);
   }
 
   tbody.innerHTML = cells.join('') || `<tr class="empty-row"><td colspan="12">${t('md_need_import')}</td></tr>`;
 }
+
+// Collapse/expand handlers (repaint only — data is already built in mdGroups).
+function mdToggleGroup(coord) {
+  if (mdExpanded[coord]) delete mdExpanded[coord]; else mdExpanded[coord] = true;
+  renderMdTableBody();
+}
+function mdExpandAll() { mdExpanded = {}; for (const g of mdGroups) mdExpanded[g.coord] = true; renderMdTableBody(); }
+function mdCollapseAll() { mdExpanded = {}; renderMdTableBody(); }
 
 // ── Import UI ─────────────────────────────────────────────────────────────────
 const MD_SUP_SNIPPET = "javascript:$.getScript('https://rapidsiege.github.io/tw-scripts/villageSupports.js');";
@@ -517,8 +647,9 @@ function mdImportSup(text) {
 }
 function mdImportOrd(text) {
   const parsed = mdParseOrders(text);
-  if (!parsed || !parsed.orders.length) { alert(t('md_ord_fail')); return; }
+  if (!parsed || (!parsed.orders.length && !(parsed.coords && parsed.coords.length))) { alert(t('md_ord_fail')); return; }
   mdOrders = parsed.orders;
+  mdOrdCoords = parsed.coords || Array.from(new Set(parsed.orders.map(o => o.target).filter(Boolean)));
   mdOrdAt = parsed.exportedAt || Math.floor(Date.now() / 1000);
   saveManageDef(); renderManageDefTable();
   if (typeof cloudSyncManageDef === 'function') cloudSyncManageDef(text, 'orders'); // hosted-site cloud save
@@ -536,6 +667,32 @@ function mdLoadFile(input, which) {
 }
 function clearManageDef() {
   if ((mdSupTargets.length || mdOrders.length) && !confirm(t('md_confirm_clear'))) return;
-  mdSupTargets = []; mdOrders = []; mdSupAt = 0; mdOrdAt = 0;
+  mdSupTargets = []; mdOrders = []; mdSupAt = 0; mdOrdAt = 0; mdOrdCoords = [];
   saveManageDef(); renderManageDefTable();
+}
+
+// ── ✉ Export Missing PMs ──────────────────────────────────────────────────────
+// The Defense-Plan rows whose sender has NOT sent yet — the same "Still not sent" set as
+// the table's red rows. Grouped/split into per-player messages exactly like Plan Defense's
+// ✉ Export PMs (shared defPmMessagesFrom + renderPmModal), so a laggard gets a ready-to-paste
+// nudge with only the orders they still owe.
+function mdMissingPlanRows() {
+  const planRows = (typeof defPlanRows !== 'undefined') ? defPlanRows : [];
+  if (!planRows.length) return [];
+  // Only villages whose orders were imported can be judged "not sent" (per-village, matching the
+  // table). A plan target with no order data is skipped — we can't tell who is en route there.
+  const covered = new Set(mdOrdCoords);
+  const sent = mdSentOrigins(mdSupTargets, mdOrders);
+  return planRows.filter(r => covered.has(r.tCoord) && !((sent[r.tCoord]) && sent[r.tCoord].has(r.srcCoord)));
+}
+function showMdMissingPmExport() {
+  const hasPlan = (typeof defPlanRows !== 'undefined') && defPlanRows.length;
+  if (!hasPlan) { alert(t('empty_no_def_plan')); return; }
+  // "Not sent" can only be judged for villages whose Support Orders were imported (they reveal who
+  // is en route); without any, every not-yet-arrived sender would look missing. Require the file.
+  if (!mdOrdCoords.length) { alert(t('md_missing_need_orders')); return; }
+  const rows = mdMissingPlanRows();
+  if (!rows.length) { alert(t('md_no_missing')); return; }
+  if (typeof renderPmModal === 'function' && typeof defPmMessagesFrom === 'function')
+    renderPmModal(defPmMessagesFrom(rows), t('md_missing_pm_hint'));
 }

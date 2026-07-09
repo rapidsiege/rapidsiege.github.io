@@ -792,6 +792,9 @@
       <button class="btn btn-primary btn-sm" onclick="toggleMdSupImport()" data-i18n="btn_md_import_sup">📥 Import Support</button>
       <button class="btn btn-primary btn-sm" onclick="toggleMdOrdImport()" data-i18n="btn_md_import_ord">📥 Import Support Orders</button>
       <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="mdExpandAll()" data-i18n="md_expand_all">⊕ Expand All</button>
+      <button class="btn btn-ghost btn-sm" onclick="mdCollapseAll()" data-i18n="md_collapse_all">⊖ Collapse All</button>
+      <button class="btn btn-ghost btn-sm" onclick="showMdMissingPmExport()" data-i18n="btn_md_export_missing_pms">✉ Export Missing PMs</button>
       <button class="btn btn-ghost btn-sm" onclick="clearManageDef()" data-i18n="btn_md_clear">✕ Clear Import</button>
     </div>
   </div>
@@ -1019,7 +1022,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.11.0 &nbsp;·&nbsp; 2026-07-08</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.12.0 &nbsp;·&nbsp; 2026-07-09</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

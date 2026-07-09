@@ -667,10 +667,10 @@ function pmSplitParts(lines, maxBrackets) {
 // across parts, so a player reading message 2/2 knows which order they're at. The
 // "===== name (N) =====" header opens the FIRST part only (user decision) — glued to the
 // first order line so the packer can never orphan it into a part of its own.
-function defPmMessages(maxBrackets) {
+function defPmMessagesFrom(planRows, maxBrackets) {
   maxBrackets = maxBrackets || PM_MAX_BRACKETS;
   const byPlayer = {};
-  for (const r of defPlanRows) (byPlayer[r.srcPlayer] || (byPlayer[r.srcPlayer] = [])).push(r);
+  for (const r of (planRows || [])) (byPlayer[r.srcPlayer] || (byPlayer[r.srcPlayer] = [])).push(r);
   return Object.keys(byPlayer).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
     .map(name => {
       const rows = byPlayer[name];
@@ -679,17 +679,20 @@ function defPmMessages(maxBrackets) {
       return { player: name, parts: pmSplitParts(lines, maxBrackets) };
     });
 }
+function defPmMessages(maxBrackets) { return defPmMessagesFrom(defPlanRows, maxBrackets); }
 
 // Modal: one copy-button per message part; clicking copies that PM to the clipboard and
 // marks the button done (green + checkmark). Done-state is per-open on purpose — reopening
 // rebuilds from the current plan, whose messages may have changed.
 let defPmExport = [];
-function showDefPmExport() {
-  if (!defPlanRows.length) { alert(t('empty_no_def_plan')); return; }
-  defPmExport = defPmMessages();
+// Shared modal renderer: one copy-button per message part. `messages` is the
+// defPmMessagesFrom() shape; `hint` overrides the default header line (Manage
+// Defense's "Export Missing PMs" uses its own).
+function renderPmModal(messages, hint) {
+  defPmExport = messages || [];
   const body = document.getElementById('pm-modal-body');
   if (!body) return;
-  body.innerHTML = `<div class="pm-hint">${esc(t('pm_hint'))}</div>` + defPmExport.map((m, pi) =>
+  body.innerHTML = `<div class="pm-hint">${esc(hint || t('pm_hint'))}</div>` + defPmExport.map((m, pi) =>
     m.parts.map((text, k) => {
       const label = m.parts.length > 1 ? `${m.player} (${k + 1}/${m.parts.length})` : m.player;
       return `<div class="pm-row">
@@ -699,6 +702,10 @@ function showDefPmExport() {
     }).join('')
   ).join('');
   document.getElementById('pm-modal').classList.add('open');
+}
+function showDefPmExport() {
+  if (!defPlanRows.length) { alert(t('empty_no_def_plan')); return; }
+  renderPmModal(defPmMessages());
 }
 function closePmModal() { document.getElementById('pm-modal').classList.remove('open'); }
 function copyDefPm(pi, k, btn) {
