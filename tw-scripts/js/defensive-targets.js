@@ -35,16 +35,20 @@ let defPlanWarnings  = [];
 let dtNextId         = 1;
 
 function saveDefensive() {
-  localStorage.setItem(DT_STORE_KEY, JSON.stringify({
+  // Compressed (lsSaveC): this key holds the generated plan (defPlanRows) and is by far the
+  // largest tribe-calculator localStorage tenant (~3 MB uncompressed on a big op) — LZ keeps it
+  // well under the ~5 MB quota. The plan is KEPT verbatim (not regenerated) so a distributed
+  // plan stays byte-stable across reloads.
+  lsSaveC(DT_STORE_KEY, {
     cfg: dtCfg, targets: defTargets, ignore: defIgnore, ignorePlayers: defIgnorePlayers, enemyTribes: defEnemyTribes, enemyDist: defEnemyDist, farFirst: defFarFirst,
     packMode: dpMode, packSize: dpPackSize, packMax: dpPackMax, packWeights: dpPackWeights,
     plan: defPlanRows, warnings: defPlanWarnings, nextId: dtNextId,
-  }));
+  });
 }
 
 function loadDefensive() {
   try {
-    const d = JSON.parse(localStorage.getItem(DT_STORE_KEY));
+    const d = lsLoadC(DT_STORE_KEY); // compressed (LZ1:) or legacy uncompressed JSON — lsLoadC handles both
     if (d) {
       dtCfg           = { ...dtCfg, ...(d.cfg || {}) };
       defTargets      = d.targets || [];

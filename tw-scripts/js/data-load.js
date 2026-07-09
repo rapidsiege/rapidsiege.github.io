@@ -50,12 +50,11 @@ function loadFromPaste() {
 const TROOP_KEY = 'tw_tribe_troops';
 function persistTroops(text, filename) {
   if (!villages.length) return; // don't persist a parse that produced nothing
-  try { localStorage.setItem(TROOP_KEY, JSON.stringify({ text, filename, savedAt: new Date().toISOString() })); } catch {}
+  lsSaveC(TROOP_KEY, { text, filename, savedAt: new Date().toISOString() }); // compressed — raw troop text is highly compressible
 }
 function autoloadTroops() {
   if (villages.length) return; // a real upload this session takes precedence
-  let d;
-  try { d = JSON.parse(localStorage.getItem(TROOP_KEY)); } catch { return; }
+  const d = lsLoadC(TROOP_KEY); // compressed (LZ1:) or legacy uncompressed JSON
   if (!d || !d.text) return;
   parseData(d.text, d.filename || t('imported_troops'));
   if (villages.length) {

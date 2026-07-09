@@ -131,14 +131,17 @@ function importDebugData(input) {
 function applyDebugImport(dump) {
   const isOurs = k => k && k.indexOf('tw_tribe') === 0 && k.indexOf('tw_tribe_backup') !== 0;
   const ourKeys = () => { const ks = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (isOurs(k)) ks.push(k); } return ks; };
-  // back up the current tw_tribe* state first (recoverable from devtools, and used to roll
-  // back below); a single key, overwritten each import, so backups can't accumulate. Then
-  // CLEAR the old state so a subsystem absent from the dump (e.g. no defensive targets)
-  // doesn't linger — faithful replace.
+  // Snapshot the current tw_tribe* state for rollback, IN MEMORY (not a tw_tribe_backup
+  // localStorage key). Persisting the backup meant the old and new state were both resident
+  // during the write, ~doubling peak usage and tripping the ~5 MB localStorage quota when
+  // re-importing a large dump (QuotaExceededError → this returns false → "storage may be
+  // full"). Then CLEAR the old state so a subsystem absent from the dump (e.g. no defensive
+  // targets) doesn't linger — faithful replace. Also drop any stale tw_tribe_backup a prior
+  // version persisted, reclaiming that space.
   const backup = {};
   try {
     for (const k of ourKeys()) backup[k] = localStorage.getItem(k);
-    localStorage.setItem('tw_tribe_backup', JSON.stringify({ savedAt: new Date().toISOString(), keys: backup }));
+    try { localStorage.removeItem('tw_tribe_backup'); } catch {}
     for (const k of Object.keys(backup)) localStorage.removeItem(k);
   } catch {}
   // Write the new state as one unit. If any write throws (e.g. localStorage quota exceeded on
@@ -148,9 +151,12 @@ function applyDebugImport(dump) {
     for (const [k, v] of Object.entries(dump.storage || {})) {
       localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
     }
-    // full world-DB snapshot (raw text) → tw_tribe_db, re-derived on reload by autoloadDb (dev
-    // only; prod always reloads the live mirror). Present only in manual exports.
-    if (dump.dbRaw && dump.dbRaw.village) localStorage.setItem('tw_tribe_db', JSON.stringify(dump.dbRaw));
+    // full world-DB snapshot (raw text) → tw_tribe_db, re-derived on reload by autoloadDb —
+    // DEV ONLY. In prod autoloadDb reloads the live es100 mirror and NEVER reads tw_tribe_db,
+    // so writing it there is multiple wasted MB that needlessly trips the quota. Present only
+    // in manual exports. Skip the write entirely in prod.
+    if (dump.dbRaw && dump.dbRaw.village && (typeof TW_ENV === 'undefined' || TW_ENV !== 'production'))
+      localStorage.setItem('tw_tribe_db', JSON.stringify(dump.dbRaw));
     // Back-compat: very old dumps kept settings only in the structured `settings` block with no
     // tw_tribe_settings key. Synthesize it (mapping to saveSettings' shape) so loadSettings()
     // restores thresholds/plan/lang on reload.

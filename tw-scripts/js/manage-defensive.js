@@ -37,14 +37,16 @@ let mdGroups   = [];    // last-built village groups (mdBuildRows output)
 let mdExpanded = {};    // coord → true for expanded villages
 let mdVmap     = null;  // Map(order → plan-match verdict) for the current groups
 
+// Compressed (lsSaveC). Returns false if even the compressed blob won't fit (QuotaExceededError)
+// so the import callers can show a clear "storage full" message instead of a bogus parse error.
 function saveManageDef() {
-  localStorage.setItem(MD_STORE_KEY, JSON.stringify({
+  return lsSaveC(MD_STORE_KEY, {
     supTargets: mdSupTargets, orders: mdOrders, supAt: mdSupAt, ordAt: mdOrdAt, ordCoords: mdOrdCoords,
-  }));
+  });
 }
 function loadManageDef() {
   try {
-    const d = JSON.parse(localStorage.getItem(MD_STORE_KEY));
+    const d = lsLoadC(MD_STORE_KEY); // compressed (LZ1:) or legacy uncompressed JSON
     if (d) {
       mdSupTargets = Array.isArray(d.supTargets) ? d.supTargets : [];
       mdOrders     = Array.isArray(d.orders) ? d.orders : [];
@@ -712,10 +714,11 @@ function mdImportSupFiles(files) {
   const merged = mdMergeSupImports(parsedList);
   mdSupTargets = merged.targets;
   mdSupAt = merged.exportedAt || Math.floor(Date.now() / 1000);
-  saveManageDef(); renderManageDefTable();
+  const saved = saveManageDef(); renderManageDefTable();
   if (typeof cloudSyncManageDef === 'function') // hosted-site cloud save — original text for a
     cloudSyncManageDef(files.length === 1 ? files[0].text : mdSupToJson(), 'support'); // single source, merged JSON otherwise
   const el = document.getElementById('md-sup-wrap'); if (el) el.style.display = 'none';
+  if (!saved) alert(t('md_storage_full')); // data shown this session (+ cloud-backed in prod) but not persisted locally
 }
 function mdImportOrdFiles(files) {
   const parsedList = [];
@@ -729,10 +732,11 @@ function mdImportOrdFiles(files) {
   mdOrders = merged.orders;
   mdOrdCoords = merged.coords;
   mdOrdAt = merged.exportedAt || Math.floor(Date.now() / 1000);
-  saveManageDef(); renderManageDefTable();
+  const saved = saveManageDef(); renderManageDefTable();
   if (typeof cloudSyncManageDef === 'function')
     cloudSyncManageDef(files.length === 1 ? files[0].text : mdOrdToJson(), 'orders');
   const el = document.getElementById('md-ord-wrap'); if (el) el.style.display = 'none';
+  if (!saved) alert(t('md_storage_full')); // data shown this session (+ cloud-backed in prod) but not persisted locally
 }
 function mdImportSup(text) { mdImportSupFiles([{ name: '', text }]); }
 function mdImportOrd(text) { mdImportOrdFiles([{ name: '', text }]); }
