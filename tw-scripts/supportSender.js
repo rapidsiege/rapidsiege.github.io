@@ -118,7 +118,10 @@ function main(){
     ssRenderPlanStatus()
     ssResolveTargetIds() // fill any village IDs still missing from the cache
 }
-if(ssRightScreen) main()
+// main() is invoked at the very BOTTOM of the file: it must run only after every
+// top-level `var x = …` below has executed — calling it here (where the original
+// async main sat) let `var ssPlan = null` re-clobber the plan ssRestorePlan()
+// had just restored.
 
 
 function getColorDarker(hexInput, percent) {
@@ -1569,3 +1572,8 @@ function getSpeedConstant() { //Get speed constant (world speed * unit speed) fo
         return obj
     }
 }
+
+// Entry point — MUST stay the last statement in the file (see the note where the
+// original mid-file call sat: earlier invocation lets later `var` initializers
+// clobber the state main() just restored).
+if(ssRightScreen) main()
