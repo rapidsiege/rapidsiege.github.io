@@ -2,10 +2,21 @@
 // Discord: costache madalin#8472
 // Original Script Link: https://forum.tribalwars.net/index.php?threads/support-sender.286798/
 //
-// Custom Version by Vanquished -> v1 | 2026-07-11
+// Custom Version by Vanquished -> v1.0 | 2026-07-11
 //
 // Self-contained, no longer pulls data from external sources. All in-game.
 // + Defensive-plan import: paste a per-player defensive support plan.
+//
+// ################# Disclaimer #################
+// By uploading a user-generated mod for use with Tribal Wars, the creator grants
+// InnoGames a perpetual, irrevocable, worldwide, royalty-free, non-exclusive license
+// to use, reproduce, distribute, publicly display, modify, and create derivative
+// works of the mod. This license permits InnoGames to incorporate the mod into any
+// aspect of the game and its related services, including promotional and commercial
+// endeavors, without any requirement for compensation or attribution to the uploader.
+// The uploader represents and warrants that they have the legal right to grant this
+// license and that the mod does not infringe upon any third-party rights. German law applies.
+//
 
 var heavyCav=4
 
