@@ -10,8 +10,9 @@
 var heavyCav=4
 
 // Wrong screen: alert + redirect. ssRightScreen gates main() so nothing below
-// touches the missing DOM while the redirect loads.
-var ssRightScreen = window.location.href.includes("screen=place&mode=call")
+// touches the missing DOM while the redirect loads. The params are checked
+// separately — the game inserts others between them (order, dir, target, group).
+var ssRightScreen = window.location.href.includes("screen=place") && window.location.href.includes("mode=call")
 if(!ssRightScreen)
 {
     alert("this script must be run from Rally point-> Mass support");
