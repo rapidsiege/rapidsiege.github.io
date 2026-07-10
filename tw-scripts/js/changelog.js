@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.15.1', date: '2026-07-10',
+    en: [
+      `<b>♻ Remove duplicate targets in one click.</b> The <b>Offensive Targets</b> tab has a new <b>♻ Remove Duplicates</b> button (next to Export Objectives). If the same coordinate was added more than once, it keeps <b>one row per coordinate</b> — preferring the row that already has <b>noble (snob) senders assigned</b> (then the one with off senders), so assignment work you've already done survives the cleanup. A confirmation shows how many rows would be removed before anything changes.`,
+    ],
+    es: [
+      `<b>♻ Elimina objetivos duplicados con un clic.</b> La pestaña <b>Objetivos Ofensivos</b> tiene un nuevo botón <b>♻ Quitar Duplicados</b> (junto a Exportar Objetivos). Si la misma coordenada se añadió más de una vez, conserva <b>una fila por coordenada</b> — prefiriendo la fila que ya tiene <b>remitentes de noble asignados</b> (y después la que tiene remitentes de off), así el trabajo de asignación ya hecho sobrevive a la limpieza. Una confirmación muestra cuántas filas se eliminarían antes de cambiar nada.`,
+    ],
+  },
   { ver: 'v4.15.0', date: '2026-07-10',
     en: [
       `<b>🏰 Load building levels from the new "everything" export.</b> The tribe-info script's <b>Read everything (JSON)</b> export now includes every village's building levels. Drop that <b>.json</b> straight onto the troop uploader (or paste it) — the calculator reads the troops <i>and</i> the Smithy levels from it. It's converted to a lightweight form on load, so a big tribe's file doesn't bloat your saved data. A plain <b>.txt</b> troop file still works exactly as before (no building data, previous behavior). You can also drop a buildings-only JSON on top of an already-loaded tribe to just add the Smithy levels.`,

@@ -571,6 +571,25 @@ function updCatMode(id, val) {
   saveOffensive();
 }
 
+// Remove duplicate targets (same coord), keeping ONE row per coordinate. The kept row is
+// the one with the most snob senders assigned (then most off senders), so manual assignment
+// work survives the cleanup; on a full tie the first-listed row wins.
+function dedupOffTargets() {
+  const score = tg => tg.snobAssignees.length * 1000 + tg.offAssignees.length; // snob senders dominate
+  const best = new Map(); // coord → row to keep
+  for (const tg of offTargets) {
+    const cur = best.get(tg.coord);
+    if (!cur || score(tg) > score(cur)) best.set(tg.coord, tg);
+  }
+  const removed = offTargets.length - best.size;
+  if (!removed) { alert(t('dedup_none')); return; }
+  if (!confirm(t('confirm_dedup_targets')(removed))) return;
+  const keep = new Set([...best.values()].map(tg => tg.id));
+  offTargets = offTargets.filter(tg => keep.has(tg.id));
+  otPruneSelection();
+  saveOffensive(); renderOffTargets();
+}
+
 function clearOffTargets() {
   if (offTargets.length && !confirm(t('confirm_clear_targets'))) return;
   offTargets = [];
