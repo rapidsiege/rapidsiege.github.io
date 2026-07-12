@@ -86,16 +86,10 @@
 
       <section class="tab-panel" data-panel="miembros" hidden>
         <div class="box-title sub">Miembros <span id="memberCount" class="count"></span></div>
+        <p class="tz-note">Columnas de día = ganancia de puntos ese día (últimos 7 días); Total = ganancia de 7 días.</p>
         <div class="table-wrap">
           <table class="vis widget">
-            <thead>
-              <tr>
-                <th class="col-rank">Ranking</th>
-                <th>Jugador</th>
-                <th class="col-pts">Puntos</th>
-                <th class="col-pts">Pueblos</th>
-              </tr>
-            </thead>
+            <thead id="membersHead"></thead>
             <tbody id="membersBody"></tbody>
           </table>
         </div>

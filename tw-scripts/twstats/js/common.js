@@ -36,6 +36,11 @@
     var p = parts(t);
     return p.year + "-" + p.month + "-" + p.day + " " + p.hour + ":" + p.minute;
   }
+  var WD_FMT = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", weekday: "short" });
+  function weekday(t) {       // "Lun", "Mar", … (Spanish, server tz)
+    var s = WD_FMT.format(new Date(t * 1000)).replace(/\.$/, "");
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
@@ -193,7 +198,7 @@
 
   window.TW = {
     WORLD: WORLD, DATA: DATA, GAME: GAME, SRV_FMT: SRV_FMT,
-    fmtTime: fmtTime, fmtStamp: fmtStamp, fmtDate: fmtDate, fmtDateTime: fmtDateTime,
+    fmtTime: fmtTime, fmtStamp: fmtStamp, fmtDate: fmtDate, fmtDateTime: fmtDateTime, weekday: weekday,
     esc: esc, commas: commas, continent: continent, loadJSON: loadJSON,
     playerLink: playerLink, tribeLink: tribeLink,
     villageCell: villageCell, ownerCell: ownerCell, deltaCell: deltaCell,

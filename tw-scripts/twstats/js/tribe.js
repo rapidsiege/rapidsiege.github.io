@@ -33,7 +33,7 @@
     html += row("Ranking", p.rank + ".");
     html += row("Nombre", TW.esc(p.name));
     html += row("Tag", TW.esc(p.tag));
-    html += row("Miembros", TW.commas(p.members));
+    html += row("Miembros", jump("miembros", null, TW.commas(p.members)));
     html += row("Puntos", TW.commas(p.points));
     html += row("Pueblos", jump("pueblos", null, TW.commas(p.villages)));
     html += row("Promedio de puntos por pueblo", TW.commas(p.avg));
@@ -87,17 +87,31 @@
     $("historyBody").innerHTML = html || "<tr class='r1'><td colspan='9' class='status'>Sin datos.</td></tr>";
   }
 
-  function renderMembers(list) {
+  // Members summary (twstats "miembros" page): position-in-tribe, name, points,
+  // villages, per-weekday point gain (last 7 days) + 7-day total.
+  function renderMembers(list, weekDays) {
+    weekDays = weekDays || [];
+    var head = "<tr><th class='col-rank'>Pos.</th><th>Nombre</th>" +
+      "<th class='col-pts'>Puntos</th><th class='col-pts'>Pueblos</th>";
+    for (var w = 0; w < weekDays.length; w++) {
+      head += "<th class='col-pts'>" + TW.weekday(weekDays[w]) + "</th>";
+    }
+    head += "<th class='col-pts'>Total</th></tr>";
+    $("membersHead").innerHTML = head;
+
     var html = "";
     for (var i = 0; i < list.length; i++) {
-      var m = list[i];
+      var m = list[i], d7 = m.d7 || [], cells = "";
+      for (var j = 0; j < d7.length; j++) cells += "<td class='col-pts'>" + TW.deltaCell(d7[j]) + "</td>";
       html += "<tr class='" + (i % 2 ? "r2" : "r1") + "'>" +
-        "<td class='col-rank'>" + m.rank + ".</td>" +
+        "<td class='col-rank'>" + (i + 1) + ".</td>" +
         "<td>" + TW.playerLink(m.id, m.name) + "</td>" +
         "<td class='col-pts'>" + TW.commas(m.points) + "</td>" +
-        "<td class='col-pts'>" + TW.commas(m.villages) + "</td></tr>";
+        "<td class='col-pts'>" + TW.commas(m.villages) + "</td>" +
+        cells + "<td class='col-pts'>" + TW.deltaCell(m.t7) + "</td></tr>";
     }
-    $("membersBody").innerHTML = html || "<tr class='r1'><td colspan='4' class='status'>Sin miembros.</td></tr>";
+    var span = 5 + weekDays.length;
+    $("membersBody").innerHTML = html || "<tr class='r1'><td colspan='" + span + "' class='status'>Sin miembros.</td></tr>";
   }
 
   // Paginated Pueblos table (tribes can have 2000+ villages). Extra Jugador
@@ -212,7 +226,7 @@
         renderProfile(p);
         renderCharts(d.series || []);
         renderHistory(d.series || []);
-        renderMembers(d.memberList || []);
+        renderMembers(d.memberList || [], d.weekDays || []);
         $("memberCount").textContent = "(" + TW.commas((d.memberList || []).length) + ")";
         initVillages(d.villages || []);
         $("gainsBody").innerHTML = conquestRows(d.gains || []);
