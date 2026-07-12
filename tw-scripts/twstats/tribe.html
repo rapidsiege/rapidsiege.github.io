@@ -24,6 +24,7 @@
       <nav class="tabs" aria-label="Secciones">
         <button type="button" class="tab active" data-tab="perfil">Perfil</button>
         <button type="button" class="tab" data-tab="historial">Historial</button>
+        <button type="button" class="tab" data-tab="pueblos">Pueblos</button>
         <button type="button" class="tab" data-tab="miembros">Miembros</button>
         <button type="button" class="tab" data-tab="conquistas">Conquistas</button>
       </nav>
@@ -60,6 +61,29 @@
         </div>
       </section>
 
+      <section class="tab-panel" data-panel="pueblos" hidden>
+        <div class="box-title sub">Pueblos <span id="villagesCount" class="count"></span></div>
+        <div class="table-wrap">
+          <table class="vis widget">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th class="col-pts">Puntos</th>
+                <th>Ubicación</th>
+                <th>Continente</th>
+                <th>Jugador</th>
+              </tr>
+            </thead>
+            <tbody id="villagesBody"></tbody>
+          </table>
+        </div>
+        <div class="pager">
+          <button type="button" id="prev">‹ Anterior</button>
+          <span id="pageInfo">—</span>
+          <button type="button" id="next">Siguiente ›</button>
+        </div>
+      </section>
+
       <section class="tab-panel" data-panel="miembros" hidden>
         <div class="box-title sub">Miembros <span id="memberCount" class="count"></span></div>
         <div class="table-wrap">
@@ -78,36 +102,46 @@
       </section>
 
       <section class="tab-panel" data-panel="conquistas" hidden>
-        <div class="box-title sub">Ganados <span id="gainsCount" class="count"></span></div>
-        <div class="table-wrap">
-          <table class="vis widget">
-            <thead>
-              <tr>
-                <th class="c-vil">Pueblos</th>
-                <th class="c-pts">Puntos</th>
-                <th class="c-old">Antiguo Dueño</th>
-                <th class="c-new">Nuevo Dueño</th>
-                <th class="c-date">Fecha/Tiempo</th>
-              </tr>
-            </thead>
-            <tbody id="gainsBody"></tbody>
-          </table>
+        <div class="scope conq-filter">
+          <button type="button" class="seg active" data-conq="all">Todo</button>
+          <button type="button" class="seg" data-conq="gain">Ganados</button>
+          <button type="button" class="seg" data-conq="lose">Perdidos</button>
         </div>
 
-        <div class="box-title sub">Perdidos <span id="lossesCount" class="count"></span></div>
-        <div class="table-wrap">
-          <table class="vis widget">
-            <thead>
-              <tr>
-                <th class="c-vil">Pueblos</th>
-                <th class="c-pts">Puntos</th>
-                <th class="c-old">Antiguo Dueño</th>
-                <th class="c-new">Nuevo Dueño</th>
-                <th class="c-date">Fecha/Tiempo</th>
-              </tr>
-            </thead>
-            <tbody id="lossesBody"></tbody>
-          </table>
+        <div id="gainsSection">
+          <div class="box-title sub">Ganados <span id="gainsCount" class="count"></span></div>
+          <div class="table-wrap">
+            <table class="vis widget">
+              <thead>
+                <tr>
+                  <th class="c-vil">Pueblos</th>
+                  <th class="c-pts">Puntos</th>
+                  <th class="c-old">Antiguo Dueño</th>
+                  <th class="c-new">Nuevo Dueño</th>
+                  <th class="c-date">Fecha/Tiempo</th>
+                </tr>
+              </thead>
+              <tbody id="gainsBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="lossesSection">
+          <div class="box-title sub">Perdidos <span id="lossesCount" class="count"></span></div>
+          <div class="table-wrap">
+            <table class="vis widget">
+              <thead>
+                <tr>
+                  <th class="c-vil">Pueblos</th>
+                  <th class="c-pts">Puntos</th>
+                  <th class="c-old">Antiguo Dueño</th>
+                  <th class="c-new">Nuevo Dueño</th>
+                  <th class="c-date">Fecha/Tiempo</th>
+                </tr>
+              </thead>
+              <tbody id="lossesBody"></tbody>
+            </table>
+          </div>
         </div>
       </section>
     </div>

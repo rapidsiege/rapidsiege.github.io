@@ -4,6 +4,9 @@
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
   var CONQ_CAP = 200;
+  var PAGE_SIZE = 100;
+  var GALLY = "https://" + TW.WORLD + ".guerrastribales.es/page.php?page=inbound&screen=info_ally&id=";
+  var vstate = { list: [], page: 0 };
 
   function qid() {
     var m = /[?&]id=([^&]+)/.exec(location.search);
@@ -15,17 +18,26 @@
       "</th><td>" + valueHtml + "</td></tr>";
   }
 
+  // A profile number that jumps to another tab (optionally with a conquest filter).
+  function jump(tab, conq, text) {
+    return '<a href="#" data-tab-go="' + tab + '"' +
+      (conq ? ' data-conq="' + conq + '"' : "") + ">" + text + "</a>";
+  }
+
   function renderProfile(p) {
+    var total = (p.conquests || 0) + (p.lost || 0);
+    var conq = jump("conquistas", "all", TW.commas(total)) +
+      " (" + jump("conquistas", "gain", "+" + TW.commas(p.conquests)) +
+      " " + jump("conquistas", "lose", "−" + TW.commas(p.lost)) + ")";
     var html = "";
     html += row("Ranking", p.rank + ".");
     html += row("Nombre", TW.esc(p.name));
     html += row("Tag", TW.esc(p.tag));
     html += row("Miembros", TW.commas(p.members));
     html += row("Puntos", TW.commas(p.points));
-    html += row("Pueblos", TW.commas(p.villages));
+    html += row("Pueblos", jump("pueblos", null, TW.commas(p.villages)));
     html += row("Promedio de puntos por pueblo", TW.commas(p.avg));
-    html += row("Conquistas", TW.commas(p.conquests));
-    html += row("Perdidos", TW.commas(p.lost));
+    html += row("Conquistas", conq);
     html += row("Primera vez visto", TW.fmtDate(p.firstSeen), true);
     html += row("Mejor clasificación", p.bestRank + ".", true);
     html += row("Mayoría de puntos", TW.commas(p.maxPoints), true);
@@ -34,6 +46,8 @@
     html += row("Adv. vencidos (Atacante)", TW.commas(p.od_att));
     html += row("Adv. vencidos (Defensor)", TW.commas(p.od_def));
     html += row("Adv. vencidos (Apoyo)", TW.commas(p.od_sup));
+    html += row("Perfil en el juego",
+      '<a href="' + GALLY + TW.esc(p.id) + '" target="_blank" rel="noopener">Abrir en el juego ›</a>');
     $("profileBody").innerHTML = html;
   }
 
@@ -86,6 +100,42 @@
     $("membersBody").innerHTML = html || "<tr class='r1'><td colspan='4' class='status'>Sin miembros.</td></tr>";
   }
 
+  // Paginated Pueblos table (tribes can have 2000+ villages). Extra Jugador
+  // column (owner → internal player page). Renders the current page + pager.
+  function renderVillages() {
+    var list = vstate.list;
+    var total = list.length;
+    var pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (vstate.page >= pages) vstate.page = pages - 1;
+    if (vstate.page < 0) vstate.page = 0;
+    var start = vstate.page * PAGE_SIZE;
+    var slice = list.slice(start, start + PAGE_SIZE);
+
+    var html = "";
+    for (var i = 0; i < slice.length; i++) {
+      var v = slice[i];
+      html += "<tr class='" + (i % 2 ? "r2" : "r1") + "'>" +
+        "<td><a href='village.html?id=" + encodeURIComponent(v.id) + "'>" + TW.esc(v.name) + "</a></td>" +
+        "<td class='col-pts'>" + TW.commas(v.points) + "</td>" +
+        "<td class='coord'>" + v.x + "|" + v.y + "</td>" +
+        "<td class='cont'>K" + v.k + "</td>" +
+        "<td>" + TW.playerLink(v.owner.id, v.owner.name) + "</td></tr>";
+    }
+    $("villagesBody").innerHTML = html || "<tr class='r1'><td colspan='5' class='status'>Sin pueblos.</td></tr>";
+    $("pageInfo").textContent = total
+      ? (start + 1) + "–" + Math.min(start + PAGE_SIZE, total) + " de " + TW.commas(total)
+      : "0";
+    $("prev").disabled = vstate.page <= 0;
+    $("next").disabled = vstate.page >= pages - 1;
+  }
+
+  function initVillages(list) {
+    vstate.list = list || [];
+    vstate.page = 0;
+    $("villagesCount").textContent = "(" + TW.commas(vstate.list.length) + ")";
+    renderVillages();
+  }
+
   function conquestRows(list) {
     var html = "";
     var slice = list.slice(0, CONQ_CAP);
@@ -105,6 +155,40 @@
   function countNote(list) {
     if (list.length > CONQ_CAP) return "(mostrando " + CONQ_CAP + " de " + TW.commas(list.length) + ")";
     return "(" + TW.commas(list.length) + ")";
+  }
+
+  // Conquest filter: "all" | "gain" | "lose" — show/hide the two sections.
+  function setConqFilter(mode) {
+    var g = $("gainsSection"), l = $("lossesSection");
+    if (g) g.hidden = (mode === "lose");
+    if (l) l.hidden = (mode === "gain");
+    var segs = document.querySelectorAll(".conq-filter .seg");
+    for (var i = 0; i < segs.length; i++) {
+      segs[i].classList.toggle("active", segs[i].getAttribute("data-conq") === mode);
+    }
+  }
+
+  function wireInteractions() {
+    // Profile numbers that jump to another tab (+ optional conquest filter).
+    $("content").addEventListener("click", function (e) {
+      var a = e.target.closest ? e.target.closest("[data-tab-go]") : null;
+      if (!a) return;
+      e.preventDefault();
+      var btn = document.querySelector('.tab[data-tab="' + a.getAttribute("data-tab-go") + '"]');
+      if (btn) btn.click();
+      var conq = a.getAttribute("data-conq");
+      if (conq) setConqFilter(conq);
+    });
+    // Conquest filter buttons.
+    var segs = document.querySelectorAll(".conq-filter .seg");
+    for (var i = 0; i < segs.length; i++) {
+      (function (b) {
+        b.addEventListener("click", function () { setConqFilter(b.getAttribute("data-conq")); });
+      })(segs[i]);
+    }
+    // Pueblos pager.
+    $("prev").addEventListener("click", function () { if (vstate.page > 0) { vstate.page--; renderVillages(); } });
+    $("next").addEventListener("click", function () { vstate.page++; renderVillages(); });
   }
 
   function fail(msg) {
@@ -130,6 +214,7 @@
         renderHistory(d.series || []);
         renderMembers(d.memberList || []);
         $("memberCount").textContent = "(" + TW.commas((d.memberList || []).length) + ")";
+        initVillages(d.villages || []);
         $("gainsBody").innerHTML = conquestRows(d.gains || []);
         $("lossesBody").innerHTML = conquestRows(d.losses || []);
         $("gainsCount").textContent = countNote(d.gains || []);
@@ -137,6 +222,8 @@
         $("status").style.display = "none";
         $("content").hidden = false;
         TW.initTabs();
+        setConqFilter("all");
+        wireInteractions();
       })
       .catch(function (e) {
         if (/HTTP 404/.test(e.message)) fail("Tribu no encontrada (id " + id + ").");
