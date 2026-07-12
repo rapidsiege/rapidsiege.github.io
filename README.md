@@ -7,6 +7,7 @@ GitHub Pages site serving the Tribal Wars browser tools ("production").
 - [tw-scripts/attack-planner.html](https://rapidsiege.github.io/tw-scripts/attack-planner.html)
 - [tw-scripts/farm-calculator.html](https://rapidsiege.github.io/tw-scripts/farm-calculator.html)
 - [tw-scripts/tribe-calculator.html](https://rapidsiege.github.io/tw-scripts/tribe-calculator.html)
+- [tw-scripts/twstats/](https://rapidsiege.github.io/tw-scripts/twstats/) — es100 history & statistics (twstats-style; permanent evolution history)
 
 ## Production vs development
 
