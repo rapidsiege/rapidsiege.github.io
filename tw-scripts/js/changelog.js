@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.16.0', date: '2026-07-11',
+    en: [
+      `<b>📜 Send your defensive plan in-game with one paste.</b> The <b>Defensive Plan</b> tab has a new <b>📜 Export supportSender</b> button (next to Export PMs): one compact, bracket-free text per player. Each player pastes theirs ONCE into the companion <b>supportSender</b> script on the game's <b>Rally point → Mass support</b> screen — the script remembers it, lists their targets (with arrival deadline and a computed <b>"send by"</b> time), and a <b>Fill current target</b> button types every planned order into the mass-support form, clamped to the troops each village actually has. Missing villages, shortfalls and orders that can no longer arrive in time are flagged; the player just reviews and presses the game's send button, then ticks the target done and moves to the next. Because the format uses no BB brackets, it can ride inside the same PM as the readable orders.`,
+    ],
+    es: [
+      `<b>📜 Envía tu plan defensivo dentro del juego con un solo pegado.</b> La pestaña <b>Plan Defensivo</b> tiene un nuevo botón <b>📜 Exportar supportSender</b> (junto a Exportar MPs): un texto compacto y sin corchetes por jugador. Cada jugador pega el suyo UNA vez en el script acompañante <b>supportSender</b> en la pantalla <b>Plaza → Apoyo masivo</b> del juego — el script lo recuerda, lista sus objetivos (con fecha límite de llegada y una hora calculada de <b>"enviar antes de"</b>), y un botón <b>Rellenar objetivo actual</b> escribe cada orden planificada en el formulario de apoyo masivo, limitada a las tropas que cada pueblo tiene realmente. Se avisa de pueblos ausentes, faltas de tropas y órdenes que ya no llegan a tiempo; el jugador solo revisa y pulsa el botón de enviar del juego, marca el objetivo como hecho y pasa al siguiente. Como el formato no usa corchetes BB, puede ir dentro del mismo MP que las órdenes legibles.`,
+    ],
+  },
   { ver: 'v4.15.1', date: '2026-07-10',
     en: [
       `<b>♻ Remove duplicate targets in one click.</b> The <b>Offensive Targets</b> tab has a new <b>♻ Remove Duplicates</b> button (next to Export Objectives). If the same coordinate was added more than once, it keeps <b>one row per coordinate</b> — preferring the row that already has <b>noble (snob) senders assigned</b> (then the one with off senders), so assignment work you've already done survives the cleanup. A confirmation shows how many rows would be removed before anything changes.`,

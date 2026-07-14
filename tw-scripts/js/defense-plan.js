@@ -872,3 +872,34 @@ function copyDefPm(pi, k, btn) {
     navigator.clipboard.writeText(text).then(mark).catch(() => mapFallbackCopy(text, mark));
   else mapFallbackCopy(text, mark); // shared hidden-textarea fallback (map-render.js)
 }
+
+// ── 📜 Export supportSender (v4.16.0): one compact per-player text for the supportSender
+// in-game script (Rally point → Mass support), which fills each planned order into the
+// mass-support form. Deliberately BRACKET-FREE — it costs nothing against the PM bracket
+// limit, so it can ride inside the same PM as the readable orders. Semicolon-separated
+// (coords keep their inner "|"). ⚠ FORMAT CONTRACT with ssParsePlan() in supportSender.js —
+// change either side only in lockstep:
+//   SUPPORTPLAN;1;<world>;<player>;spear,sword,spy,heavy
+//   <target>;<source>;<spear>;<sword>;<spy>;<heavy>;<arriveMs epoch or empty>
+// Rows keep the plan's target-first order so the player works target by target.
+function defScriptText(player, rows, world) {
+  const head = `SUPPORTPLAN;1;${world};${player};${DEF_OBJ_UNITS.join(',')}`;
+  const lines = rows.map(r =>
+    `${r.tCoord};${r.srcCoord};${DEF_OBJ_UNITS.map(u => (r.units && r.units[u]) || 0).join(';')};${r.arriveMs != null ? r.arriveMs : ''}`);
+  return [head, ...lines].join('\n');
+}
+
+// Pure seam: [{player, parts:[text]}] — same grouping and A→Z order as the PM export,
+// one single-part message per player (no bracket packing: the format has no brackets).
+function defScriptMessagesFrom(planRows, world) {
+  const byPlayer = {};
+  for (const r of (planRows || [])) (byPlayer[r.srcPlayer] || (byPlayer[r.srcPlayer] = [])).push(r);
+  return Object.keys(byPlayer).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+    .map(name => ({ player: name, parts: [defScriptText(name, byPlayer[name], world)] }));
+}
+
+function showDefScriptExport() {
+  if (!defPlanRows.length) { alert(t('empty_no_def_plan')); return; }
+  const world = (typeof twWorld === 'string' && twWorld.trim()) ? twWorld.trim() : '';
+  renderPmModal(defScriptMessagesFrom(defPlanRows, world), t('script_export_hint'));
+}
