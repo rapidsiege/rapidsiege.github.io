@@ -252,6 +252,20 @@ function generatePlan() {
   const targets = offTargets.map((tg, i) => ({ tg, i, c: parseCoordStr(tg.coord), offRows: [], snobRows: [], catRows: [] }));
   targets.filter(T => !T.c).forEach(T => planWarnings.push(t('warn_invalid_coord')(T.tg.coord)));
 
+  // ── Target types (explicit per row since v4.17.0, set at add time / mass edit) ──
+  // FAKE targets consume nothing real: they're excluded from every off/snob/catapult pass and
+  // filled by their own pass (1-ram rows REUSING villages already sending a real off — see the
+  // fake pass after the auto offs). DESTROYER only changes off SELECTION (prefer cat-carriers,
+  // see preferCatOffs) — the old implicit "no nobles + cats on" heuristic is gone.
+  const isFake      = T => T.tg.type === 'fake';
+  const isDestroyer = T => T.tg.type === 'destroyer';
+  // A destroyer is for flattening, not conquering — snob trains assigned to one are almost
+  // certainly a configuration slip. Warn, but still plan the nobles as configured.
+  for (const T of targets) {
+    if (T.c && isDestroyer(T) && targetTrainSpec(T.tg).length)
+      planWarnings.push(t('warn_destroyer_snobs')(T.tg.coord));
+  }
+
   // Off distance band. The MINIMUM is a tribe-wide buffer, NOT per-target: an
   // off-capable village within minDist of ANY objective is held back entirely
   // (kept free for a quick second round) — otherwise a village 2 fields from
@@ -384,7 +398,7 @@ function generatePlan() {
     // The snob loop reads these by the SAME train index to tell a needNobles sender
     // WHERE to recruit (a split-off launches off + noble from one village).
     T.escortPicks = [];
-    if (!T.c || (T.tg.snobMode || 'solo') !== 'escorted') continue;
+    if (!T.c || isFake(T) || (T.tg.snobMode || 'solo') !== 'escorted') continue;
     for (const { name: want } of targetTrainSpec(T.tg)) {
       const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !tooClose.has(p)
         && tiers.includes(p.tier) && okSnobDist(p, T.c) && okSnobTime(p, T) && smithOkOrUnknown(p)
@@ -429,6 +443,7 @@ function generatePlan() {
   {
     const snobPinsByDef = new Map(); // defender string -> Set of raw manual snob sender names
     for (const T of targets) {
+      if (isFake(T)) continue; // fake targets never field a snob train
       const def = mvDef(T); if (!def) continue;
       for (const { name } of targetTrainSpec(T.tg)) {
         if (!name) continue; // auto-picked train, not a manual assignment
@@ -453,7 +468,7 @@ function generatePlan() {
   // Snob trains: pre-assigned senders fill the first trains, the rest are
   // auto-picked from distinct players; escort mode is a per-target setting
   for (const T of targets) {
-    if (!T.c || !T.tg.nobles) continue;
+    if (!T.c || isFake(T) || !T.tg.nobles) continue;
     const spec = targetTrainSpec(T.tg);
     if (!spec.length) continue;
     const specSum = spec.reduce((s, x) => s + x.count, 0);
@@ -629,7 +644,7 @@ function generatePlan() {
   const namedOffReserved = {}; // 'tIdx|tier' → reserved slots (assigned + shortfall)
   for (const tier of ['complete', 'tq', 'half']) {
     for (const T of targets) {
-      if (!T.c) continue;
+      if (!T.c || isFake(T)) continue; // a fake's Complete column is its fake count, not an off request
       const N = T.tg[TIER_FIELD[tier]] || 0;
       const assign = targetOffAssign(T.tg, tier);
       if (!assign.length) continue;
@@ -672,15 +687,14 @@ function generatePlan() {
   const TIER_UP = { half: ['tq', 'complete'], tq: ['complete'], complete: [] };
 
   // ── DESTROYER / VOLADORA targets ──────────────────────────────────────────
-  // A target with offs assigned, NO nobles sent by anyone (no snob senders → conquerorByTarget
-  // unset), AND catapult attacks enabled is a "destroyer": you flatten the village instead of
-  // taking it. For these, off selection PREFERS catapult-carrying off villages (≥ CAT_CLEAR_MIN
-  // cats) so the clearing off itself demolishes — applied to EVERY off slot, falling back to a
+  // An explicit per-row type (see isDestroyer above): you flatten the village instead of
+  // taking it. Off selection PREFERS catapult-carrying off villages (≥ CAT_CLEAR_MIN cats)
+  // so the clearing off itself demolishes — applied to EVERY off slot, falling back to a
   // normal off only when no cat-off qualifies (range/time/tier still gate first; a target whose
   // offs end up carrying no cats is warned once, see below). Independent of the EXTRA small cat
-  // attacks sourced from defensive villages further down.
+  // attacks sourced from defensive villages further down (a destroyer also gets those by
+  // default: its catapult toggle starts ON at CAT_ATTACKS_DEFAULT attacks).
   const CAT_CLEAR_MIN = 101; // an off with ≥ this many catapults can serve as the clearing off
-  const isDestroyer = T => !conquerorByTarget[T.i] && T.tg.catEnabled && (T.tg.catapult || 0) > 0;
   // Among already-filtered off candidates, keep only the cat-carriers when this is a destroyer
   // target and at least one qualifies; otherwise leave the set untouched (normal-off fallback).
   const preferCatOffs = (T, cands) => {
@@ -706,7 +720,7 @@ function generatePlan() {
   // they take the strongest nukes regardless of who conquers. Runs after the named pins, so
   // an explicit pin still wins (and a pin that already gave the conqueror an off ends it).
   for (const T of targets) {
-    if (!T.c || T.tg.power) continue;
+    if (!T.c || T.tg.power || isFake(T)) continue;
     const conq = conquerorByTarget[T.i];
     if (!conq) continue;
     if (T.offRows.some(r => !r.unassigned && r.srcPlayer && conq.has(r.srcPlayer))) continue;
@@ -782,7 +796,7 @@ function generatePlan() {
   // raw off power across all POWER targets — the next-strongest off goes to whichever
   // POWER target currently has the lowest assigned power and still has an open slot it
   // can reach (range + launch time). Runs before the auto pass so it isn't starved.
-  const powerTargets = targets.filter(T => T.c && T.tg.power);
+  const powerTargets = targets.filter(T => T.c && T.tg.power && !isFake(T));
   if (powerTargets.length) {
     const remaining = {}, powSum = {}, warned = new Set();
     let totalSlots = 0;
@@ -824,7 +838,7 @@ function generatePlan() {
   // tier isn't double-filled.
   for (const tier of ['complete', 'tq', 'half']) {
     for (const T of targets) {
-      if (!T.c || T.tg.power) continue; // POWER targets are filled by the balanced pass above
+      if (!T.c || T.tg.power || isFake(T)) continue; // POWER targets are filled by the balanced pass above; fakes by their own pass below
       const autoNeed = Math.max(0, (T.tg[TIER_FIELD[tier]] || 0) - (namedOffReserved[T.i + '|' + tier] || 0));
       // Min. Morale (off) gate — once the TIER is resolved (the tier-bump below still fires only
       // when a tier is empty, never for morale), PREFER candidates whose morale on this target
@@ -866,6 +880,36 @@ function generatePlan() {
     }
   }
 
+  // ── FAKE targets (1-ram pretend attacks) ──────────────────────────────────
+  // Runs AFTER every real off pass so `usedOff`/`isEscort` are final. Each fake target wants
+  // `nComplete` fake rows (the Complete column doubles as the fake count — a fake consumes no
+  // off). Sources are COMPLETE-tier villages that already send a real off in this plan — the
+  // village "attacks twice": once for real, once with 1 ram — preferring non-escorts, then
+  // falling back to escort villages (reserved or launched). A village fakes at most ONCE
+  // (usedFake), needs ≥1 ram, and the usual distance/launch-time/MV gates apply (a fake IS an
+  // in-game attack, so the vacation-mode limit still binds; morale is irrelevant and skipped).
+  for (const T of targets) {
+    if (!T.c || !isFake(T)) continue;
+    const want = T.tg.nComplete || 0;
+    for (let k = 0; k < want; k++) {
+      const candsOf = filt => pool.filter(p => p.tier === 'complete' && !p.usedFake
+        && (p.v.ram || 0) >= 1 && !ignorePlayers.has(p.v.player) && filt(p)
+        && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T));
+      let cands = candsOf(p => p.usedOff && !p.isEscort);           // primary: assigned real offs
+      if (!cands.length) cands = candsOf(p => p.isEscort || escortReserved.has(p)); // fallback: escorts
+      if (!cands.length) {
+        planWarnings.push(t('warn_missed_fake')(T.tg.coord));
+        T.offRows.push({ type: 'fake', unassigned: true });
+        continue;
+      }
+      const p = cands.sort(byDist(T))[0];
+      p.usedFake = true; noteMvClaim(p, T);
+      const d = distXY(p.c, T.c);
+      T.offRows.push({ type: 'fake', srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+        dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
+    }
+  }
+
   // Destroyer warning: a destroyer target that got offs but none carrying ≥ CAT_CLEAR_MIN
   // catapults sent a regular off instead of a cat-clearing one — surface it (fall back + warn).
   {
@@ -899,7 +943,7 @@ function generatePlan() {
     .map(v => ({ v, c: parseCoordStr(v.coord), budget: Math.floor((v.catapult || 0) / catsPerAttack) }))
     .filter(s => s.c && s.v.type === 'def' && s.budget > 0);
   for (const T of targets) {
-    if (!T.c) continue;
+    if (!T.c || isFake(T)) continue; // fake targets get 1-ram rows only, never real demolition
     const want = T.tg.catEnabled ? (T.tg.catapult || 0) : 0; // only when the target's catapult toggle is on
     if (want <= 0) continue;
     // Per-attack target building, dealt round-robin (one per building per pass); defaults to all
@@ -935,7 +979,7 @@ function generatePlan() {
   // remainder. Snob trains land in the snob window, independent of the offs.
   for (const T of targets) {
     if (!T.c) continue;
-    T.offRows.sort((a, b) => TIER_RANK[b.type] - TIER_RANK[a.type]);
+    T.offRows.sort((a, b) => (TIER_RANK[b.type] || 0) - (TIER_RANK[a.type] || 0)); // 'fake' has no tier rank → 0
     // The conqueror's own off lands LAST among this target's offs (immediately before its
     // noble row), so the snob sender owns the final clear→noble handoff. Done after the
     // tier sort and as a single splice so it doesn't disturb the strongest-first order of
@@ -967,7 +1011,8 @@ function generatePlan() {
     [...T.offRows, ...T.catRows, ...T.snobRows].forEach(r => {
       if (r.type === 'complete' || r.type === 'tq' || r.type === 'half') r.building = offBuilding;
       // Morale of the assigned attack (shown in the plan column); needs the world DB.
-      if (r.srcCoord && dbReady) r.morale = planAttackMorale(r.srcCoord, T.tg.coord);
+      // Fakes skip it — 1 ram does no damage, so morale is meaningless noise there.
+      if (r.srcCoord && dbReady && r.type !== 'fake') r.morale = planAttackMorale(r.srcCoord, T.tg.coord);
       planRows.push({ tIdx: T.i + 1, tCoord: T.tg.coord, tPlayer: T.tg.player, ...r });
     });
   }
@@ -1095,6 +1140,8 @@ function renderPlanTable() {
       ? `<span class="badge badge-snob">${r.count > 1 ? r.count + 'x ' : ''}👑 ${t(r.escorted ? 'type_snob_split' : 'type_snob')}</span>`
       : r.type === 'catapult'
       ? `<span class="badge" style="background:#5a3f6a;color:#e8d8f0;">${twIcon('catapult')} ${r.cats}</span>`
+      : r.type === 'fake'
+      ? `<span class="badge ttype-fake">${t('ttype_fake')}</span>`
       : `<span class="badge badge-${r.type === 'complete' ? 'complete' : r.type === 'tq' ? 'tq' : 'half'}">${t('tier_' + r.type)}</span>`;
     const trStyle = [
       first && i > 0 ? 'border-top:2px solid #7a5c10' : '',
@@ -1129,7 +1176,7 @@ function renderPlanTable() {
       <td style="color:#f0c040;">${showTiming ? r.dist.toFixed(1) : '—'}</td>
       <td>${showTiming ? fmtTime(r.travel) : '—'}</td>
       <td style="font-family:monospace;${r.late ? 'color:#e06040;font-weight:600;' : ''}">${showTiming ? (r.late ? '⚠ ' : '') + launchWindowStr(r.window, r.travel) : '—'}</td>
-      <td>${(() => { const url = showTiming ? rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined) : null; return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
+      <td>${(() => { const url = showTiming ? rallyUrl(r.srcCoord, r.tCoord, planRowRallyUnits(r)) : null; return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
     </tr>`;
   }).join('');
@@ -1161,10 +1208,21 @@ function catTargetLabel(r) {
   return r && r.building && BUILDING_TARGET_KEYS.includes(r.building) ? t('catb_' + r.building) : '';
 }
 
+// Rally-link unit preset for a plan row: catapult attacks preset their cat count, fakes preset
+// their single ram; regular offs and snob trains preset nothing (the player picks the troops).
+// Shared by the plan table's ⚔ link and both per-player exports.
+function planRowRallyUnits(r) {
+  if (r.type === 'catapult') return { catapult: r.cats };
+  if (r.type === 'fake') return { ram: 1 };
+  return undefined;
+}
+
 // ── BB icon helper (shared by both export functions) ──
 function planRowIconBB(r) {
   if (r.type === 'snob') return r.escorted ? '[unit]axe[/unit][unit]snob[/unit]' : '[unit]snob[/unit]';
   if (r.type === 'catapult') return '[unit]catapult[/unit]';
+  // A fake rides a lone ram — same icon as a complete off, tagged so nobody sends real troops.
+  if (r.type === 'fake') return `[unit]ram[/unit] (${t('ttype_fake')})`;
   // Complete offs stay rams; 3/4 and 1/2 use axe with the tier tagged in parens.
   if (r.type === 'complete') return '[unit]ram[/unit]';
   return `[unit]axe[/unit] (${t('tier_' + r.type)})`;
@@ -1231,6 +1289,7 @@ function showPlanBB() {
   if (planRows.some(r => r.type === 'tq')) bb += `[unit]axe[/unit] (${t('tier_tq')}) --> ${t('bb_legend_tq')}\n`;
   if (planRows.some(r => r.type === 'half')) bb += `[unit]axe[/unit] (${t('tier_half')}) --> ${t('bb_legend_axe')}\n`;
   if (planRows.some(r => r.type === 'catapult')) bb += `[unit]catapult[/unit] --> ${t('bb_legend_cat')}\n`;
+  if (planRows.some(r => r.type === 'fake')) bb += `[unit]ram[/unit] (${t('ttype_fake')}) --> ${t('bb_legend_fake')}\n`;
   if (planRows.some(r => r.type === 'snob' && !r.escorted)) bb += `[unit]snob[/unit] --> ${t('bb_legend_snob')(noblesLabel)}\n`;
   if (planRows.some(r => r.type === 'snob' && r.escorted)) bb += `[unit]axe[/unit][unit]snob[/unit] --> ${t('bb_legend_split')(noblesLabel)}\n`;
   bb += '\n';
@@ -1321,7 +1380,7 @@ function playerPlanBBBlock(name, rows, allGroups) {
     // ── Offs (always assigned in this per-player section; unassigned offs have no
     //    sender and fall to the UNASSIGNED block below) ──
     // Catapult attacks preset their catapult count in the rally link and show it in bold parens.
-    const url     = rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined);
+    const url     = rallyUrl(r.srcCoord, r.tCoord, planRowRallyUnits(r));
     const urlPart = url ? ` — [url=${url}]${t('bb_pp_attack_url')}▶[/url]` : '';
     // Catapult rows show their cat count (+ target building); off rows show their Catapult Mode
     // building objective alone. Both render as a bold parenthetical after the unit icon.
@@ -1401,6 +1460,7 @@ function planRowTableType(r) {
       : `[unit]snob[/unit] ${t('tbl_type_snob')}`;
   }
   if (r.type === 'catapult') return `[unit]catapult[/unit] ${t('tbl_type_cat')} (${r.cats}${catTargetLabel(r) ? ` → ${catTargetLabel(r)}` : ''})`;
+  if (r.type === 'fake') return `[unit]ram[/unit] ${t('tbl_type_fake')}`;
   return `${planRowIconBB(r)} ${t('tbl_type_off')}${catTargetLabel(r) ? ` (→ ${catTargetLabel(r)})` : ''}`;
 }
 
@@ -1434,7 +1494,7 @@ function planTableRowBB(r, n) {
   if (r.type === 'snob') {
     urlBB = t('plan_prepare_snob')(r.escorted);
   } else {
-    const url = r.srcCoord ? rallyUrl(r.srcCoord, r.tCoord, r.type === 'catapult' ? { catapult: r.cats } : undefined) : null;
+    const url = r.srcCoord ? rallyUrl(r.srcCoord, r.tCoord, planRowRallyUnits(r)) : null;
     urlBB = url ? `[url=${url}]${t('bb_tbl_open')}[/url]` : '';
   }
   const cells = [

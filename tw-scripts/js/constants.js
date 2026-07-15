@@ -68,6 +68,17 @@ const CAT_MODE_KEYS = ['smith', 'farm', 'wall'];
 // to validate the label lookup (`catb_<key>`) and the rally URL's best-effort &building= param.
 const BUILDING_TARGET_KEYS = ['smith', 'farm', 'wood', 'stone', 'iron', 'wall'];
 
+// Target types (Offensive Targets, per row — badge `ttype_<key>`, style `.ttype-<key>`):
+//   off       — a normal offensive target (clearing offs, optional nobles).
+//   destroyer — flatten, don't take: off selection prefers cat-carrying offs (≥ CAT_CLEAR_MIN
+//               in plan.js) and the row defaults to CAT_ATTACKS_DEFAULT extra catapult attacks.
+//   fake      — 1-ram pretend attacks REUSING villages already sending a real off elsewhere
+//               (the Complete column holds the number of fakes; see the fake pass in plan.js).
+const TARGET_TYPES = ['off', 'destroyer', 'fake'];
+// Default number of extra catapult attacks when a target's catapult toggle first turns on
+// (row toggle, mass edit, and the destroyer auto-enable all share it).
+const CAT_ATTACKS_DEFAULT = 3;
+
 // Base travel speed in minutes per field (at world speed 1, unit speed 1)
 const UNIT_BASE_MIN = { spear:18, sword:22, axe:18, spy:9, light:10, heavy:11, ram:30, catapult:30, knight:10, snob:35 };
 const TRAVEL_ICON = { spear:'🗡', sword:'⚔', axe:'🪓', spy:'🔍', light:'🏹', heavy:'🐴', ram:'🐏', catapult:'💣', knight:'🐴', snob:'👑' };

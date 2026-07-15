@@ -390,6 +390,7 @@ function applyDefOffsSnobToAll() {
 // Normalize a target saved by (or pasted from) older versions:
 // winOff string → offWindows list, assignee names → {name, count} objects
 function normalizeOffTarget(tg) {
+  if (!TARGET_TYPES.includes(tg.type)) tg.type = 'off'; // pre-v4.17 saves had no type
   if (typeof tg.power !== 'boolean') tg.power = false;
   if (typeof tg.catapult !== 'number' || !(tg.catapult >= 0)) tg.catapult = Math.max(0, parseInt(tg.catapult) || 0);
   if (typeof tg.catEnabled !== 'boolean') tg.catEnabled = tg.catapult > 0; // migrate a prior count>0 to the new toggle
@@ -418,9 +419,14 @@ function normalizeOffTarget(tg) {
   return tg;
 }
 
-function newOffTarget(coord, player) {
+// `type` ∈ TARGET_TYPES (default 'off'); only the bulk-add dropdown and the mass edit set
+// anything else. A DESTROYER starts with the catapult toggle ON at the default attack count.
+function newOffTarget(coord, player, type) {
+  if (!TARGET_TYPES.includes(type)) type = 'off';
+  const destroyer = type === 'destroyer';
   return {
-    id: otNextId++, coord, player, power: false, catEnabled: false, catapult: 0, catBuildings: [], catMode: 'smith',
+    id: otNextId++, coord, player, type, power: false,
+    catEnabled: destroyer, catapult: destroyer ? CAT_ATTACKS_DEFAULT : 0, catBuildings: [], catMode: 'smith',
     nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0, snobPlayers: 0, nobles: 4,
     snobMode: otCfg.defSnobMode || 'solo', snobAssignees: [], offAssignees: [],
     offWindows: [{ win: otCfg.defWinOff, count: 0 }], winSnob: otCfg.defWinSnob,
@@ -444,13 +450,15 @@ function toggleBulkAdd() {
 
 function bulkAddTargets() {
   const input = document.getElementById('ot-bulk-input');
+  // Whole batch takes the panel's type dropdown (Off / Destroyer / Fake); missing element → 'off'.
+  const type = (document.getElementById('ot-bulk-type') || {}).value || 'off';
   let added = 0;
   for (const line of input.value.split('\n')) {
     const m = line.match(/(\d{1,3})\s*\|\s*(\d{1,3})\s*(.*)/);
     if (!m) continue;
     const pastedName = m[3].replace(/\[\/?player\]/g, '').replace(/^[-–—.\s]+|[-–—.\s]+$/g, '').trim();
     const coord = `${m[1]}|${m[2]}`;
-    offTargets.push(newOffTarget(coord, dbOwnerName(coord) || pastedName));
+    offTargets.push(newOffTarget(coord, dbOwnerName(coord) || pastedName, type));
     added++;
   }
   if (added) { input.value = ''; saveOffensive(); renderOffTargets(); }
@@ -484,13 +492,14 @@ function setOTPower(id, val) {
   saveOffensive(); renderOffTargets();
 }
 
-// CATAPULT toggle (per target): when ticked, reveal the attack-count input (defaulting to 5
-// the first time it's enabled); when unticked, no catapult attacks are planned for this target.
+// CATAPULT toggle (per target): when ticked, reveal the attack-count input (defaulting to
+// CAT_ATTACKS_DEFAULT the first time it's enabled); when unticked, no catapult attacks are
+// planned for this target.
 function setOTCatapult(id, val) {
   const tg = offTargets.find(x => x.id === id);
   if (!tg) return;
   tg.catEnabled = !!val;
-  if (tg.catEnabled && !(tg.catapult > 0)) tg.catapult = 5;
+  if (tg.catEnabled && !(tg.catapult > 0)) tg.catapult = CAT_ATTACKS_DEFAULT;
   saveOffensive(); renderOffTargets();
 }
 
@@ -744,11 +753,21 @@ function massApply(fn) {
   }
 }
 function massSetPower(v)    { massApply(tg => { tg.power = !!v; }); }
-// The modal's catapult attack count (default 5, like the row toggle's first enable).
-// Both Turn ON and the buildings Apply stamp it onto every selected row.
+// Target type (OFF / DESTROYER / FAKE) for every selected row. Switching TO destroyer also
+// turns the catapult attacks on (default count) — mirrors the bulk-add creation path; switching
+// away leaves the rest of the row's config untouched (a fake row simply ignores it in the plan).
+function massSetType(type) {
+  if (!TARGET_TYPES.includes(type)) return;
+  massApply(tg => {
+    tg.type = type;
+    if (type === 'destroyer' && !tg.catEnabled) { tg.catEnabled = true; if (!(tg.catapult > 0)) tg.catapult = CAT_ATTACKS_DEFAULT; }
+  });
+}
+// The modal's catapult attack count (default CAT_ATTACKS_DEFAULT, like the row toggle's first
+// enable). Both Turn ON and the buildings Apply stamp it onto every selected row.
 function massCatCount() {
   const n = parseInt((document.getElementById('ot-mass-cat-count') || {}).value, 10);
-  return n > 0 ? n : 5;
+  return n > 0 ? n : CAT_ATTACKS_DEFAULT;
 }
 function massSetCatapult(v) {
   const cnt = massCatCount();
@@ -1068,7 +1087,10 @@ function renderOtOffsSummary() {
   const el = document.getElementById('ot-offs-summary');
   if (!el) return;
   if (!offTargets.length && !villages.length) { el.innerHTML = ''; return; }
-  const escortOffs = offTargets.reduce((s, tg) =>
+  // FAKE targets are excluded throughout: their Complete column is a REUSE count (1-ram fakes
+  // from villages already sending a real off), so they consume no offs and send no escorts.
+  const realTargets = offTargets.filter(tg => tg.type !== 'fake');
+  const escortOffs = realTargets.reduce((s, tg) =>
     s + (tg.snobMode === 'escorted' ? targetTrainSpec(tg).length : 0), 0);
   const ignoreCoords = parseOffIgnoreSet();
   const ignorePl = new Set(offIgnorePlayers);
@@ -1082,7 +1104,7 @@ function renderOtOffsSummary() {
   const tierMeta = [['complete', 'badge-complete', 'th_complete'], ['tq', 'badge-tq', 'th_tq'], ['half', 'badge-half', 'th_half']];
   let ignTotal = 0;
   const parts = tierMeta.map(([tier, cls, label]) => {
-    const used = offTargets.reduce((s, tg) => s + (tg[TIER_FIELD[tier]] || 0), 0) + (tier === 'complete' ? escortOffs : 0);
+    const used = realTargets.reduce((s, tg) => s + (tg[TIER_FIELD[tier]] || 0), 0) + (tier === 'complete' ? escortOffs : 0);
     const avail = stat[tier].total - stat[tier].ign;
     ignTotal += stat[tier].ign;
     const usedHtml = used > avail ? `<span style="color:#e06040;">${used}</span>` : `${used}`;
@@ -1121,7 +1143,7 @@ function renderOffTargets() {
 
   const tbody = document.getElementById('offtargets-tbody');
   if (!offTargets.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="19">${t('empty_no_targets')}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="20">${t('empty_no_targets')}</td></tr>`;
     syncOtSelAll();
     return;
   }
@@ -1187,10 +1209,16 @@ function renderOffTargets() {
         ${winEditor(`otsw-${tg.id}`, tg.winSnob, `updTgWin(${tg.id},'snob',0)`, `fixTgWin(${tg.id},'snob',0)`)}
       </div>`;
     const sel = otSelected.has(tg.id);
+    // FAKE rows only use the type, coord, Complete (= number of fakes) and Off Windows cells —
+    // everything else (other tiers, POWER, catapults, senders, snobs) is ignored by the plan,
+    // so render an inert dash instead of a control (type changes go through the mass edit).
+    const isFakeTg = tg.type === 'fake';
+    const dash = '<span class="num-zero">—</span>';
     return `
     <tr${sel ? ' class="ot-row-sel"' : ''}>
       <td><input type="checkbox" class="ot-sel"${sel ? ' checked' : ''} onchange="toggleOTSelect(${tg.id},this.checked,this)"></td>
       <td style="color:#806030;">${i + 1}</td>
+      <td><span class="badge ttype-${tg.type}" title="${esc(t('ttype_title'))}">${t('ttype_' + tg.type)}</span></td>
       <td class="left"><input class="cell-input mono" style="width:74px;${isUnknown ? 'border-color:#b02010;' : ''}" value="${esc(tg.coord)}" title="${dbTitle}" onchange="updOT(${tg.id},'coord',this.value)"></td>
       <td class="left" title="${dbTitle}">${tg.player ? `<span class="player-tag">${esc(tg.player)}</span>` : '<span class="num-zero">—</span>'}</td>
       <td>${(() => {
@@ -1201,11 +1229,11 @@ function renderOffTargets() {
         const txt = pts.toLocaleString();
         return url ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:#c8a060;">${txt}</a>` : `<span style="color:#c8a060;">${txt}</span>`;
       })()}</td>
-      <td><input type="number" min="0" class="cell-input num" value="${tg.nComplete}" onchange="updOT(${tg.id},'nComplete',this.value)"></td>
-      <td><input type="number" min="0" class="cell-input num" value="${tg.nTq}" onchange="updOT(${tg.id},'nTq',this.value)"></td>
-      <td><input type="number" min="0" class="cell-input num" value="${tg.nHalf}" onchange="updOT(${tg.id},'nHalf',this.value)"></td>
-      <td title="${esc(t('ot_power_title'))}"><label class="ot-power"><input type="checkbox" ${tg.power ? 'checked' : ''} onchange="setOTPower(${tg.id},this.checked)">⚡</label></td>
-      <td title="${esc(t('ot_catapult_title'))}"><div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+      <td><input type="number" min="0" class="cell-input num" value="${tg.nComplete}"${isFakeTg ? ` title="${esc(t('fake_count_title'))}"` : ''} onchange="updOT(${tg.id},'nComplete',this.value)"></td>
+      <td>${isFakeTg ? dash : `<input type="number" min="0" class="cell-input num" value="${tg.nTq}" onchange="updOT(${tg.id},'nTq',this.value)">`}</td>
+      <td>${isFakeTg ? dash : `<input type="number" min="0" class="cell-input num" value="${tg.nHalf}" onchange="updOT(${tg.id},'nHalf',this.value)">`}</td>
+      <td title="${esc(t('ot_power_title'))}">${isFakeTg ? dash : `<label class="ot-power"><input type="checkbox" ${tg.power ? 'checked' : ''} onchange="setOTPower(${tg.id},this.checked)">⚡</label>`}</td>
+      <td title="${esc(t('ot_catapult_title'))}">${isFakeTg ? dash : ''}<div style="display:${isFakeTg ? 'none' : 'flex'};flex-direction:column;align-items:center;gap:3px;">
         <label class="ot-power"><input type="checkbox" ${tg.catEnabled ? 'checked' : ''} onchange="setOTCatapult(${tg.id},this.checked)">${twIcon('catapult')}</label>
         ${tg.catEnabled ? `<input type="number" min="0" class="cell-input num" style="width:46px;" value="${tg.catapult}" onchange="updOT(${tg.id},'catapult',this.value)">` : ''}
         ${tg.catEnabled ? (() => {
@@ -1221,23 +1249,23 @@ function renderOffTargets() {
           return `<div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;justify-content:center;max-width:180px;">${bChips}${bPicker}</div>`;
         })() : ''}
       </div></td>
-      <td class="left"><div style="max-width:280px;">${offSenderCell}</div></td>
-      <td><input type="number" min="0" class="cell-input num" value="${tg.snobPlayers}" onchange="updOT(${tg.id},'snobPlayers',this.value)"></td>
-      <td><input type="number" min="0" class="cell-input num" value="${tg.nobles}" onchange="updOT(${tg.id},'nobles',this.value)"></td>
-      <td class="left"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;max-width:250px;">${chips}${senderPicker}</div></td>
-      <td>
+      <td class="left">${isFakeTg ? dash : `<div style="max-width:280px;">${offSenderCell}</div>`}</td>
+      <td>${isFakeTg ? dash : `<input type="number" min="0" class="cell-input num" value="${tg.snobPlayers}" onchange="updOT(${tg.id},'snobPlayers',this.value)">`}</td>
+      <td>${isFakeTg ? dash : `<input type="number" min="0" class="cell-input num" value="${tg.nobles}" onchange="updOT(${tg.id},'nobles',this.value)">`}</td>
+      <td class="left">${isFakeTg ? dash : `<div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;max-width:250px;">${chips}${senderPicker}</div>`}</td>
+      <td>${isFakeTg ? dash : `
         <select class="cell-input" onchange="updOT(${tg.id},'snobMode',this.value)">
           <option value="escorted"${tg.snobMode === 'escorted' ? ' selected' : ''}>${t('opt_escort_yes')}</option>
           <option value="solo"${tg.snobMode !== 'escorted' ? ' selected' : ''}>${t('opt_escort_no')}</option>
-        </select>
+        </select>`}
       </td>
-      <td title="${esc(t('catmode_title'))}">
+      <td title="${esc(t('catmode_title'))}">${isFakeTg ? dash : `
         <select class="cell-input" ${tg.power ? 'disabled' : ''} onchange="updCatMode(${tg.id},this.value)">
           ${CAT_MODE_KEYS.map(k => `<option value="${k}"${effectiveCatMode(tg) === k ? ' selected' : ''}>${esc(t('catb_' + k))}</option>`).join('')}
-        </select>
+        </select>`}
       </td>
       <td>${offWinCell}</td>
-      <td>${snobWinCell}</td>
+      <td>${isFakeTg ? dash : snobWinCell}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="delOffTarget(${tg.id})">✕</button></td>
     </tr>`;
   }).join('');

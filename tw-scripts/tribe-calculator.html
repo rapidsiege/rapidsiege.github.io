@@ -497,7 +497,14 @@
   <div id="ot-bulk-wrap" style="display:none;margin-bottom:12px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="bulk_hint">Paste coordinates (one per line, optionally followed by the defender name) and click Add.</div>
     <textarea id="ot-bulk-input" style="width:100%;height:90px;background:#120d03;border:1px solid #3a2808;color:#d4b483;font-family:'Consolas','Courier New',monospace;font-size:12px;padding:8px 10px;border-radius:4px;resize:vertical;" placeholder="546|571 Vene&#10;545|570 Vene"></textarea>
-    <button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="bulkAddTargets()" data-i18n="btn_bulk_parse">Add Pasted Targets</button>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+      <button class="btn btn-primary btn-sm" onclick="bulkAddTargets()" data-i18n="btn_bulk_parse">Add Pasted Targets</button>
+      <select id="ot-bulk-type" class="cell-input" style="width:auto;" title="Target type for every pasted coordinate" data-i18n-title="ttype_title">
+        <option value="off" data-i18n="ttype_off">OFF</option>
+        <option value="destroyer" data-i18n="ttype_destroyer">DESTROYER</option>
+        <option value="fake" data-i18n="ttype_fake">FAKE</option>
+      </select>
+    </div>
   </div>
   <div id="ot-warnings"></div>
   <div class="table-wrap">
@@ -506,6 +513,7 @@
         <tr>
           <th style="width:26px;"><input type="checkbox" id="ot-sel-all" title="Select / deselect all rows" data-i18n-title="sel_all_title" onchange="toggleOTSelectAll(this.checked)"></th>
           <th>#</th>
+          <th data-i18n="th_ttype" data-i18n-title="ttype_title" title="Target type — set at add time (bulk-add dropdown), changeable via Edit Selected Rows">Type</th>
           <th class="left" data-i18n="th_coord">Coord</th>
           <th class="left" data-i18n="th_def_player">Defender</th>
           <th data-i18n="th_points">Points</th>
@@ -1063,7 +1071,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.16.0 &nbsp;·&nbsp; 2026-07-11</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.17.0 &nbsp;·&nbsp; 2026-07-15</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
@@ -1125,6 +1133,12 @@ document.addEventListener('drop', e => {
       <button class="modal-close" onclick="closeMassEdit()">✕</button>
     </div>
     <div class="modal-body">
+      <div class="mass-row">
+        <span class="mass-lbl">🏷 <span data-i18n="th_ttype">Type</span></span>
+        <button class="btn btn-ghost btn-sm" onclick="massSetType('off')"><span class="badge ttype-off" data-i18n="ttype_off">OFF</span></button>
+        <button class="btn btn-ghost btn-sm" onclick="massSetType('destroyer')"><span class="badge ttype-destroyer" data-i18n="ttype_destroyer">DESTROYER</span></button>
+        <button class="btn btn-ghost btn-sm" onclick="massSetType('fake')"><span class="badge ttype-fake" data-i18n="ttype_fake">FAKE</span></button>
+      </div>
       <div class="mass-row">
         <span class="mass-lbl">⚡ <span data-i18n="th_power">POWER</span></span>
         <button class="btn btn-ghost btn-sm" onclick="massSetPower(true)" data-i18n="mass_on">Turn ON</button>

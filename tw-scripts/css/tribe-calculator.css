@@ -319,6 +319,13 @@
     .badge-tq       { background: rgba(200,110,10,0.28); color: #f0a030; border: 1px solid #a06010; }
     .badge-half     { background: rgba(180,170,10,0.22); color: #d8d030; border: 1px solid #888010; }
 
+    /* ── Target-type badges (Offensive Targets Type column + plan FAKE rows) ──
+       OFF and FAKE mirror attack-planner's .ttype-off/.ttype-fake; DESTROYER is our own
+       (demolition orange, distinct from the tier badges above). */
+    .ttype-off       { background: #3a0808; color: #e05050; }
+    .ttype-destroyer { background: #2a1408; color: #e08030; }
+    .ttype-fake      { background: #0a1828; color: #5080c0; }
+
     /* ── Threshold inputs ── */
     .threshold-row {
       display: flex;
