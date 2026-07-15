@@ -203,6 +203,9 @@ function saveSettings() {
       speeds: { world: twWorldSpeed, unit: twUnitSpeed }, // cache; worlds.json is authoritative
       thresholds: { complete: v('thresh-complete'), tq: v('thresh-tq'), half: v('thresh-half') },
       plan,
+      // Offensive Targets hidden columns (👁 Columns panel) — a view preference, so it
+      // lives here with lang/thresholds, not in the offensive plan export.
+      otCols: (typeof otHiddenCols !== 'undefined') ? [...otHiddenCols] : undefined,
     }));
   } catch {}
 }
@@ -213,6 +216,9 @@ function loadSettings() {
   const set = (id, val) => { const e = document.getElementById(id); if (e && val != null && val !== '') e.value = val; };
   if (s.thresholds) { set('thresh-complete', s.thresholds.complete); set('thresh-tq', s.thresholds.tq); set('thresh-half', s.thresholds.half); }
   if (s.plan) for (const id of PLAN_SETTING_IDS) set(id, s.plan[id]);
+  // Offensive Targets hidden columns — drop keys OT_COLS no longer knows (renamed/removed).
+  if (Array.isArray(s.otCols) && typeof otHiddenCols !== 'undefined')
+    otHiddenCols = new Set(s.otCols.filter(k => OT_COLS.some(([c]) => c === k)));
   // The init block applies this via changeLang(lang) after loadSettings() sets the global.
   if (s.lang === 'en' || s.lang === 'es') lang = s.lang;
   // Restore the selected world before the init block builds the dropdown / loads the DB,

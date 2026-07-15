@@ -232,6 +232,10 @@ const T = {
     warn_missed_fake: coord => `No complete off left to fake at ${coord} — every assigned complete off (and escort) already fakes elsewhere, is out of range, or is too late`,
     bb_legend_fake:'FAKE — send exactly 1 ram.',
     tbl_type_fake:'Fake (1 ram)',
+    // 👁 Columns panel (Offensive Targets column visibility)
+    btn_colvis:'👁 Columns',
+    colvis_hint:'Untick a column to hide it from the table (the data is kept and still used by the plan — this only changes what you see).',
+    colvis_show_all:'Show all',
     tab_db:'🗃 Database', sec_db:'Village Database',
     btn_connect_db:'📁 Connect DB Folder', btn_change_db:'📁 Change DB Folder',
     btn_resync_db:'🔄 Re-sync Files', btn_load_db_files:'📂 Load Files…',
@@ -669,6 +673,10 @@ const T = {
     warn_missed_fake: coord => `No queda ningún off completo para hacer fake sobre ${coord} — todos los offs completos asignados (y escoltas) ya hacen fake en otro sitio, están fuera de alcance o llegan tarde`,
     bb_legend_fake:'FAKE — envía exactamente 1 ariete.',
     tbl_type_fake:'Fake (1 ariete)',
+    // Panel 👁 Columnas (visibilidad de columnas de Objetivos Ofensivos)
+    btn_colvis:'👁 Columnas',
+    colvis_hint:'Desmarca una columna para ocultarla de la tabla (los datos se conservan y el plan los sigue usando — solo cambia lo que ves).',
+    colvis_show_all:'Mostrar todas',
     tab_db:'🗃 Base de Datos', sec_db:'Base de Datos de Aldeas',
     btn_connect_db:'📁 Conectar Carpeta BD', btn_change_db:'📁 Cambiar Carpeta BD',
     btn_resync_db:'🔄 Resincronizar', btn_load_db_files:'📂 Cargar Archivos…',

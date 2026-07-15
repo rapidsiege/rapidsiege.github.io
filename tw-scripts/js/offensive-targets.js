@@ -1083,6 +1083,70 @@ function otFillPicker(sel, kind, tgId) {
 // the cheap edits that DON'T rebuild the table (off-count cells via updOT, the ignore
 // textarea) can refresh just this line without stealing focus; the ↻ button re-runs
 // it on demand as well.
+// ── Column visibility (Offensive Targets table) ──────────────────────────────
+// 👁 Columns panel next to Edit Selected Rows: untick a column to hide it. The four
+// structural columns (select-checkbox, #, Coord, ✕) are not toggleable. Hiding is pure
+// CSS — applyOtColVis() writes nth-child display:none rules into the static
+// #ot-colvis-style element, so it survives every tbody rebuild with no per-render work
+// (the empty-row placeholder td spans all columns and is never nth-matched). The hidden
+// set persists per device in tw_tribe_settings (saveSettings/loadSettings,
+// render-tables.js) — deliberately NOT in the offensive export: it's a view preference,
+// not plan data.
+const OT_COLS = [ // [key, 1-based nth-child in #offtargets-table, header i18n key]
+  ['type',        3,  'th_ttype'],
+  ['defender',    5,  'th_def_player'],
+  ['points',      6,  'th_points'],
+  ['complete',    7,  'th_complete'],
+  ['tq',          8,  'th_tq'],
+  ['half',        9,  'th_half'],
+  ['power',       10, 'th_power'],
+  ['catapults',   11, 'th_catapults'],
+  ['offSenders',  12, 'th_off_senders'],
+  ['snobPlayers', 13, 'th_snob_players'],
+  ['nobles',      14, 'th_nobles'],
+  ['senders',     15, 'th_snob_senders'],
+  ['snobMode',    16, 'th_escort'],
+  ['catMode',     17, 'th_catmode'],
+  ['winOff',      18, 'th_win_off'],
+  ['winSnob',     19, 'th_win_snob'],
+];
+let otHiddenCols = new Set(); // keys from OT_COLS; restored by loadSettings()
+
+// Pure: the CSS that hides the given column keys (unknown keys ignored) — headless-testable.
+function otColVisCss(hidden) {
+  return OT_COLS.filter(([key]) => hidden.has(key))
+    .map(([, nth]) => `#offtargets-table th:nth-child(${nth}), #offtargets-table td:nth-child(${nth}) { display: none; }`)
+    .join('\n');
+}
+function applyOtColVis() {
+  const el = document.getElementById('ot-colvis-style');
+  if (el) el.textContent = otColVisCss(otHiddenCols);
+}
+function toggleOtColVis() {
+  const el = document.getElementById('ot-colvis-wrap');
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+  renderOtColVis();
+}
+function toggleOtCol(key, visible) {
+  if (!OT_COLS.some(([k]) => k === key)) return;
+  if (visible) otHiddenCols.delete(key); else otHiddenCols.add(key);
+  applyOtColVis(); saveSettings();
+}
+function otShowAllCols() {
+  otHiddenCols.clear();
+  applyOtColVis(); saveSettings(); renderOtColVis();
+}
+function renderOtColVis() {
+  const host = document.getElementById('ot-colvis-host');
+  if (!host) return;
+  host.innerHTML = OT_COLS.map(([key, , label]) =>
+    `<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#d4b483;white-space:nowrap;cursor:pointer;">
+       <input type="checkbox" ${otHiddenCols.has(key) ? '' : 'checked'} onchange="toggleOtCol('${key}',this.checked)">${esc(t(label))}
+     </label>`).join('')
+    + `<button class="btn btn-ghost btn-sm" style="padding:1px 8px;" onclick="otShowAllCols()">${esc(t('colvis_show_all'))}</button>`;
+}
+
 function renderOtOffsSummary() {
   const el = document.getElementById('ot-offs-summary');
   if (!el) return;
@@ -1270,6 +1334,10 @@ function renderOffTargets() {
     </tr>`;
   }).join('');
   syncOtSelAll();
+  // Column visibility: refresh the panel labels (language switches re-render through here)
+  // and re-stamp the hide rules — both idempotent and cheap.
+  renderOtColVis();
+  applyOtColVis();
 }
 
 // ── Export Objectives: plain X|Y coords (one per line), in table order ──

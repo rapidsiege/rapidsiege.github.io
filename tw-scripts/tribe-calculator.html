@@ -480,8 +480,14 @@
     <button class="btn btn-ghost btn-sm" onclick="toggleOffIgnorePlayers()" data-i18n="btn_ignore_players">🙅 Ignore Players</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleOffMvPlayers()" data-i18n="btn_mv_players">🏖 MV Players</button>
     <span style="font-size:12px;color:#5a3a18;" data-i18n="ot_defender_note">Defender auto-fills from the village database.</span>
-    <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="openMassEdit()" data-i18n="btn_mass_edit">✏ Edit Selected Rows</button>
+    <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="toggleOtColVis()" data-i18n="btn_colvis">👁 Columns</button>
+    <button class="btn btn-ghost btn-sm" onclick="openMassEdit()" data-i18n="btn_mass_edit">✏ Edit Selected Rows</button>
   </div>
+  <div id="ot-colvis-wrap" style="display:none;margin-top:10px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="colvis_hint">Untick a column to hide it from the table (the data is kept and still used by the plan — this only changes what you see).</div>
+    <div id="ot-colvis-host" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;"></div>
+  </div>
+  <style id="ot-colvis-style"></style>
   <div id="ot-ignore-wrap" style="display:none;margin-top:10px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="off_ignore_hint">Paste coordinates (one per line) of your own villages that must never send anything — no off, no snob, no escort.</div>
     <textarea id="ot-ignore-input" style="width:100%;height:80px;background:#120d03;border:1px solid #3a2808;color:#d4b483;font-family:'Consolas','Courier New',monospace;font-size:12px;padding:8px 10px;border-radius:4px;resize:vertical;" placeholder="500|500&#10;501|499" oninput="updOffIgnore()"></textarea>
@@ -1071,7 +1077,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.17.0 &nbsp;·&nbsp; 2026-07-15</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.18.0 &nbsp;·&nbsp; 2026-07-15</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

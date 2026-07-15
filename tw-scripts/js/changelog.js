@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.18.0', date: '2026-07-15',
+    en: [
+      `<b>👁 Choose which columns you see.</b> The Offensive Targets tab has a new <b>👁 Columns</b> button (next to Edit Selected Rows): untick any column — Defender, Points, off tiers, POWER, CATAPULTS, senders, Snob Players, Nobles, windows… — to hide it and free up space. Hiding is display-only: the data stays and the plan keeps using it. Your selection is remembered on this device; <b>Show all</b> brings everything back.`,
+    ],
+    es: [
+      `<b>👁 Elige qué columnas ves.</b> La pestaña Objetivos Ofensivos tiene un nuevo botón <b>👁 Columnas</b> (junto a Editar Filas Seleccionadas): desmarca cualquier columna — Defensor, Puntos, tipos de off, POWER, CATAPULTAS, remitentes, Jug. Nobles, Nobles, ventanas… — para ocultarla y ganar espacio. Ocultar es solo visual: los datos se conservan y el plan los sigue usando. Tu selección se recuerda en este dispositivo; <b>Mostrar todas</b> lo restaura todo.`,
+    ],
+  },
   { ver: 'v4.17.0', date: '2026-07-15',
     en: [
       `<b>🏷 Explicit target types: OFF, DESTROYER, FAKE.</b> The Offensive Targets bulk-add panel has a <b>type dropdown</b> next to Add Pasted Targets — every pasted coordinate becomes that type, shown as a <b>badge in the new Type column</b> (changeable later via Edit Selected Rows). <b>OFF</b> behaves exactly as before. <b>DESTROYER</b> replaces the old automatic detection: it's now an explicit choice — off selection prefers catapult-carrying offs (≥101 cats) for these targets, and the row starts with the catapult attacks toggle ON at 3 attacks. A destroyer with a snob train configured raises a warning (you probably meant OFF). Targets added any other way (single add, database, map) are plain OFF.`,
