@@ -1221,8 +1221,8 @@ function planRowRallyUnits(r) {
 function planRowIconBB(r) {
   if (r.type === 'snob') return r.escorted ? '[unit]axe[/unit][unit]snob[/unit]' : '[unit]snob[/unit]';
   if (r.type === 'catapult') return '[unit]catapult[/unit]';
-  // A fake rides a lone ram — same icon as a complete off, tagged so nobody sends real troops.
-  if (r.type === 'fake') return `[unit]ram[/unit] (${t('ttype_fake')})`;
+  // A fake rides a lone ram behind a spy icon, with the tag in bold so nobody sends real troops.
+  if (r.type === 'fake') return `[unit]spy[/unit][unit]ram[/unit] [b](${t('ttype_fake')})[/b]`;
   // Complete offs stay rams; 3/4 and 1/2 use axe with the tier tagged in parens.
   if (r.type === 'complete') return '[unit]ram[/unit]';
   return `[unit]axe[/unit] (${t('tier_' + r.type)})`;
@@ -1289,7 +1289,7 @@ function showPlanBB() {
   if (planRows.some(r => r.type === 'tq')) bb += `[unit]axe[/unit] (${t('tier_tq')}) --> ${t('bb_legend_tq')}\n`;
   if (planRows.some(r => r.type === 'half')) bb += `[unit]axe[/unit] (${t('tier_half')}) --> ${t('bb_legend_axe')}\n`;
   if (planRows.some(r => r.type === 'catapult')) bb += `[unit]catapult[/unit] --> ${t('bb_legend_cat')}\n`;
-  if (planRows.some(r => r.type === 'fake')) bb += `[unit]ram[/unit] (${t('ttype_fake')}) --> ${t('bb_legend_fake')}\n`;
+  if (planRows.some(r => r.type === 'fake')) bb += `[unit]spy[/unit][unit]ram[/unit] [b](${t('ttype_fake')})[/b] --> ${t('bb_legend_fake')}\n`;
   if (planRows.some(r => r.type === 'snob' && !r.escorted)) bb += `[unit]snob[/unit] --> ${t('bb_legend_snob')(noblesLabel)}\n`;
   if (planRows.some(r => r.type === 'snob' && r.escorted)) bb += `[unit]axe[/unit][unit]snob[/unit] --> ${t('bb_legend_split')(noblesLabel)}\n`;
   bb += '\n';
@@ -1390,10 +1390,11 @@ function playerPlanBBBlock(name, rows, allGroups) {
       : (bldg ? ` [b](→ ${bldg})[/b]` : '');
     const win     = (fmtWindow(r.window) || '??:??').replace('/', '-');
     const lp      = launchWindowParts(r.window, r.travel);
-    // Line 1 = village → target + arrival window; line 2 = the red launch-time call-out
-    // (carries the rally link). [b] opens on line 1 and closes after the launch line.
+    // Line 1 = village → target + arrival window; line 2 = the launch-time call-out (carries the
+    // rally link) — red for real attacks, green for fakes. [b] opens on line 1, closes after it.
+    const launchColor = r.type === 'fake' ? '#0e8f0e' : '#ff0e0e';
     const launch  = lp
-      ? `\n${t('bb_pp_launchline')(lp.day, `[color=#ff0e0e]${lp.span}[/color]`, lp.single)}${urlPart}[/b]`
+      ? `\n${t('bb_pp_launchline')(lp.day, `[color=${launchColor}]${lp.span}[/color]`, lp.single, launchColor)}${urlPart}[/b]`
       : `${urlPart}[/b]`;
     lines.push(`${prefix}${iconBB}${catPart} ${r.srcCoord} → [coord]${r.tCoord}[/coord]${defender} [b][color=#2e2eff]${win}[/color]${launch}`);
   }
@@ -1448,6 +1449,33 @@ function showPlayerPlanBB() {
 
   document.getElementById('bb-output').value = bb.trimEnd() + '\n';
   document.getElementById('bb-modal').classList.add('open');
+}
+
+// ── Per-player Orders as one-click PM buttons (mirrors Plan Defense's ✉ Export PMs) ──
+// Pure seam: [{player, parts:[blockText], orderCount}] from the current plan, players A→Z
+// (same grouping/content as showPlayerPlanBB). Each player's FULL Orders block (header +
+// send-time-sorted order lines + objective-context dump) ships as ONE clipboard message —
+// never bracket-split, so the attack-planner re-import always sees a complete block (a single
+// player never approaches the ~5,000-bracket PM limit). orderCount is the player's real
+// attack/snob count for the meta line — the block's raw line count would over-report it
+// (header + blank lines + objective context). Unassigned rows ride a final catch-all entry so
+// nothing is lost vs the textarea export (there's no one to PM, but the list stays copyable).
+function offPmMessagesFrom(planRows, allGroups) {
+  const rows0      = planRows || [];
+  const named      = rows0.filter(r => r.srcPlayer);
+  const unassigned = rows0.filter(r => !r.srcPlayer);
+  const byPlayer   = groupPlanRowsByPlayer(named);
+  const msgs = playerNamesAZ(byPlayer).map(name => {
+    const rows = byPlayer[name];
+    return { player: name, parts: [playerPlanBBBlock(name, rows, allGroups).trimEnd()], orderCount: rows.length };
+  });
+  if (unassigned.length)
+    msgs.push({ player: t('bb_unassigned'), parts: [unassignedPlanBBBlock(unassigned).trimEnd()], orderCount: unassigned.length });
+  return msgs;
+}
+function showPlayerPlanPm() {
+  if (!planRows.length) { alert(t('empty_no_plan')); return; }
+  renderPmModal(offPmMessagesFrom(planRows, planGroups()), t('pm_hint_off'));
 }
 
 // ── Per-player attack TABLE export (BB [table], one section per player) ─────────

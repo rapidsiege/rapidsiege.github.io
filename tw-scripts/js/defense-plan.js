@@ -846,9 +846,13 @@ function renderPmModal(messages, hint) {
   body.innerHTML = `<div class="pm-hint">${esc(hint || t('pm_hint'))}</div>` + defPmExport.map((m, pi) =>
     m.parts.map((text, k) => {
       const label = m.parts.length > 1 ? `${m.player} (${k + 1}/${m.parts.length})` : m.player;
+      // Order count: defense messages are one order per line, so the line count is exact and
+      // is used by default. A caller whose block isn't line-per-order (the offensive Orders PM:
+      // header + blank lines + objective context) passes an explicit orderCount to override it.
+      const orders = m.orderCount != null ? m.orderCount : text.split('\n').length;
       return `<div class="pm-row">
         <button class="btn btn-ghost btn-sm pm-player-btn" onclick="copyDefPm(${pi}, ${k}, this)">📋 ${esc(label)}</button>
-        <span class="pm-meta">${esc(t('pm_meta')(text.split('\n').length, text.length, pmBracketCount(text)))}</span>
+        <span class="pm-meta">${esc(t('pm_meta')(orders, text.length, pmBracketCount(text)))}</span>
       </div>`;
     }).join('')
   ).join('');

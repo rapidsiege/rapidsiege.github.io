@@ -12,6 +12,16 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.19.0', date: '2026-07-16',
+    en: [
+      `<b>✉ Send per-player orders with one click.</b> The <b>Offensive Plan</b> tab has a new <b>✉ Export PMs</b> button (next to Export Per-Player Orders), just like the Defensive Plan: a popup lists every player with their own copy button — click it and that player's full orders are copied to the clipboard, ready to paste into an in-game PM or straight back into the Attack Planner. No more selecting text out of one big box.`,
+      `<b>🎭 Clearer FAKE attacks in exports.</b> Fake attacks now show a <b>spy icon before the ram</b> and a <b>bold (FAKE)</b> tag in the Forum and Per-Player exports, and their <b>launch time is green</b> instead of red — so a glance tells real attacks and fakes apart. Real offs and noble trains are unchanged.`,
+    ],
+    es: [
+      `<b>✉ Envía las órdenes por jugador con un clic.</b> La pestaña <b>Plan Ofensivo</b> tiene un nuevo botón <b>✉ Exportar MPs</b> (junto a Exportar Órdenes por Jugador), igual que el Plan Defensivo: una ventana lista cada jugador con su propio botón de copiar — púlsalo y todas las órdenes de ese jugador se copian al portapapeles, listas para pegar en un MP del juego o de vuelta en el Planificador de Ataques. Se acabó seleccionar texto de un cuadro enorme.`,
+      `<b>🎭 Ataques FAKE más claros en las exportaciones.</b> Los ataques fake ahora muestran un <b>icono de espía antes del ariete</b> y una etiqueta <b>(FAKE) en negrita</b> en las exportaciones de Foro y por Jugador, y su <b>hora de lanzamiento es verde</b> en vez de roja — así, de un vistazo, distingues ataques reales de fakes. Los offs reales y los trenes de nobles no cambian.`,
+    ],
+  },
   { ver: 'v4.18.0', date: '2026-07-15',
     en: [
       `<b>👁 Choose which columns you see.</b> The Offensive Targets tab has a new <b>👁 Columns</b> button (next to Edit Selected Rows): untick any column — Defender, Points, off tiers, POWER, CATAPULTS, senders, Snob Players, Nobles, windows… — to hide it and free up space. Hiding is display-only: the data stays and the plan keeps using it. Your selection is remembered on this device; <b>Show all</b> brings everything back.`,
