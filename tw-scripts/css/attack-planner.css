@@ -202,7 +202,8 @@
     /* ── Badges ── */
     .badge { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; }
     .badge-off      { background: #380c0c; color: #e06060; }
-    .badge-snob     { background: #0c1838; color: #6090e0; }
+    .badge-snob     { background: #2a2a10; color: #d0c040; }
+    .badge-fake     { background: #0c1838; color: #6090e0; }
     .badge-complete { background: #1a3a10; color: #60d840; }
     .badge-tq       { background: #2a2a10; color: #d0c040; }
     .badge-half     { background: #2a1a08; color: #d08040; }
