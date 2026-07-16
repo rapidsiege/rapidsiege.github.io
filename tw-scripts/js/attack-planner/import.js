@@ -26,7 +26,10 @@ function parseOffPlanBB(text) {
     // Catapult demolition rows (tribe-calculator) aren't clearing-off / noble requirements —
     // they belong to a separate workflow, so the attack planner skips them on import.
     if (am && am[1].toLowerCase() !== 'catapult') {
-      current.requirements.push({ unitType: am[1], attacker: am[2].trim(), timeFrom: am[3], timeTo: am[4] || '' });
+      // FAKE rows lead with the spy icon ([unit]spy[/unit][unit]ram[/unit] in the forum export);
+      // record them as a 'fake' requirement so importOffTargets can mark an all-fake target.
+      const unitType = am[1].toLowerCase() === 'spy' ? 'fake' : am[1];
+      current.requirements.push({ unitType, attacker: am[2].trim(), timeFrom: am[3], timeTo: am[4] || '' });
     }
   }
   if (current) targets.push(current);
@@ -52,6 +55,8 @@ function parseOffPlanBB(text) {
 //   header  ========== Vanquished (4) ==========
 //   date    [b][u]ARRIVAL DATE:[/u][/b] Thursday 18            → arrivalDay (day-of-month)
 //   off     [unit]ram[/unit] 547|552 → [coord]583|524[/coord] ([player]Def[/player]) [b]…01:00…
+//   fake    [unit]spy[/unit][unit]ram[/unit] [b](FAKE)[/b] 547|552 → [coord]583|524[/coord] …  (parses like an
+//           off but classified 'fake' — the spy icon is its only reliable structural marker)
 //   launch  …LAUNCH TIME:… — [url=…]ATTACK URL▶[/url][/b]      (continuation line: rally URL
 //           carrying the village=/target= IDs; old single-line exports put it on the off line)
 //   snob    4x [unit]snob[/unit] ⚠ Prepare Snob Train for [coord]572|521[/coord] ⚠ ([player]Def[/player]) [b]…02:00-03:00…
@@ -141,9 +146,13 @@ function parsePlayerPlanBB(text) {
       const sm = line.match(/(\d{1,3}\|\d{1,3})\s*→\s*\[coord\]/);   // pinned source coord — must
       srcCoord = sm ? sm[1] : '';                                    // precede "[coord]" so a
                                                                      // "(→ Building)" label can't match
-      // Unit: snob (incl. old-format escorted "[unit]axe[/unit][unit]snob[/unit]" attack lines)
-      // → snob; else ram, else axe. Ram vs axe stay distinct — different power tiers.
-      unitType = /\[unit\]snob\[\/unit\]/i.test(line) ? 'snob'
+      // Unit: FAKE first — tribe-calculator's fake rows ride a lone ram behind a spy icon
+      // ([unit]spy[/unit][unit]ram[/unit]), so the spy tag (which no other row type uses) must
+      // be tested BEFORE ram or a fake would mis-type as a real ram off. Then snob (incl.
+      // old-format escorted "[unit]axe[/unit][unit]snob[/unit]" attack lines), else ram, else
+      // axe. Ram vs axe stay distinct — different power tiers.
+      unitType = /\[unit\]spy\[\/unit\]/i.test(line)  ? 'fake'
+               : /\[unit\]snob\[\/unit\]/i.test(line) ? 'snob'
                : /\[unit\]ram\[\/unit\]/i.test(line)  ? 'ram'
                : 'axe';
     }
@@ -203,6 +212,14 @@ function arrivalDayToISO(day, now = new Date()) {
   return '';
 }
 
+// A target's type from its imported requirements: 'fake' only when it has requirements and
+// every one is a fake (tribe-calculator's per-player/forum exports never mix a real off/snob
+// with a fake on one target); otherwise 'off'. An empty list stays 'off' (the legacy default).
+function targetTypeFor(requirements) {
+  const reqs = requirements || [];
+  return reqs.length && reqs.every(r => r.unitType === 'fake') ? 'fake' : 'off';
+}
+
 function importPlayerPlan(text) {
   const parsed = parsePlayerPlanBB(text);
   if (!parsed.length) { alert(t('alert_no_targets_found')); return; }
@@ -218,21 +235,25 @@ function importPlayerPlan(text) {
   const me = (DATA.settings.playerName || '').trim();
   if (me) parsed.forEach(p => p.requirements.forEach(r => { if (!r.attacker) r.attacker = me; }));
 
-  let added = 0, updated = 0;
+  let added = 0, updated = 0, fakes = 0;
   parsed.forEach(p => {
+    // A target whose every requirement is a fake is a FAKE target (tribe-calculator never mixes
+    // real offs and fakes on one target); anything with a real off/snob stays an off target.
+    const tt = targetTypeFor(p.requirements);
+    if (tt === 'fake') fakes++;   // counted for the summary regardless of added-vs-updated
     const existing = (p.villageId && DATA.targets.find(t => String(t.villageId) === String(p.villageId)))
                   || DATA.targets.find(t => t.x === p.x && t.y === p.y);
     if (existing) {
       if (p.villageId && !existing.villageId) existing.villageId = p.villageId;
       if (p.player) existing.player = p.player;
-      existing.targetType   = 'off';
+      existing.targetType   = tt;
       existing.requirements = p.requirements;
       updated++;
     } else {
       DATA.targets.push({
         id: uid(), name: `${p.x}|${p.y}`, villageId: p.villageId || '',
         x: p.x, y: p.y, player: p.player || '',
-        targetType: 'off', requirements: p.requirements
+        targetType: tt, requirements: p.requirements
       });
       added++;
     }
@@ -252,6 +273,7 @@ function importPlayerPlan(text) {
   alert(t('alert_plan_imported')
     .replace('{added}', added)
     .replace('{updated}', updated)
+    .replace('{fakes}', fakes)
     .replace('{players}', senders.size)
     .replace('{senders}', senderList)
     + (planDateISO ? '\n' + t('alert_plan_date').replace('{date}', planDateISO) : ''));
@@ -274,17 +296,18 @@ function importOffTargets() {
   if (!parsed.length) { alert(t('alert_no_targets_found')); return; }
   let added = 0, updated = 0;
   parsed.forEach(p => {
+    const tt = targetTypeFor(p.requirements);
     const existing = DATA.targets.find(t => t.x === p.x && t.y === p.y);
     if (existing) {
       if (p.player) existing.player = p.player;
-      existing.targetType   = 'off';
+      existing.targetType   = tt;
       existing.requirements = p.requirements;
       updated++;
     } else {
       DATA.targets.push({
         id: uid(), name: `${p.x}|${p.y}`, villageId: '',
         x: p.x, y: p.y, player: p.player,
-        targetType: 'off', requirements: p.requirements
+        targetType: tt, requirements: p.requirements
       });
       added++;
     }

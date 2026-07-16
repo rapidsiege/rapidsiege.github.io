@@ -285,6 +285,7 @@ function renderMtReqs() {
         <option value="ram"${sel('ram')}>⚔ off</option>
         <option value="axe"${sel('axe')}>🪓 1/2</option>
         <option value="snob"${sel('snob')}>👑 snob</option>
+        <option value="fake"${sel('fake')}>💨 fake</option>
       </select>
       <input type="text" value="${escHtml(r.attacker || '')}" oninput="mtReqs[${i}].attacker=this.value" placeholder="${t('lbl_player')}" style="${MT_REQ_INPUT};flex:1;min-width:100px">
       <input type="number" min="1" value="${r.count || 1}" oninput="mtReqs[${i}].count=parseInt(this.value)||1" title="${t('mt_count')}" style="${MT_REQ_INPUT};width:46px">
@@ -383,8 +384,8 @@ function deleteTarget(id) {
 }
 
 function reqBadgeHtml(unitType) {
-  const cls = unitType === 'ram' ? 'req-ram' : unitType === 'snob' ? 'req-snob' : 'req-axe';
-  const label = unitType === 'ram' ? '⚔ off' : unitType === 'snob' ? '👑 snob' : '🪓 1/2';
+  const cls = unitType === 'ram' ? 'req-ram' : unitType === 'snob' ? 'req-snob' : unitType === 'fake' ? 'req-fake' : 'req-axe';
+  const label = unitType === 'ram' ? '⚔ off' : unitType === 'snob' ? '👑 snob' : unitType === 'fake' ? '💨 fake' : '🪓 1/2';
   return `<span class="req-badge ${cls}">${label}</span>`;
 }
 

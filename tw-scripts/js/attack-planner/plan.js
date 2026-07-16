@@ -44,11 +44,17 @@ function updateAutoGenPreview() {
   const offTargets  = DATA.targets.filter(t => t.targetType === 'off');
   const fakeTargets = DATA.targets.filter(t => t.targetType === 'fake');
 
-  let offCount = 0, snobCount = 0;
+  let offCount = 0, snobCount = 0, pinnedFakes = 0;
   offTargets.forEach(t => {
     const reqs = (t.requirements || []).filter(r => !myName || r.attacker.toLowerCase() === myName);
     offCount  += reqs.filter(r => r.unitType === 'ram' || r.unitType === 'axe').length;
     snobCount += reqs.filter(r => r.unitType === 'snob').length;
+  });
+  // Pinned fakes (explicit fake requirements naming an origin) fire regardless of the spray
+  // toggle, so count them separately across off + fake targets.
+  [...offTargets, ...fakeTargets].forEach(t => {
+    const reqs = (t.requirements || []).filter(r => !myName || r.attacker.toLowerCase() === myName);
+    pinnedFakes += reqs.filter(r => r.unitType === 'fake' && r.srcCoord).length;
   });
 
   const includeFakes = document.getElementById('ag-include-fakes')?.checked ?? false;
@@ -61,9 +67,10 @@ function updateAutoGenPreview() {
     ? `Filtering to player <strong>${escHtml(DATA.settings.playerName)}</strong>`
     : `<span style="color:#c06030">⚠ No player name set — all requirements will be assigned</span>`;
 
-  const fakePart = includeFakes
-    ? ` · up to <strong>${fakeEst}</strong> fakes across ${DATA.villages.length} village(s)`
-    : ` · <span style="color:#806838">fakes disabled</span>`;
+  const pinnedPart = pinnedFakes ? ` · <strong>${pinnedFakes}</strong> pinned fake(s)` : '';
+  const fakePart = pinnedPart + (includeFakes
+    ? ` · up to <strong>${fakeEst}</strong> extra fakes across ${DATA.villages.length} village(s)`
+    : (pinnedFakes ? '' : ` · <span style="color:#806838">fakes disabled</span>`));
 
   document.getElementById('ag-preview').innerHTML =
     `${nameNote}<br>` +
@@ -113,15 +120,26 @@ function autoGenerateAttacks(landingDateStr, criteria = { power: true, distance:
     return v;
   }
 
-  offTargets.forEach(target => {
+  // Pinned pass runs over BOTH off and fake targets: a FAKE target's requirements (from
+  // tribe-calculator's per-player export) each name an exact origin, just like an off. Fakes
+  // pinned here are tracked so the bulk "include fakes" spray below never doubles them.
+  const pinnedFakeTargets = new Set();
+  [...offTargets, ...fakeTargets].forEach(target => {
     myReqs(target).forEach(req => {
       const v = resolvePinned(req);
-      if (!v) return;   // not pinned → handled by the assignment passes below
+      if (!v) return;   // not pinned → handled by the assignment passes / fake spray below
       const iso = landingISO(req.timeFrom || defaultTime);
       if (req.unitType === 'snob') {
         const nc = Math.max(1, req.count || 4);
         vs[v.id].noblesLeft = Math.max(0, vs[v.id].noblesLeft - nc);
         attacks.push({ id: uid(), fromId: v.id, targetId: target.id, type: 'snob', nobleCount: nc, landingTime: iso, windowFrom: req.timeFrom, windowTo: req.timeTo, dividedOff: dividedOffVillages.has(v.id), sent: false });
+      } else if (req.unitType === 'fake') {
+        // Explicit fake assignment (1 spy + 1 ram) from the planned village at its window —
+        // honored ALWAYS, independent of the includeFakes spray toggle (it's a plan order, not
+        // bulk noise). Counts toward the village's 10-fake cap so the spray stays in budget.
+        vs[v.id].fakeCount++;
+        pinnedFakeTargets.add(target.id);
+        attacks.push({ id: uid(), fromId: v.id, targetId: target.id, type: 'fake', nobleCount: 1, landingTime: iso, windowFrom: req.timeFrom, windowTo: req.timeTo, sent: false });
       } else {
         attacks.push({ id: uid(), fromId: v.id, targetId: target.id, type: 'off', nobleCount: 1, landingTime: iso, windowFrom: req.timeFrom, windowTo: req.timeTo, sent: false });
       }
@@ -175,9 +193,12 @@ function autoGenerateAttacks(landingDateStr, criteria = { power: true, distance:
     .filter(need => !assignedNeeds.has(need))
     .map(need => ({ targetId: need.target.id, unitType: need.unitType, iso: need.iso, windowFrom: need.windowFrom, windowTo: need.windowTo }));
 
-  // ── Fakes ──
+  // ── Fakes (bulk spray) ──
+  // Adds up-to-one extra fake per target across every off + fake target, round-robin over
+  // villages with rams (≤10 each). Targets already handled by an explicit pinned fake above
+  // are skipped so a planned fake is never doubled.
   if (includeFakes) {
-    const allFakeTargets = [...offTargets, ...fakeTargets];
+    const allFakeTargets = [...offTargets, ...fakeTargets].filter(target => !pinnedFakeTargets.has(target.id));
     const vilsWithRams   = DATA.villages.filter(v => (v.rams || 0) > 0);
     let vi = 0;
 

@@ -213,6 +213,7 @@
     .req-ram   { background:#2a1008; color:#c07040; }
     .req-axe   { background:#1a1208; color:#a09050; }
     .req-snob  { background:#0c1838; color:#6090e0; }
+    .req-fake  { background:#0a1828; color:#5080c0; }
 
     /* ── Countdown cells ── */
     .cd-ok     { color: #50d870; font-weight: 600; font-family: monospace; }
