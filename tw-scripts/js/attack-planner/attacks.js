@@ -568,6 +568,7 @@ function processVillagesJSON(text) {
     }
 
     saveData();
+    if (typeof cloudSyncPlan === 'function') cloudSyncPlan(); // hosted-site: cloud-save on villages loaded
     renderVillages();
     refreshDropdowns();
     alert(t('alert_import_villages_ok').replace('{added}', added).replace('{updated}', updated));
@@ -655,6 +656,7 @@ function importFromRecruitHTML(event) {
       }
     });
     saveData();
+    if (typeof cloudSyncPlan === 'function') cloudSyncPlan(); // hosted-site: cloud-save on villages loaded
     renderVillages();
     refreshDropdowns();
     alert(t('alert_import_villages_ok').replace('{added}', added).replace('{updated}', updated));

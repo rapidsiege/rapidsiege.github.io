@@ -424,6 +424,7 @@ function runAutoGenerate() {
   DATA.attacks = DATA.attacks.filter(a => a.manual);
   DATA.attacks.push(...attacks, ...unassigned);
   saveData();
+  if (typeof cloudSyncPlan === 'function') cloudSyncPlan(); // hosted-site: cloud-save on plan generated
   renderVillages();   // pinned per-player attacks may have created stub source villages
   renderAttacks();
   refreshDropdowns();

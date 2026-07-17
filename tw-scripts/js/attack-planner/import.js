@@ -266,6 +266,7 @@ function importPlayerPlan(text) {
 
   enrichTargetsSilent();
   saveData();
+  if (typeof cloudSyncPlan === 'function') cloudSyncPlan(); // hosted-site: cloud-save on targets loaded
   renderTargets();
   refreshDropdowns();
   document.getElementById('import-off-text').value = '';
@@ -314,6 +315,7 @@ function importOffTargets() {
   });
   enrichTargetsSilent();
   saveData();
+  if (typeof cloudSyncPlan === 'function') cloudSyncPlan(); // hosted-site: cloud-save on targets loaded
   renderTargets();
   refreshDropdowns();
   document.getElementById('import-off-text').value = '';
@@ -336,6 +338,7 @@ function importFakeTargets() {
   }
   enrichTargetsSilent();
   saveData();
+  if (typeof cloudSyncPlan === 'function') cloudSyncPlan(); // hosted-site: cloud-save on targets loaded
   renderTargets();
   refreshDropdowns();
   document.getElementById('import-fake-text').value = '';
