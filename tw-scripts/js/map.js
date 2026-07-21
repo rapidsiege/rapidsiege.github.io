@@ -374,7 +374,7 @@ function troopTooltipHtml(coord) {
 // Label for one planned-attack row (mirrors the Plan-Offensive table badge text).
 function planAttackLabel(r) {
   if (r.type === 'snob') {
-    const kind = t(r.escorted ? 'type_snob_split' : 'type_snob');
+    const kind = t(r.fake ? 'type_snob_fake' : r.escorted ? 'type_snob_split' : 'type_snob');
     return ((r.count || 1) > 1 ? (r.count + 'x ') : '') + kind;
   }
   return t('tier_' + r.type) || r.type;

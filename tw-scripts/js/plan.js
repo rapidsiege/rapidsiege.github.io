@@ -503,9 +503,11 @@ function generatePlan() {
   }
 
   // Snob trains: pre-assigned senders fill the first trains, the rest are
-  // auto-picked from distinct players; escort mode is a per-target setting
+  // auto-picked from distinct players; escort mode is a per-target setting.
+  // FAKE-type targets ARE included now (no isFake skip): a fake target can field a
+  // FAKE noble train (snobMode 'fake') as a bare decoy — see the fake branch below.
   for (const T of targets) {
-    if (!T.c || isFake(T) || !T.tg.nobles) continue;
+    if (!T.c || !T.tg.nobles) continue;
     const spec = targetTrainSpec(T.tg);
     if (!spec.length) continue;
     const specSum = spec.reduce((s, x) => s + x.count, 0);
@@ -539,10 +541,13 @@ function generatePlan() {
       // UNASSIGNED, never assigned a short village. No "recruit nobles" warning (assigning snobs
       // before recruiting is the normal workflow); the row's "Prepare Snob Train" call-out is the cue.
       if (want && cands.length && !enough.length) {
-        T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true,
+        T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', fake: mode === 'fake', unassigned: true,
           srcPlayer: decode(want), needNobles: true, recruitCoord, dist: recruitDist, travel: recruitTravel,
           rangeVills: snobRangeVills(want, T) });
-        noteSnobSender(want, T);
+        // A FAKE train never reserves launch villages or forces a clearing off (it's a bare
+        // decoy), so it stays out of snobSenderTargets/conquerorByTarget — but it still CLAIMS
+        // the defender for MV (a fake noble is a real in-game attack).
+        if (mode !== 'fake') noteSnobSender(want, T);
         noteMvClaimName(want, T); // pinned intent claims the defender even before nobles exist
         return;
       }
@@ -606,26 +611,32 @@ function generatePlan() {
         if (msg && !needNobles) planWarnings.push(msg);
         // A manually-pinned sender stays named on the plan even when unplaced (so they
         // see their assignment); an auto train that couldn't be filled has no name.
-        T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', unassigned: true,
+        T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', fake: mode === 'fake', unassigned: true,
           srcPlayer: want ? decode(want) : undefined, needNobles, recruitCoord: needNobles ? recruitCoord : undefined,
           dist: needNobles ? recruitDist : undefined, travel: needNobles ? recruitTravel : undefined,
           rangeVills: snobRangeVills(want, T) });
-        if (want) { noteSnobSender(want, T); noteMvClaimName(want, T); } // pinned intent claims the defender
+        if (want) { if (mode !== 'fake') noteSnobSender(want, T); noteMvClaimName(want, T); } // pinned intent claims the defender
         return;
       }
       // escorted: strongest escort wins; solo: nearest village, weakest off stays home
       // (so the strongest off is left free for off duty — coordination is handled on the
-      // off side now via conquerorByTarget)
+      // off side now via conquerorByTarget); fake: FARTHEST in-range village wins — a bare
+      // decoy doesn't care about proximity, and a longer flight shows up in the enemy's
+      // incoming list sooner (more warning = more wasted defence), ties to the weakest off.
       cands.sort(mode === 'escorted'
         ? (a, b) => (b.v.offPow - a.v.offPow) || (distXY(a.c, T.c) - distXY(b.c, T.c))
+        : mode === 'fake'
+        ? (a, b) => (distXY(b.c, T.c) - distXY(a.c, T.c)) || (a.v.offPow - b.v.offPow)
         : (a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (a.v.offPow - b.v.offPow));
       const p = cands[0];
       p.snobLeft -= nc; p.usedSnob = true; chosen.add(p.v.player); noteMvClaim(p, T);
       if (mode === 'escorted') { p.usedOff = true; p.isEscort = true; } // its off rides as the split-off
-      noteSnobSender(p.v.player, T);
+      // A FAKE train sends bare nobles (real ones, so snobLeft is spent above) but NO escort
+      // and consumes no off — so it never reserves launch villages or forces a clearing off.
+      if (mode !== 'fake') noteSnobSender(p.v.player, T);
       const d = distXY(p.c, T.c);
       T.snobRows.push({
-        type: 'snob', count: nc, escorted: mode === 'escorted',
+        type: 'snob', count: nc, escorted: mode === 'escorted', fake: mode === 'fake',
         srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.snob, ws, us),
         rangeVills: snobRangeVills(p.v.player, T),
@@ -1179,7 +1190,7 @@ function renderPlanTable() {
     const first = r.tIdx !== lastIdx;
     lastIdx = r.tIdx;
     const badge = r.type === 'snob'
-      ? `<span class="badge badge-snob">${r.count > 1 ? r.count + 'x ' : ''}👑 ${t(r.escorted ? 'type_snob_split' : 'type_snob')}</span>`
+      ? `<span class="badge badge-snob"${r.fake ? ' style="background:#0a1828;color:#5fb85f;border:1px solid #2e7d2e;"' : ''}>${r.count > 1 ? r.count + 'x ' : ''}👑 ${t(r.fake ? 'type_snob_fake' : r.escorted ? 'type_snob_split' : 'type_snob')}</span>`
       : r.type === 'catapult'
       ? `<span class="badge" style="background:#5a3f6a;color:#e8d8f0;">${twIcon('catapult')} ${r.cats}</span>`
       : r.type === 'fake'
@@ -1207,7 +1218,7 @@ function renderPlanTable() {
       <td>${badge}${r.type !== 'snob' && catTargetLabel(r) ? ` <span style="color:#c8a0e0;font-size:11px;white-space:nowrap;">→ ${esc(catTargetLabel(r))}</span>` : ''}</td>
       <td class="left" style="font-family:monospace;">${
         isSnob
-          ? `<span style="color:#e0a020;font-weight:600;">${esc(t('plan_prepare_snob')(r.escorted))}</span>${snobRange}`
+          ? `<span style="color:#e0a020;font-weight:600;">${esc(t('plan_prepare_snob')(r.escorted))}${r.fake ? ` <span style="color:#0e8f0e;">(${esc(t('ttype_fake'))})</span>` : ''}</span>${snobRange}`
           : (r.unassigned
               ? `<span style="color:#e06040;">${t('bb_unassigned')}</span>`
               : esc(r.srcCoord))
@@ -1261,7 +1272,13 @@ function planRowRallyUnits(r) {
 
 // ── BB icon helper (shared by both export functions) ──
 function planRowIconBB(r) {
-  if (r.type === 'snob') return r.escorted ? '[unit]axe[/unit][unit]snob[/unit]' : '[unit]snob[/unit]';
+  if (r.type === 'snob') {
+    // A FAKE noble train is a bare decoy — mark it with a bold GREEN "(FAKE)" tag (the same
+    // green fake OFFs use on their launch line) so nobody sends a real escort with it. Snob
+    // lines have no launch-time line to carry the colour, so it rides on the tag here.
+    if (r.fake) return `[unit]snob[/unit] [b][color=#0e8f0e](${t('ttype_fake')})[/color][/b]`;
+    return r.escorted ? '[unit]axe[/unit][unit]snob[/unit]' : '[unit]snob[/unit]';
+  }
   if (r.type === 'catapult') return '[unit]catapult[/unit]';
   // A fake rides a lone ram behind a spy icon, with the tag in bold so nobody sends real troops.
   if (r.type === 'fake') return `[unit]spy[/unit][unit]ram[/unit] [b](${t('ttype_fake')})[/b]`;
@@ -1332,8 +1349,9 @@ function showPlanBB() {
   if (planRows.some(r => r.type === 'half')) bb += `[unit]axe[/unit] (${t('tier_half')}) --> ${t('bb_legend_axe')}\n`;
   if (planRows.some(r => r.type === 'catapult')) bb += `[unit]catapult[/unit] --> ${t('bb_legend_cat')}\n`;
   if (planRows.some(r => r.type === 'fake')) bb += `[unit]spy[/unit][unit]ram[/unit] [b](${t('ttype_fake')})[/b] --> ${t('bb_legend_fake')}\n`;
-  if (planRows.some(r => r.type === 'snob' && !r.escorted)) bb += `[unit]snob[/unit] --> ${t('bb_legend_snob')(noblesLabel)}\n`;
+  if (planRows.some(r => r.type === 'snob' && !r.escorted && !r.fake)) bb += `[unit]snob[/unit] --> ${t('bb_legend_snob')(noblesLabel)}\n`;
   if (planRows.some(r => r.type === 'snob' && r.escorted)) bb += `[unit]axe[/unit][unit]snob[/unit] --> ${t('bb_legend_split')(noblesLabel)}\n`;
+  if (planRows.some(r => r.type === 'snob' && r.fake)) bb += `[unit]snob[/unit] [b][color=#0e8f0e](${t('ttype_fake')})[/color][/b] --> ${t('bb_legend_snob_fake')(noblesLabel)}\n`;
   bb += '\n';
 
   const groups = planGroups();
@@ -1468,7 +1486,7 @@ function playerPlanBBBlock(name, rows, allGroups) {
 function unassignedPlanBBBlock(unassigned) {
   let bb = `========== ${t('bb_unassigned')} ==========\n`;
   for (const r of unassigned) {
-    const label = r.type === 'snob' ? t('type_snob') : t('tier_' + r.type);
+    const label = r.type === 'snob' ? (r.fake ? t('type_snob_fake') : t('type_snob')) : t('tier_' + r.type);
     bb += `${label} → ${r.tCoord}\n`;
   }
   bb += '\n';
@@ -1525,6 +1543,7 @@ function showPlayerPlanPm() {
 // axe icon), solo snob → "[unit]snob[/unit] Snob", escorted → "[unit]axe[/unit][unit]snob[/unit] Split Off Snob".
 function planRowTableType(r) {
   if (r.type === 'snob') {
+    if (r.fake) return `[unit]snob[/unit] ${t('tbl_type_snob_fake')}`;
     return r.escorted
       ? `[unit]axe[/unit][unit]snob[/unit] ${t('tbl_type_split')}`
       : `[unit]snob[/unit] ${t('tbl_type_snob')}`;

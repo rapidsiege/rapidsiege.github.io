@@ -428,7 +428,9 @@ function newOffTarget(coord, player, type) {
     id: otNextId++, coord, player, type, power: false,
     catEnabled: destroyer, catapult: destroyer ? CAT_ATTACKS_DEFAULT : 0, catBuildings: [], catMode: 'smith',
     nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0, snobPlayers: 0, nobles: 4,
-    snobMode: otCfg.defSnobMode || 'solo', snobAssignees: [], offAssignees: [],
+    // A FAKE target's noble train, if any, defaults to a bare fake decoy; everything else uses
+    // the configured default snob mode. (Bulk-add as FAKE therefore lands on 'fake' automatically.)
+    snobMode: type === 'fake' ? 'fake' : (otCfg.defSnobMode || 'solo'), snobAssignees: [], offAssignees: [],
     offWindows: [{ win: otCfg.defWinOff, count: 0 }], winSnob: otCfg.defWinSnob,
   };
 }
@@ -778,7 +780,7 @@ function massSetOffs() {
   const c = n('ot-mass-complete'), q = n('ot-mass-tq'), h = n('ot-mass-half');
   massApply(tg => { tg.nComplete = c; tg.nTq = q; tg.nHalf = h; });
 }
-function massSetSnobMode(v) { massApply(tg => { tg.snobMode = v === 'escorted' ? 'escorted' : 'solo'; }); }
+function massSetSnobMode(v) { massApply(tg => { tg.snobMode = (v === 'escorted' || v === 'fake') ? v : 'solo'; }); }
 function massSetCatMode(v)  { if (CAT_MODE_KEYS.includes(v)) massApply(tg => { tg.catMode = v; }); }
 // Replaces ALL of each selected row's off windows with the staged list
 function massSetOffWin() {
@@ -1273,9 +1275,11 @@ function renderOffTargets() {
         ${winEditor(`otsw-${tg.id}`, tg.winSnob, `updTgWin(${tg.id},'snob',0)`, `fixTgWin(${tg.id},'snob',0)`)}
       </div>`;
     const sel = otSelected.has(tg.id);
-    // FAKE rows only use the type, coord, Complete (= number of fakes) and Off Windows cells —
-    // everything else (other tiers, POWER, catapults, senders, snobs) is ignored by the plan,
-    // so render an inert dash instead of a control (type changes go through the mass edit).
+    // FAKE rows use the type, coord, Complete (= number of 1-ram fakes) and Off Windows cells,
+    // PLUS the noble-train cells (Snob Players / Nobles / Senders / Snob Mode / Snob Window) so a
+    // fake target can also field a FAKE noble train (a bare decoy — mode defaults to 'fake'). The
+    // remaining cells (other off tiers, POWER, catapults, off senders, Catapult Mode) are ignored
+    // by the plan for a fake target, so they render an inert dash (type changes go through mass edit).
     const isFakeTg = tg.type === 'fake';
     const dash = '<span class="num-zero">—</span>';
     return `
@@ -1314,14 +1318,15 @@ function renderOffTargets() {
         })() : ''}
       </div></td>
       <td class="left">${isFakeTg ? dash : `<div style="max-width:280px;">${offSenderCell}</div>`}</td>
-      <td>${isFakeTg ? dash : `<input type="number" min="0" class="cell-input num" value="${tg.snobPlayers}" onchange="updOT(${tg.id},'snobPlayers',this.value)">`}</td>
-      <td>${isFakeTg ? dash : `<input type="number" min="0" class="cell-input num" value="${tg.nobles}" onchange="updOT(${tg.id},'nobles',this.value)">`}</td>
-      <td class="left">${isFakeTg ? dash : `<div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;max-width:250px;">${chips}${senderPicker}</div>`}</td>
-      <td>${isFakeTg ? dash : `
+      <td><input type="number" min="0" class="cell-input num" value="${tg.snobPlayers}" onchange="updOT(${tg.id},'snobPlayers',this.value)"></td>
+      <td><input type="number" min="0" class="cell-input num" value="${tg.nobles}" onchange="updOT(${tg.id},'nobles',this.value)"></td>
+      <td class="left"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;max-width:250px;">${chips}${senderPicker}</div></td>
+      <td>
         <select class="cell-input" onchange="updOT(${tg.id},'snobMode',this.value)">
           <option value="escorted"${tg.snobMode === 'escorted' ? ' selected' : ''}>${t('opt_escort_yes')}</option>
-          <option value="solo"${tg.snobMode !== 'escorted' ? ' selected' : ''}>${t('opt_escort_no')}</option>
-        </select>`}
+          <option value="solo"${tg.snobMode === 'solo' ? ' selected' : ''}>${t('opt_escort_no')}</option>
+          <option value="fake"${tg.snobMode === 'fake' ? ' selected' : ''}>${t('opt_escort_fake')}</option>
+        </select>
       </td>
       <td title="${esc(t('catmode_title'))}">${isFakeTg ? dash : `
         <select class="cell-input" ${tg.power ? 'disabled' : ''} onchange="updCatMode(${tg.id},this.value)">
@@ -1329,7 +1334,7 @@ function renderOffTargets() {
         </select>`}
       </td>
       <td>${offWinCell}</td>
-      <td>${isFakeTg ? dash : snobWinCell}</td>
+      <td>${snobWinCell}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="delOffTarget(${tg.id})">✕</button></td>
     </tr>`;
   }).join('');

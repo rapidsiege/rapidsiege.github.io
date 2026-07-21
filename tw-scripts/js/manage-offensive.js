@@ -330,7 +330,7 @@ function moTimingCell(windowStr, arrivalMs) {
 // tabs. A snob train renders one row PER NOBLE (j/n suffix when n > 1).
 function moTypeBadge(r, j, n) {
   if (r.type === 'snob')
-    return `<span class="badge badge-snob">👑 ${t(r.escorted ? 'type_snob_split' : 'type_snob')}${n > 1 ? ` ${j + 1}/${n}` : ''}</span>`;
+    return `<span class="badge badge-snob"${r.fake ? ' style="background:#0a1828;color:#5fb85f;border:1px solid #2e7d2e;"' : ''}>👑 ${t(r.fake ? 'type_snob_fake' : r.escorted ? 'type_snob_split' : 'type_snob')}${n > 1 ? ` ${j + 1}/${n}` : ''}</span>`;
   if (r.type === 'catapult')
     return `<span class="badge" style="background:#5a3f6a;color:#e8d8f0;">${twIcon('catapult')} ${r.cats}</span>`;
   return `<span class="badge badge-${r.type === 'complete' ? 'complete' : r.type === 'tq' ? 'tq' : 'half'}">${t('tier_' + r.type)}</span>`;
