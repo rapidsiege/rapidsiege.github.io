@@ -582,6 +582,10 @@
     <input type="number" id="plan-min-morale" value="90" min="0" max="100" style="width:70px;" data-i18n-title="min_morale_title" title="A noble sender keeps their own clearing off only at or above this morale %; below it the off goes to a higher-morale player. 0 = always keep." oninput="saveSettings()">
     <label data-i18n="lbl_cat_count"><img class="tw-ic" src="icons/units/catapult.png" alt="">Number of catapults:</label>
     <input type="number" id="plan-cat-count" value="20" min="1" style="width:70px;" data-i18n-title="cat_count_title" title="Catapults per catapult attack. Each catapult target's wanted attacks are sourced from your defensive villages that own catapults; a source village provides floor(catapults / this) attacks." oninput="saveSettings()">
+    <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" data-i18n-title="cluster_title" title="Keeps each player's offs at similar distances, so their launches group into a few tight bursts and no attack strays needlessly far — offs return sooner. Lowest priority: never overrides morale or off power, only breaks near-ties within the ± tolerance.">
+      <input type="checkbox" id="plan-cluster" onchange="saveSettings()"><span data-i18n="lbl_cluster">Cluster launch times</span>&nbsp;±
+    </label>
+    <input type="number" id="plan-cluster-tol" value="10" min="0" style="width:56px;" data-i18n-title="cluster_tol_title" title="Tolerance in fields (default 10). A village may be swapped in for tighter clustering only if it is within this many extra fields of the closest qualifying village — so a much farther village is never chosen just to cluster. Higher = more clustering, more distance traded." oninput="saveSettings()">
     <span style="font-size:12px;color:#5a3a18;" data-i18n="plan_optimize_note">Auto-optimizes by morale × off power vs. distance. Pin senders per target or tag a target POWER in Offensive Targets.</span>
     <button class="btn btn-primary btn-sm" onclick="generatePlan()" data-i18n="btn_generate">⚡ Generate Plan</button>
   </div>
@@ -1079,7 +1083,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.19.0 &nbsp;·&nbsp; 2026-07-16</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.20.0 &nbsp;·&nbsp; 2026-07-21</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

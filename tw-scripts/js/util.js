@@ -92,7 +92,8 @@ function buildDebugDump(opts) {
       plan: { worldSpeed: twWorldSpeed, unitSpeed: twUnitSpeed, // world config (same dump shape as pre-3.30)
               minDist: val('plan-min-dist'), maxDist: val('plan-max-dist'), snobMax: val('plan-snob-max'),
               minMorale: val('plan-min-morale'), minMoraleOff: val('plan-min-morale-off'),
-              catCount: val('plan-cat-count') },
+              catCount: val('plan-cat-count'),
+              cluster: !!document.getElementById('plan-cluster')?.checked, clusterTol: val('plan-cluster-tol') },
       lang,
     },
     troops: villages.length ? { villages } : null,

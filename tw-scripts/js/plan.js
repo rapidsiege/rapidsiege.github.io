@@ -181,6 +181,17 @@ function generatePlan() {
   const minMoraleOffRaw = parseFloat((document.getElementById('plan-min-morale-off') || {}).value);
   const minMoraleOff = (isNaN(minMoraleOffRaw) ? 100 : minMoraleOffRaw) / 100;
 
+  // ── Launch-distance clustering (opt-in, LOWEST priority) ────────────────────
+  // When on, the off passes add a soft tiebreaker that keeps each player's off distances tight
+  // (fewer, closer launch bursts + a lower max distance → offs return sooner → faster tribe
+  // re-attack). It NEVER overrides morale/power: it only ever swaps among candidates within
+  // `clusterTol` fields of the primary (morale×power)-optimal pick, so a genuinely closer or
+  // stronger village is never traded away just to cluster. clusterTol default 10 fields (a
+  // "15↔20 yes, 15↔40 no" tolerance). Inert unless the checkbox is on. See pickClustered below.
+  const clusterMode   = !!(document.getElementById('plan-cluster') || {}).checked;
+  const clusterTolRaw = parseFloat((document.getElementById('plan-cluster-tol') || {}).value);
+  const clusterTol    = isNaN(clusterTolRaw) ? 10 : Math.max(0, clusterTolRaw);
+
   // Ignore lists (Offensive Targets). Ignored COORDINATES are dropped from the pool entirely
   // (those villages never send anything). Ignored PLAYERS stay IN the pool but are barred from
   // every regular-OFF pass (folded into offBlocked below) — they may still be hand-picked as
@@ -372,6 +383,32 @@ function generatePlan() {
     return base * (0.5 + 0.5 * remOffFrac(p.v.player));
   };
   const byOptimize = T => (a, b) => (optScore(b, T) - optScore(a, T)) || (distXY(a.c, T.c) - distXY(b.c, T.c));
+
+  // ── Per-player launch-distance clustering (nudge; see clusterMode above) ────
+  // Tracks the off distances already committed for each DECODED player (across the named,
+  // conqueror, POWER and auto passes) so later picks can favour a distance that fits the
+  // player's existing cluster. clusterFit = how far a candidate strays from that player's mean
+  // committed distance (0 when the player has no off yet → neutral, free to seed a cluster).
+  const playerOffDists = {};
+  const noteClusterDist = (name, d) => { (playerOffDists[name] || (playerOffDists[name] = [])).push(d); };
+  const clusterFit = (p, T) => {
+    const arr = playerOffDists[decode(p.v.player)];
+    if (!arr || !arr.length) return 0;
+    const mean = arr.reduce((s, x) => s + x, 0) / arr.length;
+    return Math.abs(distXY(p.c, T.c) - mean);
+  };
+  // Pick the best candidate by `primary` (morale×power, or raw power on POWER targets); then, in
+  // cluster mode only, swap in the tightest-fitting candidate that is still within clusterTol
+  // fields of the primary pick's distance. So clustering breaks near-ties without ever sacrificing
+  // real closeness/strength. Pure `primary[0]` when the mode is off — the exact legacy behaviour.
+  const pickClustered = (cands, T, primary) => {
+    const sorted = cands.slice().sort(primary);
+    if (!clusterMode || sorted.length < 2) return sorted[0];
+    const dCap = distXY(sorted[0].c, T.c) + clusterTol;
+    const swap = sorted.filter(p => distXY(p.c, T.c) <= dCap);
+    if (swap.length < 2) return sorted[0];
+    return swap.sort((a, b) => (clusterFit(a, T) - clusterFit(b, T)) || primary(a, b))[0];
+  };
 
   // ════════════════════════════════════════════════════════════════════════
   // NOBLE TRAINS ARE ASSIGNED FIRST (before the offs).
@@ -661,6 +698,7 @@ function generatePlan() {
           if (got >= want) break;
           p.usedOff = true; got++; placed++; noteOffUsed(p.v.player); noteMvClaim(p, T);
           const d = distXY(p.c, T.c);
+          noteClusterDist(decode(p.v.player), d);
           T.offRows.push({ type: tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
             dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
         }
@@ -750,6 +788,7 @@ function generatePlan() {
       p.usedOff = true; noteOffUsed(p.v.player); noteMvClaim(p, T);
       namedOffReserved[T.i + '|' + tier] = (namedOffReserved[T.i + '|' + tier] || 0) + 1;
       const d = distXY(p.c, T.c);
+      noteClusterDist(decode(p.v.player), d);
       // Sent AS the village's own (≥ requested) tier; no "tier bumped" warning — this is a
       // deliberate coordination off, not a shortage fallback. Tagged `conqueror` so the window
       // pass can land it LAST among the offs (the decisive clear right before the noble).
@@ -809,8 +848,7 @@ function generatePlan() {
       const open = powerTargets.filter(T => remaining[T.i] > 0).sort((a, b) => powSum[a.i] - powSum[b.i]);
       if (!open.length) break;
       const T = open[0];
-      const cands = preferCatOffs(T, pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T)))
-        .sort((a, b) => b.v.offPow - a.v.offPow);
+      const cands = preferCatOffs(T, pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T)));
       remaining[T.i]--;
       if (!cands.length) {
         if (!warned.has(T.i)) {
@@ -823,9 +861,11 @@ function generatePlan() {
         T.offRows.push({ type: 'complete', unassigned: true });
         continue;
       }
-      const p = cands[0];
+      // Raw off power leads on POWER targets; clustering is only a within-tolerance tiebreaker.
+      const p = pickClustered(cands, T, (a, b) => b.v.offPow - a.v.offPow);
       p.usedOff = true; powSum[T.i] += p.v.offPow; noteOffUsed(p.v.player); noteMvClaim(p, T);
       const d = distXY(p.c, T.c);
+      noteClusterDist(decode(p.v.player), d);
       T.offRows.push({ type: p.tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
     }
@@ -868,10 +908,12 @@ function generatePlan() {
         // above), so the auto pass just fills the remaining slots by optimize — preferring the
         // villages that clear the Min. Morale (off) gate, else falling back to all candidates.
         const hi = cands.filter(p => candMorale(p) >= offGate);
-        // Morale gate first (usual requirement), then prefer cat-carriers on a destroyer target.
-        const p = preferCatOffs(T, hi.length ? hi : cands).sort(byOptimize(T))[0];
+        // Morale gate first (usual requirement), then prefer cat-carriers on a destroyer target;
+        // clustering (if on) breaks near-ties among the survivors without overriding morale/power.
+        const p = pickClustered(preferCatOffs(T, hi.length ? hi : cands), T, byOptimize(T));
         p.usedOff = true; noteOffUsed(p.v.player); noteMvClaim(p, T);
         const d = distXY(p.c, T.c);
+        noteClusterDist(decode(p.v.player), d);
         T.offRows.push({
           type: sent, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
           dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us),

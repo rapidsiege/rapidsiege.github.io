@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.20.0', date: '2026-07-21',
+    en: [
+      `<b>⏱ Cluster launch times (optional).</b> Plan Offensive has a new <b>Cluster launch times</b> checkbox with a <b>± tolerance</b> (default 10 fields). When on, the plan keeps each player's offs at <b>similar distances</b>, so their launches group into a few tighter bursts and no attack strays needlessly far out — meaning offs return home sooner for a quicker second wave. It is the <b>lowest-priority</b> factor: it never overrides morale or off power, only breaks near-ties <b>within the ± tolerance</b>, so a much closer or stronger village is never traded away just to cluster. Off by default; your choice is remembered on this device.`,
+    ],
+    es: [
+      `<b>⏱ Agrupar lanzamientos (opcional).</b> El Plan Ofensivo tiene una nueva casilla <b>Agrupar lanzamientos</b> con una <b>tolerancia ±</b> (por defecto 10 campos). Al activarla, el plan mantiene los offs de cada jugador a <b>distancias similares</b>, para que sus lanzamientos se agrupen en unas pocas tandas más compactas y ningún ataque se aleje innecesariamente — así los offs vuelven a casa antes, para una segunda oleada más rápida. Es el factor de <b>menor prioridad</b>: nunca anula la moral ni la potencia ofensiva, solo desempata opciones casi iguales <b>dentro de la tolerancia ±</b>, así que nunca se sacrifica una aldea mucho más cercana o fuerte solo por agrupar. Desactivado por defecto; tu elección se recuerda en este dispositivo.`,
+    ],
+  },
   { ver: 'v4.19.0', date: '2026-07-16',
     en: [
       `<b>✉ Send per-player orders with one click.</b> The <b>Offensive Plan</b> tab has a new <b>✉ Export PMs</b> button (next to Export Per-Player Orders), just like the Defensive Plan: a popup lists every player with their own copy button — click it and that player's full orders are copied to the clipboard, ready to paste into an in-game PM or straight back into the Attack Planner. No more selecting text out of one big box.`,
