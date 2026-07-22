@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.22.1', date: '2026-07-22',
+    en: [
+      `<b>🔗 Clickable coords in By Villages.</b> Each village's coordinate in the <b>By Villages</b> table is now a link to its in-game info page (opens in a new tab), just like the target coords in Outbound Offs. Only active when the world village database is loaded; otherwise the coord stays plain text.`,
+    ],
+    es: [
+      `<b>🔗 Coordenadas clicables en Por Aldeas.</b> La coordenada de cada aldea en la tabla <b>Por Aldeas</b> ahora es un enlace a su página de información en el juego (se abre en una pestaña nueva), igual que las coordenadas de objetivo en Offs Salientes. Solo funciona cuando la base de datos de aldeas del mundo está cargada; si no, la coordenada queda como texto plano.`,
+    ],
+  },
   { ver: 'v4.22.0', date: '2026-07-22',
     en: [
       `<b>📊 Clearer "unused offs" breakdown.</b> In Plan Offensive, <b>Show Assigned Off Counts</b> used to lump every idle off into one <b>unused</b> number — misleading, since most "unused" offs simply can't reach the still-open targets. It's now split by reason: <b>available</b> (free <i>and</i> actually able to hit an open target — the number to watch), <b>too far</b> (beyond your Max distance from every target), and <b>outside draw area</b> (off-capable villages outside your sender coordinate filter / drawn map area, which were previously counted nowhere). The <b>reserved (distance)</b> min-distance holdback is unchanged, and each off tier's buckets now add up exactly to its total.`,

@@ -316,9 +316,16 @@ function renderVillagesTable() {
     empty: '<span class="badge badge-empty">—</span>',
   };
 
+  // Coord links to the village's in-game info page when the world DB is loaded
+  // (villageInfoUrl, plan.js); plain text when it isn't. Keeps the column's text color.
+  const coordCell = coord => {
+    const url = (typeof villageInfoUrl === 'function') ? villageInfoUrl(coord) : null;
+    return url ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:inherit;">${esc(coord)}</a>` : esc(coord);
+  };
+
   const rows = data.map(v => `
     <tr>
-      <td class="left" style="font-family:monospace;">${v.coord}</td>
+      <td class="left" style="font-family:monospace;">${coordCell(v.coord)}</td>
       <td class="left"><span class="player-tag">${decode(v.player)}</span></td>
       <td>${typeBadge[v.type]}</td>
       <td>${TIER_BADGE[v.tier]}</td>
