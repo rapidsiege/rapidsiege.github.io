@@ -31,7 +31,10 @@ let planWarnings = [];
 let planReserved = []; // coords of noble-launch villages held out of the offs (excluded from Unused Offs)
 // Off-pool holdback breakdown for the Plan summary footer, per off tier (off-capable villages only).
 function emptyPlanStats() {
-  const t = () => ({ assigned: 0, heldDist: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, unused: 0, ignored: 0 });
+  // `unused` (pre-v4.22) is split into three geometry-reasoned buckets: `far` (beyond max
+  // distance of every target), `outside` (off-capable but outside the sender area — typed
+  // coord filters / drawn polygon), and `avail` (free, in-area, in-band, in-time → deployable).
+  const t = () => ({ assigned: 0, heldDist: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0 });
   return { complete: t(), tq: t(), half: t() };
 }
 let planStats    = emptyPlanStats();

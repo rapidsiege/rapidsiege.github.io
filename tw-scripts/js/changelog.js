@@ -12,6 +12,14 @@
 // the cards into #cl-list-host and is called on load + on every language switch.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG = [
+  { ver: 'v4.22.0', date: '2026-07-22',
+    en: [
+      `<b>📊 Clearer "unused offs" breakdown.</b> In Plan Offensive, <b>Show Assigned Off Counts</b> used to lump every idle off into one <b>unused</b> number — misleading, since most "unused" offs simply can't reach the still-open targets. It's now split by reason: <b>available</b> (free <i>and</i> actually able to hit an open target — the number to watch), <b>too far</b> (beyond your Max distance from every target), and <b>outside draw area</b> (off-capable villages outside your sender coordinate filter / drawn map area, which were previously counted nowhere). The <b>reserved (distance)</b> min-distance holdback is unchanged, and each off tier's buckets now add up exactly to its total.`,
+    ],
+    es: [
+      `<b>📊 Desglose más claro de offs sin usar.</b> En el Plan Ofensivo, <b>Mostrar Recuento Offs Asignadas</b> juntaba todas las offs ociosas en un único número <b>sin usar</b> — engañoso, porque la mayoría de las offs "sin usar" simplemente no pueden llegar a los objetivos aún abiertos. Ahora se separa por motivo: <b>disponibles</b> (libres <i>y</i> capaces de atacar un objetivo abierto — el número a vigilar), <b>demasiado lejos</b> (fuera de tu distancia máxima de todos los objetivos) y <b>fuera del área</b> (aldeas ofensivas fuera de tu filtro de coordenadas de remitentes / área dibujada, que antes no se contaban en ningún sitio). La reserva por <b>distancia mínima</b> no cambia, y los cubos de cada categoría de off ahora suman exactamente su total.`,
+    ],
+  },
   { ver: 'v4.21.0', date: '2026-07-21',
     en: [
       `<b>💨 Fake noble trains.</b> Snob Mode has a new <b>💨 Fake</b> option (alongside 👑 Solo and ⚔ Split Off). A fake train sends its nobles as a <b>bare decoy</b> — no escort, no troops — so an assigned sender just launches e.g. 4 lone nobles to bait the enemy's defence. It doesn't need a close village: any village <b>in range</b> works, and the plan now picks the <b>farthest</b> in-range one on purpose, since a longer flight shows up in the enemy's incoming list <b>sooner</b> (more warning = more wasted defence). A fake train consumes the sender's nobles but <b>no off</b>, and never pulls a village off off-duty or forces a clearing off. <b>FAKE-type targets can now carry a noble train too</b> (their Senders / Nobles / Snob Mode cells are no longer greyed out) and default to Fake mode — so <b>bulk-adding coordinates as FAKE</b> starts each one in Fake mode (assign a sender and it fields a fake noble train). In every export the fake train is marked with a bold <b>green (FAKE)</b> tag, the same green regular fake off attacks use.`,

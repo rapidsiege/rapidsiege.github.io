@@ -210,7 +210,7 @@ const T = {
     warn_cat_short: (coord, n) => `Only enough catapult-owning defensive villages for ${coord} — ${n} catapult attack(s) short`,
     warn_no_cat_clear: coord => `No catapult-carrying clearing off (≥101 cats) reachable for ${coord} — sent a regular off`,
     plan_summary: (a, u) => `${a} attacks assigned · ${u} unassigned`,
-    plan_offs_summary: (a, d, n, s, u, i, l) => `${a} offs assigned · ${d} reserved (distance) · ${n} reserved (noble launch) · ${s} reserved (split-off) · ${l || 0} outside earliest launch date · ${u} unused · ${i} ignored`,
+    plan_offs_summary: (a, d, n, s, l, far, out, av, i) => `${a} offs assigned · ${d} reserved (distance) · ${n} reserved (noble launch) · ${s} reserved (split-off) · ${l || 0} outside earliest launch date · ${av || 0} unused [available] · ${far || 0} unused [too far] · ${out || 0} unused [outside draw area] · ${i} ignored`,
     btn_show_off_counts: 'Show Assigned Off Counts',
     plan_warnings_toggle: n => `⚠ ${n} ${n === 1 ? 'warning' : 'warnings'} — click to expand`,
     // Snob trains are never assigned a fixed origin village — the player prepares the
@@ -658,7 +658,7 @@ const T = {
     warn_no_cat_clear: coord => `No hay off con catapultas (≥101 cat.) al alcance para ${coord} — enviado un off normal`,
     warn_missed_snob: coord => `Faltan jugadores con nobles para ${coord}`,
     plan_summary: (a, u) => `${a} ataques asignados · ${u} sin asignar`,
-    plan_offs_summary: (a, d, n, s, u, i, l) => `${a} offs asignados · ${d} reservadas (distancia) · ${n} reservadas (lanzamiento de nobles) · ${s} reservadas (escolta split-off) · ${l || 0} fuera de la fecha de envío más temprano · ${u} sin usar · ${i} ignoradas`,
+    plan_offs_summary: (a, d, n, s, l, far, out, av, i) => `${a} offs asignados · ${d} reservadas (distancia) · ${n} reservadas (lanzamiento de nobles) · ${s} reservadas (escolta split-off) · ${l || 0} fuera de la fecha de envío más temprano · ${av || 0} sin usar [disponibles] · ${far || 0} sin usar [demasiado lejos] · ${out || 0} sin usar [fuera del área] · ${i} ignoradas`,
     btn_show_off_counts: 'Mostrar Recuento Offs Asignadas',
     plan_warnings_toggle: n => `⚠ ${n} ${n === 1 ? 'aviso' : 'avisos'} — clic para expandir`,
     plan_prepare_snob: (split, coordBB) => `⚠ Prepara el Tren de Nobles${coordBB ? ` para ${coordBB}` : ''}${split ? ' (Partir Off)' : ''} ⚠`,

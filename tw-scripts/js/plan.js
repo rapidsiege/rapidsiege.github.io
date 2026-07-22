@@ -1090,14 +1090,18 @@ function generatePlan() {
   // 1-2) by each village's OWN tier. Computed HERE (after every off pass) so `usedOff` /
   // `isEscort` are final. Over OFF-CAPABLE villages only (tier !== 'none' — a defensive/empty
   // village isn't an off). The buckets PARTITION each tier's gross village count so the footer
-  // reconciles exactly: gross[tier] = assigned + heldDist + heldNoble + heldSplit + heldLate + unused + ignored.
+  // reconciles exactly: gross[tier] = assigned + heldDist + heldNoble + heldSplit + heldLate + far + outside + avail + ignored.
   //   • ignored    = excluded from the pool by the Ignore Coordinates / Ignore Players lists
+  //   • outside    = off-capable, NOT ignored, but outside the sender area (typed coord filters
+  //                  or the drawn polygon) — so it never enters the pool at all. Counted from the
+  //                  full roster here since the pool is already area-filtered. (was uncounted pre-v4.22)
   //   • assigned   = an off committed in the plan (usedOff, not the escort)
   //   • split-off  = the village whose off rides WITH a noble as the escort (usedOff + isEscort)
   //   • noble launch = a launch village held free for the noble (snobReserved, not used)
   //   • distance   = the blanket minDist holdback (tooClose), not otherwise used/reserved
-  //   • unused     = in the pool, off-capable, neither used nor reserved (surplus / no
-  //                  request for that tier / out of range or time)
+  //   • far        = free, in-area, but beyond MAX distance of every target (can't reach anything)
+  //   • avail      = free, in-area, in-band AND in time for some target → genuinely deployable now
+  //                  (the "did I leave usable offs on the table?" number; ideally near 0)
   // A village counts as RESERVED for a split-off / noble launch if it's in the reservation
   // set, whether or not the snob loop ended up launching from it — an escort the engine held
   // back is off-limits to the off passes (offBlocked), so it's "reserved", NOT "unused".
@@ -1106,7 +1110,7 @@ function generatePlan() {
   // A village is "outside earliest launch date" (heldLate) when it's within off-distance of at
   // least one target but is too LATE for every such target (fails okOffTime) — i.e. timing is the
   // ONLY thing stopping it, so pushing the arrival date (or the Earliest send) later would free
-  // it. Villages out of DISTANCE range everywhere are a different reason and stay in `unused`.
+  // it. Villages out of DISTANCE range everywhere go to `far`; the rest (reachable + in time) to `avail`.
   const offLate = p => {
     let reachable = false;
     for (const T of targets) {
@@ -1116,11 +1120,18 @@ function generatePlan() {
     }
     return reachable;
   };
+  // Beyond MAX distance of every target — can't reach anything (the pool loop reaches this
+  // check only after tooClose is already handled, so okOffDist here is pure max-distance).
+  const offFar = p => !targets.some(T => T.c && okOffDist(p, T.c));
   planStats = emptyPlanStats();
   for (const v of villages) {
     const tier = getOffTier(v.offPow);
     if (tier === 'none') continue;
-    if (ignoreCoords.has(v.coord) || ignorePlayers.has(v.player)) planStats[tier].ignored++;
+    if (ignoreCoords.has(v.coord) || ignorePlayers.has(v.player)) { planStats[tier].ignored++; continue; }
+    // Off-capable, not ignored, but the typed coord filters / drawn polygon keep it out of the
+    // (already area-filtered) pool → "outside draw area". Counted here from the full roster.
+    const c = parseCoordStr(v.coord);
+    if (!c || !passesCoordFilters(c, planCoordFilters) || !passesCoordPolygon(c.x, c.y)) planStats[tier].outside++;
   }
   for (const p of pool) {
     if (p.tier === 'none') continue;                                          // not an off
@@ -1131,7 +1142,8 @@ function generatePlan() {
     else if (p.usedOff)                                     s.assigned++;      // an off committed in the plan
     else if (tooClose.has(p))                               s.heldDist++;      // blanket min-distance holdback
     else if (offLate(p))                                    s.heldLate++;      // reachable by distance but too late everywhere
-    else                                                    s.unused++;        // genuinely free / not needed / out of distance range
+    else if (offFar(p))                                     s.far++;           // free, in-area, but beyond max distance of every target
+    else                                                    s.avail++;         // free, in-area, in-band, in time → deployable now
   }
 
   saveOffensive();
@@ -1168,12 +1180,12 @@ function renderPlanTable() {
   if (planRows.length && planStats) {
     // One line per off tier, behind a collapsible toggle (native <details>, file://-safe).
     const segs = ['complete', 'tq', 'half'].map(tier => {
-      const s = planStats[tier] || { assigned: 0, heldDist: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, unused: 0, ignored: 0 };
+      const s = planStats[tier] || { assigned: 0, heldDist: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0 };
       // [N] = gross count of villages of this tier tribe-wide (same denominator as the
       // Offensive Targets footer — total selectable offs, before any holdback/reservation).
       const gross = villages.filter(v => getOffTier(v.offPow) === tier).length;
       return `<span class="badge ${TIER_BADGE[tier]}">${t('tier_' + tier)} [${gross}]</span> `
-        + esc(t('plan_offs_summary')(s.assigned, s.heldDist, s.heldNoble, s.heldSplit, s.unused, s.ignored, s.heldLate));
+        + esc(t('plan_offs_summary')(s.assigned, s.heldDist, s.heldNoble, s.heldSplit, s.heldLate, s.far, s.outside, s.avail, s.ignored));
     });
     summary += `<details style="margin-top:6px;"><summary style="cursor:pointer;">${esc(t('btn_show_off_counts'))}</summary>`
       + `<div style="margin-top:4px;line-height:1.9;">${segs.join('<br>')}</div></details>`;
