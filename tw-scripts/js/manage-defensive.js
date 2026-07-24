@@ -59,8 +59,6 @@ function loadManageDef() {
   } catch {}
 }
 
-// Player names come from two clocks (troop-file raw, live-page decoded) — compare trimmed+lowercased.
-function mdNorm(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
 // Empty per-type defensive tally.
 function mdZero() { return { spear: 0, sword: 0, spy: 0, heavy: 0 }; }
 // Add DEF_OBJ_UNITS of `src` into `dst` (mutates dst, returns it).

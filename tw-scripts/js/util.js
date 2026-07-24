@@ -254,11 +254,6 @@ function numCell(n) {
   if (n >= 2000) return `<td class="num-high">${n.toLocaleString()}</td>`;
   return `<td>${n.toLocaleString()}</td>`;
 }
-function numCellAccent(n) {
-  if (n === 0) return '<td class="num-zero">0</td>';
-  const style = n >= 100 ? 'color:#f0c040;font-weight:600;' : 'color:#c8982a;';
-  return `<td style="${style}">${n.toLocaleString()}</td>`;
-}
 function decode(s) { // URL-decode player names like "Vitrocer%C3%A1mica"
   try { return decodeURIComponent(s); } catch { return s; }
 }

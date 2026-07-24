@@ -237,19 +237,6 @@ function colorForVillage(v) {
   return (!v.playerId || v.playerId === '0') ? MAP_COLOR_BARB : MAP_COLOR_OWNED;
 }
 
-// Is a village coloured by a custom group (used to decide whether to draw the
-// zoomed-in color circle for non-barbarian villages)? Pure: reads mapGroupIndex.
-function villageGroupColor(v) {
-  if (!v) return null;
-  const coord = v.x + '|' + v.y;
-  if (mapGroupIndex.coords[coord] != null) return mapGroupIndex.coords[coord];
-  const pname = (typeof playerDb !== 'undefined' && playerDb[v.playerId]) || '';
-  if (pname && mapGroupIndex.playersLc[pname.toLowerCase()] != null) return mapGroupIndex.playersLc[pname.toLowerCase()];
-  const tag = (typeof dbTribeTag === 'function') ? dbTribeTag(v) : '';
-  if (tag && mapGroupIndex.tribesLc[tag.toLowerCase()] != null) return mapGroupIndex.tribesLc[tag.toLowerCase()];
-  return null;
-}
-
 // Classify a user-typed group-member token: a coord (x|y), a known tribe tag, else a player.
 function classifyGroupToken(tok) {
   tok = String(tok || '').trim();

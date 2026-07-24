@@ -977,9 +977,10 @@
 </div>
 
 <!-- ═══════════════════════════ CHANGELOG ═══════════════════════════ -->
-<!-- Changelog content lives in js/changelog.js (the CHANGELOG array + renderChangelog).
-     On a version bump, add ONE entry at the TOP of CHANGELOG there and bump #app-version
-     in the footer below — no need to edit this file. -->
+<!-- Changelog content lives in js/changelog.js (CHANGELOG_CURRENT + renderChangelog);
+     v3.x and older sit frozen in js/changelog-archive.js and are concatenated on.
+     On a version bump, add ONE entry at the TOP of CHANGELOG_CURRENT there and bump
+     #app-version in the footer below — no need to edit this file. -->
 <div class="tab-content" id="tab-changelog">
   <div class="section-header"><h2 data-i18n="sec_changelog">Changelog</h2></div>
   <p style="font-size:12px;color:#5a3a18;margin-top:6px;margin-bottom:16px;" data-i18n="changelog_intro">Feature and change history for the Tribe Calculator, per version bump.</p>
@@ -989,6 +990,7 @@
 <script src="js/lz-string.js"></script>
 <script src="js/constants.js"></script>
 <script src="js/i18n.js"></script>
+<script src="js/changelog-archive.js"></script>
 <script src="js/changelog.js"></script>
 <script src="js/map.js"></script>
 <script src="js/map-render.js"></script>
@@ -1081,7 +1083,7 @@ document.addEventListener('drop', e => {
 
 <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
 <!-- ON EVERY VERSION BUMP: update this version number AND add a matching entry at the
-     TOP of the CHANGELOG array in js/changelog.js (en + es). -->
+     TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
   <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.22.1 &nbsp;·&nbsp; 2026-07-22</span></span>
