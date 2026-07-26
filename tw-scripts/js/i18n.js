@@ -358,7 +358,7 @@ const T = {
     pm_hint_off:'Each button copies ONE player\'s full orders to the clipboard — paste them into a PM to that player, or straight into the Attack Planner to re-import their attacks.',
     pm_meta:(n,c,b)=>`${n} order${n===1?'':'s'} · ${c.toLocaleString()} chars · ${b.toLocaleString()} brackets`,
     btn_pm_template:'📝 Template',
-    pm_tpl_hint:'This template wraps every copied PM. {orders} is replaced with the player\'s orders block and {date} with the plan\'s arrival date (e.g. SATURDAY 25). Leave the template empty to copy the orders alone.',
+    pm_tpl_hint:'This template wraps every copied PM. Placeholders: {orders} → the player\'s orders block · {date} → the plan\'s arrival date (offensive plan only, e.g. SATURDAY 25) · {part} → " 1/2" when a player\'s orders span several PMs (empty otherwise). Leave the template empty to copy the orders alone.',
     pm_tpl_reset:'↺ Reset to default',
     pm_tpl_default:`Hello,
 
@@ -376,6 +376,19 @@ const T = {
 [i]If you have any questions, feel free to ask.[/i]
 
 Thanks a lot!`,
+    pm_tpl_def_default:`Hello!
+
+Let's keep organizing the defense! Once again, it's very important that you set aside some time for this — the tribe depends on it.
+
+In the spoiler you'll see each of the orders where you have to send your defense as support; go through them one by one, clicking [b][color=#2e2eff]SEND[/color][/b] and sending the support.
+
+I know it's a lot of orders, but it's already far fewer than last time.
+
+[b]It's important that you send all the troops indicated. If they're out scavenging, wait for them to come back and then send them, and if you're short on troops, wait until you have them all and send them.[/b]
+
+Thanks a lot for the work you're about to do — it really needs to be done this way, we're going to optimize as much as we can. We've already seen how quickly lost units are replaced when we get attacked if we build the stacks this way.
+
+[spoiler=Support Orders{part}]{orders}[/spoiler]`,
     btn_export_script:'📜 Export supportSender',
     script_export_hint:'Each button copies that player’s plan in the compact SUPPORTPLAN format for the supportSender in-game script: on the Rally point → Mass support screen, they paste it once and the script fills every planned order target by target. It uses no BB brackets, so it can ride inside the same PM as the readable orders.',
     def_bb_depart:(s)=>`send by ${s}`, def_bb_arrive:(s)=>`arrives ${s}`,
@@ -823,7 +836,7 @@ Thanks a lot!`,
     pm_hint_off:'Cada botón copia TODAS las órdenes de un jugador al portapapeles — pégalas en un MP a ese jugador, o directamente en el Planificador de Ataques para reimportar sus ataques.',
     pm_meta:(n,c,b)=>`${n} orden${n===1?'':'es'} · ${c.toLocaleString()} caracteres · ${b.toLocaleString()} corchetes`,
     btn_pm_template:'📝 Plantilla',
-    pm_tpl_hint:'Esta plantilla envuelve cada MP copiado. {orders} se sustituye por el bloque de órdenes del jugador y {date} por la fecha de llegada del plan (p. ej. SÁBADO 25). Deja la plantilla vacía para copiar solo las órdenes.',
+    pm_tpl_hint:'Esta plantilla envuelve cada MP copiado. Marcadores: {orders} → el bloque de órdenes del jugador · {date} → la fecha de llegada del plan (solo plan ofensivo, p. ej. SÁBADO 25) · {part} → " 1/2" cuando las órdenes de un jugador ocupan varios MPs (vacío si no). Deja la plantilla vacía para copiar solo las órdenes.',
     pm_tpl_reset:'↺ Restaurar por defecto',
     pm_tpl_default:`Buenas,
 
@@ -841,6 +854,19 @@ Thanks a lot!`,
 [i]Si tenéis alguna duda, podéis preguntar sin problema.[/i]
 
 Muchas gracias!`,
+    pm_tpl_def_default:`Buenas!
+
+Vamos a seguir organizando la defensa! Una vez más, es muy importante que puedas dedicarle un tiempo a esto, de ello depende la tribu.
+
+En el spoiler observarás cada una de las órdenes donde tienes que mandar la deff a apoyar; tienes que ir una por una dándole a [b][color=#2e2eff]ENVIAR[/color][/b] y mandando el apoyo.
+
+Sé que son muchas órdenes, pero ya son muchas menos que la vez anterior.
+
+[b]Es importante que mandes todas las tropas que se indican. Si están recolectando, espera a que vuelvan y las mandas, y si faltan tropas, espera a tenerlas todas y mandarlas.[/b]
+
+Muchas gracias por el trabajo que vas a hacer, pero es muy necesario hacerlo así, vamos a optimizar al máximo. Ya vimos lo rápido que es reponer unidades perdidas cuando nos atacan si hacemos los blindajes así.
+
+[spoiler=Órdenes Apoyo{part}]{orders}[/spoiler]`,
     btn_export_script:'📜 Exportar supportSender',
     script_export_hint:'Cada botón copia el plan de ese jugador en el formato compacto SUPPORTPLAN para el script del juego supportSender: en la pantalla Plaza → Apoyo masivo, lo pega una vez y el script rellena cada orden planificada objetivo por objetivo. No usa corchetes BB, así que puede ir dentro del mismo MP que las órdenes legibles.',
     def_bb_depart:(s)=>`salir antes de ${s}`, def_bb_arrive:(s)=>`llega ${s}`,

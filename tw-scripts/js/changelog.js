@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v4.24.0', date: '2026-07-26',
+    en: [
+      `<b>📝 PM template for the Defensive Plan too.</b> Plan Defense's <b>✉ Export PMs</b> popup now has the same <b>📝 Template</b> button as the Offensive Plan, with its own separate template (a ready-made defense one is included). New placeholder <b>{part}</b>: when a player's orders are split across several PMs by the bracket limit, it becomes " 1/2", " 2/2"… — so a spoiler titled <b>Support Orders{part}</b> reads "Support Orders 1/2" in the first message and "Support Orders 2/2" in the next; players who fit in one PM just see "Support Orders". Every split part gets the full template, since each one is sent as its own PM.`,
+    ],
+    es: [
+      `<b>📝 Plantilla de MP también para el Plan Defensivo.</b> La ventana <b>✉ Exportar MPs</b> del Plan Defensivo ahora tiene el mismo botón <b>📝 Plantilla</b> que el Plan Ofensivo, con su propia plantilla separada (incluye una de defensa ya preparada). Nuevo marcador <b>{part}</b>: cuando las órdenes de un jugador se dividen en varios MPs por el límite de corchetes, se convierte en " 1/2", " 2/2"… — así un spoiler titulado <b>Órdenes Apoyo{part}</b> se lee "Órdenes Apoyo 1/2" en el primer mensaje y "Órdenes Apoyo 2/2" en el siguiente; los jugadores que caben en un MP ven simplemente "Órdenes Apoyo". Cada parte dividida recibe la plantilla completa, ya que cada una se envía como su propio MP.`,
+    ],
+  },
   { ver: 'v4.23.0', date: '2026-07-26',
     en: [
       `<b>📝 PM template for Export PMs.</b> Plan Offensive's <b>✉ Export PMs</b> popup has a new <b>📝 Template</b> button: a message template that wraps every copied PM, so each player gets your greeting, arrival-date call-out and launch instructions around their own orders. <b>{orders}</b> is replaced with the player's orders block and <b>{date}</b> with the plan's arrival date (e.g. SATURDAY 25). A ready-made template is included; edit it to your liking and Save — it's remembered on this device. Leave it empty to copy the orders alone, or Reset to get the default back. The wrapped PM still re-imports cleanly into the Attack Planner.`,

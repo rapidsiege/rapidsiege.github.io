@@ -1550,34 +1550,45 @@ function showPlayerPlanPm() {
   // Named players get the PM template wrapper; the UNASSIGNED catch-all stays raw (there is
   // no one to greet). Wrapping happens here, at render time, so the meta line (chars /
   // brackets) always reports the real message being copied.
-  const tpl  = pmTemplateCurrent();
+  pmTplCtx = 'off';
+  const tpl  = pmTemplateCurrent('off');
   const date = bbDateLabel().toUpperCase();
   const msgs = offPmMessagesFrom(planRows, planGroups()).map(m =>
-    m.unassigned ? m : { ...m, parts: m.parts.map(p => pmApplyTemplate(tpl, p, date)) });
+    m.unassigned ? m : { ...m, parts: m.parts.map((p, k) => pmApplyTemplate(tpl, p, date, pmPartLabel(k, m.parts.length))) });
   renderPmModal(msgs, t('pm_hint_off'), pmTemplateBarHtml());
 }
 
-// ── 📝 PM template (v4.23.0): optional wrapper around each copied per-player PM ──
-// Plain text with two placeholders: {orders} → the player's full Orders block, {date} → the
-// plan's arrival date as an uppercase bbDateLabel ("SÁBADO 25"). Stored raw under one
-// localStorage key shared by both UI languages (ops are written in the tribe's language);
-// nothing stored = the current language's default. Saving an EMPTY template disables
-// wrapping without losing the default (Reset brings it back).
-const PM_TPL_KEY = 'tw_pm_template';
-function pmTemplateCurrent() {
+// ── 📝 PM template (v4.23.0 offensive / v4.24.0 defensive): optional wrapper around each
+// copied per-player PM. Plain text with three placeholders: {orders} → the player's full
+// Orders block, {date} → the plan's arrival date as an uppercase bbDateLabel ("SÁBADO 25",
+// offensive only — the defensive plan has no date input), {part} → " k/n" when a player's
+// orders split across several PMs (defense's bracket packing), '' otherwise. One template
+// per plan side, each stored raw under its own localStorage key shared by both UI languages
+// (ops are written in the tribe's language); nothing stored = the current language's
+// default. Saving an EMPTY template disables wrapping without losing the default (Reset
+// brings it back). The editor UI (pmTemplateBarHtml + handlers) is shared — pmTplCtx says
+// which side's template it edits, set by the show*Pm opener that built the modal.
+const PM_TPL_KEYS     = { off: 'tw_pm_template', def: 'tw_pm_template_def' };
+const PM_TPL_DEFAULTS = { off: 'pm_tpl_default', def: 'pm_tpl_def_default' };
+let pmTplCtx = 'off';
+function pmTemplateCurrent(ctx) {
+  ctx = ctx || pmTplCtx;
   let s = null;
-  try { s = localStorage.getItem(PM_TPL_KEY); } catch (e) {}
-  return s == null ? t('pm_tpl_default') : s;
+  try { s = localStorage.getItem(PM_TPL_KEYS[ctx]); } catch (e) {}
+  return s == null ? t(PM_TPL_DEFAULTS[ctx]) : s;
 }
+// " k/n" spoiler/label suffix for part k (0-based) of n; single-part players get ''. Pure.
+function pmPartLabel(k, n) { return n > 1 ? ` ${k + 1}/${n}` : ''; }
 // Substitute the placeholders. {orders} is forced onto its own line(s) even when the template
 // glues it inline ("[spoiler=…]{orders}[/spoiler]") — the attack-planner re-import anchors the
 // "========== NAME (n) ==========" header at line START, so the block must never share a line
 // with template text. {date} only substitutes when a label exists (no arrival date set → the
 // literal {date} stays visible as a fill-me-in flag). A template without {orders} appends the
 // block at the end — orders must never be lost; a blank template returns them unwrapped. Pure.
-function pmApplyTemplate(tpl, orders, dateLabel) {
+function pmApplyTemplate(tpl, orders, dateLabel, partLabel) {
   tpl = String(tpl == null ? '' : tpl);
   if (!tpl.trim()) return orders;
+  tpl = tpl.split('{part}').join(partLabel || '');
   if (dateLabel) tpl = tpl.split('{date}').join(dateLabel);
   const parts = tpl.split('{orders}');
   if (parts.length === 1) return tpl.trimEnd() + '\n\n' + orders;
@@ -1616,14 +1627,15 @@ function pmTplSave() {
   try {
     // Saving the untouched default stores nothing — the template keeps following the UI
     // language (and future default tweaks) until the user actually customizes it.
-    if (ta.value === t('pm_tpl_default')) localStorage.removeItem(PM_TPL_KEY);
-    else localStorage.setItem(PM_TPL_KEY, ta.value);
+    if (ta.value === t(PM_TPL_DEFAULTS[pmTplCtx])) localStorage.removeItem(PM_TPL_KEYS[pmTplCtx]);
+    else localStorage.setItem(PM_TPL_KEYS[pmTplCtx], ta.value);
   } catch (e) {}
-  showPlayerPlanPm(); // re-render with the new wrapper (meta counts update; copy-done marks reset)
+  // Re-render with the new wrapper (meta counts update; copy-done marks reset).
+  if (pmTplCtx === 'def') showDefPmExport(); else showPlayerPlanPm();
 }
 function pmTplReset() {
   const ta = document.getElementById('pm-tpl-text');
-  if (ta) ta.value = t('pm_tpl_default'); // fills the editor only — Save persists it
+  if (ta) ta.value = t(PM_TPL_DEFAULTS[pmTplCtx]); // fills the editor only — Save persists it
 }
 
 // ── Per-player attack TABLE export (BB [table], one section per player) ─────────

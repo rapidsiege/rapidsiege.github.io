@@ -859,9 +859,20 @@ function renderPmModal(messages, hint, topHtml) {
   ).join('');
   document.getElementById('pm-modal').classList.add('open');
 }
+// Messages wrapped in the defensive PM template (📝 shared editor in plan.js, ctx 'def').
+// Each PART is its own in-game PM, so EVERY part gets the full wrapper and {part} numbers
+// the spoiler label ("Órdenes Apoyo 1/2") when a player splits across messages. No date
+// source on this side — a {date} in a custom defense template stays literal. The template's
+// own brackets (~10) ride in the 500-bracket headroom PM_MAX_BRACKETS already leaves.
+function defPmWrappedMessages(maxBrackets) {
+  const tpl = pmTemplateCurrent('def');
+  return defPmMessages(maxBrackets).map(m => ({ ...m,
+    parts: m.parts.map((p, k) => pmApplyTemplate(tpl, p, '', pmPartLabel(k, m.parts.length))) }));
+}
 function showDefPmExport() {
   if (!defPlanRows.length) { alert(t('empty_no_def_plan')); return; }
-  renderPmModal(defPmMessages());
+  pmTplCtx = 'def';
+  renderPmModal(defPmWrappedMessages(), null, pmTemplateBarHtml());
 }
 function closePmModal() { document.getElementById('pm-modal').classList.remove('open'); }
 function copyDefPm(pi, k, btn) {
