@@ -357,6 +357,25 @@ const T = {
     pm_hint:'Each button copies ONE in-game message to the clipboard — paste it into a PM to that player. Messages stay under 4,500 brackets (the game allows ~5,000), so you have room to add a few words of your own. Players over the limit are split into numbered parts; orders are numbered 1., 2., 3.… across parts.',
     pm_hint_off:'Each button copies ONE player\'s full orders to the clipboard — paste them into a PM to that player, or straight into the Attack Planner to re-import their attacks.',
     pm_meta:(n,c,b)=>`${n} order${n===1?'':'s'} · ${c.toLocaleString()} chars · ${b.toLocaleString()} brackets`,
+    btn_pm_template:'📝 Template',
+    pm_tpl_hint:'This template wraps every copied PM. {orders} is replaced with the player\'s orders block and {date} with the plan\'s arrival date (e.g. SATURDAY 25). Leave the template empty to copy the orders alone.',
+    pm_tpl_reset:'↺ Reset to default',
+    pm_tpl_default:`Hello,
+
+[b][u]ARRIVAL DATE:[/u][/b] [color=#0000a5][b]{date}[/b][/color] [i](The arrival time is shown in [color=#0000a5][b]BLUE[/b][/color], next to each attack).[/i]
+
+[b][u]LAUNCH TIME:[/u][/b] Shown in [color=#ff0000][b]RED[/b][/color]: which day, at what time and from which village to launch [i](you can adjust it).[/i]
+
+
+[b]- PAY CLOSE ATTENTION TO HOW EACH TRAIN MUST BE LAUNCHED [i](whether it must be sent split, or not).[/i][/b]
+- We launch each train from as close as possible.
+- Mind which building the catapults must aim at. It is marked on each attack.
+
+[spoiler=TARGETS]{orders}[/spoiler]
+
+[i]If you have any questions, feel free to ask.[/i]
+
+Thanks a lot!`,
     btn_export_script:'📜 Export supportSender',
     script_export_hint:'Each button copies that player’s plan in the compact SUPPORTPLAN format for the supportSender in-game script: on the Rally point → Mass support screen, they paste it once and the script fills every planned order target by target. It uses no BB brackets, so it can ride inside the same PM as the readable orders.',
     def_bb_depart:(s)=>`send by ${s}`, def_bb_arrive:(s)=>`arrives ${s}`,
@@ -803,6 +822,25 @@ const T = {
     pm_hint:'Cada botón copia UN mensaje del juego al portapapeles — pégalo en un MP a ese jugador. Los mensajes se quedan por debajo de 4.500 corchetes (el juego permite ~5.000), así que tienes margen para añadir unas palabras propias. Los jugadores que superan el límite se dividen en partes numeradas; las órdenes van numeradas 1., 2., 3.… a través de las partes.',
     pm_hint_off:'Cada botón copia TODAS las órdenes de un jugador al portapapeles — pégalas en un MP a ese jugador, o directamente en el Planificador de Ataques para reimportar sus ataques.',
     pm_meta:(n,c,b)=>`${n} orden${n===1?'':'es'} · ${c.toLocaleString()} caracteres · ${b.toLocaleString()} corchetes`,
+    btn_pm_template:'📝 Plantilla',
+    pm_tpl_hint:'Esta plantilla envuelve cada MP copiado. {orders} se sustituye por el bloque de órdenes del jugador y {date} por la fecha de llegada del plan (p. ej. SÁBADO 25). Deja la plantilla vacía para copiar solo las órdenes.',
+    pm_tpl_reset:'↺ Restaurar por defecto',
+    pm_tpl_default:`Buenas,
+
+[b][u]FECHA DE LLEGADA:[/u][/b] [color=#0000a5][b]{date}[/b][/color] [i](La hora está indicada en [color=#0000a5][b]AZUL[/b][/color], al lado de cada ataque).[/i]
+
+[b][u]HORA DE LANZAMIENTO:[/u][/b] Aparece en [color=#ff0000][b]ROJO[/b][/color] qué día, a qué hora y desde qué pueblo lanzar [i](lo podéis modificar).[/i]
+
+
+[b]- FIJAOS BIEN CÓMO HAY QUE LANZAR CADA TREN [i](si tiene que ir partido, o no).[/i][/b]
+- Lanzamos cada tren lo más cerca posible.
+- Atención al edificio al que tienen que apuntar las catapultas. Sale marcado por ataque.
+
+[spoiler=OBJETIVOS]{orders}[/spoiler]
+
+[i]Si tenéis alguna duda, podéis preguntar sin problema.[/i]
+
+Muchas gracias!`,
     btn_export_script:'📜 Exportar supportSender',
     script_export_hint:'Cada botón copia el plan de ese jugador en el formato compacto SUPPORTPLAN para el script del juego supportSender: en la pantalla Plaza → Apoyo masivo, lo pega una vez y el script rellena cada orden planificada objetivo por objetivo. No usa corchetes BB, así que puede ir dentro del mismo MP que las órdenes legibles.',
     def_bb_depart:(s)=>`salir antes de ${s}`, def_bb_arrive:(s)=>`llega ${s}`,

@@ -1542,12 +1542,88 @@ function offPmMessagesFrom(planRows, allGroups) {
     return { player: name, parts: [playerPlanBBBlock(name, rows, allGroups).trimEnd()], orderCount: rows.length };
   });
   if (unassigned.length)
-    msgs.push({ player: t('bb_unassigned'), parts: [unassignedPlanBBBlock(unassigned).trimEnd()], orderCount: unassigned.length });
+    msgs.push({ player: t('bb_unassigned'), parts: [unassignedPlanBBBlock(unassigned).trimEnd()], orderCount: unassigned.length, unassigned: true });
   return msgs;
 }
 function showPlayerPlanPm() {
   if (!planRows.length) { alert(t('empty_no_plan')); return; }
-  renderPmModal(offPmMessagesFrom(planRows, planGroups()), t('pm_hint_off'));
+  // Named players get the PM template wrapper; the UNASSIGNED catch-all stays raw (there is
+  // no one to greet). Wrapping happens here, at render time, so the meta line (chars /
+  // brackets) always reports the real message being copied.
+  const tpl  = pmTemplateCurrent();
+  const date = bbDateLabel().toUpperCase();
+  const msgs = offPmMessagesFrom(planRows, planGroups()).map(m =>
+    m.unassigned ? m : { ...m, parts: m.parts.map(p => pmApplyTemplate(tpl, p, date)) });
+  renderPmModal(msgs, t('pm_hint_off'), pmTemplateBarHtml());
+}
+
+// ── 📝 PM template (v4.23.0): optional wrapper around each copied per-player PM ──
+// Plain text with two placeholders: {orders} → the player's full Orders block, {date} → the
+// plan's arrival date as an uppercase bbDateLabel ("SÁBADO 25"). Stored raw under one
+// localStorage key shared by both UI languages (ops are written in the tribe's language);
+// nothing stored = the current language's default. Saving an EMPTY template disables
+// wrapping without losing the default (Reset brings it back).
+const PM_TPL_KEY = 'tw_pm_template';
+function pmTemplateCurrent() {
+  let s = null;
+  try { s = localStorage.getItem(PM_TPL_KEY); } catch (e) {}
+  return s == null ? t('pm_tpl_default') : s;
+}
+// Substitute the placeholders. {orders} is forced onto its own line(s) even when the template
+// glues it inline ("[spoiler=…]{orders}[/spoiler]") — the attack-planner re-import anchors the
+// "========== NAME (n) ==========" header at line START, so the block must never share a line
+// with template text. {date} only substitutes when a label exists (no arrival date set → the
+// literal {date} stays visible as a fill-me-in flag). A template without {orders} appends the
+// block at the end — orders must never be lost; a blank template returns them unwrapped. Pure.
+function pmApplyTemplate(tpl, orders, dateLabel) {
+  tpl = String(tpl == null ? '' : tpl);
+  if (!tpl.trim()) return orders;
+  if (dateLabel) tpl = tpl.split('{date}').join(dateLabel);
+  const parts = tpl.split('{orders}');
+  if (parts.length === 1) return tpl.trimEnd() + '\n\n' + orders;
+  let out = parts[0];
+  for (let i = 1; i < parts.length; i++) {
+    if (out && !out.endsWith('\n')) out += '\n';
+    out += orders;
+    if (parts[i] && !parts[i].startsWith('\n')) out += '\n';
+    out += parts[i];
+  }
+  return out;
+}
+// The 📝 Template button + collapsed editor injected at the top of the PM modal body
+// (offensive export only — renderPmModal's topHtml hook). Handlers are globals below.
+function pmTemplateBarHtml() {
+  return `<div class="pm-tpl-bar"><button class="btn btn-ghost btn-sm" onclick="pmTplToggle()">${esc(t('btn_pm_template'))}</button></div>
+<div class="pm-tpl-editor" id="pm-tpl-editor" style="display:none">
+  <div class="pm-hint">${esc(t('pm_tpl_hint'))}</div>
+  <textarea id="pm-tpl-text" class="pm-tpl-text" spellcheck="false"></textarea>
+  <div class="pm-tpl-actions">
+    <button class="btn btn-sm" onclick="pmTplSave()">${esc(t('btn_save'))}</button>
+    <button class="btn btn-ghost btn-sm" onclick="pmTplReset()">${esc(t('pm_tpl_reset'))}</button>
+  </div>
+</div>`;
+}
+function pmTplToggle() {
+  const ed = document.getElementById('pm-tpl-editor');
+  if (!ed) return;
+  const opening = ed.style.display === 'none';
+  ed.style.display = opening ? '' : 'none';
+  if (opening) document.getElementById('pm-tpl-text').value = pmTemplateCurrent();
+}
+function pmTplSave() {
+  const ta = document.getElementById('pm-tpl-text');
+  if (!ta) return;
+  try {
+    // Saving the untouched default stores nothing — the template keeps following the UI
+    // language (and future default tweaks) until the user actually customizes it.
+    if (ta.value === t('pm_tpl_default')) localStorage.removeItem(PM_TPL_KEY);
+    else localStorage.setItem(PM_TPL_KEY, ta.value);
+  } catch (e) {}
+  showPlayerPlanPm(); // re-render with the new wrapper (meta counts update; copy-done marks reset)
+}
+function pmTplReset() {
+  const ta = document.getElementById('pm-tpl-text');
+  if (ta) ta.value = t('pm_tpl_default'); // fills the editor only — Save persists it
 }
 
 // ── Per-player attack TABLE export (BB [table], one section per player) ─────────

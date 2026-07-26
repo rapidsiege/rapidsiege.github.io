@@ -445,6 +445,16 @@
     .pm-player-btn { min-width: 200px; text-align: left; }
     .pm-player-btn.pm-done { background: #16320f; color: #8fd06f; border-color: #3f7d2e; }
     .pm-meta { font-size: 11px; color: #5a3a18; white-space: nowrap; }
+    /* 📝 PM template editor (Plan Offensive Export PMs, v4.23.0) */
+    .pm-tpl-bar { margin-bottom: 8px; }
+    .pm-tpl-editor { border: 1px solid #3a2808; border-radius: 6px; padding: 10px; margin-bottom: 12px; background: #0e0a03; }
+    .pm-tpl-text {
+      width: 100%; min-height: 280px; box-sizing: border-box;
+      background: #1a1206; border: 1px solid #3a2808; color: #d4b483;
+      font-family: 'Consolas', 'Courier New', monospace; font-size: 12px;
+      padding: 10px 12px; border-radius: 4px; resize: vertical; outline: none;
+    }
+    .pm-tpl-actions { display: flex; gap: 8px; margin-top: 8px; }
 
     /* ── Mass-edit modal rows (Edit Selected Rows) ── */
     .mass-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid #2e1e08; }

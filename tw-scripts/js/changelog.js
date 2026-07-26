@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v4.23.0', date: '2026-07-26',
+    en: [
+      `<b>📝 PM template for Export PMs.</b> Plan Offensive's <b>✉ Export PMs</b> popup has a new <b>📝 Template</b> button: a message template that wraps every copied PM, so each player gets your greeting, arrival-date call-out and launch instructions around their own orders. <b>{orders}</b> is replaced with the player's orders block and <b>{date}</b> with the plan's arrival date (e.g. SATURDAY 25). A ready-made template is included; edit it to your liking and Save — it's remembered on this device. Leave it empty to copy the orders alone, or Reset to get the default back. The wrapped PM still re-imports cleanly into the Attack Planner.`,
+    ],
+    es: [
+      `<b>📝 Plantilla de MP para Exportar MPs.</b> La ventana <b>✉ Exportar MPs</b> del Plan Ofensivo tiene un nuevo botón <b>📝 Plantilla</b>: una plantilla de mensaje que envuelve cada MP copiado, de modo que cada jugador recibe tu saludo, la fecha de llegada y las instrucciones de lanzamiento alrededor de sus propias órdenes. <b>{orders}</b> se sustituye por el bloque de órdenes del jugador y <b>{date}</b> por la fecha de llegada del plan (p. ej. SÁBADO 25). Incluye una plantilla ya preparada; edítala a tu gusto y Guarda — se recuerda en este dispositivo. Déjala vacía para copiar solo las órdenes, o Restaura para recuperar la de por defecto. El MP envuelto se sigue reimportando sin problemas en el Planificador de Ataques.`,
+    ],
+  },
   { ver: 'v4.22.1', date: '2026-07-22',
     en: [
       `<b>🔗 Clickable coords in By Villages.</b> Each village's coordinate in the <b>By Villages</b> table is now a link to its in-game info page (opens in a new tab), just like the target coords in Outbound Offs. Only active when the world village database is loaded; otherwise the coord stays plain text.`,
