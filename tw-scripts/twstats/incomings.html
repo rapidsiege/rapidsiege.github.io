@@ -106,7 +106,11 @@
     <p class="foot">Datos archivados del mundo es100. No oficial.</p>
   </div>
 
-  <script src="js/common.js"></script>
-  <script src="js/incomings.js"></script>
+  <!-- Versioned query: Pages serves these with Cache-Control: max-age=600, so a
+       returning visitor can otherwise get a stale common.js that predates
+       TW.srvEpoch and silently breaks this page. Bump ?v= whenever this page
+       starts relying on a NEW common.js export. -->
+  <script src="js/common.js?v=20260728"></script>
+  <script src="js/incomings.js?v=20260728"></script>
 </body>
 </html>

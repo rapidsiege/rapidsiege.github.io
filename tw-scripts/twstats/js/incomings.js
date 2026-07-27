@@ -895,7 +895,28 @@
     $("tableWrap").hidden = true;
   }
 
+  // An exception used to escape the click handler and leave the page looking
+  // like the button did nothing. Anything that goes wrong must SAY so.
+  function reportError(e) {
+    if (window.console) console.error("Entrantes:", e);
+    var stale = typeof TW.srvEpoch !== "function";
+    $("status").textContent = stale
+      ? "Tu navegador está usando una versión antigua de js/common.js en caché. " +
+        "Recarga con Ctrl+F5 (o Cmd+Shift+R) y vuelve a intentarlo."
+      : "Algo falló al analizar: " + (e && e.message ? e.message : e) +
+        "  (detalles en la consola del navegador)";
+    $("status").style.display = "";
+    $("summary").hidden = true;
+    $("modeNote").hidden = true;
+    $("panels").hidden = true;
+    $("tableWrap").hidden = true;
+  }
+
   function analyze() {
+    try { analyzeInner(); } catch (e) { reportError(e); }
+  }
+
+  function analyzeInner() {
     var text = $("coords").value;
     var parsed = isAttackDump(text) ? parseAttacks(text) : null;
     var coords = parsed ? null : parseCoords(text);
@@ -921,6 +942,11 @@
     $("status").style.display = "";
 
     state.ready.then(function () {
+      // Errors thrown in here would otherwise be swallowed by the .catch below.
+      try { finish(); } catch (e) { reportError(e); }
+    }).catch(function () { /* status already shows the load error */ });
+
+    function finish() {
       var now = Math.floor(Date.now() / 1000);
       if (parsed) {
         state.targets = parsed.targets;
@@ -957,11 +983,21 @@
 
       summarize();
       render();
-    }).catch(function () { /* status already shows the load error */ });
+    }
   }
 
   function init() {
     TW.renderNav("entrantes");
+
+    // This page needs a common.js new enough to have TW.srvEpoch. The ?v= on the
+    // script tags should guarantee that, but a proxy or an odd cache can still
+    // pair a new incomings.js with an old common.js — fail loudly, not silently.
+    if (typeof TW.srvEpoch !== "function") {
+      $("status").textContent = "Tu navegador está usando una versión antigua de " +
+        "js/common.js en caché. Recarga con Ctrl+F5 (o Cmd+Shift+R).";
+      $("analyze").disabled = true;
+      return;
+    }
 
     try {
       var mp = localStorage.getItem(LS_POINTS), md = localStorage.getItem(LS_DAYS);
