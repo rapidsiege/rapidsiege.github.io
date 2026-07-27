@@ -101,6 +101,45 @@
     };
   }
 
+  // Unit names as they show up in command labels, so a tagged incoming
+  // ("Ariete", "Nobles", "Fake CL") yields its travel speed even when the line
+  // carries no sent / duration / return at all.
+  var UNIT_ALIASES = {
+    spear: ["lanza", "lanzas", "spear"],
+    sword: ["espada", "espadas", "sword"],
+    axe: ["hacha", "hachas", "axe", "axes"],
+    archer: ["arquero", "arqueros", "archer"],
+    spy: ["explorador", "exploradores", "espia", "spy", "scout"],
+    light: ["cl", "lc", "ligera", "caballeria ligera", "light"],
+    marcher: ["arquero a caballo", "marcher"],
+    heavy: ["cp", "pesada", "caballeria pesada", "heavy"],
+    ram: ["ariete", "arietes", "ram", "rams"],
+    catapult: ["catapulta", "catapultas", "cata", "catas", "catapult"],
+    knight: ["paladin", "knight"],
+    snob: ["noble", "nobles", "nobleza", "snob"],
+  };
+  function deaccent(s) {
+    return String(s).toLowerCase()
+      .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
+      .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n");
+  }
+  // A command moves at its SLOWEST unit, so when a label names several, the
+  // slowest one is the honest choice ("nobles + arietes" travels at noble pace).
+  function speedFromLabel(label) {
+    if (!state.cfg || !label) return null;
+    var txt = deaccent(label), best = null;
+    state.cfg.groups.forEach(function (g) {
+      g.keys.forEach(function (key) {
+        var aliases = UNIT_ALIASES[key] || [key];
+        for (var i = 0; i < aliases.length; i++) {
+          var re = new RegExp("(^|[^a-z])" + aliases[i].replace(/ /g, "\\s+") + "([^a-z]|$)");
+          if (re.test(txt) && (!best || g.minPerField > best.minPerField)) { best = g; return; }
+        }
+      });
+    });
+    return best;
+  }
+
   // Tolerance in min/field. Durations are whole seconds and distances exact, so
   // real commands land within ~0.001 of a unit speed; 0.15 is generous but still
   // far below the smallest gap between adjacent classes (9 → 10).
@@ -130,16 +169,41 @@
 
   function isAttackDump(text) { return /\[command\]attack\[\/command\]/i.test(text); }
 
-  // One incoming order. "sent" carries no year (25.07 18:21:05) but the arrival
-  // does (28.07.26 04:04:37:057), so the arrival dates it; if the sent month is
-  // later than the arrival month the order crossed New Year, so step back one.
-  // Arrival milliseconds are captured — they are what reveals command trains.
-  var ATTACK_RE = new RegExp(
-    "\\[command\\]attack\\[\\/command\\]\\s*(.*?)\\s*\\|" +
-    "\\s*player\\s+(.+?)\\s+\\|\\s+sent\\s+(\\d{1,2})\\.(\\d{1,2})\\s+(\\d{1,2}):(\\d{2}):(\\d{2})" +
-    "[^\\n]*?duration\\s+(\\d{1,3}):(\\d{2}):(\\d{2})" +
-    "[^\\n]*?\\[coord\\](\\d{1,3})\\|(\\d{1,3})\\[\\/coord\\]" +
-    "[^\\n]*?(\\d{1,2})\\.(\\d{1,2})\\.(\\d{2})\\s+(\\d{1,2}):(\\d{2}):(\\d{2})(?::(\\d{1,3}))?", "i");
+  // An attack line is parsed FIELD BY FIELD, not with one rigid pattern: real
+  // dumps vary in which of sent / return / duration they carry, and a single
+  // all-or-nothing regex silently DROPPED any line missing one of them.
+  //
+  // The arrival ("Hora de llegada") is the anchor — it is the only timestamp
+  // with a year, and the incomings screen always has it. Everything else is
+  // recoverable from it, because on a verified 259-attack dump both identities
+  // hold exactly, to the second:
+  //     arrival = sent + duration        return = arrival + duration
+  // so ANY ONE of {sent, duration, return} plus the arrival gives the rest.
+  var ATTACK_LINE_RE = /\[command\]attack\[\/command\]/i;
+  var RE_LABEL = /\[command\]attack\[\/command\]\s*(.*?)\s*(?:\||\[coord\])/i;
+  var RE_PLAYER = /\|\s*player\s+(.+?)\s+\|/i;
+  var RE_SENT = /\bsent\s+(\d{1,2})\.(\d{1,2})\.?(\d{2,4})?\s+(\d{1,2}):(\d{2}):(\d{2})/i;
+  var RE_RETURN = /\breturn\s+(\d{1,2})\.(\d{1,2})\.?(\d{2,4})?\s+(\d{1,2}):(\d{2}):(\d{2})/i;
+  var RE_DURATION = /\bduration\s+(\d{1,4}):(\d{2}):(\d{2})/i;
+  var RE_ORIGIN = /\[coord\](\d{1,3})\|(\d{1,3})\[\/coord\]/i;
+  // A full date-time WITH a year — matched globally, and the LAST one on the
+  // line wins, so a "sent 26.07.26 …" variant can never be mistaken for it.
+  var RE_STAMP = /(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s+(\d{1,2}):(\d{2}):(\d{2})(?::(\d{1,3}))?/g;
+
+  function hhmmssToSec(h, m, s) { return Number(h) * 3600 + Number(m) * 60 + Number(s); }
+
+  // A dd.MM time with no year, dated from the arrival it belongs to. `dir` is
+  // -1 for `sent` (never after the arrival) and +1 for `return` (never before).
+  function datedAgainst(m, arrivalYear, arrivalMonth, dir) {
+    var day = Number(m[1]), month = Number(m[2]);
+    var year = m[3] ? (m[3].length <= 2 ? 2000 + Number(m[3]) : Number(m[3])) : null;
+    if (year == null) {
+      year = arrivalYear;
+      if (dir < 0 && month > arrivalMonth) year--;        // sent crossed New Year
+      if (dir > 0 && month < arrivalMonth) year++;        // return crosses it
+    }
+    return TW.srvEpoch(year, month, day, Number(m[4]), Number(m[5]), Number(m[6]));
+  }
   // A "[b]…[/b] [coord]x|y[/coord]" line = the village being attacked. Matched
   // structurally (not by the Spanish word "Pueblo") so other locales still work.
   var TARGET_RE = /\[b\][^\]]*\[\/b\][^\n]*?\[coord\](\d{1,3})\|(\d{1,3})\[\/coord\]/i;
@@ -148,24 +212,55 @@
 
   function parseAttacks(text) {
     var lines = text.split(/\r?\n/), out = [], targets = {}, cur = null;
+    var skipped = [], inconsistent = 0;
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
 
-      var a = ATTACK_RE.exec(line);
-      if (a) {
-        var aYear = 2000 + Number(a[15]);
-        var sMonth = Number(a[4]), aMonth = Number(a[14]);
-        var sYear = sMonth > aMonth ? aYear - 1 : aYear;
-        var ms = a[19] ? Number((a[19] + "00").slice(0, 3)) : 0;
+      if (ATTACK_LINE_RE.test(line)) {
+        var origin = RE_ORIGIN.exec(line);
+        // Take the LAST year-bearing timestamp on the line: that's the arrival.
+        RE_STAMP.lastIndex = 0;
+        var st, arrM = null;
+        while ((st = RE_STAMP.exec(line)) !== null) arrM = st;
+        if (!origin || !arrM) { skipped.push(line.trim()); continue; }
+
+        var aYear = arrM[3].length <= 2 ? 2000 + Number(arrM[3]) : Number(arrM[3]);
+        var aMonth = Number(arrM[2]);
+        var arrival = TW.srvEpoch(aYear, aMonth, Number(arrM[1]),
+          Number(arrM[4]), Number(arrM[5]), Number(arrM[6]));
+
+        var sm = RE_SENT.exec(line), rm = RE_RETURN.exec(line), dm = RE_DURATION.exec(line);
+        var sentExplicit = sm ? datedAgainst(sm, aYear, aMonth, -1) : null;
+        var retExplicit = rm ? datedAgainst(rm, aYear, aMonth, +1) : null;
+
+        // duration, from whichever of the three is present (all agree)
+        var durSec = null, sentSource = null;
+        if (dm) durSec = hhmmssToSec(dm[1], dm[2], dm[3]);
+        else if (sentExplicit != null) durSec = arrival - sentExplicit;
+        else if (retExplicit != null) durSec = retExplicit - arrival;
+
+        var sent = sentExplicit;
+        if (sent != null) sentSource = "explicit";
+        else if (durSec != null) { sent = arrival - durSec; sentSource = dm ? "duration" : "return"; }
+
+        // Both stated? Then they must agree, or something is being misread.
+        if (sentExplicit != null && dm != null &&
+            Math.abs((sentExplicit + hhmmssToSec(dm[1], dm[2], dm[3])) - arrival) > 2) {
+          inconsistent++;
+        }
+
+        var lm = RE_LABEL.exec(line), pm = RE_PLAYER.exec(line);
         out.push({
-          label: a[1] || "",
-          player: a[2].trim(),
-          origin: { key: Number(a[11]) + "|" + Number(a[12]), x: Number(a[11]), y: Number(a[12]) },
+          label: lm ? lm[1] : "",
+          player: pm ? pm[1].trim() : "?",
+          origin: { key: Number(origin[1]) + "|" + Number(origin[2]), x: Number(origin[1]), y: Number(origin[2]) },
           target: cur,
-          sent: TW.srvEpoch(sYear, sMonth, Number(a[3]), Number(a[5]), Number(a[6]), Number(a[7])),
-          durationMin: Number(a[8]) * 60 + Number(a[9]) + Number(a[10]) / 60,
-          arrival: TW.srvEpoch(aYear, aMonth, Number(a[13]), Number(a[16]), Number(a[17]), Number(a[18])),
-          arrivalMs: ms,
+          sent: sent,
+          sentSource: sentSource,
+          returnT: retExplicit != null ? retExplicit : (durSec != null ? arrival + durSec : null),
+          durationMin: durSec != null ? durSec / 60 : null,
+          arrival: arrival,
+          arrivalMs: arrM[7] ? Number((arrM[7] + "00").slice(0, 3)) : 0,
         });
         continue;
       }
@@ -192,18 +287,44 @@
         else if (cur.loyalty == null) cur.loyalty = nums[0];
       }
     }
-    return { attacks: out, targets: targets };
+    return { attacks: out, targets: targets, skipped: skipped, inconsistent: inconsistent };
   }
 
   // === derived attack facts ================================================
   function enrichAttacks(attacks) {
     // distance + troop class
     attacks.forEach(function (a) {
-      if (a.target) {
+      if (a.target && a.durationMin != null) {
         a.distance = Math.sqrt(Math.pow(a.origin.x - a.target.x, 2) +
                                Math.pow(a.origin.y - a.target.y, 2));
-        a.minPerField = a.durationMin / a.distance;
+        a.minPerField = a.distance ? a.durationMin / a.distance : null;
         a.speed = classifySpeed(a.minPerField);
+      } else if (a.target) {
+        // No timings at all. Distance is still known, so the arrival alone can
+        // still yield a sent time IF we can pin the travel speed:
+        //   · the label names a unit  → exact, given that tag is honest
+        //   · it doesn't             → bracket it between the slowest and
+        //                              fastest units; never invent one number
+        a.distance = Math.sqrt(Math.pow(a.origin.x - a.target.x, 2) +
+                               Math.pow(a.origin.y - a.target.y, 2));
+        a.minPerField = null; a.speed = null;
+
+        var tagged = speedFromLabel(a.label);
+        if (tagged && a.distance) {
+          a.durationMin = tagged.minPerField * a.distance;
+          a.sent = a.arrival - Math.round(a.durationMin * 60);
+          a.returnT = a.arrival + Math.round(a.durationMin * 60);
+          a.sentSource = "unit-tag";
+          a.speed = tagged;
+          a.speedFromTag = true;          // assumed, not measured — render says so
+          a.minPerField = tagged.minPerField;
+        } else if (state.cfg && a.distance) {
+          var groups = state.cfg.groups;
+          var slowest = groups[groups.length - 1], fastest = groups[0];
+          a.sentMin = a.arrival - Math.round(slowest.minPerField * a.distance * 60);
+          a.sentMax = a.arrival - Math.round(fastest.minPerField * a.distance * 60);
+          a.sentSource = "range";
+        }
       } else {
         a.distance = null; a.minPerField = null; a.speed = null;
       }
@@ -318,9 +439,10 @@
   // === analysis ============================================================
   // `refT` is the instant the conquest is judged against: the attack's sent
   // time in attack mode, "now" in coord mode.
-  function analyzeVillage(coord, refT, opts) {
+  function analyzeVillage(coord, refT, opts, range) {
     var v = state.byCoord[coord.key];
-    var row = { coord: coord, village: v || null, flags: [], unknown: !v, refT: refT };
+    if (range) refT = Math.round((range.min + range.max) / 2);
+    var row = { coord: coord, village: v || null, flags: [], unknown: !v, refT: refT, range: range || null };
     if (!v) return row;
 
     row.conquer = state.lastConquer[v.id] || null;
@@ -337,18 +459,36 @@
     }
 
     if (row.conquer && opts.maxDays > 0) {
-      var age = refT - row.conquer.t;
-      if (age < 0) {
-        // Conquered after this attack left: the troops in the air belong to the
-        // previous owner. Worth knowing, and not the same as "recently taken".
-        row.flags.push({ cls: "after", text: "Conquistado tras el envío (" + TW.dur(-age) + " después)" });
-      } else if (age < opts.maxDays * 86400) {
-        row.flags.push({
-          cls: "new",
-          text: state.mode === "attacks"
-            ? "Conquistado " + TW.dur(age) + " antes del envío"
-            : "Conquistado hace " + TW.dur(age),
-        });
+      var win = opts.maxDays * 86400;
+      function verdict(t) {
+        var age = t - row.conquer.t;
+        return age < 0 ? "after" : (age < win ? "new" : "old");
+      }
+      if (range) {
+        // The sent time is only bracketed, so the two ends can disagree. Say
+        // "posible" when they do rather than picking an end and sounding sure.
+        var vMin = verdict(range.min), vMax = verdict(range.max);
+        if (vMin === vMax && vMin === "new") {
+          row.flags.push({ cls: "new", text: "Conquistado poco antes del envío (estimado por distancia)" });
+        } else if (vMin === vMax && vMin === "after") {
+          row.flags.push({ cls: "after", text: "Conquistado tras el envío (estimado por distancia)" });
+        } else if (vMin !== "old" || vMax !== "old") {
+          row.flags.push({ cls: "maybe", text: "Posiblemente conquistado poco antes del envío (envío solo estimado)" });
+        }
+      } else {
+        var age = refT - row.conquer.t;
+        if (age < 0) {
+          // Conquered after this attack left: the troops in the air belong to
+          // the previous owner. Not the same as "recently taken".
+          row.flags.push({ cls: "after", text: "Conquistado tras el envío (" + TW.dur(-age) + " después)" });
+        } else if (age < win) {
+          row.flags.push({
+            cls: "new",
+            text: state.mode === "attacks"
+              ? "Conquistado " + TW.dur(age) + " antes del envío"
+              : "Conquistado hace " + TW.dur(age),
+          });
+        }
       }
     }
     return row;
@@ -386,8 +526,14 @@
         ? '<span class="barb" title="' + a.minPerField.toFixed(2) + ' min/campo">?</span>'
         : '<span class="barb">—</span>';
     }
-    return "<span class='flag flag-" + (a.speed.isNoble ? "noble" : "type") + "' title='" +
-      a.minPerField.toFixed(2) + " min/campo'>" + TW.esc(a.speed.label) + "</span>";
+    // A class taken from the label is an assumption, not a measurement — it is
+    // marked so it can't be read as "the travel time proves this".
+    var assumed = a.speedFromTag;
+    return "<span class='flag flag-" + (a.speed.isNoble ? "noble" : "type") +
+      (assumed ? " flag-assumed" : "") + "' title='" +
+      (assumed ? "Según la etiqueta del comando, no medido (" + a.minPerField.toFixed(2) + " min/campo)"
+               : a.minPerField.toFixed(2) + " min/campo") + "'>" +
+      TW.esc(a.speed.label) + (assumed ? " (etiq.)" : "") + "</span>";
   }
 
   function villageCellOf(row) {
@@ -432,7 +578,7 @@
 
   // Each comparator returns [hasValue, value] so missing data always sinks to
   // the bottom, in both directions, instead of clumping at whichever end.
-  var SEVERITY = { after: 5, new: 4, low: 3, stale: 2, unknown: 1 };
+  var SEVERITY = { after: 6, new: 5, maybe: 4, low: 3, nosent: 2, stale: 2, unknown: 1 };
   var SORTERS = {
     coord: function (r) { return [1, r.coord.x * 1000 + r.coord.y]; },
     points: function (r) {
@@ -576,7 +722,30 @@
         // Arrival is shown to the second (plus ms): seconds are what you time a
         // snipe or a dodge against, and dropping them would also make two
         // commands in the same minute look out of order once sorted.
-        timeCell = "<td class='col-date'>" + TW.fmtDateTime(r.attack.sent) +
+        // A derived sent time is marked "≈" and says what it came from, so it
+        // is never mistaken for one the dump actually stated.
+        var src = r.attack.sentSource;
+        var DERIVED_FROM = {
+          duration: "la duración", "return": "la hora de regreso",
+          "unit-tag": "la etiqueta «" + TW.esc(String(r.attack.label).trim()) + "» y la distancia",
+        };
+        var sentTxt;
+        if (src === "explicit") {
+          sentTxt = TW.fmtDateTime(r.attack.sent);
+        } else if (src === "range") {
+          // Bracketed, not guessed: slowest unit … fastest unit.
+          sentTxt = "<span class='derived' title='Sin datos de tiempo ni unidad etiquetada: " +
+            "rango entre la unidad más lenta y la más rápida a " + r.attack.distance.toFixed(1) +
+            " campos'>≈ " + TW.fmtDateTime(r.attack.sentMin) + " … " +
+            TW.fmtDateTime(r.attack.sentMax) + "</span>";
+        } else if (r.attack.sent != null) {
+          sentTxt = "<span class='derived' title='Deducido de " + DERIVED_FROM[src] + "'>≈ " +
+            TW.fmtDateTime(r.attack.sent) + "</span>";
+        } else {
+          sentTxt = "<span class='barb' title='La línea no trae envío, duración ni regreso, " +
+            "y no hay objetivo para medir la distancia'>envío desconocido</span>";
+        }
+        timeCell = "<td class='col-date'>" + sentTxt +
           "<br><span class='conq-ago'>→ " + TW.fmtTime(r.attack.arrival) +
           "." + String(r.attack.arrivalMs).padStart(3, "0") + "</span>" + tr + "</td>";
       }
@@ -849,8 +1018,46 @@
     el.hidden = false;
   }
 
-  function buildWarnings(attacks) {
+  function buildWarnings(attacks, parsed) {
     var warns = [];
+
+    // Be explicit about which sent times were stated vs reconstructed, and
+    // never let a dropped line pass unmentioned.
+    function bySource(s) {
+      return attacks.filter(function (a) { return a.sentSource === s; }).length;
+    }
+    var derived = bySource("duration") + bySource("return");
+    var tagged = bySource("unit-tag");
+    var ranged = bySource("range");
+    var noSent = attacks.filter(function (a) {
+      return a.sent == null && a.sentMin == null;
+    }).length;
+    if (derived) {
+      warns.push(derived + " hora" + (derived === 1 ? "" : "s") + " de envío deducida" +
+        (derived === 1 ? "" : "s") + " de la duración/regreso (marcadas con ≈)");
+    }
+    if (tagged) {
+      warns.push(tagged + " hora" + (tagged === 1 ? "" : "s") + " de envío calculada" +
+        (tagged === 1 ? "" : "s") + " con la unidad de la etiqueta y la distancia " +
+        "(depende de que la etiqueta sea correcta)");
+    }
+    if (ranged) {
+      warns.push("⚠ " + ranged + " ataque" + (ranged === 1 ? "" : "s") +
+        " sin tiempos ni unidad etiquetada: envío acotado entre la unidad más lenta y la más rápida");
+    }
+    if (noSent) {
+      warns.push("⚠ " + noSent + " ataque" + (noSent === 1 ? "" : "s") +
+        " sin envío, duración ni regreso: su conquista se compara con AHORA");
+    }
+    if (parsed && parsed.skipped.length) {
+      warns.push("⚠ " + parsed.skipped.length + " línea" + (parsed.skipped.length === 1 ? "" : "s") +
+        " de ataque ilegible" + (parsed.skipped.length === 1 ? "" : "s") +
+        " (sin coordenada u hora de llegada)");
+    }
+    if (parsed && parsed.inconsistent) {
+      warns.push("⚠ " + parsed.inconsistent + " ataque" + (parsed.inconsistent === 1 ? "" : "s") +
+        " con envío + duración que no cuadran con la llegada");
+    }
     var trains = {};
     attacks.forEach(function (a) { if (a.train && a.train.noble) trains[a.train.id] = a.train.size; });
     var nTrains = Object.keys(trains).length;
@@ -952,8 +1159,15 @@
         state.targets = parsed.targets;
         var attacks = enrichAttacks(parsed.attacks);
         state.rows = attacks.map(function (a) {
-          var row = analyzeVillage(a.origin, a.sent, opts);
+          // No sent time and nothing to derive it from → the conquest test
+          // falls back to NOW, which is a weaker answer, so the row says so
+          // rather than looking identical to a launch-time verdict.
+          var range = (a.sent == null && a.sentMin != null) ? { min: a.sentMin, max: a.sentMax } : null;
+          var row = analyzeVillage(a.origin, a.sent != null ? a.sent : now, opts, range);
           row.attack = a;
+          if (a.sent == null && !range && !row.unknown) {
+            row.flags.push({ cls: "nosent", text: "Sin hora de envío — comparado con ahora" });
+          }
           return row;
         });
       } else {
@@ -974,7 +1188,7 @@
         buildCombos(all);
         buildOwnVillages(all);
         buildAttackFilters(all);
-        buildWarnings(all);
+        buildWarnings(all, parsed);
         $("panels").hidden = false;
       } else {
         $("panels").hidden = true;

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>es100 · Entrantes</title>
-  <link rel="stylesheet" href="css/twstats.css">
+  <link rel="stylesheet" href="css/twstats.css?v=20260728.2">
 </head>
 <body>
   <div id="main">
@@ -29,6 +29,11 @@
       viaje salió de un pueblo cuyo estado hace 60 h es el que importa. Además se deduce
       el <b>tipo de tropa</b> de cada ataque (duración ÷ distancia) y se detectan
       <b>trenes</b> de comandos.
+      <br><b>Si a tus líneas les falta el <code>sent</code></b> no pasa nada: basta con
+      la hora de llegada más <i>cualquiera</i> de duración o regreso, y si tampoco están,
+      se usa la unidad de la etiqueta (p. ej. «Ariete») con la distancia. Sin nada de eso
+      el envío se acota entre la unidad más lenta y la más rápida. Todo lo deducido va
+      marcado con <span class="derived">≈</span>.
     </div>
 
     <form class="conquer-filters" id="filters" onsubmit="return false">
@@ -106,11 +111,12 @@
     <p class="foot">Datos archivados del mundo es100. No oficial.</p>
   </div>
 
-  <!-- Versioned query: Pages serves these with Cache-Control: max-age=600, so a
-       returning visitor can otherwise get a stale common.js that predates
-       TW.srvEpoch and silently breaks this page. Bump ?v= whenever this page
-       starts relying on a NEW common.js export. -->
-  <script src="js/common.js?v=20260728"></script>
-  <script src="js/incomings.js?v=20260728"></script>
+  <!-- Versioned query: Pages serves css/ and js/ with Cache-Control: max-age=600,
+       so a returning visitor can otherwise run a stale common.js (one that
+       predates TW.srvEpoch broke this page outright) or a stale stylesheet that
+       lacks the newer badge styles. Bump ?v= on EVERY asset change, site-wide;
+       the token is shared by all twstats pages. -->
+  <script src="js/common.js?v=20260728.2"></script>
+  <script src="js/incomings.js?v=20260728.2"></script>
 </body>
 </html>

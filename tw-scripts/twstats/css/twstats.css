@@ -402,3 +402,7 @@ table.vis th.sorted { text-decoration: underline; }
 table.vis.own-villages td.zero { color: var(--text-muted); opacity: .5; }
 #warnLine { color: var(--delta-down); font-weight: 700; }
 @media (max-width: 640px) { .filter-grid { grid-template-columns: 1fr; } }
+.derived { font-style: italic; border-bottom: 1px dotted var(--border-dark); cursor: help; }
+.flag-nosent { color: var(--link-color); border-color: var(--border-secondary); }
+.flag-maybe { color: var(--link-color); border-color: var(--border-secondary); font-style: italic; }
+.flag-assumed { opacity: .85; border-style: dashed; }
