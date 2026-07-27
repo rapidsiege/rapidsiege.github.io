@@ -1585,28 +1585,55 @@ function pmPartLabel(k, n) { return n > 1 ? ` ${k + 1}/${n}` : ''; }
 // with template text. {date} only substitutes when a label exists (no arrival date set → the
 // literal {date} stays visible as a fill-me-in flag). A template without {orders} appends the
 // block at the end — orders must never be lost; a blank template returns them unwrapped. Pure.
-function pmApplyTemplate(tpl, orders, dateLabel, partLabel) {
-  tpl = String(tpl == null ? '' : tpl);
-  if (!tpl.trim()) return orders;
-  tpl = tpl.split('{part}').join(partLabel || '');
-  if (dateLabel) tpl = tpl.split('{date}').join(dateLabel);
-  const parts = tpl.split('{orders}');
-  if (parts.length === 1) return tpl.trimEnd() + '\n\n' + orders;
+// Splice `block` in at every occurrence of `token`, forcing it onto its own line(s) even when
+// the template glues it inline. Returns null when the token isn't present, so callers can pick
+// their own fallback (append vs skip). Pure.
+function pmSpliceBlock(tpl, token, block) {
+  const parts = tpl.split(token);
+  if (parts.length === 1) return null;
   let out = parts[0];
   for (let i = 1; i < parts.length; i++) {
     if (out && !out.endsWith('\n')) out += '\n';
-    out += orders;
+    out += block;
     if (parts[i] && !parts[i].startsWith('\n')) out += '\n';
     out += parts[i];
   }
   return out;
 }
+function pmApplyTemplate(tpl, orders, dateLabel, partLabel, summaryTable) {
+  tpl = String(tpl == null ? '' : tpl);
+  if (!tpl.trim()) return orders;
+  tpl = tpl.split('{part}').join(partLabel || '');
+  if (dateLabel) tpl = tpl.split('{date}').join(dateLabel);
+  // {bb_summary_table} (v4.25.0, defensive plan): the player's Export Summary Tables BB table.
+  // Substituted BEFORE {orders} so its own line-anchoring is independent; a [table] must start
+  // at line start to render in-game. Optional — unlike {orders} it is never appended when
+  // absent, and with no table to insert (offensive PMs) the literal token stays visible as a
+  // fill-me-in flag, exactly like {date} on the defensive side.
+  if (summaryTable) tpl = pmSpliceBlock(tpl, '{bb_summary_table}', summaryTable) || tpl;
+  return pmSpliceBlock(tpl, '{orders}', orders) || (tpl.trimEnd() + '\n\n' + orders);
+}
 // The 📝 Template button + collapsed editor injected at the top of the PM modal body
 // (offensive export only — renderPmModal's topHtml hook). Handlers are globals below.
+// The placeholders that actually DO something on a given plan side, as [token, explanation]
+// pairs — {date} is offensive-only (the defensive plan has no arrival-date input) and
+// {bb_summary_table} is defensive-only, so each side lists only its own: a token that silently
+// stays literal is worse than not being offered. Built fresh per call so a language switch is
+// picked up, and the t() calls are literal so find_orphan_i18n.js can see the keys. Pure.
+function pmTplVars(ctx) {
+  const orders = ['{orders}', t('pm_tpl_var_orders')];
+  const part   = ['{part}',   t('pm_tpl_var_part')];
+  return ctx === 'def'
+    ? [orders, ['{bb_summary_table}', t('pm_tpl_var_summary')], part]
+    : [orders, ['{date}', t('pm_tpl_var_date')], part];
+}
 function pmTemplateBarHtml() {
+  const vars = pmTplVars(pmTplCtx).map(([token, desc]) =>
+    `<li><code>${esc(token)}</code><span>${esc(desc)}</span></li>`).join('');
   return `<div class="pm-tpl-bar"><button class="btn btn-ghost btn-sm" onclick="pmTplToggle()">${esc(t('btn_pm_template'))}</button></div>
 <div class="pm-tpl-editor" id="pm-tpl-editor" style="display:none">
   <div class="pm-hint">${esc(t('pm_tpl_hint'))}</div>
+  <div class="pm-tpl-vars">${esc(t('pm_tpl_vars_title'))}<ul>${vars}</ul></div>
   <textarea id="pm-tpl-text" class="pm-tpl-text" spellcheck="false"></textarea>
   <div class="pm-tpl-actions">
     <button class="btn btn-sm" onclick="pmTplSave()">${esc(t('btn_save'))}</button>

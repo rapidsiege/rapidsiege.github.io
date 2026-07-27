@@ -291,11 +291,16 @@ function generateDefPlan() {
   // station data defAvailUnits falls back to raw troops (pre-4.5 behavior). Ignored /
   // filtered / enemy-adjacent / sub-threshold villages are excluded here so they inflate
   // neither the candidate pool NOR a player's capacity weight.
+  // v4.26.0: stock is carried in TWO buckets — stockNow (home) and stockFut (returning) — that
+  // sum to the same total as before. `stock` remains the live total and is what `cap`, the
+  // DEF_SENDER_MIN_POP threshold and Pass A's capacity weights read, so eligibility and player
+  // fairness are byte-for-byte unchanged; only the ORDER the buckets are drained in is new.
   const senders = villages.map(v => {
-    const stock = defAvailUnits(v);
+    const stock = defAvailUnits(v), stockFut = defAvailUnitsFuture(v), stockNow = defAvailUnitsNow(v);
     return {
       v, c: parseCoordStr(v.coord), tag: dbTribeAt(v.coord),
-      stock, cap: DEF_OBJ_UNITS.reduce((s, u) => s + stock[u] * POP[u], 0),
+      stock, stockNow, stockFut,
+      cap: DEF_OBJ_UNITS.reduce((s, u) => s + stock[u] * POP[u], 0),
     };
   }).filter(s => s.c && !ignore.has(s.v.coord) && !ignorePl.has(s.v.player)
     && passesCoordPolygon(s.c.x, s.c.y)
@@ -379,14 +384,22 @@ function generateDefPlan() {
   // order chunky: a player physically can't receive a sub-pack sliver, so no 20-heavy dribble.
   const packUnitsOf = u => Math.max(1, Math.ceil(dpPackSize / packWOf(u)));
 
-  const packets = {}; // `${senderIdx}#${T.i}` → {si, T, units}
-  const commit = (T, si, u, q) => {
+  const packets = {}; // `${senderIdx}#${T.i}` → {si, T, units, fut}
+  // `view` names the bucket this commit draws from ('stockNow' in round 1, 'stockFut' in round
+  // 2). BOTH the bucket and the live total are drained, so every other reader keeps seeing one
+  // coherent remaining-stock figure. `fut` accrues the returning-troop share of the packet so
+  // the finished row can say how much of it isn't home yet. Because packets are keyed
+  // sender#target, a village that contributes in both rounds yields ONE merged order.
+  const commit = (T, si, u, q, view) => {
     if (q <= 0) return;
+    senders[si][view][u] -= q;
     senders[si].stock[u] -= q;
     vSentPop[si] += q * POP[u];
     const key = si + '#' + T.i;
-    const pk = packets[key] || (packets[key] = { si, T, units: { spear: 0, sword: 0, spy: 0, heavy: 0 } });
+    const pk = packets[key] || (packets[key] = { si, T,
+      units: { spear: 0, sword: 0, spy: 0, heavy: 0 }, fut: { spear: 0, sword: 0, spy: 0, heavy: 0 } });
     pk.units[u] += q;
+    if (view === 'stockFut') pk.fut[u] += q;
   };
 
   for (const T of order) {
@@ -422,164 +435,182 @@ function generateDefPlan() {
       }
     }
 
-    // ── Pass A — player-level allocation per unit type. Weight = remaining def-pop
-    // capacity (→ equal drain ratio: bigger defenders send proportionally more), capped
-    // by each player's reachable stock of that type. Excess that no player can cover is a
-    // shortfall. sentByPlayer accrues here so later types/targets see each player's drain. ──
-    const playerGive = {}; // player → {spear,sword,spy,heavy}
-    const eligByType = {}; // unit → { player → [sender indices eligible for THIS type] }
+    // ── Two-round fill (v4.26.0) ────────────────────────────────────────────────────────
+    // Round 1 draws ONLY from defense that is HOME NOW; round 2 tops up whatever is still
+    // short from EN-ROUTE (returning) troops. Identical allocator both times — only the stock
+    // view differs — so an order depends on returning troops exactly when home defense could
+    // not cover the ask. Packets are keyed sender#target, so a village that contributes in
+    // both rounds produces ONE merged order rather than two fragments. `placed` carries the
+    // per-type running total across rounds, so round 2 asks only for the residual and the
+    // shortfall warning fires once, after both rounds. ──
+    const placed = { spear: 0, sword: 0, spy: 0, heavy: 0 };
+    for (let round = 0; round < 2; round++) {
+      const view = round === 0 ? 'stockNow' : 'stockFut';
+      // ── Pass A — player-level allocation per unit type. Weight = remaining def-pop
+      // capacity (→ equal drain ratio: bigger defenders send proportionally more), capped
+      // by each player's reachable stock of that type. Excess that no player can cover is a
+      // shortfall. sentByPlayer accrues here so later types/targets see each player's drain. ──
+      const playerGive = {}; // player → {spear,sword,spy,heavy}
+      const eligByType = {}; // unit → { player → [sender indices eligible for THIS type] }
+      for (const u of DEF_OBJ_UNITS) {
+        const n = (T.tg[u] || 0) - placed[u]; // residual: round 2 only chases what round 1 missed
+        if (n <= 0) continue;
+        const byP = {};
+        for (let si = 0; si < senders.length; si++) {
+          const s = senders[si];
+          if (s[view][u] > 0 && sameTribe(s, T) && inBand(s, T) && typeArriveOk(s, T, u) && !mvExcluded.has(s.v.player))
+            (byP[s.v.player] || (byP[s.v.player] = [])).push(si);
+        }
+        eligByType[u] = byP;
+        const names = Object.keys(byP);
+        const rankP = P => Math.max(1e-6, (capByPlayer[P] || 0) - (sentByPlayer[P] || 0)); // remaining def-pop capacity
+        const stockOf = P => byP[P].reduce((s, si) => s + senders[si][view][u], 0);
+        const record = (P, q) => {
+          if (q <= 0) return;
+          (playerGive[P] || (playerGive[P] = { spear: 0, sword: 0, spy: 0, heavy: 0 }))[u] += q;
+          sentByPlayer[P] = (sentByPlayer[P] || 0) + q * POP[u];
+        };
+        const givenU = P => (playerGive[P] && playerGive[P][u]) || 0;
+        // Apportion `qty` across `list` by capacity weight, capped by each player's REMAINING stock
+        // (stock − already given this type); records the drain. Returns units placed.
+        const apportion = (list, qty) => {
+          if (qty <= 0 || !list.length) return 0;
+          const alloc = apportionCapped(qty, list.map(P => ({ weight: rankP(P), cap: stockOf(P) - givenU(P) })));
+          let placed = 0;
+          list.forEach((P, pi) => { if (alloc[pi] > 0) { record(P, alloc[pi]); placed += alloc[pi]; } });
+          return placed;
+        };
+        let assigned = 0;
+
+        if (!packsMode) {
+          assigned = apportion(names, n); // Max Efficiency — one capacity-weighted pass (unchanged)
+        } else {
+          // Support Packs: hand out WHOLE packs first (capacity-weighted, integer packs → no sub-pack
+          // slivers), then fold the coverage remainder into existing contributors (their orders stay
+          // ≥ a pack), spilling to new senders only when contributors are stock-full. A demand smaller
+          // than one pack ships as a single sub-pack order (best-effort "at least this size").
+          const target = Math.min(n, names.reduce((s, P) => s + stockOf(P), 0)); // coverage target — identical to Max Efficiency
+          const pu = packUnitsOf(u);
+          const packs = Math.min(Math.floor(n / pu), names.reduce((s, P) => s + Math.floor(stockOf(P) / pu), 0));
+          if (packs > 0) {
+            const pa = apportionCapped(packs, names.map(P => ({ weight: rankP(P), cap: Math.floor(stockOf(P) / pu) })));
+            names.forEach((P, pi) => { if (pa[pi] > 0) { record(P, pa[pi] * pu); assigned += pa[pi] * pu; } });
+          }
+          let rem = target - assigned;
+          if (rem > 0) { // fold into current contributors first (keeps their order ≥ pack)
+            const contribs = names.filter(P => givenU(P) > 0 && stockOf(P) - givenU(P) > 0);
+            if (contribs.length) assigned += apportion(contribs, rem);
+          }
+          rem = target - assigned;
+          if (rem > 0) { // concentrate any spill onto the fewest new senders that still form packs
+            const rest = names.filter(P => givenU(P) === 0 && stockOf(P) > 0)
+              .sort((a, b) => (rankP(b) - rankP(a)) || (decode(a).toLowerCase() < decode(b).toLowerCase() ? -1 : 1));
+            const restK = Math.max(1, Math.floor(rem / pu));
+            assigned += apportion(rest.slice(0, restK), rem);
+            rem = target - assigned;
+            if (rem > 0) assigned += apportion(rest.slice(restK), rem); // final coverage spill (over pack-sizing)
+          }
+        }
+        placed[u] += assigned; // shortfall is judged after BOTH rounds, below
+      }
+
+      // ── Pass B — spread each player's allocation across their villages, keeping every
+      // emitted order ≥ DEF_MIN_PACKET_POP farm pop (fewer, meatier trips). Use only as many
+      // villages as that floor allows — k = ⌊totalPop / minPacket⌋, capped at the count of
+      // eligible villages — least-drained first (global per-village evenness). With
+      // "Prioritize Sending From Far Villages" (defFarFirst) the pick order is instead
+      // FARTHEST-from-this-target first (drain ties, then coord), so leftover defense pools
+      // in the villages nearest the targets, ready to reinforce fastest. Player shares
+      // (Pass A) are untouched either way. If the chosen few can't hold a type (stock), it
+      // spills to the next eligible villages. ──
+      for (const P in playerGive) {
+        const give = playerGive[P];
+        const candSet = new Set();
+        for (const u of DEF_OBJ_UNITS) if (eligByType[u] && eligByType[u][P]) for (const si of eligByType[u][P]) candSet.add(si);
+        const cand = [...candSet].sort(defFarFirst
+          ? ((a, b) => (dist(senders[b], T) - dist(senders[a], T)) || (vSentPop[a] - vSentPop[b]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1))
+          : ((a, b) => (vSentPop[a] - vSentPop[b]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1)));
+        // ── Support Packs with a MAX farm size (dpPackMax > 0): bin-fill instead of apportioning.
+        // Villages are filled ONE AT A TIME up to the max (weighted farm, all types together), in
+        // cand priority order, so each origin→destination order lands in [min, max] by construction.
+        // A sub-min tail is FOLDED back into the already-filled villages (softly exceeding the max —
+        // it's the softer bound) instead of shipping as a tiny order. Only stock geometry can force
+        // an order outside the band: a lone village holding everything (over), or a leftover no
+        // filled village has the troops to absorb (under). Coverage always wins — everything Pass A
+        // allocated is placed, exactly as in the apportioning paths.
+        if (packsMode && dpPackMax > 0) {
+          // Ceiling never below the min NOR below any single unit's weight — a binMax smaller than
+          // one heavy's farm would let fill() place nothing and silently reroute everything through
+          // the fold-back (coverage would still hold, but the [min,max] band would be bypassed).
+          const binMax = Math.max(dpPackSize, dpPackMax, ...DEF_OBJ_UNITS.map(packWOf));
+          const remGive = { ...give };
+          const remW = () => DEF_OBJ_UNITS.reduce((s, u) => s + (remGive[u] || 0) * packWOf(u), 0);
+          const eligSets = {};
+          for (const u of DEF_OBJ_UNITS) eligSets[u] = new Set((eligByType[u] && eligByType[u][P]) || []);
+          // Weighted farm this village could still absorb (stock ∩ remaining give, eligible types).
+          const pourable = si => DEF_OBJ_UNITS.reduce((s, u) =>
+            s + (eligSets[u].has(si) ? Math.min(senders[si][view][u], remGive[u] || 0) * packWOf(u) : 0), 0);
+          const fill = (si, room) => { // pour ≤ room farm of remGive into si; returns farm poured
+            let poured = 0;
+            for (const u of DEF_OBJ_UNITS) {
+              if ((remGive[u] || 0) <= 0 || !eligSets[u].has(si)) continue;
+              const W = packWOf(u);
+              const q = Math.min(senders[si][view][u], remGive[u], Math.floor((room - poured) / W));
+              if (q > 0) { commit(T, si, u, q, view); remGive[u] -= q; poured += q * W; }
+            }
+            return poured;
+          };
+          const opened = new Set();
+          for (const si of cand) {
+            const left = remW();
+            if (left <= 0) break;
+            if (left < dpPackSize && opened.size) break;             // sub-min tail → fold below
+            if (pourable(si) < Math.min(dpPackSize, left)) continue; // stock-poor village: last resort only
+            if (fill(si, binMax) > 0) opened.add(si);
+          }
+          // Remainder: filled villages absorb it first (soft-exceeding max, spread evenly); untouched
+          // villages only when the filled ones are out of troops (forced small order — nowhere else).
+          const foldInto = list => {
+            for (const u of DEF_OBJ_UNITS) {
+              if ((remGive[u] || 0) <= 0) continue;
+              const l = list.filter(si => eligSets[u].has(si) && senders[si][view][u] > 0);
+              if (!l.length) continue;
+              const a = apportionCapped(remGive[u], l.map(si => ({ weight: 1, cap: senders[si][view][u] })));
+              l.forEach((si, j) => { if (a[j] > 0) { commit(T, si, u, a[j], view); remGive[u] -= a[j]; } });
+            }
+          };
+          foldInto(cand.filter(si => opened.has(si)));
+          foldInto(cand.filter(si => !opened.has(si)));
+          continue; // this player is fully placed
+        }
+
+        // Village-split floor. Max Efficiency: k villages by the classic real-POP / 400 floor, shared
+        // across types. Support Packs: split each type across ⌊give_u / packUnits⌋ villages so each
+        // village order carries ≥ one whole pack of that type. Either way, spill onward if stock-short.
+        const kEff = Math.min(cand.length, Math.max(1, Math.floor(
+          DEF_OBJ_UNITS.reduce((s, u) => s + (give[u] || 0) * POP[u], 0) / DEF_MIN_PACKET_POP)));
+        for (const u of DEF_OBJ_UNITS) {
+          const need = give[u] || 0;
+          if (need <= 0) continue;
+          const eligSet = new Set(eligByType[u][P]);
+          const elig = cand.filter(si => eligSet.has(si));
+          const k = packsMode ? Math.min(elig.length, Math.max(1, Math.floor(need / packUnitsOf(u)))) : kEff;
+          const primary = elig.slice(0, k), spill = elig.slice(k);
+          const a1 = apportionCapped(need, primary.map(si => ({ weight: 1, cap: senders[si][view][u] })));
+          primary.forEach((si, j) => commit(T, si, u, a1[j], view));
+          const rem = need - a1.reduce((s, x) => s + x, 0);
+          if (rem > 0 && spill.length) {
+            const a2 = apportionCapped(rem, spill.map(si => ({ weight: 1, cap: senders[si][view][u] })));
+            spill.forEach((si, j) => commit(T, si, u, a2[j], view));
+          }
+        }
+      }
+    } // ── end of the two-round fill (round 0 = home now, round 1 = en route) ──
+
+    // Shortfall is what NEITHER round could cover — reported once per type, per target.
     for (const u of DEF_OBJ_UNITS) {
       const n = T.tg[u] || 0;
-      if (n <= 0) continue;
-      const byP = {};
-      for (let si = 0; si < senders.length; si++) {
-        const s = senders[si];
-        if (s.stock[u] > 0 && sameTribe(s, T) && inBand(s, T) && typeArriveOk(s, T, u) && !mvExcluded.has(s.v.player))
-          (byP[s.v.player] || (byP[s.v.player] = [])).push(si);
-      }
-      eligByType[u] = byP;
-      const names = Object.keys(byP);
-      const rankP = P => Math.max(1e-6, (capByPlayer[P] || 0) - (sentByPlayer[P] || 0)); // remaining def-pop capacity
-      const stockOf = P => byP[P].reduce((s, si) => s + senders[si].stock[u], 0);
-      const record = (P, q) => {
-        if (q <= 0) return;
-        (playerGive[P] || (playerGive[P] = { spear: 0, sword: 0, spy: 0, heavy: 0 }))[u] += q;
-        sentByPlayer[P] = (sentByPlayer[P] || 0) + q * POP[u];
-      };
-      const givenU = P => (playerGive[P] && playerGive[P][u]) || 0;
-      // Apportion `qty` across `list` by capacity weight, capped by each player's REMAINING stock
-      // (stock − already given this type); records the drain. Returns units placed.
-      const apportion = (list, qty) => {
-        if (qty <= 0 || !list.length) return 0;
-        const alloc = apportionCapped(qty, list.map(P => ({ weight: rankP(P), cap: stockOf(P) - givenU(P) })));
-        let placed = 0;
-        list.forEach((P, pi) => { if (alloc[pi] > 0) { record(P, alloc[pi]); placed += alloc[pi]; } });
-        return placed;
-      };
-      let assigned = 0;
-
-      if (!packsMode) {
-        assigned = apportion(names, n); // Max Efficiency — one capacity-weighted pass (unchanged)
-      } else {
-        // Support Packs: hand out WHOLE packs first (capacity-weighted, integer packs → no sub-pack
-        // slivers), then fold the coverage remainder into existing contributors (their orders stay
-        // ≥ a pack), spilling to new senders only when contributors are stock-full. A demand smaller
-        // than one pack ships as a single sub-pack order (best-effort "at least this size").
-        const target = Math.min(n, names.reduce((s, P) => s + stockOf(P), 0)); // coverage target — identical to Max Efficiency
-        const pu = packUnitsOf(u);
-        const packs = Math.min(Math.floor(n / pu), names.reduce((s, P) => s + Math.floor(stockOf(P) / pu), 0));
-        if (packs > 0) {
-          const pa = apportionCapped(packs, names.map(P => ({ weight: rankP(P), cap: Math.floor(stockOf(P) / pu) })));
-          names.forEach((P, pi) => { if (pa[pi] > 0) { record(P, pa[pi] * pu); assigned += pa[pi] * pu; } });
-        }
-        let rem = target - assigned;
-        if (rem > 0) { // fold into current contributors first (keeps their order ≥ pack)
-          const contribs = names.filter(P => givenU(P) > 0 && stockOf(P) - givenU(P) > 0);
-          if (contribs.length) assigned += apportion(contribs, rem);
-        }
-        rem = target - assigned;
-        if (rem > 0) { // concentrate any spill onto the fewest new senders that still form packs
-          const rest = names.filter(P => givenU(P) === 0 && stockOf(P) > 0)
-            .sort((a, b) => (rankP(b) - rankP(a)) || (decode(a).toLowerCase() < decode(b).toLowerCase() ? -1 : 1));
-          const restK = Math.max(1, Math.floor(rem / pu));
-          assigned += apportion(rest.slice(0, restK), rem);
-          rem = target - assigned;
-          if (rem > 0) assigned += apportion(rest.slice(restK), rem); // final coverage spill (over pack-sizing)
-        }
-      }
-      if (assigned < n) defPlanWarnings.push(t('warn_def_short')(t('th_' + u), n - assigned, T.tg.coord));
-    }
-
-    // ── Pass B — spread each player's allocation across their villages, keeping every
-    // emitted order ≥ DEF_MIN_PACKET_POP farm pop (fewer, meatier trips). Use only as many
-    // villages as that floor allows — k = ⌊totalPop / minPacket⌋, capped at the count of
-    // eligible villages — least-drained first (global per-village evenness). With
-    // "Prioritize Sending From Far Villages" (defFarFirst) the pick order is instead
-    // FARTHEST-from-this-target first (drain ties, then coord), so leftover defense pools
-    // in the villages nearest the targets, ready to reinforce fastest. Player shares
-    // (Pass A) are untouched either way. If the chosen few can't hold a type (stock), it
-    // spills to the next eligible villages. ──
-    for (const P in playerGive) {
-      const give = playerGive[P];
-      const candSet = new Set();
-      for (const u of DEF_OBJ_UNITS) if (eligByType[u] && eligByType[u][P]) for (const si of eligByType[u][P]) candSet.add(si);
-      const cand = [...candSet].sort(defFarFirst
-        ? ((a, b) => (dist(senders[b], T) - dist(senders[a], T)) || (vSentPop[a] - vSentPop[b]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1))
-        : ((a, b) => (vSentPop[a] - vSentPop[b]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1)));
-      // ── Support Packs with a MAX farm size (dpPackMax > 0): bin-fill instead of apportioning.
-      // Villages are filled ONE AT A TIME up to the max (weighted farm, all types together), in
-      // cand priority order, so each origin→destination order lands in [min, max] by construction.
-      // A sub-min tail is FOLDED back into the already-filled villages (softly exceeding the max —
-      // it's the softer bound) instead of shipping as a tiny order. Only stock geometry can force
-      // an order outside the band: a lone village holding everything (over), or a leftover no
-      // filled village has the troops to absorb (under). Coverage always wins — everything Pass A
-      // allocated is placed, exactly as in the apportioning paths.
-      if (packsMode && dpPackMax > 0) {
-        // Ceiling never below the min NOR below any single unit's weight — a binMax smaller than
-        // one heavy's farm would let fill() place nothing and silently reroute everything through
-        // the fold-back (coverage would still hold, but the [min,max] band would be bypassed).
-        const binMax = Math.max(dpPackSize, dpPackMax, ...DEF_OBJ_UNITS.map(packWOf));
-        const remGive = { ...give };
-        const remW = () => DEF_OBJ_UNITS.reduce((s, u) => s + (remGive[u] || 0) * packWOf(u), 0);
-        const eligSets = {};
-        for (const u of DEF_OBJ_UNITS) eligSets[u] = new Set((eligByType[u] && eligByType[u][P]) || []);
-        // Weighted farm this village could still absorb (stock ∩ remaining give, eligible types).
-        const pourable = si => DEF_OBJ_UNITS.reduce((s, u) =>
-          s + (eligSets[u].has(si) ? Math.min(senders[si].stock[u], remGive[u] || 0) * packWOf(u) : 0), 0);
-        const fill = (si, room) => { // pour ≤ room farm of remGive into si; returns farm poured
-          let poured = 0;
-          for (const u of DEF_OBJ_UNITS) {
-            if ((remGive[u] || 0) <= 0 || !eligSets[u].has(si)) continue;
-            const W = packWOf(u);
-            const q = Math.min(senders[si].stock[u], remGive[u], Math.floor((room - poured) / W));
-            if (q > 0) { commit(T, si, u, q); remGive[u] -= q; poured += q * W; }
-          }
-          return poured;
-        };
-        const opened = new Set();
-        for (const si of cand) {
-          const left = remW();
-          if (left <= 0) break;
-          if (left < dpPackSize && opened.size) break;             // sub-min tail → fold below
-          if (pourable(si) < Math.min(dpPackSize, left)) continue; // stock-poor village: last resort only
-          if (fill(si, binMax) > 0) opened.add(si);
-        }
-        // Remainder: filled villages absorb it first (soft-exceeding max, spread evenly); untouched
-        // villages only when the filled ones are out of troops (forced small order — nowhere else).
-        const foldInto = list => {
-          for (const u of DEF_OBJ_UNITS) {
-            if ((remGive[u] || 0) <= 0) continue;
-            const l = list.filter(si => eligSets[u].has(si) && senders[si].stock[u] > 0);
-            if (!l.length) continue;
-            const a = apportionCapped(remGive[u], l.map(si => ({ weight: 1, cap: senders[si].stock[u] })));
-            l.forEach((si, j) => { if (a[j] > 0) { commit(T, si, u, a[j]); remGive[u] -= a[j]; } });
-          }
-        };
-        foldInto(cand.filter(si => opened.has(si)));
-        foldInto(cand.filter(si => !opened.has(si)));
-        continue; // this player is fully placed
-      }
-
-      // Village-split floor. Max Efficiency: k villages by the classic real-POP / 400 floor, shared
-      // across types. Support Packs: split each type across ⌊give_u / packUnits⌋ villages so each
-      // village order carries ≥ one whole pack of that type. Either way, spill onward if stock-short.
-      const kEff = Math.min(cand.length, Math.max(1, Math.floor(
-        DEF_OBJ_UNITS.reduce((s, u) => s + (give[u] || 0) * POP[u], 0) / DEF_MIN_PACKET_POP)));
-      for (const u of DEF_OBJ_UNITS) {
-        const need = give[u] || 0;
-        if (need <= 0) continue;
-        const eligSet = new Set(eligByType[u][P]);
-        const elig = cand.filter(si => eligSet.has(si));
-        const k = packsMode ? Math.min(elig.length, Math.max(1, Math.floor(need / packUnitsOf(u)))) : kEff;
-        const primary = elig.slice(0, k), spill = elig.slice(k);
-        const a1 = apportionCapped(need, primary.map(si => ({ weight: 1, cap: senders[si].stock[u] })));
-        primary.forEach((si, j) => commit(T, si, u, a1[j]));
-        const rem = need - a1.reduce((s, x) => s + x, 0);
-        if (rem > 0 && spill.length) {
-          const a2 = apportionCapped(rem, spill.map(si => ({ weight: 1, cap: senders[si].stock[u] })));
-          spill.forEach((si, j) => commit(T, si, u, a2[j]));
-        }
-      }
+      if (placed[u] < n) defPlanWarnings.push(t('warn_def_short')(t('th_' + u), n - placed[u], T.tg.coord));
     }
   }
 
@@ -591,12 +622,17 @@ function generateDefPlan() {
     const arriveMs = defArrivalMs(T.tg);
     const departMs = arriveMs !== null ? arriveMs - travel * 60000 : null;
     const late = arriveMs !== null && departMs < serverNowMs();
+    // futUnits: the share of this order that is still EN ROUTE to the sender (round-2 fill).
+    // Independent of `late`: `late` = the trip can't reach the deadline even leaving now,
+    // futUnits = part of the army isn't home to leave with yet (no ETA exists for it).
+    const futTot = DEF_OBJ_UNITS.reduce((a, u) => a + (pk.fut[u] || 0), 0);
     defPlanRows.push({
       srcCoord: s.v.coord, srcPlayer: decode(s.v.player),
       tCoord: T.tg.coord, tPlayer: T.tg.defender, tribe: T.tg.tribe,
       units: { ...pk.units }, dist: d, travel,
       arriveDate: T.tg.arriveDate, arriveTime: T.tg.arriveTime,
       departMs, arriveMs, late,
+      ...(futTot > 0 ? { futUnits: { ...pk.fut } } : {}), // omitted entirely when fully home
     });
     if (late) defPlanWarnings.push(t('warn_def_row_late')(s.v.coord, T.tg.coord));
   }
@@ -628,6 +664,22 @@ function defUnitsBB(units) {
   return DEF_OBJ_UNITS.filter(u => (units[u] || 0) > 0).map(u => `${units[u]}[unit]${u}[/unit]`).join(' ');
 }
 
+// ── ⏳ "still returning" markers (v4.26.0) — the futUnits share of an order, i.e. troops the
+// sender doesn't have home yet. Distinct from `late` (which is about the TRIP not fitting the
+// deadline): this is about the ARMY not being ready to leave. No ETA exists in the export, so
+// we can only ever say how many, never when. Both helpers return '' for a fully-home order. ──
+function defFutCell(fut) {
+  if (!fut) return '';
+  const list = DEF_OBJ_UNITS.filter(u => (fut[u] || 0) > 0)
+    .map(u => `<span style="white-space:nowrap;">${twIcon(u)} ${fut[u].toLocaleString()}</span>`).join(' ');
+  return list ? `<div style="color:#e0a020;font-size:11px;margin-top:2px;" title="${esc(t('def_returning_title'))}">⏳ ${list}</div>` : '';
+}
+function defFutBB(fut) {
+  if (!fut) return '';
+  const list = defUnitsBB(fut);
+  return list ? ` [color=#e0a020]⏳ ${t('def_bb_returning')(list)}[/color]` : '';
+}
+
 function renderDefPlanTable() {
   const warnEl = document.getElementById('defplan-warnings');
   if (warnEl) warnEl.innerHTML = defPlanWarnings.length
@@ -635,7 +687,12 @@ function renderDefPlanTable() {
       + `<div class="warn-list">${defPlanWarnings.map(esc).join('<br>')}</div></details>` : '';
 
   const sumEl = document.getElementById('defplan-summary');
-  if (sumEl) sumEl.textContent = defPlanRows.length ? t('def_plan_summary')(defPlanRows.length) : '';
+  if (sumEl) {
+    const futN = defPlanRows.filter(r => r.futUnits).length; // orders waiting on returning troops
+    sumEl.textContent = defPlanRows.length
+      ? t('def_plan_summary')(defPlanRows.length) + (futN ? ` · ${t('def_plan_returning')(futN)}` : '')
+      : '';
+  }
 
   const tbody = document.getElementById('defplan-tbody');
   if (!tbody) return;
@@ -667,7 +724,7 @@ function renderDefPlanTable() {
       <td class="left">${first && r.tribe ? `<span class="player-tag">${esc(r.tribe)}</span>` : ''}</td>
       <td class="left" style="font-family:monospace;">${esc(r.srcCoord)}</td>
       <td class="left"><span class="player-tag">${esc(r.srcPlayer)}</span></td>
-      <td class="left">${defUnitsCell(r.units)}</td>
+      <td class="left">${defUnitsCell(r.units)}${defFutCell(r.futUnits)}</td>
       <td style="color:#f0c040;">${r.dist.toFixed(1)}</td>
       <td>${fmtTime(r.travel)}</td>
       <td style="font-size:11px;font-family:monospace;">${times}</td>
@@ -694,6 +751,40 @@ function defAvailUnits(v) {
   for (const u of DEF_OBJ_UNITS)
     avail[u] = station ? Math.min(v[u] || 0, (de[u] || 0) + (inc[u] || 0)) : (v[u] || 0);
   return avail;
+}
+
+// ── v4.26.0: defAvailUnits split into the slice that is HOME NOW and the slice still ON ITS
+// WAY HOME, so Plan Defense can fill from immediately-sendable defense first. The total is
+// unchanged by construction: defAvailUnitsNow + defAvailUnitsFuture === defAvailUnits. ──
+
+// The EN-ROUTE slice: own troops returning from an attack / support / scavenging run (or ally
+// support inbound, capped at own troops). Anchored on the `incoming` row — deliberately NOT
+// derived as "avail − min(own, defense)", because the `defense` row also counts FOREIGN
+// support: a village with 600 own home + 400 own returning + 500 allied spear stationed has
+// defense = 1100, so min(own, defense) = 1000 would swallow the returning 400 into "now" and
+// claim troops are home that aren't. Anchoring on `incoming` gets that (common) case right.
+// Capped at `avail` so the now/future invariant holds even if defAvailUnits ever changes.
+// ⚠ There is no ETA anywhere in the export — we know the AMOUNT returning, never when.
+function defAvailUnitsFuture(v) {
+  const station = hasStationData();
+  const inc = station ? (incomingByCoord[v.coord] || {}) : null;
+  const avail = defAvailUnits(v);
+  const out = {};
+  for (const u of DEF_OBJ_UNITS)
+    out[u] = station ? Math.min(avail[u], v[u] || 0, inc[u] || 0) : 0;
+  return out;
+}
+
+// The AT-HOME slice: assignable total minus what's still en route.
+// ⚠ Inherits one artefact of defAvailUnits we cannot see past: a village whose own defense is
+// fully deployed elsewhere but which HOSTS allied support reads that support as its own (the
+// cap-at-own-troops line). Such a village looks home-rich, so treat "now" as a good estimate
+// rather than a guarantee. Without station rows everything reads as home (pre-4.26 behavior).
+function defAvailUnitsNow(v) {
+  const avail = defAvailUnits(v), fut = defAvailUnitsFuture(v);
+  const out = {};
+  for (const u of DEF_OBJ_UNITS) out[u] = Math.max(0, avail[u] - fut[u]);
+  return out;
 }
 
 // Pure seam: [{player, avail:{spear,sword,spy,heavy}, sending:{…}}] for every player with
@@ -758,7 +849,7 @@ function defPlanRowLine(r) {
     line += ` [b][color=#ff0e0e]${t('def_bb_depart')(fmtServerDT(r.departMs))}[/color][/b]`
           + ` [color=#2e2eff]${t('def_bb_arrive')(fmtServerDT(r.arriveMs))}[/color]`;
   }
-  return line;
+  return line + defFutBB(r.futUnits); // ⏳ tail when part of the army is still on its way home
 }
 
 // ── Per-player BB export: origin → destination support, with the pre-filled rally URL ──
@@ -777,6 +868,84 @@ function showDefPlayerBB() {
   }
   document.getElementById('bb-output').value = bb.trimEnd() + '\n';
   document.getElementById('bb-modal').classList.add('open');
+}
+
+// ── ⬇ Export Summary Tables (v4.25.0): one compact BB [table] per player — a "what am I
+// sending and where" recap, deliberately WITHOUT a source-village column. Rows are MERGED
+// BY TARGET: a player supporting one target from three villages gets ONE row carrying the
+// summed units. The per-village breakdown already lives in Export Per-Player Orders and the
+// supportSender export. Columns: # | Target | Target Player | Troops, then a Total row.
+
+// Merge a player's plan rows into one entry per target, keeping the plan's target-first
+// order (defPlanRows is sorted by tCoord). Pure — never mutates the rows it reads.
+function defSummaryByTarget(rows) {
+  const out = [], byCoord = {};
+  for (const r of (rows || [])) {
+    let e = byCoord[r.tCoord];
+    if (!e) {
+      e = byCoord[r.tCoord] = { tCoord: r.tCoord, tPlayer: r.tPlayer, units: {} };
+      DEF_OBJ_UNITS.forEach(u => { e.units[u] = 0; });
+      out.push(e);
+    }
+    DEF_OBJ_UNITS.forEach(u => { e.units[u] += (r.units && r.units[u]) || 0; });
+  }
+  return out;
+}
+
+// Column-wise sum of a set of entries' units → one units object. Pure.
+function defSummaryTotals(entries) {
+  const totals = {};
+  DEF_OBJ_UNITS.forEach(u => { totals[u] = 0; });
+  for (const e of (entries || [])) DEF_OBJ_UNITS.forEach(u => { totals[u] += (e.units && e.units[u]) || 0; });
+  return totals;
+}
+
+// One player's BB table: # | Target | Target Player | one column PER UNIT TYPE (DEF_OBJ_UNITS
+// order). Body cells are BARE NUMBERS — no [unit] icons, and a zero prints as 0 so the columns
+// stay readable; the unit each column holds is named once by the icon in the header.
+// ⚠ BB separators are ASYMMETRIC: the header joins cells with [||], data rows with [|].
+// ⚠ And unlike planTableBlock / showUnusedOffsBB, data rows here carry NO TRAILING [|] — a
+// trailing separator would open an 8th empty column next to a fixed-width numeric grid.
+// User-verified in-game; don't "fix" it back for symmetry with the offensive tables.
+// The Total row leaves Target/Target Player blank — BB has no colspan.
+function defSummaryTableBB(rows) {
+  const sep = '[||]', cs = '[|]';
+  const entries = defSummaryByTarget(rows);
+  const unitCols = DEF_OBJ_UNITS.map(u => `[unit]${u}[/unit]`); // icon-only header cells
+  let bb = `[table]\n[**]#${sep}${t('th_target')}${sep}${t('th_target_player')}${sep}${unitCols.join(sep)}[/**]\n`;
+  entries.forEach((e, i) => {
+    const cells = [
+      i + 1,
+      `[coord]${e.tCoord}[/coord]`,
+      e.tPlayer ? `[player]${e.tPlayer}[/player]` : '', // barbarian targets have no defender
+      ...DEF_OBJ_UNITS.map(u => e.units[u] || 0),
+    ];
+    bb += `[*]${cells.join(cs)}\n`;
+  });
+  const totals = defSummaryTotals(entries);
+  const totalCells = [`[b]${t('def_sum_total')}[/b]`, '', '', ...DEF_OBJ_UNITS.map(u => `[b]${totals[u] || 0}[/b]`)];
+  bb += `[*]${totalCells.join(cs)}\n`;
+  return bb + '[/table]';
+}
+
+// Pure seam: [{player, targets, parts:[text], orderCount}] — the renderPmModal() shape, same
+// grouping and A→Z order as the PM/script exports. ALWAYS one single part: a data row costs
+// ~17 brackets, so a player would need ~265 targets to reach PM_MAX_BRACKETS — unreachable,
+// hence no bracket packing here. `orderCount` overrides the modal's line-count default
+// (these blocks are a [table], not one order per line, so lines would over-count by 3).
+function defSummaryMessagesFrom(rows) {
+  const byPlayer = {};
+  for (const r of (rows || [])) (byPlayer[r.srcPlayer] || (byPlayer[r.srcPlayer] = [])).push(r);
+  return Object.keys(byPlayer).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+    .map(name => {
+      const targets = defSummaryByTarget(byPlayer[name]).length;
+      return { player: name, targets, orderCount: targets, parts: [defSummaryTableBB(byPlayer[name])] };
+    });
+}
+
+function showDefSummaryTables() {
+  if (!defPlanRows.length) { alert(t('empty_no_def_plan')); return; }
+  renderPmModal(defSummaryMessagesFrom(defPlanRows), t('summary_export_hint'));
 }
 
 // ── ✉ Export PMs (v4.7.0): one in-game message per player, split at the bracket limit ──
@@ -866,8 +1035,18 @@ function renderPmModal(messages, hint, topHtml) {
 // own brackets (~10) ride in the 500-bracket headroom PM_MAX_BRACKETS already leaves.
 function defPmWrappedMessages(maxBrackets) {
   const tpl = pmTemplateCurrent('def');
-  return defPmMessages(maxBrackets).map(m => ({ ...m,
-    parts: m.parts.map((p, k) => pmApplyTemplate(tpl, p, '', pmPartLabel(k, m.parts.length))) }));
+  // {bb_summary_table} (v4.25.0): each player's own Export Summary Tables block, keyed by player.
+  const tables = {};
+  defSummaryMessagesFrom(defPlanRows).forEach(m => { tables[m.player] = m.parts[0]; });
+  // A table is bracket-heavy (~17 per target row) and EVERY split part carries the full wrapper,
+  // so when the template actually inserts one, pack the orders under a budget reduced by the
+  // biggest table — otherwise a many-target player's finished PM could clear the real ~5,000
+  // limit that PM_MAX_BRACKETS' headroom is meant to absorb. No placeholder ⇒ budget unchanged.
+  const base = maxBrackets || PM_MAX_BRACKETS;
+  const costs = tpl.includes('{bb_summary_table}') ? Object.keys(tables).map(p => pmBracketCount(tables[p])) : [];
+  const budget = costs.length ? Math.max(500, base - Math.max(...costs)) : base;
+  return defPmMessages(budget).map(m => ({ ...m,
+    parts: m.parts.map((p, k) => pmApplyTemplate(tpl, p, '', pmPartLabel(k, m.parts.length), tables[m.player])) }));
 }
 function showDefPmExport() {
   if (!defPlanRows.length) { alert(t('empty_no_def_plan')); return; }
