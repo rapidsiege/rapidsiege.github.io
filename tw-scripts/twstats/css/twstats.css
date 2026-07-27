@@ -406,3 +406,5 @@ table.vis.own-villages td.zero { color: var(--text-muted); opacity: .5; }
 .flag-nosent { color: var(--link-color); border-color: var(--border-secondary); }
 .flag-maybe { color: var(--link-color); border-color: var(--border-secondary); font-style: italic; }
 .flag-assumed { opacity: .85; border-style: dashed; }
+.flag-blindado { color: var(--delta-up); border-color: var(--delta-up); }
+.flag-esquivar { color: #fff; background: #b25a00; border-color: #b25a00; }

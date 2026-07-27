@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>es100 · Entrantes</title>
-  <link rel="stylesheet" href="css/twstats.css?v=20260728.2">
+  <link rel="stylesheet" href="css/twstats.css?v=20260728.3">
 </head>
 <body>
   <div id="main">
@@ -34,6 +34,10 @@
       se usa la unidad de la etiqueta (p. ej. «Ariete») con la distancia. Sin nada de eso
       el envío se acota entre la unidad más lenta y la más rápida. Todo lo deducido va
       marcado con <span class="derived">≈</span>.
+      <br>Con la fila <code>Defensor:</code> del volcado se juzga además <b>tu</b> pueblo:
+      <span class="flag flag-blindado">Blindado</span> si aguanta de sobra, y
+      <span class="flag flag-esquivar">Esquivar</span> si está sin defensa o es un pueblo
+      ofensivo (ahí lo que interesa es sacar las tropas). Ambos umbrales se ajustan arriba.
     </div>
 
     <form class="conquer-filters" id="filters" onsubmit="return false">
@@ -44,6 +48,14 @@
       <div class="f">
         <label for="maxdays">Conquistado hace menos de (días)</label>
         <input id="maxdays" type="number" min="0" step="1" value="4">
+      </div>
+      <div class="f">
+        <label for="blindado">«Blindado» desde (tropas def.)</label>
+        <input id="blindado" type="number" min="0" step="1000" value="30000">
+      </div>
+      <div class="f">
+        <label for="esquivar">«Esquivar» por debajo de (tropas def.)</label>
+        <input id="esquivar" type="number" min="0" step="500" value="2000">
       </div>
       <div class="f">
         <label>&nbsp;</label>
@@ -116,7 +128,7 @@
        predates TW.srvEpoch broke this page outright) or a stale stylesheet that
        lacks the newer badge styles. Bump ?v= on EVERY asset change, site-wide;
        the token is shared by all twstats pages. -->
-  <script src="js/common.js?v=20260728.2"></script>
-  <script src="js/incomings.js?v=20260728.2"></script>
+  <script src="js/common.js?v=20260728.3"></script>
+  <script src="js/incomings.js?v=20260728.3"></script>
 </body>
 </html>

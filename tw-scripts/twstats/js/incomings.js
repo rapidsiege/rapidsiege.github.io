@@ -32,15 +32,22 @@
   var $ = function (id) { return document.getElementById(id); };
   var LS_POINTS = "tw.entrantes.minPoints";
   var LS_DAYS = "tw.entrantes.maxDays";
+  var LS_BLINDADO = "tw.entrantes.blindado";
+  var LS_ESQUIVAR = "tw.entrantes.esquivar";
   // The static world files are served from the calculators' data dir, a sibling
   // of twstats/ — NOT from twstats' own data/ (which the build rsyncs --delete).
   var WORLD_DATA = "../data/" + TW.WORLD + "/";
 
   var UNIT_ES = {
     spear: "Lanza", sword: "Espada", axe: "Hacha", archer: "Arquero",
-    spy: "Explorador", light: "CL", marcher: "Arq. caballo", heavy: "CP",
+    spy: "Espía", light: "CL", marcher: "Arq. caballo", heavy: "CP",
     ram: "Ariete", catapult: "Catapulta", knight: "Paladín", snob: "Noble",
   };
+
+  // Which units count as defence vs offence when judging one of YOUR villages.
+  // spy / knight / snob are neither.
+  var DEF_UNITS = { spear: 1, sword: 1, archer: 1, heavy: 1 };
+  var OFF_UNITS = { axe: 1, light: 1, marcher: 1, ram: 1, catapult: 1 };
 
   var state = {
     ready: null,        // Promise resolved when both datasets are indexed
@@ -72,10 +79,13 @@
       var u = root.children[i];
       var sp = u.getElementsByTagName("speed")[0];
       if (!sp) continue;
+      var pop = u.getElementsByTagName("pop")[0];
       units.push({
         key: u.tagName,
         name: UNIT_ES[u.tagName] || u.tagName,
         minPerField: parseFloat(sp.textContent) / (speed * unitSpeed),
+        pop: pop ? parseFloat(pop.textContent) : 1,
+        role: DEF_UNITS[u.tagName] ? "def" : (OFF_UNITS[u.tagName] ? "off" : null),
       });
     }
     // Units sharing a speed are indistinguishable from travel time alone, so
@@ -377,6 +387,46 @@
     return attacks;
   }
 
+  // === your attacked villages: Blindado / Esquivar =========================
+  // Judged from the dump's own "Defensor:" row, decoded against the world's
+  // unit order. Troop COUNTS drive the thresholds (that is how players think
+  // about "30k de defensa"), but off-vs-def village shape is judged by farm
+  // POPULATION, since a heavy cavalry is 6 pop and an axe is 1 — counts alone
+  // would call a 5k-heavy village "small".
+  function gradeTarget(t, opts) {
+    t.defTroops = null; t.offTroops = null; t.status = null;
+    if (!t.def || !state.cfg) return;
+    var units = state.cfg.units;
+    if (t.def.length !== units.length) return;   // can't trust the decode
+
+    var defN = 0, offN = 0, defPop = 0, offPop = 0;
+    for (var i = 0; i < units.length; i++) {
+      var n = t.def[i] || 0, u = units[i];
+      if (u.role === "def") { defN += n; defPop += n * u.pop; }
+      else if (u.role === "off") { offN += n; offPop += n * u.pop; }
+    }
+    t.defTroops = defN; t.offTroops = offN;
+    t.defPop = defPop; t.offPop = offPop;
+    t.isOffensive = offPop > defPop;
+
+    if (defN >= opts.blindado) t.status = "blindado";
+    else if (defN < opts.esquivar || t.isOffensive) t.status = "esquivar";
+  }
+
+  var STATUS_TEXT = {
+    blindado: function (t, opts) {
+      return "Blindado (" + TW.commas(t.defTroops) + " tropas def. ≥ " + TW.commas(opts.blindado) + ")";
+    },
+    esquivar: function (t, opts) {
+      if (t.defTroops < opts.esquivar) {
+        return "Esquivar (" + (t.defTroops ? "solo " + TW.commas(t.defTroops) + " tropas def."
+                                           : "sin defensa") + ")";
+      }
+      return "Esquivar (pueblo ofensivo: " + TW.commas(t.offTroops) + " tropas of. vs " +
+        TW.commas(t.defTroops) + " def.)";
+    },
+  };
+
   // === data ================================================================
   function indexData(villages, conquers) {
     var i, v;
@@ -578,7 +628,21 @@
 
   // Each comparator returns [hasValue, value] so missing data always sinks to
   // the bottom, in both directions, instead of clumping at whichever end.
-  var SEVERITY = { after: 6, new: 5, maybe: 4, low: 3, nosent: 2, stale: 2, unknown: 1 };
+  // Not every flag is a warning. "Blindado" is reassurance — it must not redden
+  // the row, count as "marcado", or survive the «Solo marcados» filter.
+  var ALERT_FLAGS = {
+    low: 1, "new": 1, after: 1, maybe: 1, stale: 1, nosent: 1, esquivar: 1,
+  };
+  function isAlert(r) {
+    if (r.unknown) return true;
+    for (var i = 0; i < r.flags.length; i++) if (ALERT_FLAGS[r.flags[i].cls]) return true;
+    return false;
+  }
+
+  var SEVERITY = {
+    esquivar: 7, after: 6, "new": 5, maybe: 4, low: 3,
+    nosent: 2, stale: 2, unknown: 1, blindado: 0,
+  };
   var SORTERS = {
     coord: function (r) { return [1, r.coord.x * 1000 + r.coord.y]; },
     points: function (r) {
@@ -664,7 +728,7 @@
   }
 
   function passesFilters(r) {
-    if ($("onlyflagged").checked && !r.flags.length && !r.unknown) return false;
+    if ($("onlyflagged").checked && !isAlert(r)) return false;
     if (state.mode !== "attacks") return true;
     var f = state.filters, a = r.attack;
     if (f.player && a.player !== f.player) return false;
@@ -686,7 +750,7 @@
     var html = "", n = 0, lastTarget = null;
     for (var i = 0; i < shown.length; i++) {
       var r = shown[i];
-      var cls = (n % 2 ? "r2" : "r1") + (r.flags.length ? " row-flagged" : "") + (r.unknown ? " row-unknown" : "");
+      var cls = (n % 2 ? "r2" : "r1") + (isAlert(r) ? " row-flagged" : "") + (r.unknown ? " row-unknown" : "");
       n++;
 
       if (grouped) {
@@ -898,6 +962,8 @@
     });
 
     var head = "<tr><th>Pueblo</th><th class='col-pts'>Puntos</th><th class='col-pts'>Ataques</th>" +
+      "<th>Estado</th><th class='col-pts' title='Lanza + Espada + Arquero + CP'>Def.</th>" +
+      "<th class='col-pts' title='Hacha + CL + Arq. caballo + Ariete + Catapulta'>Of.</th>" +
       "<th class='col-pts'>Muralla</th><th class='col-pts'>Lealtad</th>" +
       (anyDef && units.length && !mismatch
         ? units.map(function (u) { return "<th class='col-pts' title='" + TW.esc(u.name) + "'>" +
@@ -916,10 +982,19 @@
       } else {
         defCells = "<td>" + (t.def ? t.def.join(" ") : "—") + "</td>";
       }
+      var estado = t.status
+        ? "<span class='flag flag-" + t.status + "'>" +
+          (t.status === "blindado" ? "Blindado" : "Esquivar") + "</span>" +
+          (t.status === "esquivar" && t.isOffensive ? " <span class='conq-ago'>ofensivo</span>" : "")
+        : (t.defTroops == null ? "<span class='barb'>—</span>" : "<span class='flag flag-ok'>—</span>");
+
       return "<tr class='" + (i % 2 ? "r2" : "r1") + "'>" +
         "<td>" + (v ? TW.villageCell(v) : TW.esc(k)) + "</td>" +
         "<td class='col-pts'>" + (v && v.points != null ? TW.commas(v.points) : "—") + "</td>" +
         "<td class='col-pts'>" + (counts[k] || 0) + "</td>" +
+        "<td>" + estado + "</td>" +
+        "<td class='col-pts'>" + (t.defTroops != null ? TW.commas(t.defTroops) : "—") + "</td>" +
+        "<td class='col-pts'>" + (t.offTroops != null ? TW.commas(t.offTroops) : "—") + "</td>" +
         "<td class='col-pts'>" + (t.wall != null ? t.wall : "—") + "</td>" +
         "<td class='col-pts'>" + (t.loyalty != null ? t.loyalty : "—") + "</td>" +
         defCells + "</tr>";
@@ -984,12 +1059,14 @@
   // === summary / warnings ==================================================
   function summarize() {
     var total = state.rows.length, flagged = 0, unknown = 0;
-    var n = { low: 0, new: 0, after: 0, stale: 0 };
+    var n = { low: 0, "new": 0, after: 0, maybe: 0, stale: 0, nosent: 0, blindado: 0, esquivar: 0 };
     for (var i = 0; i < total; i++) {
       var r = state.rows[i];
       if (r.unknown) { unknown++; continue; }
-      if (r.flags.length) flagged++;
-      for (var j = 0; j < r.flags.length; j++) n[r.flags[j].cls]++;
+      if (isAlert(r)) flagged++;
+      for (var j = 0; j < r.flags.length; j++) {
+        if (n[r.flags[j].cls] != null) n[r.flags[j].cls]++;
+      }
     }
     var parts;
     if (state.mode === "attacks") {
@@ -1011,6 +1088,8 @@
       (n.new === 1 ? "" : "s") + " hace poco");
     if (n.after) parts.push(n.after + " conquistad" + (state.mode === "attacks" ? "o" : "a") +
       (n.after === 1 ? "" : "s") + " tras el envío");
+    if (n.esquivar) parts.push(n.esquivar + " a esquivar");
+    if (n.blindado) parts.push(n.blindado + " sobre pueblo blindado");
     if (n.stale) parts.push(n.stale + " sin puntos actuales");
     if (unknown) parts.push(unknown + " sin datos");
     var el = $("summary");
@@ -1081,15 +1160,21 @@
 
   // === wiring ==============================================================
   function readOpts() {
-    var mp = parseFloat($("minpoints").value);
-    var md = parseFloat($("maxdays").value);
-    if (!isFinite(mp) || mp < 0) mp = 0;
-    if (!isFinite(md) || md < 0) md = 0;
+    function num(id, dflt) {
+      var v = parseFloat($(id).value);
+      return (isFinite(v) && v >= 0) ? v : dflt;
+    }
+    var opts = {
+      minPoints: num("minpoints", 0), maxDays: num("maxdays", 0),
+      blindado: num("blindado", 30000), esquivar: num("esquivar", 2000),
+    };
     try {
-      localStorage.setItem(LS_POINTS, String(mp));
-      localStorage.setItem(LS_DAYS, String(md));
+      localStorage.setItem(LS_POINTS, String(opts.minPoints));
+      localStorage.setItem(LS_DAYS, String(opts.maxDays));
+      localStorage.setItem(LS_BLINDADO, String(opts.blindado));
+      localStorage.setItem(LS_ESQUIVAR, String(opts.esquivar));
     } catch (e) { /* private mode */ }
-    return { minPoints: mp, maxDays: md };
+    return opts;
   }
 
   function fail(msg) {
@@ -1157,6 +1242,7 @@
       var now = Math.floor(Date.now() / 1000);
       if (parsed) {
         state.targets = parsed.targets;
+        Object.keys(state.targets).forEach(function (k) { gradeTarget(state.targets[k], opts); });
         var attacks = enrichAttacks(parsed.attacks);
         state.rows = attacks.map(function (a) {
           // No sent time and nothing to derive it from → the conquest test
@@ -1167,6 +1253,14 @@
           row.attack = a;
           if (a.sent == null && !range && !row.unknown) {
             row.flags.push({ cls: "nosent", text: "Sin hora de envío — comparado con ahora" });
+          }
+          // Verdict about YOUR village, not the attacker: worth carrying onto
+          // every incoming, because "dodge" or "ignore" is decided per command.
+          if (a.target && a.target.status) {
+            row.flags.push({
+              cls: a.target.status,
+              text: STATUS_TEXT[a.target.status](a.target, opts),
+            });
           }
           return row;
         });
@@ -1214,9 +1308,11 @@
     }
 
     try {
-      var mp = localStorage.getItem(LS_POINTS), md = localStorage.getItem(LS_DAYS);
-      if (mp !== null) $("minpoints").value = mp;
-      if (md !== null) $("maxdays").value = md;
+      [[LS_POINTS, "minpoints"], [LS_DAYS, "maxdays"],
+       [LS_BLINDADO, "blindado"], [LS_ESQUIVAR, "esquivar"]].forEach(function (pair) {
+        var v = localStorage.getItem(pair[0]);
+        if (v !== null) $(pair[1]).value = v;
+      });
     } catch (e) { /* private mode */ }
 
     TW.loadJSON("meta.json").then(function (m) {
@@ -1256,6 +1352,8 @@
     // Re-run on setting change so the thresholds feel live once analysed.
     $("minpoints").addEventListener("change", function () { if (state.rows.length) analyze(); });
     $("maxdays").addEventListener("change", function () { if (state.rows.length) analyze(); });
+    $("blindado").addEventListener("change", function () { if (state.rows.length) analyze(); });
+    $("esquivar").addEventListener("change", function () { if (state.rows.length) analyze(); });
     // Ctrl/Cmd+Enter in the textarea = Analizar.
     $("coords").addEventListener("keydown", function (e) {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); analyze(); }
