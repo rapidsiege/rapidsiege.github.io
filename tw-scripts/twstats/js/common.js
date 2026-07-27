@@ -36,6 +36,21 @@
     var p = parts(t);
     return p.year + "-" + p.month + "-" + p.day + " " + p.hour + ":" + p.minute;
   }
+  // Inverse of fmtTime: a server-time (Europe/Madrid) wall clock → unix seconds.
+  // Intl only converts epoch → wall clock, so invert it by measuring the offset
+  // the guess lands in, then re-measuring once at the corrected instant (the
+  // second pass is what makes DST-transition days come out right).
+  function srvOffsetMs(tMs) {
+    var p = {};
+    SRV_FMT.formatToParts(new Date(tMs)).forEach(function (x) { p[x.type] = x.value; });
+    return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - tMs;
+  }
+  function srvEpoch(y, mo, d, h, mi, s) {
+    var guess = Date.UTC(y, mo - 1, d, h || 0, mi || 0, s || 0);
+    var t = guess - srvOffsetMs(guess);
+    return Math.floor((guess - srvOffsetMs(t)) / 1000);
+  }
+
   var WD_FMT = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", weekday: "short" });
   function weekday(t) {       // "Lun", "Mar", … (Spanish, server tz)
     var s = WD_FMT.format(new Date(t * 1000)).replace(/\.$/, "");
@@ -176,13 +191,14 @@
     if (!initial || !show(initial)) show(tabs[0].getAttribute("data-tab"));
   }
 
-  // Shared top nav. `active` = one of inicio|jugadores|tribus|pueblos|ennoblecimientos.
+  // Shared top nav. `active` = one of inicio|jugadores|tribus|pueblos|ennoblecimientos|entrantes.
   var NAV = [
     { key: "inicio", href: "index.html", label: "Inicio" },
     { key: "jugadores", href: "rankings.html?mode=players", label: "Jugadores" },
     { key: "tribus", href: "rankings.html?mode=tribes", label: "Tribus" },
     { key: "pueblos", href: "villages.html", label: "Pueblos" },
     { key: "ennoblecimientos", href: "ennoblements.html", label: "Ennoblecimientos" },
+    { key: "entrantes", href: "incomings.html", label: "Entrantes" },
   ];
   function renderNav(active) {
     var el = document.querySelector("nav.mainnav");
@@ -199,6 +215,7 @@
   window.TW = {
     WORLD: WORLD, DATA: DATA, GAME: GAME, SRV_FMT: SRV_FMT,
     fmtTime: fmtTime, fmtStamp: fmtStamp, fmtDate: fmtDate, fmtDateTime: fmtDateTime, weekday: weekday,
+    srvEpoch: srvEpoch,
     esc: esc, commas: commas, continent: continent, loadJSON: loadJSON,
     playerLink: playerLink, tribeLink: tribeLink,
     villageCell: villageCell, ownerCell: ownerCell, deltaCell: deltaCell,

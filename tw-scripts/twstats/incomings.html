@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>es100 · Entrantes</title>
+  <link rel="stylesheet" href="css/twstats.css">
+</head>
+<body>
+  <div id="main">
+    <div class="box-title">
+      Guerras Tribales Estadísticas <span class="sep">:</span> Mundo <span id="worldName">es100</span>
+      <span class="sep">:</span> Entrantes
+    </div>
+
+    <nav class="mainnav" aria-label="Views"></nav>
+
+    <p class="meta-line" id="metaLine">cargando…</p>
+
+    <div class="info-box">
+      <span class="info-i">i</span>
+      Pega lo que te está atacando. Se marcan los pueblos con <b>pocos puntos</b>
+      (pueblo pequeño → poca capacidad ofensiva) o <b>conquistados hace poco</b>
+      (tropas aún sin reconstruir) — candidatos a <b>fake</b>. Se aceptan dos formatos:
+      una <b>lista de coordenadas</b> (<code>573|525 572|527 …</code>), o el
+      <b>volcado BB-code de tus entrantes</b> con las líneas
+      <code>[command]attack[/command]</code>. Con el volcado, cada conquista se compara
+      con la hora de <b>envío</b> de ese ataque, no con ahora: un ataque con 60 h de
+      viaje salió de un pueblo cuyo estado hace 60 h es el que importa. Además se deduce
+      el <b>tipo de tropa</b> de cada ataque (duración ÷ distancia) y se detectan
+      <b>trenes</b> de comandos.
+    </div>
+
+    <form class="conquer-filters" id="filters" onsubmit="return false">
+      <div class="f">
+        <label for="minpoints">Puntos mínimos (marcar por debajo)</label>
+        <input id="minpoints" type="number" min="0" step="100" value="3000">
+      </div>
+      <div class="f">
+        <label for="maxdays">Conquistado hace menos de (días)</label>
+        <input id="maxdays" type="number" min="0" step="1" value="4">
+      </div>
+      <div class="f">
+        <label>&nbsp;</label>
+        <label class="chk"><input id="onlyflagged" type="checkbox"> Solo marcados</label>
+      </div>
+      <div class="f">
+        <label>&nbsp;</label>
+        <label class="chk"><input id="groupbytarget" type="checkbox"> Agrupar por pueblo objetivo</label>
+      </div>
+    </form>
+
+    <form class="conquer-filters coord-form" id="coordForm" onsubmit="return false">
+      <div class="f grow">
+        <label for="coords">Coordenadas o volcado de entrantes — el formato se detecta solo</label>
+        <textarea id="coords" rows="6" spellcheck="false"
+          placeholder="573|525 572|527 574|511 …&#10;— o pega tus entrantes en BB-code —&#10;[b]Pueblo:[/b] [coord]571|523[/coord]&#10;    [command]attack[/command] Ariete | player … | sent 26.07 20:44:20 | … [coord]553|470[/coord] --> Hora de llegada: 28.07.26 00:43:32:768 …"></textarea>
+      </div>
+      <div class="f">
+        <label>&nbsp;</label>
+        <div class="scope">
+          <button type="button" id="analyze" class="seg">Analizar</button>
+          <button type="button" id="clear" class="seg">Limpiar</button>
+        </div>
+      </div>
+    </form>
+
+    <p class="tz-note">Todas las horas en hora del servidor (Europe/Madrid). Los datos del mundo se actualizan cada ~2 h: una conquista de hace pocos minutos puede no aparecer todavía. El registro de conquistas cubre todo el mundo desde su inicio.</p>
+    <p id="status" class="status">Cargando datos del mundo…</p>
+    <p class="meta-line" id="summary" hidden>—</p>
+    <p class="tz-note" id="modeNote" hidden>—</p>
+    <p class="status" id="warnLine" hidden>—</p>
+
+    <div id="panels" hidden>
+      <details class="panel" id="panelResumen" open>
+        <summary>Resumen</summary>
+        <div class="panel-body two-col">
+          <div id="totals"></div>
+          <div id="opSpotter"></div>
+        </div>
+      </details>
+
+      <details class="panel" id="panelFiltros">
+        <summary>Filtrar ataques</summary>
+        <div class="panel-body" id="attackFilters"></div>
+      </details>
+
+      <details class="panel" id="panelCombos">
+        <summary>Combinaciones origen / destino</summary>
+        <div class="panel-body two-col" id="combos"></div>
+      </details>
+
+      <details class="panel" id="panelOwn">
+        <summary>Mis pueblos atacados</summary>
+        <div class="panel-body" id="ownVillages"></div>
+      </details>
+    </div>
+
+    <div class="table-wrap" id="tableWrap" hidden>
+      <table class="vis widget" id="tbl">
+        <thead id="head"></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <p class="foot">Datos archivados del mundo es100. No oficial.</p>
+  </div>
+
+  <script src="js/common.js"></script>
+  <script src="js/incomings.js"></script>
+</body>
+</html>
