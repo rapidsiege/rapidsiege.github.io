@@ -57,6 +57,8 @@
     mode: "coords",     // "coords" | "attacks"
     rows: [],           // last analysis result (all rows)
     targets: {},        // attack mode: target coord -> {wall, loyalty, def}
+    notes: {},          // coord -> "OFF" | "DEF" | "MIXED" | "EMPTY" (village_notes.txt)
+    notesCount: 0,
     filters: {},        // attack mode table filters
   };
 
@@ -100,6 +102,10 @@
     groups.forEach(function (g) {
       g.label = g.units.join("/");
       g.isNoble = g.keys.indexOf("snob") !== -1;
+      // Siege/noble pace = the slow, heavy commands. A fake is cheap to send
+      // fast; dragging rams or a noble across the map usually means business.
+      g.isSiege = g.keys.indexOf("ram") !== -1 || g.keys.indexOf("catapult") !== -1;
+      g.isHeavy = g.isNoble || g.isSiege;
     });
     groups.sort(function (a, b) { return a.minPerField - b.minPerField; });
 
@@ -411,6 +417,7 @@
 
     if (defN >= opts.blindado) t.status = "blindado";
     else if (defN < opts.esquivar || t.isOffensive) t.status = "esquivar";
+    else t.status = "media";   // between the two bars — say so, don't stay silent
   }
 
   var STATUS_TEXT = {
@@ -424,6 +431,9 @@
       }
       return "Esquivar (pueblo ofensivo: " + TW.commas(t.offTroops) + " tropas of. vs " +
         TW.commas(t.defTroops) + " def.)";
+    },
+    media: function (t) {
+      return "Defensa media (" + TW.commas(t.defTroops) + " tropas def.)";
     },
   };
 
@@ -452,6 +462,31 @@
     }
   }
 
+  // village_notes.txt — a hand-maintained snapshot of "what is this enemy
+  // village built for", classified with the tribe-calculator's own rule
+  // (js/data-load.js applyVilDerived). Lives next to this page, NOT under
+  // data/es100/, which the update Action rsyncs --delete.
+  // Format: "x|y,OFF" per line; # comments allowed.
+  function loadVillageNotes() {
+    return fetch("village_notes.txt").then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.text();
+    }).then(function (txt) {
+      var n = 0;
+      txt.split(/\r?\n/).forEach(function (line) {
+        if (!line || line.charAt(0) === "#") return;
+        var p = line.split(",");
+        if (p.length < 2) return;
+        var coord = p[0].trim(), type = p[1].trim().toUpperCase();
+        if (/^\d{1,3}\|\d{1,3}$/.test(coord)) { state.notes[coord] = type; n++; }
+      });
+      state.notesCount = n;
+    }).catch(function (e) {
+      state.notesCount = 0;
+      if (window.console) console.warn("Entrantes: sin village_notes.txt:", e.message);
+    });
+  }
+
   function loadXML(name) {
     return fetch(WORLD_DATA + name).then(function (r) {
       if (!r.ok) throw new Error(name + ": HTTP " + r.status);
@@ -475,6 +510,7 @@
       TW.loadJSON("villages.json"),
       TW.loadJSON("conquers.json"),
       cfgP,
+      loadVillageNotes(),
     ]).then(function (res) {
       indexData(res[0], res[1]);
       $("status").textContent = "Listo. Pega las coordenadas (o tus entrantes) y pulsa «Analizar».";
@@ -566,7 +602,7 @@
     row.flags.forEach(function (f) {
       out.push("<span class='flag flag-" + f.cls + "'>" + TW.esc(f.text) + "</span>");
     });
-    if (!out.length) out.push("<span class='flag flag-ok'>OK</span>");
+    if (!out.length) out.push("<span class='flag flag-ok'>Sin señales</span>");
     return out.join(" ");
   }
 
@@ -591,6 +627,11 @@
     if (row.village) html = TW.villageCell(row.village);
     else html = '<span class="coord">' + row.coord.key + '</span> <span class="cont">' +
       TW.continent(row.coord.x, row.coord.y) + "</span>";
+    var note = state.notes[row.coord.key];
+    if (note) {
+      html += " <span class='note-badge note-" + note.toLowerCase() +
+        "' title='Tipo de pueblo según village_notes.txt'>" + TW.esc(note) + "</span>";
+    }
     if (row.attack && row.attack.dupTotal > 1) {
       html += " <span class='as-badge' title='Ataques desde este mismo pueblo'>AS " +
         row.attack.dupIndex + "/" + row.attack.dupTotal + "</span>";
@@ -631,7 +672,7 @@
   // Not every flag is a warning. "Blindado" is reassurance — it must not redden
   // the row, count as "marcado", or survive the «Solo marcados» filter.
   var ALERT_FLAGS = {
-    low: 1, "new": 1, after: 1, maybe: 1, stale: 1, nosent: 1, esquivar: 1,
+    low: 1, "new": 1, after: 1, maybe: 1, stale: 1, nosent: 1, esquivar: 1, nuke: 1, notedef: 1,
   };
   function isAlert(r) {
     if (r.unknown) return true;
@@ -640,8 +681,8 @@
   }
 
   var SEVERITY = {
-    esquivar: 7, after: 6, "new": 5, maybe: 4, low: 3,
-    nosent: 2, stale: 2, unknown: 1, blindado: 0,
+    nuke: 8, esquivar: 7, notedef: 6.5, after: 6, "new": 5, maybe: 4, low: 3,
+    nosent: 2, stale: 2, unknown: 1, media: 0.5, blindado: 0,
   };
   var SORTERS = {
     coord: function (r) { return [1, r.coord.x * 1000 + r.coord.y]; },
@@ -984,7 +1025,7 @@
       }
       var estado = t.status
         ? "<span class='flag flag-" + t.status + "'>" +
-          (t.status === "blindado" ? "Blindado" : "Esquivar") + "</span>" +
+          ({ blindado: "Blindado", esquivar: "Esquivar", media: "Defensa media" }[t.status]) + "</span>" +
           (t.status === "esquivar" && t.isOffensive ? " <span class='conq-ago'>ofensivo</span>" : "")
         : (t.defTroops == null ? "<span class='barb'>—</span>" : "<span class='flag flag-ok'>—</span>");
 
@@ -1059,7 +1100,7 @@
   // === summary / warnings ==================================================
   function summarize() {
     var total = state.rows.length, flagged = 0, unknown = 0;
-    var n = { low: 0, "new": 0, after: 0, maybe: 0, stale: 0, nosent: 0, blindado: 0, esquivar: 0 };
+    var n = { low: 0, "new": 0, after: 0, maybe: 0, stale: 0, nosent: 0, blindado: 0, esquivar: 0, media: 0, nuke: 0, notedef: 0 };
     for (var i = 0; i < total; i++) {
       var r = state.rows[i];
       if (r.unknown) { unknown++; continue; }
@@ -1088,6 +1129,8 @@
       (n.new === 1 ? "" : "s") + " hace poco");
     if (n.after) parts.push(n.after + " conquistad" + (state.mode === "attacks" ? "o" : "a") +
       (n.after === 1 ? "" : "s") + " tras el envío");
+    if (n.notedef) parts.push(n.notedef + " desde pueblo DEF/vacío");
+    if (n.nuke) parts.push(n.nuke + " posible" + (n.nuke === 1 ? "" : "s") + " real" + (n.nuke === 1 ? "" : "es"));
     if (n.esquivar) parts.push(n.esquivar + " a esquivar");
     if (n.blindado) parts.push(n.blindado + " sobre pueblo blindado");
     if (n.stale) parts.push(n.stale + " sin puntos actuales");
@@ -1254,6 +1297,32 @@
           if (a.sent == null && !range && !row.unknown) {
             row.flags.push({ cls: "nosent", text: "Sin hora de envío — comparado con ahora" });
           }
+          // A plausible REAL hit: heavy/slow troop class (rams, cats or a
+          // noble), the attacker shows no fake indicator, and your village
+          // isn't armoured enough to shrug it off. Suppressed when the origin
+          // already looks like a fake — the two readings would contradict.
+          var originNote = state.notes[a.origin.key];
+          if ((originNote === "DEF" || originNote === "EMPTY") && a.speed && a.speed.isHeavy) {
+            row.flags.push({
+              cls: "notedef",
+              text: "Fake probable: pueblo " + (originNote === "EMPTY" ? "vacío" : "DEF") +
+                " enviando tropa lenta",
+            });
+          }
+          var looksFake = row.flags.some(function (f) {
+            return f.cls === "low" || f.cls === "new" || f.cls === "notedef";
+          });
+          var heavy = a.speed && a.speed.isHeavy;
+          var armoured = a.target && a.target.status === "blindado";
+          if (heavy && !looksFake && !armoured) {
+            row.flags.push({
+              cls: "nuke",
+              text: "⚠ Posible " + (a.speed.isNoble ? "tren de nobles" : "nuke") + " real" +
+                (originNote === "OFF" ? " — pueblo OFF confirmado" : "") +
+                (a.speedFromTag ? " (tropa según etiqueta)" : ""),
+            });
+          }
+
           // Verdict about YOUR village, not the attacker: worth carrying onto
           // every incoming, because "dodge" or "ignore" is decided per command.
           if (a.target && a.target.status) {

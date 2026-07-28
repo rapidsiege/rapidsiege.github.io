@@ -408,3 +408,12 @@ table.vis.own-villages td.zero { color: var(--text-muted); opacity: .5; }
 .flag-assumed { opacity: .85; border-style: dashed; }
 .flag-blindado { color: var(--delta-up); border-color: var(--delta-up); }
 .flag-esquivar { color: #fff; background: #b25a00; border-color: #b25a00; }
+.flag-media { color: var(--text-muted); border-color: var(--border-secondary); }
+.flag-nuke { color: #fff; background: var(--delta-down); border-color: var(--delta-down); }
+.note-badge {
+  display: inline-block; border-radius: 3px; padding: 0 4px; font-size: 10px; font-weight: 700;
+  border: 1px solid var(--border-secondary); color: var(--text-muted);
+}
+.note-off { color: #fff; background: #8a3b00; border-color: #8a3b00; }
+.note-def { color: #fff; background: #1a5e7a; border-color: #1a5e7a; }
+.flag-notedef { color: var(--link-color); border-color: var(--link-color); }
