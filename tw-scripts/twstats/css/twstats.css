@@ -78,8 +78,12 @@ a:link, a:visited { font-weight: 700; color: var(--link-color); text-decoration:
 a:hover, a:active { color: var(--link-hover); text-decoration: none; }
 
 /* Centred content box, à la twstats #main */
+/* Was a fixed 1050px (the twstats reference width). The Entrantes table runs to
+   9 columns, which clipped the Aviso badges, so the shell now grows with the
+   viewport and only caps on very wide screens. width: calc keeps a gutter —
+   `margin: auto` alone collapses to 0 once the cap stops binding. */
 #main {
-  max-width: 1050px; margin: 12px auto; padding: 8px;
+  max-width: 1600px; width: calc(100% - 24px); margin: 12px auto; padding: 8px;
   background-color: var(--bg-content);
   border: 1px solid var(--border-primary); border-radius: 4px;
   box-shadow: 1px 1px 2px 1px rgba(0,0,0,.3);
@@ -417,3 +421,10 @@ table.vis.own-villages td.zero { color: var(--text-muted); opacity: .5; }
 .note-off { color: #fff; background: #8a3b00; border-color: #8a3b00; }
 .note-def { color: #fff; background: #1a5e7a; border-color: #1a5e7a; }
 .flag-notedef { color: var(--link-color); border-color: var(--link-color); }
+
+/* Aviso badges are long sentences, not chips: inside that column they must wrap
+   instead of running past the table edge. `.flag` keeps nowrap everywhere else
+   (Tropa, trains), where the labels are short. */
+.col-verdict .flag { white-space: normal; }
+.col-verdict { min-width: 210px; }
+table.vis th.col-verdict { white-space: normal; }
