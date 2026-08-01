@@ -756,20 +756,17 @@ function defUnitsBB(units) {
   return DEF_OBJ_UNITS.filter(u => (units[u] || 0) > 0).map(u => `${units[u]}[unit]${u}[/unit]`).join(' ');
 }
 
-// ── ⏳ "still returning" markers (v4.26.0) — the futUnits share of an order, i.e. troops the
+// ── ⏳ "still returning" marker (v4.26.0) — the futUnits share of an order, i.e. troops the
 // sender doesn't have home yet. Distinct from `late` (which is about the TRIP not fitting the
 // deadline): this is about the ARMY not being ready to leave. No ETA exists in the export, so
-// we can only ever say how many, never when. Both helpers return '' for a fully-home order. ──
+// we can only ever say how many, never when. Returns '' for a fully-home order. Table-only
+// since v4.28.0: the per-player exports color the whole line by readiness instead of listing
+// the returning units (the per-unit detail stays here, for the planner's eyes). ──
 function defFutCell(fut) {
   if (!fut) return '';
   const list = DEF_OBJ_UNITS.filter(u => (fut[u] || 0) > 0)
     .map(u => `<span style="white-space:nowrap;">${twIcon(u)} ${fut[u].toLocaleString()}</span>`).join(' ');
   return list ? `<div style="color:#e0a020;font-size:11px;margin-top:2px;" title="${esc(t('def_returning_title'))}">⏳ ${list}</div>` : '';
-}
-function defFutBB(fut) {
-  if (!fut) return '';
-  const list = defUnitsBB(fut);
-  return list ? ` [color=#e0a020]⏳ ${t('def_bb_returning')(list)}[/color]` : '';
 }
 
 function renderDefPlanTable() {
@@ -930,18 +927,34 @@ function renderDefPlayerSummary() {
     </table></div>`;
 }
 
+// Whole-line readiness colors of the per-player exports (v4.28.0)
+const DEF_BB_READY_COLOR = '#2e7d32'; // green: every unit is home — can be sent right now
+const DEF_BB_WAIT_COLOR  = '#c0392b'; // red: part of the army is still returning — send later
+
 // One order line of the per-player export (shared by the forum BB dump AND the PM export,
-// so a player reads the same line either way).
+// so a player reads the same line either way). v4.28.0: the WHOLE line is one uniform color
+// keyed on readiness (user decision — the old red/blue depart–arrive coloring is gone, the
+// depart deadline keeps only its [b]). The returning units are NOT listed on the line any
+// more; a red line just means "wait for your troops" — the per-unit ⏳ detail lives in the
+// plan table (defFutCell) for the planner.
 function defPlanRowLine(r) {
   const url     = rallyUrl(r.srcCoord, r.tCoord, r.units);
   const urlPart = url ? ` — [url=${url}]${t('def_bb_send')}[/url]` : '';
   const def     = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
   let line = `${r.srcCoord} → [coord]${r.tCoord}[/coord]${def}: ${defUnitsBB(r.units)}${urlPart}`;
   if (r.arriveMs !== null) {
-    line += ` [b][color=#ff0e0e]${t('def_bb_depart')(fmtServerDT(r.departMs))}[/color][/b]`
-          + ` [color=#2e2eff]${t('def_bb_arrive')(fmtServerDT(r.arriveMs))}[/color]`;
+    line += ` [b]${t('def_bb_depart')(fmtServerDT(r.departMs))}[/b]`
+          + ` ${t('def_bb_arrive')(fmtServerDT(r.arriveMs))}`;
   }
-  return line + defFutBB(r.futUnits); // ⏳ tail when part of the army is still on its way home
+  return `[color=${r.futUnits ? DEF_BB_WAIT_COLOR : DEF_BB_READY_COLOR}]${line}[/color]`;
+}
+
+// Ready-first split (v4.28.0): a player's rows partitioned into orders they can send right
+// now (green) and orders still waiting on returning troops (red), each half keeping the
+// plan's target-first order. Shared by the forum BB export and the PM export so both read
+// in the same order. Pure.
+function defSplitReady(rows) {
+  return { now: rows.filter(r => !r.futUnits), later: rows.filter(r => r.futUnits) };
 }
 
 // ── Per-player BB export: origin → destination support, with the pre-filled rally URL ──
@@ -954,8 +967,13 @@ function showDefPlayerBB() {
   let bb = '';
   for (const name of names) {
     const rows = byPlayer[name];
+    const { now, later } = defSplitReady(rows);
     bb += `========== ${name} (${rows.length}) ==========\n`;
-    for (const r of rows) bb += defPlanRowLine(r) + '\n';
+    // Group labels only when something is actually waiting — an all-green block needs none.
+    if (later.length && now.length) bb += `[b]${t('def_bb_group_now')}[/b]\n`;
+    for (const r of now) bb += defPlanRowLine(r) + '\n';
+    if (later.length) bb += `[b]${t('def_bb_group_later')}[/b]\n`;
+    for (const r of later) bb += defPlanRowLine(r) + '\n';
     bb += '\n';
   }
   document.getElementById('bb-output').value = bb.trimEnd() + '\n';
@@ -1086,7 +1104,16 @@ function defPmMessagesFrom(planRows, maxBrackets) {
   return Object.keys(byPlayer).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
     .map(name => {
       const rows = byPlayer[name];
-      const lines = rows.map((r, i) => `${i + 1}. ${defPlanRowLine(r)}`);
+      const { now, later } = defSplitReady(rows);
+      const lines = now.concat(later).map((r, i) => `${i + 1}. ${defPlanRowLine(r)}`);
+      // Group labels (v4.28.0), mirroring the forum export: ready orders first, then the
+      // ones waiting on returning troops. Each label is GLUED to its group's first order
+      // line — same trick as the header — so the packer can never strand a bare label at
+      // the end of a part. Numbering runs straight through both groups.
+      if (later.length) {
+        lines[now.length] = `[b]${t('def_bb_group_later')}[/b]\n` + lines[now.length];
+        if (now.length) lines[0] = `[b]${t('def_bb_group_now')}[/b]\n` + lines[0];
+      }
       lines[0] = `========== ${name} (${rows.length}) ==========\n` + lines[0];
       return { player: name, parts: pmSplitParts(lines, maxBrackets) };
     });
