@@ -16,6 +16,7 @@ let dtCfg            = { defSpear: 0, defSword: 0, defSpy: 0, defHeavy: 0 }; // 
 let defTargets       = []; // [{id, coord, defender, tribe, spear, sword, spy, heavy, arriveDate, arriveTime}]
 let defIgnore        = ''; // raw "Ignore Coordinates" textarea (Plan Defense) — sender villages held home
 let defIgnorePlayers = []; // raw player names whose villages never send support (Plan Defense)
+let defCompletePlayers = []; // raw player names drained to 100% of their available defense (Plan Defense)
 let defEnemyTribes   = ''; // raw "Enemy Tribes" textarea (Plan Defense) — one tribe tag/name per line
 let defEnemyDist     = 0;  // "Distance from enemy tribes" (fields); 0 = filter off
 let defFarFirst      = false; // "Prioritize Sending From Far Villages" — source each player's share farthest-from-target first
@@ -40,7 +41,7 @@ function saveDefensive() {
   // well under the ~5 MB quota. The plan is KEPT verbatim (not regenerated) so a distributed
   // plan stays byte-stable across reloads.
   lsSaveC(DT_STORE_KEY, {
-    cfg: dtCfg, targets: defTargets, ignore: defIgnore, ignorePlayers: defIgnorePlayers, enemyTribes: defEnemyTribes, enemyDist: defEnemyDist, farFirst: defFarFirst,
+    cfg: dtCfg, targets: defTargets, ignore: defIgnore, ignorePlayers: defIgnorePlayers, completePlayers: defCompletePlayers, enemyTribes: defEnemyTribes, enemyDist: defEnemyDist, farFirst: defFarFirst,
     packMode: dpMode, packSize: dpPackSize, packMax: dpPackMax, packWeights: dpPackWeights,
     plan: defPlanRows, warnings: defPlanWarnings, nextId: dtNextId,
   });
@@ -54,6 +55,7 @@ function loadDefensive() {
       defTargets      = d.targets || [];
       defIgnore       = typeof d.ignore === 'string' ? d.ignore : '';
       defIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
+      defCompletePlayers = Array.isArray(d.completePlayers) ? d.completePlayers : [];
       defEnemyTribes  = typeof d.enemyTribes === 'string' ? d.enemyTribes : '';
       defEnemyDist    = Math.max(0, parseInt(d.enemyDist, 10) || 0);
       defFarFirst     = d.farFirst === true;
@@ -85,6 +87,7 @@ function loadDefensive() {
   if (ff) ff.checked = defFarFirst;
   renderDpPackCfg();
   renderDefIgnorePlayers();
+  renderDefCompletePlayers();
   renderDefMvPlayers();
   updDefPolyNote(); // a saved map-area filter must be visible from the first paint
 }

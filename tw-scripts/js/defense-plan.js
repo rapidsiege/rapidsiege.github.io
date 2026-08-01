@@ -86,9 +86,11 @@ function toggleDefIgnorePlayers() {
   const el = document.getElementById('dp-ignore-players-wrap');
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
-// Loaded troop-file players not already ignored, alphabetical (label shows village count).
+// Loaded troop-file players not already ignored (nor Complete — the two lists are
+// contradictory, so each picker hides the other's members), alphabetical (label shows
+// village count).
 function defIgnorePlayerOptions() {
-  const ig = new Set(defIgnorePlayers);
+  const ig = new Set([...defIgnorePlayers, ...defCompletePlayers]);
   return Object.keys(players)
     .filter(name => !ig.has(name))
     .map(name => ({ name, villages: players[name].villages.length }))
@@ -116,6 +118,53 @@ function renderDefIgnorePlayers() {
   const opts = defIgnorePlayerOptions();
   const picker = `<select class="cell-input" style="width:170px;" onchange="addDefIgnorePlayer(this.value)">
        <option value="">${t('opt_pick_ignore_player')}</option>
+       ${opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('')}
+     </select>`;
+  host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}${picker}</div>`;
+}
+
+// ── Complete Players (Plan Defense, v4.27.0): whole players drained to 100% — every
+// eligible village of theirs sends ALL its available defense, BEFORE the normal
+// capacity-weighted pool contributes anything. No equal-drain rationing, no pack sizing,
+// and the DEF_SENDER_MIN_POP small-garrison floor is waived for them. Their villages
+// still respect the sender-level holds (Ignore Coordinates, map-drawn area, Enemy-Tribes
+// distance) — a front-line village of a Complete player stays home. Mirrors the Ignore
+// Players picker; state lives in defensive-targets.js (defCompletePlayers) and is applied
+// in generateDefPlan(). ──
+function toggleDefCompletePlayers() {
+  const el = document.getElementById('dp-complete-players-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+// Loaded troop-file players not already Complete (nor ignored — contradictory), alphabetical.
+function defCompletePlayerOptions() {
+  const taken = new Set([...defCompletePlayers, ...defIgnorePlayers]);
+  return Object.keys(players)
+    .filter(name => !taken.has(name))
+    .map(name => ({ name, villages: players[name].villages.length }))
+    .sort((a, b) => decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
+}
+function addDefCompletePlayer(name) {
+  if (!name || defCompletePlayers.includes(name)) return;
+  defCompletePlayers.push(name);
+  saveDefensive(); renderDefCompletePlayers();
+}
+function removeDefCompletePlayer(idx) {
+  defCompletePlayers.splice(idx, 1);
+  saveDefensive(); renderDefCompletePlayers();
+}
+// Chip list of Complete players + picker (same chip/select markup as the ignore one).
+function renderDefCompletePlayers() {
+  const host = document.getElementById('dp-complete-players-host');
+  if (!host) return;
+  if (!Object.keys(players).length && !defCompletePlayers.length) {
+    host.innerHTML = `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+    return;
+  }
+  const chips = defCompletePlayers.map((name, i) =>
+    `<span class="chip">${esc(decode(name))}<span class="chip-x" onclick="removeDefCompletePlayer(${i})">✕</span></span>`).join('');
+  const opts = defCompletePlayerOptions();
+  const picker = `<select class="cell-input" style="width:170px;" onchange="addDefCompletePlayer(this.value)">
+       <option value="">${t('opt_pick_complete_player')}</option>
        ${opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('')}
      </select>`;
   host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}${picker}</div>`;
@@ -261,6 +310,10 @@ function generateDefPlan() {
   const maxDist = parseFloat((document.getElementById('plan-def-max-dist') || {}).value) || 0;
   const ignore  = parseDefIgnoreSet();
   const ignorePl = new Set(defIgnorePlayers);
+  // Complete Players — drained to 100% first (see the picker block above). Ignore wins
+  // should a player somehow be on both lists (the pickers hide each other's members,
+  // but a stale localStorage blob could still carry the contradiction).
+  const completePl = new Set(defCompletePlayers.filter(p => !ignorePl.has(p)));
   const enemyDist = parseFloat((document.getElementById('plan-def-enemy-dist') || {}).value) || 0;
   const enemySet  = parseDefEnemySet();
 
@@ -302,9 +355,12 @@ function generateDefPlan() {
       stock, stockNow, stockFut,
       cap: DEF_OBJ_UNITS.reduce((s, u) => s + stock[u] * POP[u], 0),
     };
+  // v4.27.0: a Complete player's villages skip the DEF_SENDER_MIN_POP floor — 100% means
+  // even their small garrisons ship (but every other hold above still applies to them).
   }).filter(s => s.c && !ignore.has(s.v.coord) && !ignorePl.has(s.v.player)
     && passesCoordPolygon(s.c.x, s.c.y)
-    && !nearEnemy(s) && s.cap >= DEF_SENDER_MIN_POP);
+    && !nearEnemy(s)
+    && (s.cap >= DEF_SENDER_MIN_POP || (completePl.has(s.v.player) && s.cap > 0)));
 
   const capByPlayer = {};
   for (const s of senders) capByPlayer[s.v.player] = (capByPlayer[s.v.player] || 0) + s.cap;
@@ -482,28 +538,43 @@ function generateDefPlan() {
         };
         let assigned = 0;
 
+        // ── Complete Players go FIRST, drained to their full reachable stock of this type —
+        // no capacity-weight rationing (weight = stock, and every cap binds whenever demand
+        // covers them) and no pack sizing (100% ships regardless of chunk shape). Only the
+        // residual demand falls through to the normal pool below, whose math is unchanged. ──
+        const completeNames = names.filter(P => completePl.has(P));
+        if (completeNames.length) {
+          const ca = apportionCapped(n, completeNames.map(P => ({ weight: stockOf(P), cap: stockOf(P) })));
+          completeNames.forEach((P, pi) => { if (ca[pi] > 0) { record(P, ca[pi]); assigned += ca[pi]; } });
+        }
+        const norm = names.filter(P => !completePl.has(P));
+        const nRem = n - assigned; // what the normal pool still has to cover
+
         if (!packsMode) {
-          assigned = apportion(names, n); // Max Efficiency — one capacity-weighted pass (unchanged)
+          assigned += apportion(norm, nRem); // Max Efficiency — one capacity-weighted pass (unchanged)
         } else {
           // Support Packs: hand out WHOLE packs first (capacity-weighted, integer packs → no sub-pack
           // slivers), then fold the coverage remainder into existing contributors (their orders stay
           // ≥ a pack), spilling to new senders only when contributors are stock-full. A demand smaller
           // than one pack ships as a single sub-pack order (best-effort "at least this size").
-          const target = Math.min(n, names.reduce((s, P) => s + stockOf(P), 0)); // coverage target — identical to Max Efficiency
+          // Complete players were drained above (whole-stock, un-packed) — this branch sizes packs
+          // over the NORMAL pool and the residual demand only; `target` still counts the complete
+          // units already in `assigned` so the rem arithmetic below is unchanged.
+          const target = assigned + Math.min(nRem, norm.reduce((s, P) => s + stockOf(P), 0)); // coverage target — identical to Max Efficiency
           const pu = packUnitsOf(u);
-          const packs = Math.min(Math.floor(n / pu), names.reduce((s, P) => s + Math.floor(stockOf(P) / pu), 0));
+          const packs = Math.min(Math.floor(nRem / pu), norm.reduce((s, P) => s + Math.floor(stockOf(P) / pu), 0));
           if (packs > 0) {
-            const pa = apportionCapped(packs, names.map(P => ({ weight: rankP(P), cap: Math.floor(stockOf(P) / pu) })));
-            names.forEach((P, pi) => { if (pa[pi] > 0) { record(P, pa[pi] * pu); assigned += pa[pi] * pu; } });
+            const pa = apportionCapped(packs, norm.map(P => ({ weight: rankP(P), cap: Math.floor(stockOf(P) / pu) })));
+            norm.forEach((P, pi) => { if (pa[pi] > 0) { record(P, pa[pi] * pu); assigned += pa[pi] * pu; } });
           }
           let rem = target - assigned;
           if (rem > 0) { // fold into current contributors first (keeps their order ≥ pack)
-            const contribs = names.filter(P => givenU(P) > 0 && stockOf(P) - givenU(P) > 0);
+            const contribs = norm.filter(P => givenU(P) > 0 && stockOf(P) - givenU(P) > 0);
             if (contribs.length) assigned += apportion(contribs, rem);
           }
           rem = target - assigned;
           if (rem > 0) { // concentrate any spill onto the fewest new senders that still form packs
-            const rest = names.filter(P => givenU(P) === 0 && stockOf(P) > 0)
+            const rest = norm.filter(P => givenU(P) === 0 && stockOf(P) > 0)
               .sort((a, b) => (rankP(b) - rankP(a)) || (decode(a).toLowerCase() < decode(b).toLowerCase() ? -1 : 1));
             const restK = Math.max(1, Math.floor(rem / pu));
             assigned += apportion(rest.slice(0, restK), rem);
@@ -612,6 +683,27 @@ function generateDefPlan() {
       const n = T.tg[u] || 0;
       if (placed[u] < n) defPlanWarnings.push(t('warn_def_short')(t('th_' + u), n - placed[u], T.tg.coord));
     }
+  }
+
+  // ── Complete Players audit: by contract everything they COULD send is now assigned, so
+  // whatever is still in stock gets explained per player rather than leaving them quietly
+  // half-drained. Two distinct causes (user-confirmed fill order: Complete home → others'
+  // home → Complete returning → others' returning):
+  //   • home stock left → the demand/reachability genuinely didn't cover them (targets too
+  //     small, out of the distance band, deadlines, tribe mismatch);
+  //   • ONLY returning stock left → their home defense all shipped, but the home-first rule
+  //     let at-home defense elsewhere cover the rest before their returning troops were
+  //     needed — a different story, so it gets its own message.
+  // A player with NO sender villages at all (every village held home by a filter, or the
+  // name isn't in the troop file) gets its own line. ──
+  for (const P of completePl) {
+    const mine = senders.filter(s => s.v.player === P);
+    if (!mine.length) { defPlanWarnings.push(t('warn_def_complete_none')(decode(P))); continue; }
+    const popOf = (s, k) => DEF_OBJ_UNITS.reduce((x, u) => x + s[k][u] * POP[u], 0);
+    const leftNow = mine.reduce((a, s) => a + popOf(s, 'stockNow'), 0);
+    const leftFut = mine.reduce((a, s) => a + popOf(s, 'stockFut'), 0);
+    if (leftNow > 0) defPlanWarnings.push(t('warn_def_complete_left')(decode(P), leftNow + leftFut));
+    else if (leftFut > 0) defPlanWarnings.push(t('warn_def_complete_returning')(decode(P), leftFut));
   }
 
   for (const key in packets) {

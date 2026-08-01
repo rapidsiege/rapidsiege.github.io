@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v4.27.0', date: '2026-08-01',
+    en: [
+      `<b>💯 Complete Players in Defensive Targets.</b> A new <b>Complete Players</b> button next to Ignore Players — pick whole players (same chip picker) whose villages send <b>100% of their available defense</b> when you Plan Defense. They are drained <b>before</b> anyone else contributes, with no fair-share rationing, no pack sizing and no small-garrison floor — even a village holding a handful of spears ships them. Their villages still obey the sender holds: anything within the <b>enemy-tribe distance</b>, on Ignore Coordinates or outside a drawn map area stays home, and "available" still means defense at home or returning — deployed troops are never recalled. If a Complete player's defense couldn't all be placed (the reachable targets simply don't ask for that much, or deadlines/range bar them), the plan says so in a warning instead of leaving them quietly half-drained. The list is remembered with the rest of the defensive plan.`,
+    ],
+    es: [
+      `<b>💯 Jugadores Completos en Objetivos Defensivos.</b> Nuevo botón <b>Jugadores Completos</b> junto a Ignorar Jugadores — elige jugadores enteros (mismo selector de fichas) cuyas aldeas envían el <b>100% de su defensa disponible</b> al hacer el Plan de Defensa. Se vacían <b>antes</b> de que nadie más aporte, sin reparto equitativo, sin tamaño de paquetes y sin el mínimo de guarnición — incluso una aldea con un puñado de lanzas las envía. Sus aldeas siguen respetando las retenciones de remitente: lo que esté dentro de la <b>distancia de tribus enemigas</b>, en Ignorar Coordenadas o fuera de un área dibujada en el mapa se queda en casa, y "disponible" sigue siendo la defensa en casa o volviendo — las tropas desplegadas nunca se retiran. Si la defensa de un Jugador Completo no se pudo colocar entera (los objetivos alcanzables no piden tanto, o el rango/los plazos lo impiden), el plan lo avisa en vez de dejarlo a medio vaciar en silencio. La lista se recuerda con el resto del plan defensivo.`,
+    ],
+  },
   { ver: 'v4.26.0', date: '2026-07-27',
     en: [
       `<b>🏠 Plan Defense now sends defense that is HOME first.</b> Until now the plan treated every unit it could see as sendable — including troops still walking back from an attack, a support or a scavenging run. It now fills each target from defense that is <b>actually home</b>, and only dips into <b>returning</b> troops when home defense can't cover the ask. On a real 3,564-village export that removed <b>108,610 spear, 57,936 sword and 12,440 heavy</b> of orders that quietly depended on troops not being back yet — spread over 189 villages. Total defense assigned is unchanged, and orders came out <b>chunkier</b> (fewer, bigger trips), not more fragmented.`,
