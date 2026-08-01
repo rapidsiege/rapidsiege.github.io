@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v4.28.1', date: '2026-08-01',
+    en: [
+      `<b>🟢🔴 Readiness color now sits on the SEND ▶ link only.</b> Live feedback on v4.28.0: coloring the whole order line was too loud. The per-player Orders/PM lines are back to plain text — only the <b>SEND ▶</b> link is <b>green</b> when the order can go right now, or <b>red</b> when part of the army is still returning. Ready-first ordering and the "Send now:" / "Send when your troops return:" group labels are unchanged.`,
+    ],
+    es: [
+      `<b>🟢🔴 El color de disponibilidad ahora va solo en el enlace ENVIAR ▶.</b> Feedback en vivo sobre la v4.28.0: colorear toda la línea de la orden era demasiado. Las líneas de Órdenes/MPs por jugador vuelven a texto normal — solo el enlace <b>ENVIAR ▶</b> es <b>verde</b> cuando la orden puede salir ya, o <b>rojo</b> cuando parte del ejército aún está volviendo. El orden listas-primero y las etiquetas "Enviar ya:" / "Enviar cuando vuelvan tus tropas:" no cambian.`,
+    ],
+  },
   { ver: 'v4.28.0', date: '2026-08-01',
     en: [
       `<b>🟢🔴 Per-player defense orders are now colored by readiness.</b> In <b>⬇ Export Per-Player Orders</b> and <b>✉ Export PMs</b>, each order line is now <b>green</b> when every unit is home and the order can be sent right now, and <b>red</b> when part of the army is still returning and the order has to wait. The old ⏳ list of returning units is gone from these exports — it made busy lines even busier — the color alone tells the player whether to send or wait (the per-unit ⏳ detail is still shown in the plan table itself). The depart/arrive times ride inside the line color now; the send-by deadline keeps its bold.`,

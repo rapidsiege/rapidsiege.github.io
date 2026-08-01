@@ -927,26 +927,28 @@ function renderDefPlayerSummary() {
     </table></div>`;
 }
 
-// Whole-line readiness colors of the per-player exports (v4.28.0)
+// Readiness colors of the per-player exports (v4.28.1: on the SEND ▶ link text only)
 const DEF_BB_READY_COLOR = '#2e7d32'; // green: every unit is home — can be sent right now
 const DEF_BB_WAIT_COLOR  = '#c0392b'; // red: part of the army is still returning — send later
 
 // One order line of the per-player export (shared by the forum BB dump AND the PM export,
-// so a player reads the same line either way). v4.28.0: the WHOLE line is one uniform color
-// keyed on readiness (user decision — the old red/blue depart–arrive coloring is gone, the
-// depart deadline keeps only its [b]). The returning units are NOT listed on the line any
-// more; a red line just means "wait for your troops" — the per-unit ⏳ detail lives in the
-// plan table (defFutCell) for the planner.
+// so a player reads the same line either way). v4.28.1 (user decision, revised live from
+// v4.28.0's whole-line wrap): ONLY the SEND ▶ link text is colored by readiness — green =
+// send now, red = wait for returning troops; the rest of the line is plain, depart keeps
+// its [b]. [color] sits INSIDE [url] so the tint rides the anchor text. An order with no
+// rally link (village not in the DB) simply carries no color. The returning units are not
+// listed here — the per-unit ⏳ detail lives in the plan table (defFutCell) for the planner.
 function defPlanRowLine(r) {
   const url     = rallyUrl(r.srcCoord, r.tCoord, r.units);
-  const urlPart = url ? ` — [url=${url}]${t('def_bb_send')}[/url]` : '';
+  const send    = `[color=${r.futUnits ? DEF_BB_WAIT_COLOR : DEF_BB_READY_COLOR}]${t('def_bb_send')}[/color]`;
+  const urlPart = url ? ` — [url=${url}]${send}[/url]` : '';
   const def     = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
   let line = `${r.srcCoord} → [coord]${r.tCoord}[/coord]${def}: ${defUnitsBB(r.units)}${urlPart}`;
   if (r.arriveMs !== null) {
     line += ` [b]${t('def_bb_depart')(fmtServerDT(r.departMs))}[/b]`
           + ` ${t('def_bb_arrive')(fmtServerDT(r.arriveMs))}`;
   }
-  return `[color=${r.futUnits ? DEF_BB_WAIT_COLOR : DEF_BB_READY_COLOR}]${line}[/color]`;
+  return line;
 }
 
 // Ready-first split (v4.28.0): a player's rows partitioned into orders they can send right
