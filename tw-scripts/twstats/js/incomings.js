@@ -59,8 +59,19 @@
     targets: {},        // attack mode: target coord -> {wall, loyalty, def}
     notes: {},          // coord -> "OFF" | "DEF" | "MIXED" | "EMPTY" (village_notes.txt)
     notesCount: 0,
+    reports: null,      // coord -> village facts from the shared reports DB (null = unavailable)
+    reportsMeta: null,  // { villages, reports, updated } when the DB loaded
     filters: {},        // attack mode table filters
   };
+
+  // === shared reports DB (tribe-calculator Enemy Villages pipeline) =========
+  // Per-village facts merged server-side from everyone's reportsExport.js
+  // uploads (troops seen at home / away / sent, spied buildings). Classified
+  // client-side by ../js/reports-intel.js — the SAME file the calculator
+  // ships, loaded by incomings.html, so the verdicts can never diverge.
+  var REPORTS_API = "https://tw-calc-uploads.gdqshd.workers.dev";
+  var REPORTS_DB_URL = REPORTS_API + "/reports?world=es100";
+  var TURNSTILE_SITEKEY = "0x4AAAAAADvKZN-ZLjRH8UQe";
 
   // === world config ========================================================
   // Travel minutes per field = base_speed / (world_speed × unit_speed).
@@ -487,6 +498,52 @@
     });
   }
 
+  // Shared reports DB — same graceful degradation as village_notes: an
+  // unreachable Worker only costs the report badges, never the page.
+  function loadReportsDb() {
+    return fetch(REPORTS_DB_URL).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function (db) {
+      if (db && db.villages && db.ids) {
+        state.reports = db.villages;
+        state.reportsMeta = {
+          villages: Object.keys(db.villages).length,
+          reports: Object.keys(db.ids).length,
+          updated: db.updated || null,
+        };
+      }
+    }).catch(function (e) {
+      state.reports = null;
+      if (window.console) console.warn("Entrantes: sin BD de informes:", e.message);
+    });
+  }
+
+  // Verdict for a coord from the reports DB, or null. Ownership-checked: intel
+  // observed under a previous owner (riStale vs the CURRENT owner id in
+  // villages.json) is deprecated and contributes nothing.
+  function reportTypeOf(coord) {
+    if (!state.reports || typeof riClassify !== "function") return null;
+    var v = state.reports[coord];
+    if (!v) return null;
+    var cv = state.byCoord[coord];
+    if (cv && cv.owner && cv.owner.id != null && riStale(v, cv.owner.id)) return null;
+    var verdict = riClassify(v);
+    if (verdict.cls === "off" || verdict.cls === "def" || verdict.cls === "mixed" || verdict.cls === "empty") {
+      return { type: verdict.cls === "mixed" ? "MIXED" : verdict.cls.toUpperCase(), sure: verdict.sure, t: v.lastT || 0 };
+    }
+    return null;
+  }
+
+  // Effective origin type: report evidence wins, the hand-made
+  // village_notes.txt fills the gaps. src marks provenance for the badge.
+  function originTypeOf(coord) {
+    var rep = reportTypeOf(coord);
+    if (rep) { rep.src = "rep"; return rep; }
+    var note = state.notes[coord];
+    return note ? { type: note, sure: true, src: "note", t: 0 } : null;
+  }
+
   function loadXML(name) {
     return fetch(WORLD_DATA + name).then(function (r) {
       if (!r.ok) throw new Error(name + ": HTTP " + r.status);
@@ -511,9 +568,11 @@
       TW.loadJSON("conquers.json"),
       cfgP,
       loadVillageNotes(),
+      loadReportsDb(),
     ]).then(function (res) {
       indexData(res[0], res[1]);
-      $("status").textContent = "Listo. Pega las coordenadas (o tus entrantes) y pulsa «Analizar».";
+      $("status").textContent = "Listo. Pega las coordenadas (o tus entrantes) y pulsa «Analizar»." +
+        (state.reportsMeta ? " · BD de informes: " + state.reportsMeta.villages + " pueblos." : "");
     }).catch(function (e) {
       $("status").textContent = "No se pudieron cargar los datos: " + e.message +
         "  (¿sirviendo por HTTP? file:// bloquea fetch)";
@@ -627,10 +686,16 @@
     if (row.village) html = TW.villageCell(row.village);
     else html = '<span class="coord">' + row.coord.key + '</span> <span class="cont">' +
       TW.continent(row.coord.x, row.coord.y) + "</span>";
-    var note = state.notes[row.coord.key];
-    if (note) {
-      html += " <span class='note-badge note-" + note.toLowerCase() +
-        "' title='Tipo de pueblo según village_notes.txt'>" + TW.esc(note) + "</span>";
+    var ot = originTypeOf(row.coord.key);
+    if (ot) {
+      var title = ot.src === "rep"
+        ? "Tipo según la BD de informes compartida" +
+          (ot.t && typeof riAge === "function" ? " · informe de hace " + riAge(Date.now(), ot.t) : "") +
+          (ot.sure ? "" : " · tropas fuera nunca vistas: podría ser OFF con el ejército de viaje")
+        : "Tipo de pueblo según village_notes.txt";
+      html += " <span class='note-badge note-" + ot.type.toLowerCase() +
+        (ot.sure ? "" : " note-unsure") + "' title='" + title + "'>" +
+        (ot.src === "rep" ? "📄" : "") + TW.esc(ot.type) + (ot.sure ? "" : "?") + "</span>";
     }
     if (row.attack && row.attack.dupTotal > 1) {
       html += " <span class='as-badge' title='Ataques desde este mismo pueblo'>AS " +
@@ -1301,12 +1366,16 @@
           // noble), the attacker shows no fake indicator, and your village
           // isn't armoured enough to shrug it off. Suppressed when the origin
           // already looks like a fake — the two readings would contradict.
-          var originNote = state.notes[a.origin.key];
+          // Reports evidence wins; village_notes fills the gaps. Only SURE
+          // verdicts drive the flags — a "DEF?" (away troops never seen) must
+          // not call a possible nuke a probable fake.
+          var ot = originTypeOf(a.origin.key);
+          var originNote = (ot && ot.sure) ? ot.type : null;
           if ((originNote === "DEF" || originNote === "EMPTY") && a.speed && a.speed.isHeavy) {
             row.flags.push({
               cls: "notedef",
               text: "Fake probable: pueblo " + (originNote === "EMPTY" ? "vacío" : "DEF") +
-                " enviando tropa lenta",
+                " enviando tropa lenta" + (ot.src === "rep" ? " (según informes)" : ""),
             });
           }
           var looksFake = row.flags.some(function (f) {
@@ -1363,8 +1432,87 @@
     }
   }
 
+  // === report upload (feeds the shared DB the badges read) ==================
+  // Same Turnstile flow as the calculator: an invisible execute-on-demand
+  // widget in a FIXED container appended to <body> (never inside the collapsed
+  // <details> — a zero-size container makes the check's telemetry read
+  // all-zeros and the server reject it in a retry loop).
+  var repGuardId = null, repGuardReady = false, repGuardPending = null, repGuardInit = null;
+  function repInitGuard() {
+    if (repGuardInit) return repGuardInit;
+    repGuardInit = new Promise(function (resolve) {
+      var host = document.createElement("div");
+      host.id = "rep-guard";
+      host.style.cssText = "position:fixed;bottom:0;right:0;z-index:2147483647;";
+      document.body.appendChild(host);
+      var s = document.createElement("script");
+      s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      s.async = true;
+      s.onload = function () {
+        try {
+          repGuardId = window.turnstile.render("#rep-guard", {
+            sitekey: TURNSTILE_SITEKEY,
+            execution: "execute", appearance: "interaction-only", retry: "never",
+            callback: function (tok) { if (repGuardPending) { var r = repGuardPending; repGuardPending = null; r(tok); } },
+            "error-callback": function () { if (repGuardPending) { var r = repGuardPending; repGuardPending = null; r(null); } },
+          });
+          repGuardReady = true;
+        } catch (e) { /* widget failed — upload stays off */ }
+        resolve(repGuardReady);
+      };
+      s.onerror = function () { resolve(false); };
+      document.head.appendChild(s);
+    });
+    return repGuardInit;
+  }
+  function repGuardToken() {
+    return repInitGuard().then(function (ok) {
+      if (!ok) return null;
+      return new Promise(function (resolve) {
+        repGuardPending = resolve;
+        try { window.turnstile.reset(repGuardId); } catch (e) {}
+        try { window.turnstile.execute("#rep-guard"); } catch (e) { repGuardPending = null; resolve(null); return; }
+        setTimeout(function () { if (repGuardPending) { var r = repGuardPending; repGuardPending = null; r(null); } }, 20000);
+      });
+    });
+  }
+
+  function repUpload() {
+    var input = $("repFiles"), out = $("repStatus");
+    var files = input && input.files ? [].slice.call(input.files) : [];
+    if (!files.length) { if (out) out.textContent = "Elige uno o más tw-reports-*.json primero."; return; }
+    Promise.all(files.map(function (f) { return f.text(); })).then(function (texts) {
+      var all = [];
+      texts.forEach(function (t) {
+        try { var d = JSON.parse(t); all = all.concat(Array.isArray(d) ? d : [d]); } catch (e) {}
+      });
+      if (!all.length) { out.textContent = "Ningún JSON válido — exporta con reportsExport.js."; return; }
+      out.textContent = "Verificando navegador…";
+      return repGuardToken().then(function (token) {
+        if (!token) { out.textContent = "No se pudo verificar el navegador — inténtalo de nuevo."; return; }
+        out.textContent = "Subiendo " + all.length + " informes…";
+        return fetch(REPORTS_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "twstats", content: JSON.stringify(all), token: token,
+                                 kind: "reports", ext: "json", world: "es100" }),
+        }).then(function (r) { return r.json(); }).then(function (res) {
+          if (res && res.ok && res.db && !res.db.error) {
+            out.textContent = "✔ +" + res.db.added + " nuevos, " + res.db.dupes +
+              " duplicados — la BD cubre " + res.db.villages + " pueblos. Re-analiza para ver las insignias.";
+            input.value = "";
+            return loadReportsDb();
+          }
+          out.textContent = "Error al subir" + (res && res.error ? ": " + res.error : ".");
+        });
+      });
+    }).catch(function (e) { out.textContent = "Error: " + e.message; });
+  }
+
   function init() {
     TW.renderNav("entrantes");
+    var ub = $("repUpload");
+    if (ub) ub.addEventListener("click", repUpload);
 
     // This page needs a common.js new enough to have TW.srvEpoch. The ?v= on the
     // script tags should guarantee that, but a proxy or an odd cache can still

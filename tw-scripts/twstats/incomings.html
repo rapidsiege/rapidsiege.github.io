@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>es100 · Entrantes</title>
-  <link rel="stylesheet" href="css/twstats.css?v=20260728.5">
+  <link rel="stylesheet" href="css/twstats.css?v=20260802.1">
 </head>
 <body>
   <div id="main">
@@ -82,6 +82,16 @@
       </div>
     </form>
 
+    <details class="info-box" id="repShare">
+      <summary>📄 Subir informes a la BD compartida</summary>
+      <p class="tz-note">Exporta tus informes del juego con <b>reportsExport.js</b> (guarda el tw-reports-*.json) y súbelos aquí. Alimentan las insignias 📄OFF/DEF de los pueblos de origen y afinan el detector de fakes — para toda la tribu, también en la calculadora.</p>
+      <div class="rep-share-row">
+        <input type="file" id="repFiles" multiple accept=".json,application/json">
+        <button type="button" class="seg" id="repUpload">Subir</button>
+        <span id="repStatus" class="tz-note"></span>
+      </div>
+    </details>
+
     <p class="tz-note">Todas las horas en hora del servidor (Europe/Madrid). Los datos del mundo se actualizan cada ~2 h: una conquista de hace pocos minutos puede no aparecer todavía. El registro de conquistas cubre todo el mundo desde su inicio.</p>
     <p id="status" class="status">Cargando datos del mundo…</p>
     <p class="meta-line" id="summary" hidden>—</p>
@@ -128,7 +138,10 @@
        predates TW.srvEpoch broke this page outright) or a stale stylesheet that
        lacks the newer badge styles. Bump ?v= on EVERY asset change, site-wide;
        the token is shared by all twstats pages. -->
-  <script src="js/common.js?v=20260728.5"></script>
-  <script src="js/incomings.js?v=20260728.5"></script>
+  <script src="js/common.js?v=20260802.1"></script>
+  <!-- The calculator's pure reports-intel module (riClassify/riStale/riAge) —
+       the SAME file tribe-calculator ships, so twstats verdicts can't drift. -->
+  <script src="../js/reports-intel.js?v=20260802.1"></script>
+  <script src="js/incomings.js?v=20260802.1"></script>
 </body>
 </html>

@@ -420,6 +420,11 @@ table.vis.own-villages td.zero { color: var(--text-muted); opacity: .5; }
 }
 .note-off { color: #fff; background: #8a3b00; border-color: #8a3b00; }
 .note-def { color: #fff; background: #1a5e7a; border-color: #1a5e7a; }
+.note-mixed { color: #fff; background: #5e4a7a; border-color: #5e4a7a; }
+.note-empty { color: var(--text-muted); border-color: var(--border-secondary); }
+/* Reports-DB verdict with the away troops never seen ("DEF?"): visibly tentative. */
+.note-unsure { border-style: dashed; opacity: .8; }
+.rep-share-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
 .flag-notedef { color: var(--link-color); border-color: var(--link-color); }
 
 /* Aviso badges are long sentences, not chips: inside that column they must wrap
