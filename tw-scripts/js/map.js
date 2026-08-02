@@ -294,7 +294,100 @@ function villageTooltipHtml(coord) {
   html += troopTooltipHtml(coord); // our tribe's loaded troops, if any
   html += plannedAttacksTooltipHtml(coord); // Plan Offensive: attacks targeting this village
   html += plannedSupportTooltipHtml(coord); // Plan Defense: support sent to this village
+  html += reportTooltipHtml(coord); // Enemy Villages reports intel (non-tribe villages)
   return html;
+}
+
+// ── Reports-intel overlay (Enemy Villages reports DB → map) ─────────────────
+// Pure reads of the reports union view (reports-ui.js riMapView) + the
+// classifier (reports-intel.js). Own-tribe and current-barbarian villages get
+// no overlay (same filter as the Enemy Villages tab). The hover tooltip shows
+// whenever intel exists — the "Show Village Reports Info" toggle gates only
+// the on-map icons (mapShowReports, map-render.js).
+function reportVillageData(coord) {
+  if (typeof riMapView !== 'function' || typeof riClassify !== 'function') return null;
+  const v = riMapView()[coord];
+  if (!v) return null;
+  if (typeof riHidden === 'function' && riHidden(coord, v)) return null;
+  const cv = (typeof coordDb !== 'undefined') ? coordDb[coord] : null;
+  const stale = (cv && typeof riStale === 'function') ? riStale(v, cv.playerId) : false;
+  const verdict = riClassify(v);
+  return { v, cls: verdict.cls, sure: verdict.sure, stale };
+}
+
+// Badge eligibility: only OFF/DEF verdicts get a map icon (incl. the unsure
+// '?' variants); ownership-stale intel and spy/empty/mixed/unknown don't.
+function reportBadgeFor(coord) {
+  const rd = reportVillageData(coord);
+  if (!rd || rd.stale) return null;
+  if (rd.cls !== 'off' && rd.cls !== 'def') return null;
+  return { cls: rd.cls, sure: rd.sure };
+}
+
+// Verdict label + color for the tooltip header (OLD handled separately).
+const REPORT_TT_CLS = {
+  off: ['OFF', '#e06040'], def: ['DEF', '#6f9fe0'], mixed: ['MIX', '#b08fd0'],
+  spy: ['SPY', '#a0a0e0'], empty: ['—', '#999'], unknown: ['?', '#999'],
+};
+// Fixed display order for spied building levels (game screen order).
+const REPORT_BLD_ORDER = ['main','barracks','stable','garage','church','church_f','watchtower',
+  'snob','smith','place','statue','market','wood','stone','iron','farm','storage','hide','wall'];
+
+// In-game-report-style tooltip block: verdict + report age, troops seen in the
+// village, units outside (seen / confirmed-empty / not-seen), the biggest off
+// army it ever sent (attack reports — the OFF-labelling case where away troops
+// and buildings are unknowable), and spied building levels.
+function reportTooltipHtml(coord) {
+  const rd = (typeof riMapView === 'function') ? reportVillageData(coord) : null;
+  if (!rd) return '';
+  const v = rd.v;
+  const now = Date.now();
+  const ic = (typeof twIcon === 'function') ? twIcon : () => '';
+  const chips = units => {
+    const ks = (typeof UNITS !== 'undefined' ? UNITS : []).filter(u => (units[u] || 0) > 0);
+    if (!ks.length) return '';
+    return `<div class="map-tt-units">` + ks.map(u =>
+      `<span class="map-tt-unit">${ic(u)}${units[u].toLocaleString()}</span>`).join('') + `</div>`;
+  };
+  const secRow = (label, right) =>
+    `<div class="map-tt-row"><span class="map-tt-k">${label}</span><span class="map-tt-v">${right}</span></div>`;
+
+  const [txt, color] = REPORT_TT_CLS[rd.cls] || REPORT_TT_CLS.unknown;
+  const badge = rd.stale
+    ? `<span style="color:#999;">⌛ ${t('map_tt_rep_old')}</span>`
+    : `<span style="color:${color};font-weight:700;">${txt}${rd.sure ? '' : '?'}</span>`;
+  let h = `<div class="map-tt-troops"><div class="map-tt-troops-h">📄 ${t('map_tt_rep_h')} · ${badge} · ${riAge(now, v.lastT)}</div>`;
+  if (rd.stale && v.playerName) h += secRow(`${t('ev_seen_under')} ${esc(v.playerName)}`, '');
+
+  if (v.home) {
+    h += secRow(t('map_tt_rep_home'), riAge(now, v.home.t));
+    h += chips(v.home.units) || secRow(`<span style="color:#8a7a5a;">${t('map_tt_rep_none')}</span>`, '');
+    // Units outside — only meaningful alongside defender-side data.
+    if (v.away && !v.away.empty) {
+      h += secRow(t('map_tt_rep_away'), riAge(now, v.away.t));
+      h += chips(v.away.units);
+    } else if (v.away && v.away.empty) {
+      h += secRow(t('map_tt_rep_away'), `<span style="color:#7fdca0;">${t('map_tt_rep_away_empty')}</span>`);
+    } else {
+      h += secRow(t('map_tt_rep_away'), `<span style="color:#c0a060;">${t('map_tt_rep_away_unknown')}</span>`);
+    }
+  }
+
+  if (v.sent) {
+    h += secRow(t('map_tt_rep_sent'), riAge(now, v.sent.t));
+    h += chips(v.sent.units);
+  }
+
+  if (v.bld) {
+    h += secRow(t('map_tt_rep_bld'), riAge(now, v.bld.t));
+    const name = t('bld_name');
+    const parts = REPORT_BLD_ORDER.filter(k => v.bld.levels[k])
+      .concat(Object.keys(v.bld.levels).filter(k => REPORT_BLD_ORDER.indexOf(k) === -1))
+      .map(k => `<span class="map-tt-unit">${esc(name(k))} ${v.bld.levels[k]}</span>`);
+    if (parts.length) h += `<div class="map-tt-units">` + parts.join('') + `</div>`;
+  }
+
+  return h + `</div>`;
 }
 
 // ── Phase 3: loaded-troop overlay (from the tribe info.txt → troopByCoord) ──────

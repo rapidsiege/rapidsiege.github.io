@@ -28,6 +28,7 @@ let mapShowOffSenders = false;       // toggle halos on villages SENDING offs (d
 let mapShowDefVillagesOnly = false;  // fade the tribe's offensive villages (default OFF)
 let mapShowOffVillagesOnly = false;  // fade the tribe's defensive villages (default OFF)
 let mapShowBarbs = true;             // render barbarian villages (default ON)
+let mapShowReports = true;           // OFF/DEF icons from the Enemy-Villages reports DB (default ON; tooltip unaffected)
 let mapNightMode = true;             // use night-mode (n_) village sprites + dark terrain (default ON)
 let mapShowTierComplete = true;      // off-tier filter: show Complete-off villages (default ON)
 let mapShowTierTq       = true;      // off-tier filter: show 3/4-off villages (default ON)
@@ -301,6 +302,7 @@ function loadMapPrefs() {
     mapShowDefVillagesOnly = p.showDefOnly === true;
     mapShowOffVillagesOnly = p.showOffOnly === true;
     mapShowBarbs = p.showBarbs !== false; // default ON
+    mapShowReports = p.showReports !== false; // default ON
     mapNightMode = p.nightMode !== false; // default ON
     // Per-key colour load: keep a default for any missing/malformed entry (never NaN rgb).
     mapColors = { ...MAP_COLOR_DEFAULTS };
@@ -341,7 +343,7 @@ function loadMapPrefs() {
 function saveMapPrefs() {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ showIncoming: mapShowIncoming, showOffPlan: mapShowOffPlan, showDefPlan: mapShowDefPlan, showOffLines: mapShowOffLines, showDefLines: mapShowDefLines, showSnobRes: mapShowSnobRes, showUnusedOff: mapShowUnusedOff, showSupSenders: mapShowSupSenders, showOffSenders: mapShowOffSenders, showDefOnly: mapShowDefVillagesOnly, showOffOnly: mapShowOffVillagesOnly, showBarbs: mapShowBarbs, nightMode: mapNightMode, showTierComplete: mapShowTierComplete, showTierTq: mapShowTierTq, showTierHalf: mapShowTierHalf, colors: mapColors, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds, owMode: mapOverwatchMode, owCfg }));
+    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ showIncoming: mapShowIncoming, showOffPlan: mapShowOffPlan, showDefPlan: mapShowDefPlan, showOffLines: mapShowOffLines, showDefLines: mapShowDefLines, showSnobRes: mapShowSnobRes, showUnusedOff: mapShowUnusedOff, showSupSenders: mapShowSupSenders, showOffSenders: mapShowOffSenders, showDefOnly: mapShowDefVillagesOnly, showOffOnly: mapShowOffVillagesOnly, showBarbs: mapShowBarbs, showReports: mapShowReports, nightMode: mapNightMode, showTierComplete: mapShowTierComplete, showTierTq: mapShowTierTq, showTierHalf: mapShowTierHalf, colors: mapColors, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds, owMode: mapOverwatchMode, owCfg }));
   } catch (e) { /* ignore quota/serialization errors */ }
 }
 
@@ -591,6 +593,12 @@ function renderMapOffscreen() {
         // zoomed-in: off/def + snob badges for villages whose troops we've loaded
         const badge = villageTroopBadge(v.x + '|' + v.y);
         if (badge) drawMapTroopBadges(mapOffCtx, s.px - dw / 2, s.py - dh / 2, dw, dh, badge);
+        // zoomed-in: OFF/DEF badge from the reports DB (enemy villages — disjoint
+        // from the own-tribe troop badges above, but drawn bottom-right anyway)
+        if (mapShowReports && typeof reportBadgeFor === 'function') {
+          const rb = reportBadgeFor(v.x + '|' + v.y);
+          if (rb) drawMapReportBadge(mapOffCtx, s.px - dw / 2, s.py - dh / 2, dw, dh, rb);
+        }
       }
     } else {
       // zoomed out: fill the field so dots tile edge-to-edge → colors read from a distance.
@@ -619,6 +627,19 @@ function renderMapOffscreen() {
       drawIncomingHalo(mapOffCtx, s.px, s.py, troopByCoord[coord].incoming);
     }
     mapOffCtx.globalAlpha = 1;
+  }
+  // Reports-DB OFF/DEF markers in DOT mode: the badge would be invisible below the
+  // sprite threshold, so draw plan-style halos instead — a post-pass over the small
+  // reports dict (never a second villageDb scan), red = OFF, blue = DEF.
+  if (mapShowReports && !spriteMode && typeof riMapView === 'function'
+      && typeof reportBadgeFor === 'function' && typeof coordDb !== 'undefined') {
+    const offC = {}, defC = {};
+    for (const coord in riMapView()) {
+      const rb = reportBadgeFor(coord);
+      if (rb) (rb.cls === 'off' ? offC : defC)[coord] = 1;
+    }
+    if (Object.keys(offC).length) drawPlanHaloPass(offC, '#e0403a', w, h, margin);
+    if (Object.keys(defC).length) drawPlanHaloPass(defC, '#2e6fc0', w, h, margin);
   }
   // Plan-Offensive objective halos (neon green) + Plan-Defense support halos (dark blue),
   // each a post-pass like incoming, gated by its Show … toggle. Iterate the plan rows (a
@@ -723,6 +744,28 @@ function drawMapTroopBadges(ctx, left, top, dw, dh, badge) {
     y += sz + 2;
   }
   if (badge.snob) drawMapBadge(ctx, x, y, sz, '#d4a017', mapBadgeIcons.snob);
+}
+// OFF/DEF report badge (reports DB) at the BOTTOM-right of a village tile — the
+// top-right slot belongs to the own-tribe troop badges. Same square+icon look
+// (axe on red / sword on blue); an unsure verdict ('DEF?') gets a '?' tag glued
+// to the badge's top-right corner.
+function drawMapReportBadge(ctx, left, top, dw, dh, rb) {
+  const sz = Math.max(9, Math.min(20, dw * 0.42));
+  const x = left + dw - sz - dw * 0.05;
+  const y = top + dh - sz - dh * 0.06;
+  drawMapBadge(ctx, x, y, sz, rb.cls === 'off' ? '#c0392b' : '#2e6fc0',
+    rb.cls === 'off' ? mapBadgeIcons.axe : mapBadgeIcons.sword);
+  if (!rb.sure) {
+    const fs = Math.max(8, sz * 0.75);
+    ctx.font = `bold ${fs}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = Math.max(2, fs * 0.28);
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.strokeText('?', x + sz, y);
+    ctx.fillStyle = '#ffe080';
+    ctx.fillText('?', x + sz, y);
+  }
 }
 function drawMapBadge(ctx, x, y, sz, bg, img) {
   ctx.fillStyle = bg;
@@ -968,6 +1011,7 @@ function setMapShowOffOnly(on) {
   saveMapPrefs(); repaintMapData();
 }
 function setMapShowBarbs(on) { mapShowBarbs = !!on; saveMapPrefs(); repaintMapData(); }
+function setMapShowReports(on) { mapShowReports = !!on; saveMapPrefs(); repaintMapData(); }
 // Night mode toggles the sprite set (n_ files) + terrain colour. Clear the sprite cache and
 // reload so the new src set is fetched; onSettle repaints once ready. repaintMapData() runs
 // now so the grass colour flips immediately (dot mode until the sprites finish loading).
@@ -1042,6 +1086,8 @@ function syncMapToolbar() {
   if (soo) soo.checked = mapShowOffVillagesOnly;
   const sbb = document.getElementById('map-show-barbs');
   if (sbb) sbb.checked = mapShowBarbs;
+  const srp = document.getElementById('map-show-reports');
+  if (srp) srp.checked = mapShowReports;
   const snm = document.getElementById('map-night-mode');
   if (snm) snm.checked = mapNightMode;
   syncTierChips();

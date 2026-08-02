@@ -17,6 +17,7 @@ let riSort = { key: 'last', dir: 1 }; // 'last' | 'coord' | 'player' | 'type'
 function riAutoload() {
   const d = lsLoadC(REPORTS_KEY);
   if (d && d.villages && d.ids) riStore = d;
+  riInvalidateView();
   renderEnemyVillagesTable();
   riFetchShared();
 }
@@ -35,6 +36,7 @@ function riFetchShared() {
   cloudFetchReportsDb().then(db => {
     if (db) {
       riShared = db;
+      riInvalidateView();
       if (el) el.textContent = t('ev_shared')(
         Object.keys(db.villages).length, Object.keys(db.ids).length,
         db.updated ? riAge(Date.now(), Date.parse(db.updated)) : '?');
@@ -62,14 +64,25 @@ function riShareReports(reports) {
   });
 }
 
-// Union view of local + shared facts, keyed by coord.
+// Union view of local + shared facts, keyed by coord. Cached — the map render
+// loop reads it per village per frame (riMapView), so it must be O(1) after the
+// first build. riInvalidateView() runs at every mutation point (process/clear/
+// shared-fetch) and also repaints the map so badges track the data.
+let riViewCache = null;
 function riViewVillages() {
+  if (riViewCache) return riViewCache;
   const out = {};
   for (const c in riStore.villages) out[c] = riStore.villages[c];
   if (riShared && riShared.villages) {
     for (const c in riShared.villages) out[c] = riCombineVillages(out[c], riShared.villages[c]);
   }
+  riViewCache = out;
   return out;
+}
+function riMapView() { return riViewVillages(); }
+function riInvalidateView() {
+  riViewCache = null;
+  if (typeof repaintMapData === 'function') repaintMapData();
 }
 
 function riPersist() {
@@ -90,6 +103,7 @@ function riProcessText(text) {
   if (!Array.isArray(data)) data = [data];
   const stats = riMergeReports(riStore, data);
   riPersist();
+  riInvalidateView();
   riStatus(t('ev_added')(stats.added, stats.dupes, Object.keys(riStore.villages).length));
   renderEnemyVillagesTable();
   riShareReports(data);
@@ -111,6 +125,7 @@ function riProcessFiles(files) {
       } catch (e) { bad++; }
     }
     riPersist();
+    riInvalidateView();
     riStatus(bad ? t('ev_bad_files')(bad) : t('ev_added')(added, dupes, Object.keys(riStore.villages).length), !!bad);
     renderEnemyVillagesTable();
     riShareReports(all);
@@ -128,6 +143,7 @@ function riClearReports() {
   if (Object.keys(riStore.villages).length && !confirm(t('ev_clear_confirm'))) return;
   riStore = riEmptyStore();
   try { localStorage.removeItem(REPORTS_KEY); } catch (e) {}
+  riInvalidateView();
   riStatus('');
   renderEnemyVillagesTable();
 }

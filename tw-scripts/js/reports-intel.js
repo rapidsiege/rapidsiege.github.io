@@ -82,6 +82,11 @@ function riMergeReports(store, reports) {
         // spy data with no away table ⇒ confirmed nothing outside
         if (!v.away || t >= v.away.t) v.away = { units: {}, t, empty: true };
       }
+      if (r.buildings && (!v.bld || t >= v.bld.t)) {
+        const levels = {};
+        for (const k in r.buildings) { const n = +r.buildings[k]; if (n > 0) levels[k] = n; }
+        if (Object.keys(levels).length) v.bld = { levels, t };
+      }
       used = true;
     }
 
@@ -183,6 +188,7 @@ function riCombineVillages(a, b) {
   if (idSrc.playerName) out.playerName = idSrc.playerName;
   const home = newer(a.home, b.home); if (home) out.home = home;
   const away = newer(a.away, b.away); if (away) out.away = away;
+  const bld = newer(a.bld, b.bld); if (bld) out.bld = bld;
   if (a.sent || b.sent) {
     out.sent = !a.sent ? b.sent : !b.sent ? a.sent
       : ((b.sent.off > a.sent.off || (b.sent.off === a.sent.off && (b.sent.t || 0) > (a.sent.t || 0))) ? b.sent : a.sent);

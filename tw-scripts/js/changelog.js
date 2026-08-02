@@ -18,6 +18,16 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v4.31.0', date: '2026-08-02',
+    en: [
+      `<b>🗺 Report intel on the Map.</b> Villages known to the Enemy Villages reports DB (yours + the shared one) now carry an <b>OFF/DEF badge</b> on the map — axe on red / sword on blue at the bottom-right of the tile when zoomed in, red/blue halos when zoomed out. An unsure verdict (defence seen at home but away troops never seen) shows a <b>?</b> tag. The new <b>📄 Village Reports → "Show Village Reports Info"</b> toggle (ON by default) controls the icons only.`,
+      `<b>📄 Report-style hover card.</b> Hovering a non-tribe village always shows its report intel (toggle or not): verdict + report age, <b>troops seen in the village</b>, <b>units outside</b> (seen / "nothing outside (spied)" / "not seen"), the <b>biggest off army it ever sent</b> (how villages that attacked you get labelled OFF — away troops and buildings unknowable there), and <b>spied building levels</b>. Villages that changed hands since the report show ⌛ OLD instead of a verdict. Spied buildings are now stored in the reports DB (they were parsed but dropped before).`,
+    ],
+    es: [
+      `<b>🗺 Inteligencia de informes en el Mapa.</b> Las aldeas conocidas por la BD de informes de Aldeas Enemigas (la tuya + la compartida) ahora llevan una <b>insignia OFF/DEF</b> en el mapa — hacha en rojo / espada en azul abajo a la derecha de la casilla con zoom, halos rojos/azules alejado. Un veredicto inseguro (defensa vista en casa pero tropas fuera nunca vistas) muestra una etiqueta <b>?</b>. El nuevo interruptor <b>📄 Informes de Aldeas → "Mostrar info de informes"</b> (activado por defecto) controla solo los iconos.`,
+      `<b>📄 Tarjeta de informe al pasar el ratón.</b> Al pasar sobre una aldea que no es de tu tribu siempre se muestra su inteligencia (con o sin el interruptor): veredicto + antigüedad del informe, <b>tropas vistas en la aldea</b>, <b>unidades fuera</b> (vistas / "nada fuera (espiado)" / "no vistas"), el <b>mayor off que haya enviado</b> (así se etiquetan OFF las aldeas que te atacaron — allí tropas fuera y edificios son incognoscibles), y <b>niveles de edificios espiados</b>. Las aldeas que cambiaron de dueño tras el informe muestran ⌛ ANTIGUO en vez de veredicto. Los edificios espiados ahora se guardan en la BD de informes (antes se parseaban pero se descartaban).`,
+    ],
+  },
   { ver: 'v4.30.0', date: '2026-08-02',
     en: [
       `<b>☁ Enemy Villages intel is now shared with your tribe.</b> On the hosted version, processing report JSONs also uploads them to the shared database: the server merges every member's reports (deduplicated per report) and the response confirms the result on the spot — "+N new reports, the shared DB now covers M villages". The tab shows the shared DB's size and freshness next to a 🔄 refresh button, and the table transparently blends your local store with everyone else's intel (per village, the newest observation wins; a recorded nuke launch is never displaced by a later fake). Opened locally (file://) everything keeps working offline — sharing simply stays off.`,
