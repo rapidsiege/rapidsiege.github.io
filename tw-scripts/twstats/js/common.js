@@ -199,6 +199,7 @@
     { key: "pueblos", href: "villages.html", label: "Pueblos" },
     { key: "ennoblecimientos", href: "ennoblements.html", label: "Ennoblecimientos" },
     { key: "entrantes", href: "incomings.html", label: "Entrantes" },
+    { key: "informes", href: "informes.html", label: "Subir Informes" },
   ];
   function renderNav(active) {
     var el = document.querySelector("nav.mainnav");
