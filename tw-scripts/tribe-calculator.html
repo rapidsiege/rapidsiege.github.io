@@ -50,6 +50,7 @@
   <div class="tab" data-tab="players"     data-group="overview"  onclick="switchTab('players')"    data-i18n="tab_players">By Player</div>
   <div class="tab" data-tab="villages"    data-group="overview"  onclick="switchTab('villages')"   data-i18n="tab_byvillages">By Villages</div>
   <div class="tab" data-tab="rankings"    data-group="overview"  onclick="switchTab('rankings')"   data-i18n="tab_rankings">Rankings</div>
+  <div class="tab" data-tab="enemyvillages" data-group="overview" onclick="switchTab('enemyvillages')" data-i18n="tab_enemyvillages">🎯 Enemy Villages</div>
   <!-- Map -->
   <div class="tab" data-tab="map"         data-group="map"       onclick="switchTab('map')"        data-i18n="tab_map">🗺 Map</div>
   <!-- Tribe Timings -->
@@ -376,6 +377,55 @@
 <div class="tab-content" id="tab-rankings">
   <div id="rankings-content">
     <div style="color:#5a3a18;padding:36px;text-align:center;">Load a file to see rankings</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ ENEMY VILLAGES ═══════════════════════════ -->
+<div class="tab-content" id="tab-enemyvillages">
+  <div class="section-header">
+    <h2 data-i18n="sec_enemyvillages">🎯 Enemy Villages</h2>
+    <button class="btn btn-ghost btn-sm" onclick="riClearReports()" data-i18n="ev_btn_clear">✕ Clear stored reports</button>
+  </div>
+  <p style="font-size:12px;color:#5a3a18;margin:2px 0 10px;" data-i18n="ev_note">Enemy-village intel built from report exports (reportsExport.js → tw-reports-*.json). Load or paste the JSON and Process: each village shows the troops seen in it, the troops seen away, and an OFF/DEF verdict. A "?" verdict means the away troops were never seen, so an off army could be hiding outbound. Intel observed under a previous owner is marked old.</p>
+  <div class="filter-row">
+    <input type="file" id="ev-file" multiple accept=".json,application/json" style="display:none" onchange="riProcessFiles(this.files); this.value='';">
+    <button class="btn btn-sm" onclick="document.getElementById('ev-file').click()" data-i18n="ev_btn_load">📂 Load report JSONs</button>
+    <button class="btn btn-sm" onclick="riProcessPaste()" data-i18n="ev_btn_paste">▶ Process pasted JSON</button>
+    <span id="ev-status" style="font-size:12px;font-weight:600;"></span>
+  </div>
+  <textarea id="ev-paste" rows="3" style="width:100%;box-sizing:border-box;margin:6px 0;" placeholder="…or paste the contents of a tw-reports-*.json here" data-i18n-placeholder="ev_paste_ph"></textarea>
+  <div class="filter-row">
+    <input type="text" id="ev-search" placeholder="Search player or coord…" data-i18n-placeholder="ph_village_search" oninput="renderEnemyVillagesTable()">
+    <span id="ev-summary" style="font-size:12px;color:#a08050;font-weight:600;"></span>
+    <span id="ev-shared" style="font-size:12px;color:#4a70b0;font-weight:600;margin-left:auto;"></span>
+    <button class="btn btn-ghost btn-sm" onclick="riFetchShared()" title="Refresh shared DB" data-i18n-title="ev_shared_refresh">🔄</button>
+  </div>
+  <div class="table-wrap">
+    <table id="ev-table">
+      <thead>
+        <tr>
+          <th class="left" onclick="riSortBy('coord')" data-i18n-th="th_village">Village <span class="sort-arrow"></span></th>
+          <th class="left" onclick="riSortBy('player')" data-i18n-th="th_player">Player <span class="sort-arrow"></span></th>
+          <th onclick="riSortBy('type')" data-i18n-th="th_type">Type <span class="sort-arrow"></span></th>
+          <th onclick="riSortBy('last')" data-i18n-th="th_last_seen">Last <span class="sort-arrow"></span></th>
+          <th class="left" data-i18n-th="th_where">Where</th>
+          <th data-i18n-th="th_spear">Spear</th>
+          <th data-i18n-th="th_sword">Sword</th>
+          <th data-i18n-th="th_axe">Axe</th>
+          <th data-i18n-th="th_spy">Spy</th>
+          <th data-i18n-th="th_light">Light</th>
+          <th data-i18n-th="th_heavy">Heavy</th>
+          <th data-i18n-th="th_ram">Ram</th>
+          <th data-i18n-th="th_cat">Cat</th>
+          <th data-i18n-th="th_knight">Knight</th>
+          <th data-i18n-th="th_snob">Snob</th>
+          <th data-i18n-th="th_off_power">Off Power</th>
+        </tr>
+      </thead>
+      <tbody id="ev-tbody">
+        <tr class="empty-row"><td colspan="16">Load report JSONs to see enemy villages</td></tr>
+      </tbody>
+    </table>
   </div>
 </div>
 
@@ -1011,6 +1061,8 @@
 <script src="js/defensive-targets.js"></script>
 <script src="js/defense-plan.js"></script>
 <script src="js/manage-defensive.js"></script>
+<script src="js/reports-intel.js"></script>
+<script src="js/reports-ui.js"></script>
 <script src="js/db.js"></script>
 <script src="js/cloud-sync.js"></script>
 <script src="js/util.js"></script>
@@ -1048,6 +1100,9 @@ renderDefPlanTable();
 // Restore the troop data uploaded in a previous session (re-parses the stored text;
 // a fresh upload/paste this session replaces it, ✕ Clear removes it)
 autoloadTroops();
+
+// Restore the enemy-village reports store saved in a previous session
+riAutoload();
 
 // Live server clock in Settings (typeof guard: the headless test sandbox has no setInterval)
 updateServerNow();
@@ -1093,7 +1148,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.28.1 &nbsp;·&nbsp; 2026-08-01</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">4.30.0 &nbsp;·&nbsp; 2026-08-02</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

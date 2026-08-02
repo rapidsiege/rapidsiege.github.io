@@ -28,6 +28,7 @@ function changeLang(l) {
   if (typeof renderDefTargets === 'function') renderDefTargets();
   if (typeof renderDefPlanTable === 'function') renderDefPlanTable();
   renderDbTable();
+  if (typeof renderEnemyVillagesTable === 'function') renderEnemyVillagesTable();
   updateDbConnectBtn();
   if (typeof updWorldSpeedNote === 'function') updWorldSpeedNote(); // header speeds note
   if (typeof renderChangelog === 'function') renderChangelog();

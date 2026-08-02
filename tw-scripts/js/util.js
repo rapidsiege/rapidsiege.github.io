@@ -209,7 +209,7 @@ function importDebugDataFromText(text) {
 // highlights the selected sub-tab, and reveals the matching content.
 // ══════════════════════════════════════════════════════════════
 const TAB_GROUPS = [
-  { id: 'overview',  tabs: ['overview', 'players', 'villages', 'rankings'] },
+  { id: 'overview',  tabs: ['overview', 'players', 'villages', 'rankings', 'enemyvillages'] },
   { id: 'map',       tabs: ['map'] },
   { id: 'timings',   tabs: ['target'] },
   { id: 'offensive', tabs: ['offtargets', 'plan', 'manageoff', 'outbound'] },

@@ -18,6 +18,22 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v4.30.0', date: '2026-08-02',
+    en: [
+      `<b>☁ Enemy Villages intel is now shared with your tribe.</b> On the hosted version, processing report JSONs also uploads them to the shared database: the server merges every member's reports (deduplicated per report) and the response confirms the result on the spot — "+N new reports, the shared DB now covers M villages". The tab shows the shared DB's size and freshness next to a 🔄 refresh button, and the table transparently blends your local store with everyone else's intel (per village, the newest observation wins; a recorded nuke launch is never displaced by a later fake). Opened locally (file://) everything keeps working offline — sharing simply stays off.`,
+    ],
+    es: [
+      `<b>☁ La inteligencia de Aldeas Enemigas ahora se comparte con tu tribu.</b> En la versión alojada, procesar JSONs de informes también los sube a la base de datos compartida: el servidor fusiona los informes de todos los miembros (deduplicados por informe) y la respuesta confirma el resultado al momento — "+N informes nuevos, la BD compartida ya cubre M aldeas". La pestaña muestra el tamaño y frescura de la BD compartida junto a un botón 🔄 de actualizar, y la tabla combina de forma transparente tu almacén local con la inteligencia de los demás (por aldea gana la observación más reciente; un lanzamiento de nuke registrado nunca es desplazado por un fake posterior). Abierto en local (file://) todo sigue funcionando sin conexión — simplemente no se comparte.`,
+    ],
+  },
+  { ver: 'v4.29.0', date: '2026-08-02',
+    en: [
+      `<b>🎯 New tab: Troops Overview → Enemy Villages.</b> Load the JSON exports produced by <b>reportsExport.js</b> (run it on the in-game Reports overview, save the tw-reports-*.json) and the tab builds a per-village intel table: the troops <b>seen in</b> each enemy village, the troops <b>seen away</b>, the biggest <b>off army it ever sent</b>, and an <b>OFF/DEF verdict</b> with an age stamp. A verdict marked <b>?</b> means the away troops were never seen — a village showing only defence at home could still be an off village whose army was outbound. Espionage counts: a scouted report with no "units outside" table <i>confirms</i> nothing was away. Reports are deduped and persist locally between sessions; own-tribe villages and current barbarians are filtered out when the world DB is loaded, and villages that changed hands since the report are marked <b>OLD</b>.`,
+    ],
+    es: [
+      `<b>🎯 Nueva pestaña: Resumen de Tropas → Aldeas Enemigas.</b> Carga las exportaciones JSON de <b>reportsExport.js</b> (ejecútalo en la vista de Informes del juego y guarda el tw-reports-*.json) y la pestaña construye una tabla de inteligencia por aldea: las tropas <b>vistas dentro</b> de cada aldea enemiga, las tropas <b>vistas fuera</b>, el mayor <b>off que haya enviado</b>, y un <b>veredicto OFF/DEF</b> con su antigüedad. Un veredicto con <b>?</b> significa que las tropas fuera nunca se vieron — una aldea que solo muestra defensa en casa aún podría ser ofensiva con su ejército de viaje. El espionaje cuenta: un informe espiado sin tabla de "unidades fuera" <i>confirma</i> que no había nada fuera. Los informes se deduplican y persisten localmente entre sesiones; las aldeas de tu propia tribu y las bárbaras actuales se filtran cuando la BD del mundo está cargada, y las aldeas que cambiaron de dueño tras el informe se marcan como <b>ANTIGUO</b>.`,
+    ],
+  },
   { ver: 'v4.28.1', date: '2026-08-01',
     en: [
       `<b>🟢🔴 Readiness color now sits on the SEND ▶ link only.</b> Live feedback on v4.28.0: coloring the whole order line was too loud. The per-player Orders/PM lines are back to plain text — only the <b>SEND ▶</b> link is <b>green</b> when the order can go right now, or <b>red</b> when part of the army is still returning. Ready-first ordering and the "Send now:" / "Send when your troops return:" group labels are unchanged.`,

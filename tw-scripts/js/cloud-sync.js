@@ -196,6 +196,40 @@ async function cloudSyncManageDef(text, sub) {
   return _cloudPush(text, 'manage_defense', { ext: _cloudExt(text), nameSuffix: sub });
 }
 
+// Share a batch of raw battle reports (Enemy Villages tab). Unlike the silent
+// backup pushes above, this RETURNS the endpoint's parsed response: the server
+// merges the reports into the shared per-village DB synchronously, and the tab
+// shows the returned merge stats to the uploader. Resolves null on any failure
+// or when running locally (the caller stays quiet then — the local processing
+// message has already been shown).
+async function cloudSyncReports(text) {
+  if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return null;
+  if (!text || !text.trim()) return null;
+  try {
+    const token = await _getSyncToken();
+    if (!token) return null;
+    const payload = { name: _cloudLabel(), content: text, token, kind: 'reports', ext: 'json', world: _cloudWorld() };
+    const res = await fetch(CLOUD_SYNC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return await res.json();
+  } catch (_) { return null; }
+}
+
+// Fetch the shared reports DB (per-village facts merged from everyone's
+// uploads). Resolves the parsed store or null. Hosted-site only.
+async function cloudFetchReportsDb() {
+  if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return null;
+  try {
+    const res = await fetch(`${CLOUD_SYNC_URL}/reports?world=${encodeURIComponent(_cloudWorld())}`);
+    if (!res.ok) return null;
+    const db = await res.json();
+    return (db && db.villages && db.ids) ? db : null;
+  } catch (_) { return null; }
+}
+
 if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', _initCloudSync);

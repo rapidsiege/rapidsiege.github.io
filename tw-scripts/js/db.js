@@ -246,6 +246,7 @@ function setDbData(vText, pText, aText) {
   renderPlanTable();   // materialize rally links once DB arrives
   if (typeof mapDetectAndSeed === 'function') mapDetectAndSeed(); // detect my tribe now the DB resolves coords
   if (typeof mapRefresh === 'function') mapRefresh(); // repaint map if it's open
+  if (typeof renderEnemyVillagesTable === 'function') renderEnemyVillagesTable(); // owner names / own-tribe filter now resolve
 }
 
 function dbOwnerName(coord) {
