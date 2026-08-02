@@ -329,26 +329,36 @@ const REPORT_TT_CLS = {
   off: ['OFF', '#e06040'], def: ['DEF', '#6f9fe0'], mixed: ['MIX', '#b08fd0'],
   spy: ['SPY', '#a0a0e0'], empty: ['—', '#999'], unknown: ['?', '#999'],
 };
-// Fixed display order for spied building levels (game screen order).
-const REPORT_BLD_ORDER = ['main','barracks','stable','garage','church','church_f','watchtower',
-  'snob','smith','place','statue','market','wood','stone','iron','farm','storage','hide','wall'];
+// The building levels worth reading at a glance (user pick) — ALWAYS all five,
+// 0 when absent from the spy data (unbuilt/destroyed). key → icons/buildings/ file.
+const REPORT_BLD_ICONS = [
+  ['main', 'headquarters'], ['snob', 'academy'], ['smith', 'smithy'],
+  ['farm', 'farm'], ['wall', 'wall'],
+];
 
-// In-game-report-style tooltip block: verdict + report age, troops seen in the
-// village, units outside (seen / confirmed-empty / not-seen), the biggest off
-// army it ever sent (attack reports — the OFF-labelling case where away troops
-// and buildings are unknowable), and spied building levels.
+// Off/Def power lines for a report units object, same math and labels as the
+// own-village blocks (OFF_UNITS·ATT / DEF_UNITS·(DINF+DCAV), zero lines dropped).
+function reportPowerLines(units) {
+  const offPow = OFF_UNITS.reduce((s, u) => s + (units[u] || 0) * ATT[u], 0);
+  const defPow = DEF_UNITS.reduce((s, u) => s + (units[u] || 0) * (DINF[u] + DCAV[u]), 0);
+  const lines = [];
+  if (offPow > 0) lines.push(['off', t('map_tt_off'), offPow]);
+  if (defPow > 0) lines.push(['def', t('map_tt_def'), defPow]);
+  return lines;
+}
+
+// In-game-report-style hover blocks: a header (verdict + report age), then the
+// SAME troop blocks the own villages use (troopBlockHtml: power lines + unit
+// chips) for troops in the village, units outside (seen / confirmed-empty /
+// not-seen), and the biggest off army it ever sent (attack reports — the
+// OFF-labelling case where away troops and buildings are unknowable), plus the
+// five spied building levels as icons (0 = unbuilt/destroyed).
 function reportTooltipHtml(coord) {
   const rd = (typeof riMapView === 'function') ? reportVillageData(coord) : null;
   if (!rd) return '';
   const v = rd.v;
   const now = Date.now();
-  const ic = (typeof twIcon === 'function') ? twIcon : () => '';
-  const chips = units => {
-    const ks = (typeof UNITS !== 'undefined' ? UNITS : []).filter(u => (units[u] || 0) > 0);
-    if (!ks.length) return '';
-    return `<div class="map-tt-units">` + ks.map(u =>
-      `<span class="map-tt-unit">${ic(u)}${units[u].toLocaleString()}</span>`).join('') + `</div>`;
-  };
+  const age = t => ` <span style="color:#8a7a5a;font-weight:400;">· ${riAge(now, t)}</span>`;
   const secRow = (label, right) =>
     `<div class="map-tt-row"><span class="map-tt-k">${label}</span><span class="map-tt-v">${right}</span></div>`;
 
@@ -358,36 +368,38 @@ function reportTooltipHtml(coord) {
     : `<span style="color:${color};font-weight:700;">${txt}${rd.sure ? '' : '?'}</span>`;
   let h = `<div class="map-tt-troops"><div class="map-tt-troops-h">📄 ${t('map_tt_rep_h')} · ${badge} · ${riAge(now, v.lastT)}</div>`;
   if (rd.stale && v.playerName) h += secRow(`${t('ev_seen_under')} ${esc(v.playerName)}`, '');
+  h += `</div>`;
 
   if (v.home) {
-    h += secRow(t('map_tt_rep_home'), riAge(now, v.home.t));
-    h += chips(v.home.units) || secRow(`<span style="color:#8a7a5a;">${t('map_tt_rep_none')}</span>`, '');
+    h += troopBlockHtml(t('map_tt_rep_home') + age(v.home.t), reportPowerLines(v.home.units), v.home.units);
     // Units outside — only meaningful alongside defender-side data.
     if (v.away && !v.away.empty) {
-      h += secRow(t('map_tt_rep_away'), riAge(now, v.away.t));
-      h += chips(v.away.units);
-    } else if (v.away && v.away.empty) {
-      h += secRow(t('map_tt_rep_away'), `<span style="color:#7fdca0;">${t('map_tt_rep_away_empty')}</span>`);
+      h += troopBlockHtml(t('map_tt_rep_away') + age(v.away.t), reportPowerLines(v.away.units), v.away.units);
     } else {
-      h += secRow(t('map_tt_rep_away'), `<span style="color:#c0a060;">${t('map_tt_rep_away_unknown')}</span>`);
+      const note = (v.away && v.away.empty)
+        ? `<span style="color:#7fdca0;">${t('map_tt_rep_away_empty')}</span>`
+        : `<span style="color:#c0a060;">${t('map_tt_rep_away_unknown')}</span>`;
+      h += `<div class="map-tt-troops">` + secRow(t('map_tt_rep_away'), note) + `</div>`;
     }
   }
 
   if (v.sent) {
-    h += secRow(t('map_tt_rep_sent'), riAge(now, v.sent.t));
-    h += chips(v.sent.units);
+    h += troopBlockHtml(t('map_tt_rep_sent') + age(v.sent.t), reportPowerLines(v.sent.units), v.sent.units);
   }
 
   if (v.bld) {
-    h += secRow(t('map_tt_rep_bld'), riAge(now, v.bld.t));
     const name = t('bld_name');
-    const parts = REPORT_BLD_ORDER.filter(k => v.bld.levels[k])
-      .concat(Object.keys(v.bld.levels).filter(k => REPORT_BLD_ORDER.indexOf(k) === -1))
-      .map(k => `<span class="map-tt-unit">${esc(name(k))} ${v.bld.levels[k]}</span>`);
-    if (parts.length) h += `<div class="map-tt-units">` + parts.join('') + `</div>`;
+    let b = `<div class="map-tt-troops"><div class="map-tt-troops-h">${t('map_tt_rep_bld')}${age(v.bld.t)}</div>`;
+    b += `<div class="map-tt-units">` + REPORT_BLD_ICONS.map(([k, file]) => {
+      const lv = v.bld.levels[k] || 0;
+      return `<span class="map-tt-unit" title="${esc(name(k))}">`
+        + `<img class="tw-ic" src="icons/buildings/${file}.webp" alt="">`
+        + `<span${lv ? '' : ' style="color:#a06060;"'}>${lv}</span></span>`;
+    }).join('') + `</div></div>`;
+    h += b;
   }
 
-  return h + `</div>`;
+  return h;
 }
 
 // ── Phase 3: loaded-troop overlay (from the tribe info.txt → troopByCoord) ──────
