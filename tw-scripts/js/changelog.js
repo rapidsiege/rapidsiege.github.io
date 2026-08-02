@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.2.2', date: '2026-08-02',
+    en: [
+      `<b>🐛 Fully-emptied villages now show their away troops on the hover card.</b> A spied village with its whole garrison out supporting (zero units at home) rendered only its Buildings — the "Units outside" block was skipped whenever home troops were missing. Two fixes: the card's sections now render independently, and a spied report with no troops row is stored as a <b>known-empty garrison</b> ("no units seen" · the spy proves it) instead of unknown. The shared DB was rebuilt so already-uploaded reports pick this up.`,
+    ],
+    es: [
+      `<b>🐛 Las aldeas totalmente vaciadas ahora muestran sus tropas fuera en la tarjeta.</b> Una aldea espiada con toda su guarnición fuera apoyando (cero unidades en casa) solo mostraba sus Edificios — el bloque "Unidades fuera" se omitía cuando faltaban las tropas en casa. Dos arreglos: las secciones de la tarjeta ahora se muestran de forma independiente, y un informe espiado sin fila de tropas se guarda como <b>guarnición confirmada vacía</b> ("sin unidades vistas" · el espionaje lo demuestra) en vez de desconocida. La BD compartida se reconstruyó para que los informes ya subidos lo reflejen.`,
+    ],
+  },
   { ver: 'v5.2.1', date: '2026-08-02',
     en: [
       `<b>🗺 Report hover card now renders like the own-village blocks.</b> Live feedback on v5.2.0: "Troops in village", "Units outside" and "Sent off seen" use the same block style as your own villages' hover info — with <b>Off Power / Def Power lines</b> computed from the seen army (both shown when both exist, e.g. a spied off village's home troops get their Off Power). And the spied <b>buildings</b> section now shows exactly the five levels that matter as icons — HQ, Academy, Smithy, Farm, Wall — with a red <b>0</b> when the spy data lacks one (unbuilt/destroyed).`,

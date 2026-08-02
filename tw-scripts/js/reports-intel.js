@@ -73,7 +73,10 @@ function riMergeReports(store, reports) {
       const v = riVillage(store, r.defenderX + '|' + r.defenderY);
       riIdentity(v, t, r.defenderVillageId, r.defenderVillageName, r.defenderPlayerId, r.defenderPlayerName);
       const spied = !!(r.resources || r.buildings);
-      if (r.defenderTroops && (!v.home || t >= v.home.t)) {
+      // A spied report with NO troops row means the garrison was EMPTY (zero
+      // counts are dropped by reportsExport's clean()) — a successful spy
+      // always reveals home troops, so that's known-empty, not unknown.
+      if ((r.defenderTroops || spied) && (!v.home || t >= v.home.t)) {
         v.home = { units: riUnits(r.defenderTroops), t, spied };
       }
       if (r.defenderTroopsAway) {

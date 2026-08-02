@@ -370,17 +370,30 @@ function reportTooltipHtml(coord) {
   if (rd.stale && v.playerName) h += secRow(`${t('ev_seen_under')} ${esc(v.playerName)}`, '');
   h += `</div>`;
 
+  // Troops in the village — independent of the away section (a fully-emptied
+  // village has away data but a known-EMPTY home, and vice versa).
   if (v.home) {
-    h += troopBlockHtml(t('map_tt_rep_home') + age(v.home.t), reportPowerLines(v.home.units), v.home.units);
-    // Units outside — only meaningful alongside defender-side data.
-    if (v.away && !v.away.empty) {
-      h += troopBlockHtml(t('map_tt_rep_away') + age(v.away.t), reportPowerLines(v.away.units), v.away.units);
+    const hasUnits = (typeof UNITS !== 'undefined' ? UNITS : []).some(u => (v.home.units[u] || 0) > 0);
+    if (hasUnits) {
+      h += troopBlockHtml(t('map_tt_rep_home') + age(v.home.t), reportPowerLines(v.home.units), v.home.units);
     } else {
-      const note = (v.away && v.away.empty)
-        ? `<span style="color:#7fdca0;">${t('map_tt_rep_away_empty')}</span>`
-        : `<span style="color:#c0a060;">${t('map_tt_rep_away_unknown')}</span>`;
-      h += `<div class="map-tt-troops">` + secRow(t('map_tt_rep_away'), note) + `</div>`;
+      h += `<div class="map-tt-troops"><div class="map-tt-troops-h">${t('map_tt_rep_home')}${age(v.home.t)}</div>`
+        + secRow(`<span style="color:#8a7a5a;">${t('map_tt_rep_none')}</span>`, '') + `</div>`;
     }
+  } else if (v.away) {
+    h += `<div class="map-tt-troops">`
+      + secRow(t('map_tt_rep_home'), `<span style="color:#c0a060;">${t('map_tt_rep_away_unknown')}</span>`) + `</div>`;
+  }
+
+  // Units outside — rendered whenever defender-side data exists.
+  if (v.away && !v.away.empty) {
+    h += troopBlockHtml(t('map_tt_rep_away') + age(v.away.t), reportPowerLines(v.away.units), v.away.units);
+  } else if (v.away && v.away.empty) {
+    h += `<div class="map-tt-troops">`
+      + secRow(t('map_tt_rep_away'), `<span style="color:#7fdca0;">${t('map_tt_rep_away_empty')}</span>`) + `</div>`;
+  } else if (v.home) {
+    h += `<div class="map-tt-troops">`
+      + secRow(t('map_tt_rep_away'), `<span style="color:#c0a060;">${t('map_tt_rep_away_unknown')}</span>`) + `</div>`;
   }
 
   if (v.sent) {
