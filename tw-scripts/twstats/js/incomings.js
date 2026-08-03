@@ -650,10 +650,30 @@
         body.textContent = "Sin informe completo guardado para este pueblo.";
         return;
       }
+      // Ownership staleness PER REPORT (the stores keep intel across
+      // conquests — `sentRep` especially, it holds the largest attack EVER
+      // sent). Same rule as riStale, applied to the owner this village had
+      // in that record: rep = defender side, sentRep = attacker side. Stale
+      // intel stays visible but explicitly marked (the 📄⌛ convention),
+      // because it no longer says anything about the current owner.
+      var cv = state.byCoord[coord];
+      var curId = (cv && cv.owner && cv.owner.id != null) ? String(cv.owner.id) : null;
+      var curName = (cv && cv.owner && cv.owner.name) ? cv.owner.name : "";
+      var staleBanner = function (pid, pname) {
+        if (curId == null || pid == null || String(pid) === curId) return "";
+        return '<div class="twrr-stale">⌛ Del dueño anterior' +
+          (pname ? " (" + TW.esc(pname) + ")" : "") + " — el pueblo cambió de dueño" +
+          (curName ? " (ahora de " + TW.esc(curName) + ")" : "") +
+          "; esta información ya no aplica.</div>";
+      };
       var h = "";
-      if (v.rep) h += '<div class="twrr-srchead">Último informe sobre este pueblo:</div>' + TWRR.reportHtml(v.rep);
+      if (v.rep) {
+        h += '<div class="twrr-srchead">Último informe sobre este pueblo:</div>' +
+          staleBanner(v.rep.defenderPlayerId, v.rep.defenderPlayerName) + TWRR.reportHtml(v.rep);
+      }
       if (v.sentRep && !(v.rep && v.sentRep.reportId === v.rep.reportId)) {
-        h += '<div class="twrr-srchead">Mayor ataque enviado por este pueblo:</div>' + TWRR.reportHtml(v.sentRep);
+        h += '<div class="twrr-srchead">Mayor ataque enviado por este pueblo:</div>' +
+          staleBanner(v.sentRep.attackerPlayerId, v.sentRep.attackerPlayerName) + TWRR.reportHtml(v.sentRep);
       }
       body.className = "";
       body.innerHTML = h;

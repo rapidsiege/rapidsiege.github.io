@@ -514,3 +514,4 @@ table.vis th.col-verdict { white-space: normal; }
 .twrr-item > summary { cursor: pointer; padding: 4px 8px; background: var(--bg-widget-row); border-radius: 4px; }
 .twrr-item[open] > summary { border-bottom: 1px solid var(--border-secondary); }
 .twrr-item .twrr { margin: 8px; }
+.twrr-modal .twrr-stale { border: 1px dashed var(--border-secondary); color: var(--text-muted); padding: 4px 8px; border-radius: 4px; margin: 2px 0 6px; font-size: 12px; }
