@@ -969,20 +969,20 @@ function hideMapTip() {
 }
 
 // ── Toolbar actions ──
-function mapZoom(factor) {
-  if (!mapInited) return;
-  const cx = mapCanvas.width / 2, cy = mapCanvas.height / 2;
-  const wpt = screenToWorld(cx, cy);
-  mapView.scale = clampMapScale(mapView.scale * factor);
-  mapView.panX = cx - wpt.x * mapView.scale;
-  mapView.panY = cy - wpt.y * mapScaleY();
-  renderMapOffscreen(); paintMap();
-}
+// (Zoom In / Zoom Out / Reset View buttons removed in v5.5.0 — wheel-zoom and
+// drag-pan are the only navigation; their mapZoom/mapResetView helpers went
+// with them.)
 
-function mapResetView() {
-  if (!mapInited) return;
-  fitMapView(mapCanvas.width, mapCanvas.height);
-  renderMapOffscreen(); paintMap();
+// Tribe Colors panel (right dock): opened on demand from the toolbar since
+// v5.5.0 — it used to be force-shown whenever the world DB was loaded, and
+// users didn't find it. Same open/close model as the Heatmap Config button;
+// no dock conflict (all other flying panels live in the LEFT dock).
+let mapGroupsOpen = false;
+function toggleMapGroups() {
+  mapGroupsOpen = !mapGroupsOpen;
+  const btn = document.getElementById('map-groups-btn');
+  if (btn) btn.classList.toggle('active', mapGroupsOpen);
+  renderMapGroups();
 }
 
 // ── Phase 2: bonus filter + custom color groups ──
@@ -1709,8 +1709,9 @@ function renderMapGroups() {
   const panel = document.getElementById('map-groups');
   const body = document.getElementById('map-groups-body');
   if (!panel || !body) return;
-  panel.style.display = villageDb.length ? '' : 'none';
-  if (!villageDb.length) return;
+  const show = mapGroupsOpen && villageDb.length;
+  panel.style.display = show ? '' : 'none';
+  if (!show) return;
 
   // The auto-seeded "My tribe" group is just a normal group (id __mine__, rendered first
   // since it's unshifted) — fully editable here like any other.

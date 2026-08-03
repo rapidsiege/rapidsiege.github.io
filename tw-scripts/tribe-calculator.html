@@ -150,12 +150,6 @@
     <span id="map-count" style="font-size:12px;color:#806030;"></span>
   </div>
   <div id="map-toolbar" class="map-toolbar">
-    <button class="btn btn-ghost btn-sm" onclick="mapZoom(1.2)" data-i18n="map_zoom_in" title="Zoom in">＋</button>
-    <span class="map-tb-sep"></span>
-    <button class="btn btn-ghost btn-sm" onclick="mapZoom(1/1.2)" data-i18n="map_zoom_out" title="Zoom out">－</button>
-    <span class="map-tb-sep"></span>
-    <button class="btn btn-ghost btn-sm" onclick="mapResetView()" data-i18n="map_reset_view">Reset view</button>
-    <span class="map-tb-sep"></span>
     <button id="map-extract-btn" class="btn btn-ghost btn-sm" onclick="toggleExtractMode()" data-i18n="map_extract">Extract Coordinates</button>
     <span class="map-tb-sep"></span>
     <button id="map-drawfilter-btn" class="btn btn-ghost btn-sm" onclick="toggleDrawFilterMode()" data-i18n="map_drawfilter">🎯 Draw Coordinate Filter</button>
@@ -166,7 +160,9 @@
     <span class="map-tb-sep"></span>
     <button id="map-tpfilter-btn" class="btn btn-ghost btn-sm" onclick="togglePlayerFilter('tribe')" data-i18n="map_tpfilter">👥 Filter Tribe Player</button>
     <span class="map-tb-sep"></span>
-    <button id="map-heatcfg-btn" class="btn btn-ghost btn-sm" onclick="toggleHeatmapConfig()" data-i18n="map_heatmap_config">Heatmap Config</button>
+    <button id="map-groups-btn" class="btn btn-ghost btn-sm" onclick="toggleMapGroups()" data-i18n="map_tribe_colors">🎨 Tribe Colors</button>
+    <span class="map-tb-sep"></span>
+    <button id="map-heatcfg-btn" class="btn btn-ghost btn-sm" onclick="toggleHeatmapConfig()" data-i18n="map_heatmap_config">Map Enhancements</button>
     <span class="map-tb-sep"></span>
     <button id="map-ow-btn" class="btn btn-ghost btn-sm" onclick="toggleOverwatchMode()" data-i18n="map_overwatch">🛡 Overwatch Mode</button>
     <button id="map-owcfg-btn" class="btn btn-ghost btn-sm" style="display:none;" onclick="toggleOwConfig()" data-i18n="map_owcfg">⚙ Overwatch Config</button>
@@ -193,8 +189,11 @@
     </div>
     <div id="map-groups" style="display:none;">
       <div class="map-groups-head">
-        <span data-i18n="map_color_groups">Color groups</span>
-        <button class="map-grp-new" onclick="addMapGroup()" title="New color group">＋</button>
+        <span data-i18n="map_color_groups">Tribe Colors</span>
+        <span style="display:flex;gap:6px;align-items:center;">
+          <button class="map-grp-new" onclick="addMapGroup()" title="New color group">＋</button>
+          <button class="map-barb-close" onclick="toggleMapGroups()" title="Close">✕</button>
+        </span>
       </div>
       <div id="map-groups-body" class="map-groups-body"></div>
     </div>
@@ -215,7 +214,7 @@
     </div>
     <div id="map-heatcfg" style="display:none;">
       <div class="map-barb-head">
-        <span data-i18n="map_heatcfg_title">Heatmap Config - Show:</span>
+        <span data-i18n="map_heatcfg_title">Map Enhancements - Show:</span>
         <button class="map-barb-close" onclick="toggleHeatmapConfig()" title="Close">✕</button>
       </div>
       <div class="map-barb-body">
@@ -1156,7 +1155,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.4.3 &nbsp;·&nbsp; 2026-08-03</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.5.0 &nbsp;·&nbsp; 2026-08-04</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

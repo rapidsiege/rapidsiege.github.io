@@ -18,6 +18,16 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.5.0', date: '2026-08-04',
+    en: [
+      `<b>🎨 Tribe Colors gets its own toolbar button.</b> The tribe color-groups panel (customize which tribes get which color on the map) used to sit permanently in the map's top-right corner — and still went unnoticed. It now opens on demand from a new <b>🎨 Tribe Colors</b> toolbar button (with a ✕ to close), so filtering and coloring tribes is one click away.`,
+      `<b>🧹 Leaner map toolbar.</b> The Zoom In / Zoom Out / Reset View buttons are gone — the mouse wheel and drag already do it better. And <b>Heatmap Config is now called Map Enhancements</b>: it long ago outgrew heatmaps (plan overlays, report badges, off-power tiers…).`,
+    ],
+    es: [
+      `<b>🎨 Colores de Tribu tiene su propio botón en la barra.</b> El panel de grupos de color (personaliza qué tribus llevan qué color en el mapa) vivía fijo en la esquina superior derecha del mapa — y aun así pasaba desapercibido. Ahora se abre bajo demanda con el nuevo botón <b>🎨 Colores de Tribu</b> (con ✕ para cerrar), así que filtrar y colorear tribus queda a un clic.`,
+      `<b>🧹 Barra del mapa más limpia.</b> Los botones Acercar / Alejar / Restablecer vista desaparecen — la rueda del ratón y el arrastre ya lo hacen mejor. Y <b>Config Mapa de Calor pasa a llamarse Mejoras del Mapa</b>: hace tiempo que va mucho más allá de los mapas de calor (capas de planes, insignias de informes, niveles de poder ofensivo…).`,
+    ],
+  },
   { ver: 'v5.4.3', date: '2026-08-03',
     en: [
       `<b>🕐 Report times now match the in-game report exactly.</b> Report timestamps turn out to already BE the server wall-clock as shown on the game page (the exporter stores that string as-is), so v5.4.2's timezone conversion shifted them +2h — and the old device-clock rendering was equally off. The stored time is now shown back 1:1: battle time, Send ≈ and Return ≈ read exactly like the in-game report from any device, and timezone/DST changes never need any handling. The twstats report views shared the same bug since they shipped and are fixed the same way.`,
