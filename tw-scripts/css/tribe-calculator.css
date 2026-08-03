@@ -710,7 +710,7 @@
     .twrr-modal-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; color: #f0c040; font-weight: 700; font-size: 13px; }
     .twrr-modal-close { cursor: pointer; border: none; background: none; color: #806030; padding: 1px 6px; font-size: 16px; line-height: 1; }
     .twrr-modal-close:hover { color: #f0c040; }
-    #ev-report-body { color: #d4b483; font-size: 12px; min-width: 280px; }
+    #ev-report-body { color: #d4b483; font-size: 12px; min-width: 280px; overflow-x: auto; }
     .twrr-modal .twrr + .twrr-srchead { margin-top: 12px; }
     .twrr-srchead { color: #a08050; font-size: 12px; margin: 2px 0 4px; }
     .twrr {
@@ -718,9 +718,17 @@
       border: 1px solid #7d510f; border-radius: 3px; padding: 6px;
       font: 12px/1.4 Verdana, Arial, sans-serif;
     }
-    .twrr table { border-collapse: collapse; width: 100%; }
-    .twrr th { background: #c1a264; color: #000; text-align: left; font-weight: 700; padding: 2px 5px; border: 1px solid #dbc59c; }
-    .twrr td { padding: 2px 5px; border: 1px solid #dbc59c; background: #fff5da; }
+    /* ⚠ Unlike twstats.css, THIS sheet styles bare table/th/td globally (dark
+       theme, right-aligned, nowrap, uppercase th, row hover) — every one of
+       those leaks into the report's tables, so the .twrr cell rules here must
+       override them ALL explicitly (nowrap alone made the Asunto line push the
+       table past the modal). Keep in sync with the globals at the top. */
+    .twrr table { border-collapse: collapse; width: 100%; background: none; border: none; border-radius: 0; overflow: visible; }
+    .twrr th { background: #c1a264; color: #000; text-align: left; font-weight: 700; padding: 2px 5px; border: 1px solid #dbc59c; font-size: 12px; text-transform: none; letter-spacing: normal; white-space: normal; cursor: default; }
+    .twrr td { padding: 2px 5px; border: 1px solid #dbc59c; background: #fff5da; color: #000; text-align: left; white-space: normal; }
+    .twrr tr:hover td, .twrr tbody tr:hover td { background: #fff5da; }
+    .twrr tr:last-child td { border-bottom: 1px solid #dbc59c; }
+    .twrr th:hover { background: #c1a264; color: #000; }
     .twrr h4 { margin: 6px 0 3px; padding: 0; font-size: 12px; color: #5d3a10; font-style: italic; }
     .twrr-head th { width: 110px; }
     .twrr-sec { margin-top: 6px; }

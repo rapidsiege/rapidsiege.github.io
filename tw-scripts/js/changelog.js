@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.4.1', date: '2026-08-03',
+    en: [
+      `<b>🐛 Report modal now renders exactly like twstats.</b> The calculator's own dark table theme was leaking into the in-game report (tan text instead of black, UPPERCASE right-aligned headers, and the subject line refusing to wrap — which pushed the report past the modal's edge). The report's tables are now fully shielded from the surrounding theme.`,
+    ],
+    es: [
+      `<b>🐛 El modal de informe ahora se ve exactamente como en twstats.</b> El tema oscuro de las tablas de la calculadora se colaba en el informe (texto tostado en vez de negro, cabeceras en MAYÚSCULAS alineadas a la derecha, y el asunto sin poder partirse en líneas — lo que empujaba el informe fuera del borde del modal). Las tablas del informe quedan ahora totalmente aisladas del tema circundante.`,
+    ],
+  },
   { ver: 'v5.4.0', date: '2026-08-03',
     en: [
       `<b>📄 View the full report from Enemy Villages.</b> Each village's second row now carries a <b>View report</b> link that opens the stored report rendered like in the game — subject, battle time, luck + morale, attacker/defender troop tables, espionage (resources + buildings) and units outside, plus the derived <b>Send ≈ / Return ≈</b> times. It shows the newest report on the village and the biggest attack it ever sent, from the shared full-report DB (hosted version only; loaded on first click). Strictly current-owner: a village that changed hands shows nothing from the previous owner — everything resets on a conquest. Same renderer as the twstats Entrantes page, so the two always match.`,
