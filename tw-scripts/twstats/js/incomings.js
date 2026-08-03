@@ -572,6 +572,11 @@
     var h = '<div class="rc-head">📄 Informe · ' + head + rcAgeTag(rt.t) + "</div>" +
       '<div class="rc-sub">' + sub + "</div>";
 
+    // Ownership-stale intel: everything resets on a conquest, so the old
+    // owner's troop sections are irrelevant — the card stops at the ⌛
+    // header + old-owner note (user's call, 2026-08-03).
+    if (rt.stale) return h;
+
     // Troops seen in the village — a spied empty garrison is a fact, not absence.
     if (v.home) {
       var hasUnits = RC_UNITS.some(function (u) { return (v.home.units[u] || 0) > 0; });
@@ -650,30 +655,27 @@
         body.textContent = "Sin informe completo guardado para este pueblo.";
         return;
       }
-      // Ownership staleness PER REPORT (the stores keep intel across
-      // conquests — `sentRep` especially, it holds the largest attack EVER
-      // sent). Same rule as riStale, applied to the owner this village had
-      // in that record: rep = defender side, sentRep = attacker side. Stale
-      // intel stays visible but explicitly marked (the 📄⌛ convention),
-      // because it no longer says anything about the current owner.
+      // STRICTLY current-owner reports (the stores keep intel across
+      // conquests — `sentRep` especially holds the largest attack EVER
+      // sent). Everything resets on a conquest, so a past owner's report is
+      // irrelevant here and is DROPPED, not banner-marked (user's call,
+      // 2026-08-03). Same rule as riStale, applied per record to the owner
+      // this village had in it: rep = defender side, sentRep = attacker side.
       var cv = state.byCoord[coord];
       var curId = (cv && cv.owner && cv.owner.id != null) ? String(cv.owner.id) : null;
-      var curName = (cv && cv.owner && cv.owner.name) ? cv.owner.name : "";
-      var staleBanner = function (pid, pname) {
-        if (curId == null || pid == null || String(pid) === curId) return "";
-        return '<div class="twrr-stale">⌛ Del dueño anterior' +
-          (pname ? " (" + TW.esc(pname) + ")" : "") + " — el pueblo cambió de dueño" +
-          (curName ? " (ahora de " + TW.esc(curName) + ")" : "") +
-          "; esta información ya no aplica.</div>";
-      };
+      var fresh = function (pid) { return curId == null || pid == null || String(pid) === curId; };
+      var rep = (v.rep && fresh(v.rep.defenderPlayerId)) ? v.rep : null;
+      var sentRep = (v.sentRep && fresh(v.sentRep.attackerPlayerId)) ? v.sentRep : null;
       var h = "";
-      if (v.rep) {
-        h += '<div class="twrr-srchead">Último informe sobre este pueblo:</div>' +
-          staleBanner(v.rep.defenderPlayerId, v.rep.defenderPlayerName) + TWRR.reportHtml(v.rep);
+      if (rep) {
+        h += '<div class="twrr-srchead">Último informe sobre este pueblo:</div>' + TWRR.reportHtml(rep);
       }
-      if (v.sentRep && !(v.rep && v.sentRep.reportId === v.rep.reportId)) {
-        h += '<div class="twrr-srchead">Mayor ataque enviado por este pueblo:</div>' +
-          staleBanner(v.sentRep.attackerPlayerId, v.sentRep.attackerPlayerName) + TWRR.reportHtml(v.sentRep);
+      if (sentRep && !(rep && sentRep.reportId === rep.reportId)) {
+        h += '<div class="twrr-srchead">Mayor ataque enviado por este pueblo:</div>' + TWRR.reportHtml(sentRep);
+      }
+      if (!h) {
+        body.textContent = "Sin informe del dueño actual — el pueblo cambió de dueño y todo se resetea.";
+        return;
       }
       body.className = "";
       body.innerHTML = h;
