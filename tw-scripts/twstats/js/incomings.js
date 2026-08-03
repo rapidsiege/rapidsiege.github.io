@@ -496,6 +496,29 @@
   // against the CURRENT owner in villages.json: intel observed under a previous
   // owner comes back as {stale:true} — rendered as an explicit "old owner" tag,
   // never as a verdict, never feeding the flags.
+  // Sections observed BEFORE the village's last conquest belong to the
+  // previous owner — everything resets, so they are dropped from verdicts,
+  // badge age, hover card and flags alike. riStale catches "the NEWEST report
+  // is from the old owner"; this catches the mixed case: newest report is
+  // current-owner but an older section (say, a `sent` from 22 days ago)
+  // predates the conquest. Returns null when nothing current-era remains;
+  // `maxT` = newest kept observation (drives the inline badge age).
+  function reportFactsOf(coord) {
+    var v = state.reports && state.reports[coord];
+    if (!v) return null;
+    var cv = state.byCoord[coord];
+    var conqT = (cv && state.lastConquer[cv.id]) ? state.lastConquer[cv.id].t * 1000 : 0;
+    var out = null;
+    ["home", "away", "bld", "sent"].forEach(function (k) {
+      if (v[k] && (+v[k].t || 0) >= conqT) {
+        if (!out) out = { lastT: v.lastT, id: v.id, name: v.name, playerId: v.playerId, playerName: v.playerName, maxT: 0 };
+        out[k] = v[k];
+        if ((+v[k].t || 0) > out.maxT) out.maxT = +v[k].t || 0;
+      }
+    });
+    return out;
+  }
+
   function reportTypeOf(coord) {
     if (!state.reports || typeof riClassify !== "function") return null;
     var v = state.reports[coord];
@@ -504,9 +527,11 @@
     if (cv && cv.owner && cv.owner.id != null && riStale(v, cv.owner.id)) {
       return { stale: true, t: v.lastT || 0, oldOwner: v.playerName || "" };
     }
-    var verdict = riClassify(v);
+    var fv = reportFactsOf(coord);
+    if (!fv) return null; // everything predates the last conquest
+    var verdict = riClassify(fv);
     if (verdict.cls === "off" || verdict.cls === "def" || verdict.cls === "mixed" || verdict.cls === "empty") {
-      return { type: verdict.cls === "mixed" ? "MIXED" : verdict.cls.toUpperCase(), sure: verdict.sure, t: v.lastT || 0 };
+      return { type: verdict.cls === "mixed" ? "MIXED" : verdict.cls.toUpperCase(), sure: verdict.sure, t: fv.maxT || v.lastT || 0 };
     }
     return null;
   }
@@ -554,9 +579,12 @@
   }
 
   function reportCardHtml(coord) {
-    var v = state.reports && state.reports[coord];
+    // Conquest-filtered view: only current-era sections render (a pre-conquest
+    // `sent` or scout must not show under the new owner).
+    var v = reportFactsOf(coord);
     var rt = reportTypeOf(coord);
-    if (!v || !rt) return "";
+    if (!rt) return "";
+    if (!v && !rt.stale) return "";
 
     var head, sub;
     if (rt.stale) {
