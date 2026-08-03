@@ -71,9 +71,9 @@
 
   // Derived send/return times. The report only records the battle moment, but
   // the full sent army is known, so: sent = battle − distance × slowest sent
-  // unit. Return only exists if ≥1 unit survived (sent − losses), and paces
-  // at the slowest SURVIVING unit — send ram+spy, lose the ram, and the spy
-  // walks home alone at spy speed.
+  // unit. The survivors return AT THE SAME PACE they came (the command keeps
+  // its sent speed — a ram+spy attack whose ram died still walks home at ram
+  // speed); the return row exists only if ≥1 unit survived (sent − losses).
   function travelTimes(r) {
     if (!r || typeof r.attackerX !== "number" || typeof r.attackerY !== "number" ||
         typeof r.defenderX !== "number" || typeof r.defenderY !== "number" ||
@@ -83,13 +83,13 @@
     var sentBy = slowest(r.attackerTroops);
     if (!sentBy || !dist) return null;
     var out = { dist: dist, sentUnit: sentBy, sent: +r.reportTimestamp - dist * SPEED[sentBy] * 60000 };
-    var survivors = {};
+    var survived = false;
     for (var u in r.attackerTroops) {
-      var left = (+r.attackerTroops[u] || 0) - ((r.attackerLosses && +r.attackerLosses[u]) || 0);
-      if (left > 0) survivors[u] = left;
+      if ((+r.attackerTroops[u] || 0) - ((r.attackerLosses && +r.attackerLosses[u]) || 0) > 0) {
+        survived = true; break;
+      }
     }
-    var backBy = slowest(survivors);
-    if (backBy) { out.retUnit = backBy; out.ret = +r.reportTimestamp + dist * SPEED[backBy] * 60000; }
+    if (survived) { out.retUnit = sentBy; out.ret = +r.reportTimestamp + dist * SPEED[sentBy] * 60000; }
     return out;
   }
 
@@ -160,7 +160,7 @@
         UNIT_ES[tt.sentUnit] + ", " + SPEED[tt.sentUnit] + " min/campo × " + distTxt + ')">' +
         fmtT(tt.sent) + "</td></tr>";
       if (tt.ret) {
-        h += '<tr><th>Regreso ≈</th><td title="Hora de batalla + viaje (unidad superviviente más lenta: ' +
+        h += '<tr><th>Regreso ≈</th><td title="Hora de batalla + viaje (los supervivientes vuelven a la velocidad de ida: ' +
           UNIT_ES[tt.retUnit] + ", " + SPEED[tt.retUnit] + " min/campo × " + distTxt + ')">' +
           fmtT(tt.ret) + "</td></tr>";
       }
