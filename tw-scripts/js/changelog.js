@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.4.0', date: '2026-08-03',
+    en: [
+      `<b>📄 View the full report from Enemy Villages.</b> Each village's second row now carries a <b>View report</b> link that opens the stored report rendered like in the game — subject, battle time, luck + morale, attacker/defender troop tables, espionage (resources + buildings) and units outside, plus the derived <b>Send ≈ / Return ≈</b> times. It shows the newest report on the village and the biggest attack it ever sent, from the shared full-report DB (hosted version only; loaded on first click). Strictly current-owner: a village that changed hands shows nothing from the previous owner — everything resets on a conquest. Same renderer as the twstats Entrantes page, so the two always match.`,
+    ],
+    es: [
+      `<b>📄 Ver el informe completo desde Aldeas Enemigas.</b> La segunda fila de cada aldea lleva ahora un enlace <b>Ver informe</b> que abre el informe guardado renderizado como en el juego — asunto, hora de batalla, suerte + moral, tablas de tropas de atacante/defensor, espionaje (recursos + edificios) y unidades fuera, más las horas derivadas de <b>Envío ≈ / Regreso ≈</b>. Muestra el informe más reciente sobre la aldea y el mayor ataque que haya enviado, desde la BD compartida de informes completos (solo versión alojada; se carga al primer clic). Estrictamente del dueño actual: una aldea que cambió de manos no muestra nada del dueño anterior — todo se resetea con la conquista. Mismo renderizador que la página Entrantes de twstats, así que siempre coinciden.`,
+    ],
+  },
   { ver: 'v5.3.1', date: '2026-08-03',
     en: [
       `<b>🗺 Old-owner intel trimmed on the map hover.</b> When a village changed hands after its last report, the hover card no longer shows the previous owner's troops (in village / outside / sent) — everything resets on a conquest. The spied <b>building levels</b> survive the new owner, so that block stays.`,

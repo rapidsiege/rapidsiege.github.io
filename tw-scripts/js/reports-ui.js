@@ -247,17 +247,20 @@ function renderEnemyVillagesTable() {
       + `<td style="color:#e06040;">${homeUnits ? fmtM(riOffPow(homeUnits)) : '—'}</td></tr>`);
     first = false;
 
-    // Row 2 — troops away (seen / confirmed empty / not seen), or what it sent
+    // Row 2 — troops away (seen / confirmed empty / not seen), or what it sent.
+    // Its Village cell carries the "View report" link → full in-game-style
+    // report modal (same renderer as the twstats Entrantes page).
     const blank = `<td></td><td></td><td></td><td></td>`;
+    const rep2 = `<td class="left"><a href="#" class="ev-viewrep" onclick="riOpenReportModal('${coord}');return false;">📄 ${esc(t('ev_view_report'))}</a></td><td></td><td></td><td></td>`;
     if (v.away && !v.away.empty) {
-      cells.push(`<tr style="${dim}">${blank}`
+      cells.push(`<tr style="${dim}">${rep2}`
         + `<td class="left" style="white-space:nowrap;color:#5a3a18;">🚶 ${esc(t('ev_row_away'))}</td>`
         + riUnitCells(v.away.units, 'color:#4a70b0;')
         + `<td style="color:#e06040;">${fmtM(riOffPow(v.away.units))}</td></tr>`);
     } else {
       const note = v.away && v.away.empty ? t('ev_away_empty') : t('ev_away_unknown');
       const color = v.away && v.away.empty ? '#5a8a5a' : '#a08050';
-      cells.push(`<tr style="${dim}">${blank}`
+      cells.push(`<tr style="${dim}">${rep2}`
         + `<td class="left" style="white-space:nowrap;color:#5a3a18;">🚶 ${esc(t('ev_row_away'))}</td>`
         + `<td class="left" colspan="11" style="color:${color};font-size:12px;">${esc(note)}</td></tr>`);
     }
@@ -281,4 +284,79 @@ function renderEnemyVillagesTable() {
       (riShared ? Object.keys(riShared.ids).filter(k => !riStore.ids[k]).length : 0);
     summary.textContent = nRep ? t('ev_summary')(rows.length, nRep) : '';
   }
+}
+
+// ── Full-report modal (📄 View report on row 2) ──
+// Mirror of the twstats Entrantes badge-click modal: the shared FULL-report
+// store (db-full.json — newest raw report per village: rep = newest
+// defender-side report, sentRep = largest off it sent) is heavier than the
+// facts DB, so it is fetched lazily on the first click and cached for the
+// session. Rendered by js/report-render.js (TWRR) — the same file the twstats
+// pages load, so the two sites render identically. Hosted site only (the
+// facts-store table keeps working offline; this modal needs the Worker).
+let riFullDbP = null;
+function riFullDb() {
+  if (!riFullDbP) {
+    riFullDbP = cloudFetchReportsFullDb().then(villages => {
+      if (!villages) riFullDbP = null; // failed — retry on the next click
+      return villages;
+    });
+  }
+  return riFullDbP;
+}
+
+// STRICTLY current-owner records (same rule as the twstats modal + riStale):
+// the store keeps intel across conquests (`sentRep` especially holds the
+// largest attack EVER sent), but everything resets on a conquest, so a past
+// owner's report is DROPPED, not shown. rep is checked on its defender side,
+// sentRep on its attacker side; curId == null (no world DB) keeps both.
+// A sentRep that IS the rep (same reportId) is deduped away.
+function riFreshFullReports(v, curId) {
+  const fresh = pid => curId == null || pid == null || String(pid) === String(curId);
+  const rep = (v && v.rep && fresh(v.rep.defenderPlayerId)) ? v.rep : null;
+  let sentRep = (v && v.sentRep && fresh(v.sentRep.attackerPlayerId)) ? v.sentRep : null;
+  if (rep && sentRep && sentRep.reportId === rep.reportId) sentRep = null;
+  return { rep, sentRep };
+}
+
+function riCloseReportModal() {
+  const bg = document.getElementById('ev-report-modal');
+  if (bg) bg.parentNode.removeChild(bg);
+}
+
+function riOpenReportModal(coord) {
+  riCloseReportModal();
+  const bg = document.createElement('div');
+  bg.id = 'ev-report-modal';
+  bg.className = 'twrr-modal-bg';
+  bg.innerHTML = `<div class="twrr-modal"><div class="twrr-modal-title"><span>${t('ev_rep_title')(esc(coord))}</span>`
+    + `<button type="button" class="twrr-modal-close" onclick="riCloseReportModal()">✕</button></div>`
+    + `<div id="ev-report-body"></div></div>`;
+  bg.addEventListener('click', e => { if (e.target === bg) riCloseReportModal(); });
+  document.body.appendChild(bg);
+  const body = document.getElementById('ev-report-body');
+  if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') {
+    body.textContent = t('ev_shared_dev');
+    return;
+  }
+  body.textContent = t('ev_rep_loading');
+  riFullDb().then(villages => {
+    const b = document.getElementById('ev-report-body');
+    if (!b) return; // modal already closed
+    if (!villages) { b.textContent = t('ev_rep_db_err'); return; }
+    const v = villages[coord];
+    if (!v || (!v.rep && !v.sentRep) || typeof TWRR === 'undefined') {
+      b.textContent = t('ev_rep_none');
+      return;
+    }
+    const cv = (typeof coordDb !== 'undefined' && coordDb[coord]) || null;
+    const curId = (cv && cv.playerId != null) ? String(cv.playerId) : null;
+    const { rep, sentRep } = riFreshFullReports(v, curId);
+    TWRR.setIconBase('icons/'); // calculator sits next to icons/, not one level below
+    let h = '';
+    if (rep) h += `<div class="twrr-srchead">${esc(t('ev_rep_last'))}</div>` + TWRR.reportHtml(rep);
+    if (sentRep) h += `<div class="twrr-srchead">${esc(t('ev_rep_sent'))}</div>` + TWRR.reportHtml(sentRep);
+    if (!h) { b.textContent = t('ev_rep_none_owner'); return; }
+    b.innerHTML = h;
+  });
 }

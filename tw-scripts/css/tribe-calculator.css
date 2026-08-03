@@ -697,3 +697,52 @@
     .map-tt-units { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; color: #d4b483; }
     .map-tt-unit { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; }
     .map-tt-troops .tw-ic { width: 14px; height: 14px; vertical-align: middle; }
+
+    /* ── Enemy Villages: 📄 View report link + full in-game report modal ──
+       The .twrr* body styles are the report renderer's (js/report-render.js,
+       shared with the twstats pages) fixed in-game tan palette — the report
+       looks like the game regardless of the surrounding theme. The modal
+       shell (.twrr-modal*) is styled to THIS tool's dark theme. */
+    .ev-viewrep { color: #4a70b0; text-decoration: none; font-size: 12px; white-space: nowrap; }
+    .ev-viewrep:hover { text-decoration: underline; color: #6cc0e0; }
+    .twrr-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 120; display: flex; align-items: flex-start; justify-content: center; padding: 40px 10px; overflow: auto; }
+    .twrr-modal { background: #1e1408; border: 1px solid #7a5c10; border-radius: 8px; padding: 10px; max-width: 460px; box-shadow: 0 8px 30px rgba(0,0,0,.55); }
+    .twrr-modal-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; color: #f0c040; font-weight: 700; font-size: 13px; }
+    .twrr-modal-close { cursor: pointer; border: none; background: none; color: #806030; padding: 1px 6px; font-size: 16px; line-height: 1; }
+    .twrr-modal-close:hover { color: #f0c040; }
+    #ev-report-body { color: #d4b483; font-size: 12px; min-width: 280px; }
+    .twrr-modal .twrr + .twrr-srchead { margin-top: 12px; }
+    .twrr-srchead { color: #a08050; font-size: 12px; margin: 2px 0 4px; }
+    .twrr {
+      max-width: 420px; background: #f4e4bc; color: #000;
+      border: 1px solid #7d510f; border-radius: 3px; padding: 6px;
+      font: 12px/1.4 Verdana, Arial, sans-serif;
+    }
+    .twrr table { border-collapse: collapse; width: 100%; }
+    .twrr th { background: #c1a264; color: #000; text-align: left; font-weight: 700; padding: 2px 5px; border: 1px solid #dbc59c; }
+    .twrr td { padding: 2px 5px; border: 1px solid #dbc59c; background: #fff5da; }
+    .twrr h4 { margin: 6px 0 3px; padding: 0; font-size: 12px; color: #5d3a10; font-style: italic; }
+    .twrr-head th { width: 110px; }
+    .twrr-sec { margin-top: 6px; }
+    .twrr-side { margin-top: 8px; }
+    .twrr-who th { width: 110px; }
+    .twrr-units td { text-align: center; min-width: 24px; padding: 2px 3px; }
+    .twrr-units img { width: 18px; height: 18px; vertical-align: middle; }
+    .twrr-units .twrr-label { text-align: left; font-weight: 700; background: #ded3b9; min-width: 70px; }
+    .twrr-units .twrr-z { color: #a9a9a9; }
+    .twrr-luckmoral h4 { display: inline-block; margin-right: 14px; }
+    .twrr-luckwrap { display: inline-flex; align-items: center; gap: 8px; margin-right: 14px; }
+    .twrr-lucknum { font-weight: 700; }
+    .twrr-luckbar { position: relative; width: 100px; height: 12px; background: #fff5da; border: 1px solid #7d510f; }
+    .twrr-luck-seg { position: absolute; top: 0; bottom: 0; }
+    .twrr-luck-pos { background: #92c05c; }
+    .twrr-luck-neg { background: #e04545; }
+    .twrr-luck-mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #7d510f; }
+    .twrr-esp { border-top: 1px solid #7d510f; padding-top: 5px; }
+    .twrr-resrow th { width: 130px; }
+    .twrr-res { width: 14px; height: 14px; vertical-align: -2px; }
+    .twrr-resitem { margin-right: 12px; white-space: nowrap; }
+    .twrr-bldcols { display: flex; gap: 6px; align-items: flex-start; margin-top: 4px; }
+    .twrr-bld th:last-child, .twrr-bld td:last-child { width: 38px; text-align: right; }
+    .twrr-bld img { width: 16px; height: 16px; vertical-align: middle; margin-right: 2px; }
+    .twrr-away th { border-bottom: 0; }

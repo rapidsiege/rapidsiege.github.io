@@ -230,6 +230,21 @@ async function cloudFetchReportsDb() {
   } catch (_) { return null; }
 }
 
+// Fetch the shared FULL-report store (db-full.json — the newest raw report(s)
+// kept per village: rep = newest defender-side report, sentRep = largest off
+// it sent). Heavier than the facts DB, so the caller fetches it lazily (first
+// "View report" click) and caches it for the session. Resolves the per-village
+// map or null. Hosted-site only.
+async function cloudFetchReportsFullDb() {
+  if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return null;
+  try {
+    const res = await fetch(`${CLOUD_SYNC_URL}/reports-full?world=${encodeURIComponent(_cloudWorld())}`);
+    if (!res.ok) return null;
+    const db = await res.json();
+    return (db && db.villages) ? db.villages : null;
+  } catch (_) { return null; }
+}
+
 if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', _initCloudSync);

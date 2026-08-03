@@ -1,8 +1,15 @@
 /* report-render.js — render a reportsExport.js record like the in-game report.
-   Classic script; needs common.js first (TW.esc, TW.commas). Used by the
-   Subir Informes viewer (local tw-reports-*.json files) and the Entrantes
-   badge-click modal (shared db-full.json). Pure: TWRR.reportHtml(record)
-   returns HTML, no DOM access, no fetch.
+   Classic script, fully self-contained (no other module needed). Lives in the
+   CALCULATOR's js/ and is served from tw-scripts/js/ in prod, where the twstats
+   pages load it as ../js/report-render.js (same single-file pattern as
+   reports-intel.js — one renderer, so the two sites can never drift).
+   Consumers: the calculator's Enemy Villages "View report" modal, the twstats
+   Entrantes badge-click modal and the Subir Informes local viewer.
+   Pure: TWRR.reportHtml(record) returns HTML, no DOM access, no fetch.
+
+   Icon paths default to '../icons/…' (right for the twstats pages, one level
+   below tw-scripts/); the calculator sits next to icons/ and calls
+   TWRR.setIconBase('icons/') before rendering.
 
    Faithful to the game's report layout (see Tribalwars/report_image.png):
    subject + battle time, luck bar + morale, Atacante/Defensor troop tables
@@ -11,7 +18,7 @@
    not capture (result headline, haul, wall damage, loyalty) is not shown —
    nothing is invented.
 
-   Known-empty vs unknown (mirrors ../js/reports-intel.js): a record with
+   Known-empty vs unknown (mirrors js/reports-intel.js): a record with
    spy data (resources/buildings) but NO defenderTroops means the garrison
    was provably EMPTY (zeros row); no troops AND no spy data means the
    defender was never seen (e.g. all spies died) — rendered as "?". */
@@ -24,7 +31,7 @@
     spear: "Lanza", sword: "Espada", axe: "Hacha", spy: "Espía", light: "Caballería ligera",
     heavy: "Caballería pesada", ram: "Ariete", catapult: "Catapulta", knight: "Paladín", snob: "Noble",
   };
-  // Building key → [icon file (../icons/buildings/), Spanish name], game order.
+  // Building key → [icon file (<base>buildings/), Spanish name], game order.
   var BLD = [
     ["main", "headquarters", "Edificio Principal"], ["barracks", "barracks", "Cuartel"],
     ["stable", "stable", "Cuadra"], ["garage", "workshop", "Taller"],
@@ -43,6 +50,11 @@
     iron:  '<svg class="twrr-res" viewBox="0 0 14 14"><path d="M3 10.5 5 5h4l2 5.5z" fill="#8d9299"/><path d="M5.4 5.8 4.2 9.6" stroke="#c8cdd4" stroke-width=".9"/><rect x="2" y="10.5" width="10" height="1.6" rx=".8" fill="#5f646b"/></svg>',
   };
   var RES_ES = { wood: "Madera", clay: "Arcilla", iron: "Hierro" };
+
+  // Where the unit/building icons live, relative to the page. Defaults suit
+  // the twstats pages; the calculator overrides via setIconBase (see header).
+  var ICON_BASE = "../icons/";
+  function setIconBase(p) { if (p) ICON_BASE = p; }
 
   // Minutes per field. Defaults are the base unit speeds, which ARE the es100
   // values (world_speed 2 × unit_speed 0.5 ⇒ divisor 1 — measured to
@@ -93,8 +105,12 @@
     return out;
   }
 
-  function esc(s) { return TW.esc(String(s == null ? "" : s)); }
-  function n(x) { return TW.commas(+x || 0); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+  function n(x) { return Number(+x || 0).toLocaleString("en-US"); }
   function pad(x) { return (x < 10 ? "0" : "") + x; }
   // In-game style battle time: 03.08.26 17:06:04 (record timestamps are ms).
   function fmtT(ms) {
@@ -113,7 +129,7 @@
   // unknown=true renders "?" cells (defender never seen).
   function troopTable(units, losses, showLosses, unknown) {
     var h = '<table class="twrr-units"><tr><td class="twrr-label"></td>' + UNITS.map(function (u) {
-      return '<td><img src="../icons/units/' + u + '.png" alt="" title="' + UNIT_ES[u] + '"></td>';
+      return '<td><img src="' + ICON_BASE + 'units/' + u + '.png" alt="" title="' + UNIT_ES[u] + '"></td>';
     }).join("") + "</tr>";
     var row = function (label, m) {
       return '<tr><td class="twrr-label">' + label + ":</td>" + UNITS.map(function (u) {
@@ -205,7 +221,7 @@
         var half = Math.ceil(rows.length / 2);
         var col = function (list) {
           return '<table class="twrr-bld"><tr><th>Edificio</th><th>Nivel</th></tr>' + list.map(function (b) {
-            return '<tr><td><img src="../icons/buildings/' + b[1] + '.webp" alt=""> ' + b[2] +
+            return '<tr><td><img src="' + ICON_BASE + 'buildings/' + b[1] + '.webp" alt=""> ' + b[2] +
               "</td><td>" + (+r.buildings[b[0]]) + "</td></tr>";
           }).join("") + "</table>";
         };
@@ -224,6 +240,10 @@
     return h + "</div>";
   }
 
-  window.TWRR = { reportHtml: reportHtml, subjectLine: subjectLine, fmtT: fmtT,
-                  travelTimes: travelTimes, setSpeeds: setSpeeds };
+  // globalThis covers the browser (=== window), jsdom and the vm test
+  // sandboxes in one expression — classic script, so this IS the global TWRR.
+  (typeof globalThis !== "undefined" ? globalThis : window).TWRR = {
+    reportHtml: reportHtml, subjectLine: subjectLine, fmtT: fmtT,
+    travelTimes: travelTimes, setSpeeds: setSpeeds, setIconBase: setIconBase,
+  };
 })();
