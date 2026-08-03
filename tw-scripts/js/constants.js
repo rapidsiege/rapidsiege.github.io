@@ -55,6 +55,16 @@ const DEF_MIN_PACKET_POP = 400;
 // exceeded when no eligible village has room left (coverage always wins).
 const DP_PACK_DEFAULTS = { size: 500, max: 0, weights: { spear: 1, sword: 1, spy: 2, heavy: 4 } };
 
+// Plan Defense spy rules (v5.3.0). Spies add nothing to raw defense — they only screen the
+// village against enemy scouting — so they are exempt from the spread-and-balance treatment
+// every other type gets:
+//   • Every spy support order tries to carry at least this many spies: allocation is
+//     concentrated onto few senders (chunked like Support Packs, in BOTH sizing modes; a
+//     demand smaller than the floor still ships as one single order).
+//   • Each village keeps as many spies HOME as it has rams — they leave together later as
+//     [spy+ram] fakes, so they are never assignable as support (see defAvailUnits).
+const DEF_SPY_MIN_ORDER = 50;
+
 // Catapult target buildings offered in the Offensive Targets catapult cell, in display order.
 // Values are the in-game building keys (the rally-point confirm-page <select name="building">
 // option values), so they drop straight into the rally URL's &building= param. Labels are i18n

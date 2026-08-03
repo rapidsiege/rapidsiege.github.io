@@ -125,7 +125,10 @@ function renderDefIgnorePlayers() {
 
 // ── Complete Players (Plan Defense, v4.27.0): whole players drained to 100% — every
 // eligible village of theirs sends ALL its available defense, BEFORE the normal
-// capacity-weighted pool contributes anything. No equal-drain rationing, no pack sizing,
+// capacity-weighted pool contributes anything (since v5.3.0 that includes their RETURNING
+// troops: fill order is Complete home → Complete returning → others' home → others'
+// returning; spies are the one exception — they ride the normal chunked spy pool). No
+// equal-drain rationing, no pack sizing,
 // and the DEF_SENDER_MIN_POP small-garrison floor is waived for them. Their villages
 // still respect the sender-level holds (Ignore Coordinates, map-drawn area, Enemy-Tribes
 // distance) — a front-line village of a Complete player stays home. Mirrors the Ignore
@@ -439,6 +442,14 @@ function generateDefPlan() {
   // (heavy@4 → 125, spear@1 → 500, spy@2 → 250). Allocating in whole packs is what makes each
   // order chunky: a player physically can't receive a sub-pack sliver, so no 20-heavy dribble.
   const packUnitsOf = u => Math.max(1, Math.ceil(dpPackSize / packWOf(u)));
+  // Allocation chunk of a unit type (0 = no chunking, plain capacity-weighted apportion).
+  // Packs mode chunks every type by its pack; SPIES are chunked ALWAYS (v5.3.0) — at least
+  // DEF_SPY_MIN_ORDER even in Max Efficiency, and never below it in packs mode. Scouts only
+  // screen against enemy spying, so instead of riding the equal-drain balancing (which
+  // dribbled 1-spy orders across the whole tribe) they concentrate onto few senders.
+  const chunkUnitsOf = u => u === 'spy'
+    ? Math.max(packsMode ? packUnitsOf(u) : 0, DEF_SPY_MIN_ORDER)
+    : (packsMode ? packUnitsOf(u) : 0);
 
   const packets = {}; // `${senderIdx}#${T.i}` → {si, T, units, fut}
   // `view` names the bucket this commit draws from ('stockNow' in round 1, 'stockFut' in round
@@ -491,17 +502,28 @@ function generateDefPlan() {
       }
     }
 
-    // ── Two-round fill (v4.26.0) ────────────────────────────────────────────────────────
-    // Round 1 draws ONLY from defense that is HOME NOW; round 2 tops up whatever is still
-    // short from EN-ROUTE (returning) troops. Identical allocator both times — only the stock
-    // view differs — so an order depends on returning troops exactly when home defense could
-    // not cover the ask. Packets are keyed sender#target, so a village that contributes in
-    // both rounds produces ONE merged order rather than two fragments. `placed` carries the
-    // per-type running total across rounds, so round 2 asks only for the residual and the
-    // shortfall warning fires once, after both rounds. ──
+    // ── Four-phase fill (v4.26.0 two-round split further in v5.3.0) ─────────────────────
+    // Complete players are drained FULLY — home first, then returning — BEFORE the normal
+    // pool sends anything (user decision, v5.3.0; supersedes v4.27.0's interleaved order
+    // where others' home defense beat Complete players' returning troops to the residual):
+    //   1. Complete players' HOME defense       3. everyone else's HOME defense
+    //   2. Complete players' RETURNING troops   4. everyone else's RETURNING troops
+    // Identical allocator in every phase — only the stock view and the player pool differ —
+    // so an order depends on returning troops exactly when the earlier phases couldn't
+    // cover the ask. Packets stay keyed sender#target, so a village contributing in several
+    // phases yields ONE merged order. `placed` carries the per-type running total across
+    // phases: each phase chases only the residual, and the shortfall warning fires once,
+    // after all four. SPIES skip the Complete phases entirely (v5.3.0: complete players'
+    // spies ride the normal chunked pool). With no Complete players, phases 1-2 are skipped
+    // and 3-4 run byte-identical to the classic home-then-returning two-round fill. ──
     const placed = { spear: 0, sword: 0, spy: 0, heavy: 0 };
-    for (let round = 0; round < 2; round++) {
-      const view = round === 0 ? 'stockNow' : 'stockFut';
+    const phases = [
+      { complete: true,  view: 'stockNow' }, { complete: true,  view: 'stockFut' },
+      { complete: false, view: 'stockNow' }, { complete: false, view: 'stockFut' },
+    ];
+    for (const ph of phases) {
+      if (ph.complete && !completePl.size) continue;
+      const view = ph.view;
       // ── Pass A — player-level allocation per unit type. Weight = remaining def-pop
       // capacity (→ equal drain ratio: bigger defenders send proportionally more), capped
       // by each player's reachable stock of that type. Excess that no player can cover is a
@@ -509,12 +531,23 @@ function generateDefPlan() {
       const playerGive = {}; // player → {spear,sword,spy,heavy}
       const eligByType = {}; // unit → { player → [sender indices eligible for THIS type] }
       for (const u of DEF_OBJ_UNITS) {
-        const n = (T.tg[u] || 0) - placed[u]; // residual: round 2 only chases what round 1 missed
+        const n = (T.tg[u] || 0) - placed[u]; // residual: each phase only chases what earlier phases missed
         if (n <= 0) continue;
+        if (ph.complete && u === 'spy') continue; // spies never use the Complete fast path (v5.3.0)
+        // Per-village stock floor for THIS type. Spies (v5.3.0): a village joins the spy pool
+        // only if it alone can ship ≥ DEF_SPY_MIN_ORDER (or the target's whole ORIGINAL ask,
+        // when that is smaller — a genuinely tiny ask ships as one small order) — villages
+        // left with a spy dribble after the ram reserve keep it home rather than clutter the
+        // plan, even if that means a (harmless, silent) spy shortfall. Keyed to the original
+        // ask, NOT the residual: a round-2 top-up of a chunky ask must not reopen sliver-land.
+        // Filtering HERE keeps Pass A's stock math honest: unshippable slivers never count.
+        const minStock = u === 'spy' ? Math.min(DEF_SPY_MIN_ORDER, T.tg[u] || 0) : 1;
+        // A sub-chunk spy RESIDUAL isn't worth a new order at all — drop it (silent, by design).
+        if (u === 'spy' && n < minStock) continue;
         const byP = {};
         for (let si = 0; si < senders.length; si++) {
           const s = senders[si];
-          if (s[view][u] > 0 && sameTribe(s, T) && inBand(s, T) && typeArriveOk(s, T, u) && !mvExcluded.has(s.v.player))
+          if (s[view][u] >= minStock && sameTribe(s, T) && inBand(s, T) && typeArriveOk(s, T, u) && !mvExcluded.has(s.v.player))
             (byP[s.v.player] || (byP[s.v.player] = [])).push(si);
         }
         eligByType[u] = byP;
@@ -538,30 +571,40 @@ function generateDefPlan() {
         };
         let assigned = 0;
 
-        // ── Complete Players go FIRST, drained to their full reachable stock of this type —
-        // no capacity-weight rationing (weight = stock, and every cap binds whenever demand
-        // covers them) and no pack sizing (100% ships regardless of chunk shape). Only the
-        // residual demand falls through to the normal pool below, whose math is unchanged. ──
-        const completeNames = names.filter(P => completePl.has(P));
-        if (completeNames.length) {
-          const ca = apportionCapped(n, completeNames.map(P => ({ weight: stockOf(P), cap: stockOf(P) })));
-          completeNames.forEach((P, pi) => { if (ca[pi] > 0) { record(P, ca[pi]); assigned += ca[pi]; } });
+        // ── Complete phases (1-2): drained to their full reachable stock of this type — no
+        // capacity-weight rationing (weight = stock, and every cap binds whenever demand
+        // covers them) and no pack sizing (100% ships regardless of chunk shape). Complete
+        // players run in their OWN phases (home, then returning) before any normal phase,
+        // so only the residual demand ever reaches the normal pool, whose math is unchanged.
+        // SPIES are exempt (v5.3.0, skipped above): "Complete" is about draining real
+        // defense, and a stock-proportional partial drain can shape slivers — complete
+        // players' spies ride the normal chunked pool like everyone else's. ──
+        if (ph.complete) {
+          const completeNames = names.filter(P => completePl.has(P));
+          if (completeNames.length) {
+            const ca = apportionCapped(n, completeNames.map(P => ({ weight: stockOf(P), cap: stockOf(P) })));
+            completeNames.forEach((P, pi) => { if (ca[pi] > 0) { record(P, ca[pi]); assigned += ca[pi]; } });
+          }
+          placed[u] += assigned;
+          continue;
         }
-        const norm = names.filter(P => !completePl.has(P));
-        const nRem = n - assigned; // what the normal pool still has to cover
+        // Normal phases (3-4): everyone but Complete players — except spies, where Complete
+        // players join the chunked pool like anyone else.
+        const norm = u === 'spy' ? names : names.filter(P => !completePl.has(P));
+        const nRem = n - assigned; // assigned is 0 here; kept so the packs arithmetic below reads unchanged
 
-        if (!packsMode) {
+        const pu = chunkUnitsOf(u); // 0 in Max Efficiency — except spies, which chunk always
+        if (!pu) {
           assigned += apportion(norm, nRem); // Max Efficiency — one capacity-weighted pass (unchanged)
         } else {
-          // Support Packs: hand out WHOLE packs first (capacity-weighted, integer packs → no sub-pack
-          // slivers), then fold the coverage remainder into existing contributors (their orders stay
-          // ≥ a pack), spilling to new senders only when contributors are stock-full. A demand smaller
-          // than one pack ships as a single sub-pack order (best-effort "at least this size").
-          // Complete players were drained above (whole-stock, un-packed) — this branch sizes packs
-          // over the NORMAL pool and the residual demand only; `target` still counts the complete
-          // units already in `assigned` so the rem arithmetic below is unchanged.
+          // Support Packs (and the always-on spy floor): hand out WHOLE packs first (capacity-
+          // weighted, integer packs → no sub-pack slivers), then fold the coverage remainder into
+          // existing contributors (their orders stay ≥ a pack), spilling to new senders only when
+          // contributors are stock-full. A demand smaller than one pack ships as a single sub-pack
+          // order (best-effort "at least this size").
+          // Complete players were drained in their own earlier phases (whole-stock, un-packed) —
+          // this branch sizes packs over the NORMAL pool and the residual demand only.
           const target = assigned + Math.min(nRem, norm.reduce((s, P) => s + stockOf(P), 0)); // coverage target — identical to Max Efficiency
-          const pu = packUnitsOf(u);
           const packs = Math.min(Math.floor(nRem / pu), norm.reduce((s, P) => s + Math.floor(stockOf(P) / pu), 0));
           if (packs > 0) {
             const pa = apportionCapped(packs, norm.map(P => ({ weight: rankP(P), cap: Math.floor(stockOf(P) / pu) })));
@@ -573,16 +616,23 @@ function generateDefPlan() {
             if (contribs.length) assigned += apportion(contribs, rem);
           }
           rem = target - assigned;
+          // Spy tail (v5.3.0): a sub-chunk REMAINDER of a chunky spy ask is DROPPED rather
+          // than opening a new sender for a sliver — exact spy coverage is worthless, plan
+          // clutter isn't. (An ask smaller than the chunk still ships whole: n < pu means
+          // the "remainder" here IS the entire ask, and one sub-chunk order is the deal.)
+          if (u === 'spy' && rem > 0 && rem < pu && n >= pu) rem = 0;
           if (rem > 0) { // concentrate any spill onto the fewest new senders that still form packs
             const rest = norm.filter(P => givenU(P) === 0 && stockOf(P) > 0)
               .sort((a, b) => (rankP(b) - rankP(a)) || (decode(a).toLowerCase() < decode(b).toLowerCase() ? -1 : 1));
             const restK = Math.max(1, Math.floor(rem / pu));
             assigned += apportion(rest.slice(0, restK), rem);
             rem = target - assigned;
-            if (rem > 0) assigned += apportion(rest.slice(restK), rem); // final coverage spill (over pack-sizing)
+            // Final coverage spill (over pack-sizing) — every type EXCEPT spy: a spy tail the
+            // chunk-sized senders couldn't hold stays home instead of spraying new slivers.
+            if (rem > 0 && u !== 'spy') assigned += apportion(rest.slice(restK), rem);
           }
         }
-        placed[u] += assigned; // shortfall is judged after BOTH rounds, below
+        placed[u] += assigned; // shortfall is judged after ALL phases, below
       }
 
       // ── Pass B — spread each player's allocation across their villages, keeping every
@@ -657,7 +707,9 @@ function generateDefPlan() {
 
         // Village-split floor. Max Efficiency: k villages by the classic real-POP / 400 floor, shared
         // across types. Support Packs: split each type across ⌊give_u / packUnits⌋ villages so each
-        // village order carries ≥ one whole pack of that type. Either way, spill onward if stock-short.
+        // village order carries ≥ one whole pack of that type. Spies use their chunk in BOTH modes
+        // (v5.3.0: ⌊give / ≥50⌋ villages, so no village ships a spy sliver). Either way, spill
+        // onward if stock-short.
         const kEff = Math.min(cand.length, Math.max(1, Math.floor(
           DEF_OBJ_UNITS.reduce((s, u) => s + (give[u] || 0) * POP[u], 0) / DEF_MIN_PACKET_POP)));
         for (const u of DEF_OBJ_UNITS) {
@@ -665,7 +717,8 @@ function generateDefPlan() {
           if (need <= 0) continue;
           const eligSet = new Set(eligByType[u][P]);
           const elig = cand.filter(si => eligSet.has(si));
-          const k = packsMode ? Math.min(elig.length, Math.max(1, Math.floor(need / packUnitsOf(u)))) : kEff;
+          const pu = chunkUnitsOf(u);
+          const k = pu ? Math.min(elig.length, Math.max(1, Math.floor(need / pu))) : kEff;
           const primary = elig.slice(0, k), spill = elig.slice(k);
           const a1 = apportionCapped(need, primary.map(si => ({ weight: 1, cap: senders[si][view][u] })));
           primary.forEach((si, j) => commit(T, si, u, a1[j], view));
@@ -676,24 +729,31 @@ function generateDefPlan() {
           }
         }
       }
-    } // ── end of the two-round fill (round 0 = home now, round 1 = en route) ──
+    } // ── end of the four-phase fill (Complete home → Complete returning → home → en route) ──
 
     // Shortfall is what NEITHER round could cover — reported once per type, per target.
+    // Spy shortages under DEF_SPY_MIN_ORDER are silent: sub-chunk spy tails are dropped BY
+    // DESIGN (see the spill guards above), so warning about them would be pure noise.
     for (const u of DEF_OBJ_UNITS) {
       const n = T.tg[u] || 0;
-      if (placed[u] < n) defPlanWarnings.push(t('warn_def_short')(t('th_' + u), n - placed[u], T.tg.coord));
+      if (placed[u] >= n) continue;
+      if (u === 'spy' && n - placed[u] < DEF_SPY_MIN_ORDER) continue;
+      defPlanWarnings.push(t('warn_def_short')(t('th_' + u), n - placed[u], T.tg.coord));
     }
   }
 
   // ── Complete Players audit: by contract everything they COULD send is now assigned, so
   // whatever is still in stock gets explained per player rather than leaving them quietly
-  // half-drained. Two distinct causes (user-confirmed fill order: Complete home → others'
-  // home → Complete returning → others' returning):
+  // half-drained. Fill order (v5.3.0 user decision): Complete home → Complete returning →
+  // others' home → others' returning — a Complete player drains FULLY before the rest.
+  // Two distinct leftovers:
   //   • home stock left → the demand/reachability genuinely didn't cover them (targets too
   //     small, out of the distance band, deadlines, tribe mismatch);
-  //   • ONLY returning stock left → their home defense all shipped, but the home-first rule
-  //     let at-home defense elsewhere cover the rest before their returning troops were
-  //     needed — a different story, so it gets its own message.
+  //   • ONLY returning stock left → their home defense all shipped and the demand ran out
+  //     partway through their returning troops — worth its own message (they're the first
+  //     reserve the next plan will tap).
+  // Either bucket can also be spies: those ride the normal chunked pool, not the Complete
+  // drain, and sub-chunk spy stock deliberately stays home (v5.3.0).
   // A player with NO sender villages at all (every village held home by a filter, or the
   // name isn't in the troop file) gets its own line. ──
   for (const P of completePl) {
@@ -839,6 +899,12 @@ function defAvailUnits(v) {
   const avail = {};
   for (const u of DEF_OBJ_UNITS)
     avail[u] = station ? Math.min(v[u] || 0, (de[u] || 0) + (inc[u] || 0)) : (v[u] || 0);
+  // Spy reserve (v5.3.0): a village keeps as many spies as it has rams — they leave together
+  // later as [spy+ram] fakes, so they're never available as support. Subtracted HERE, the
+  // single source every reader drains from, so the sender pool, the ≥4000-pop floor, the
+  // per-player summary and the now/future split (defAvailUnitsFuture caps at this total)
+  // all agree the reserved spies don't exist.
+  avail.spy = Math.max(0, avail.spy - (v.ram || 0));
   return avail;
 }
 

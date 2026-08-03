@@ -18,6 +18,18 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.3.0', date: '2026-08-03',
+    en: [
+      `<b>🛡 Plan Defense: spies stopped being confetti.</b> Spies only screen a village against enemy scouting — they add nothing to raw defense — so they no longer ride the spread-and-balance allocation that dribbled 1-spy orders across the whole tribe. Spy support now concentrates on few senders: <b>every spy order carries at least ~50 spies</b> (an ask smaller than that ships as one single order), a village too spy-poor to form such an order keeps its scouts home, and leftover sub-50 tails are dropped silently instead of spraying new mini-orders.`,
+      `<b>🐏 Spies reserved for fakes.</b> Every village now keeps as many spies home as it has rams — they leave together later as [spy]+[ram] fakes, so the planner never assigns them as support. Reserved spies are invisible to the whole allocation (sender pool, capacity weights, per-player summary).`,
+      `<b>💯 Complete Players drain fully first.</b> New fill order: Complete players' home defense → their returning troops → everyone else's home defense → everyone else's returning troops. Before, a Complete player's returning troops waited until everyone's at-home defense had been used.`,
+    ],
+    es: [
+      `<b>🛡 Planificar Defensa: los espías dejan de ser confeti.</b> Los espías solo protegen una aldea del espionaje enemigo — no aportan nada a la defensa real — así que ya no pasan por el reparto equilibrado que regaba órdenes de 1 espía por toda la tribu. El apoyo de espías ahora se concentra en pocos remitentes: <b>cada orden de espías lleva al menos ~50</b> (una petición menor sale en una sola orden), una aldea sin espías suficientes para formar una orden así se los queda en casa, y los restos de menos de 50 se descartan en silencio en vez de generar nuevas mini-órdenes.`,
+      `<b>🐏 Espías reservados para fakes.</b> Cada aldea se queda ahora en casa tantos espías como arietes tenga — saldrán juntos más tarde como fakes [espía]+[ariete], así que el planificador nunca los asigna como apoyo. Los espías reservados son invisibles para todo el reparto (pool de remitentes, pesos de capacidad, resumen por jugador).`,
+      `<b>💯 Los Jugadores Completos se vacían del todo primero.</b> Nuevo orden de llenado: defensa en casa de los Completos → sus tropas que vuelven → defensa en casa del resto → tropas que vuelven del resto. Antes, las tropas que vuelven de un Jugador Completo esperaban a que se usara la defensa en casa de todos.`,
+    ],
+  },
   { ver: 'v5.2.2', date: '2026-08-02',
     en: [
       `<b>🐛 Fully-emptied villages now show their away troops on the hover card.</b> A spied village with its whole garrison out supporting (zero units at home) rendered only its Buildings — the "Units outside" block was skipped whenever home troops were missing. Two fixes: the card's sections now render independently, and a spied report with no troops row is stored as a <b>known-empty garrison</b> ("no units seen" · the spy proves it) instead of unknown. The shared DB was rebuilt so already-uploaded reports pick this up.`,
