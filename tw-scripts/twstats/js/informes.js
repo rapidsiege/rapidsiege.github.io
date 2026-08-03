@@ -71,15 +71,24 @@
     });
   }
 
-  function repUpload() {
-    var input = $("repFiles"), out = $("repStatus");
+  // Read + parse the chosen files into one record array (shared by Subir/Ver).
+  function readChosen() {
+    var input = $("repFiles");
     var files = input && input.files ? [].slice.call(input.files) : [];
-    if (!files.length) { out.textContent = "Elige uno o más tw-reports-*.json primero."; return; }
-    Promise.all(files.map(function (f) { return f.text(); })).then(function (texts) {
+    if (!files.length) return Promise.resolve(null);
+    return Promise.all(files.map(function (f) { return f.text(); })).then(function (texts) {
       var all = [];
       texts.forEach(function (t) {
         try { var d = JSON.parse(t); all = all.concat(Array.isArray(d) ? d : [d]); } catch (e) {}
       });
+      return all;
+    });
+  }
+
+  function repUpload() {
+    var input = $("repFiles"), out = $("repStatus");
+    readChosen().then(function (all) {
+      if (all === null) { out.textContent = "Elige uno o más tw-reports-*.json primero."; return; }
       if (!all.length) { out.textContent = "Ningún JSON válido — exporta con reportsExport.js."; return; }
       out.textContent = "Verificando navegador…";
       return repGuardToken().then(function (token) {
@@ -104,9 +113,40 @@
     }).catch(function (e) { out.textContent = "Error: " + e.message; });
   }
 
+  // === local viewer ("Ver") ================================================
+  // Renders the chosen exports like the in-game reports (report-render.js).
+  // Everything stays in the browser. Report bodies render LAZILY on first
+  // expand — an export can hold a thousand records.
+  var viewRecords = [];
+  function repView() {
+    var out = $("repStatus");
+    readChosen().then(function (all) {
+      if (all === null) { out.textContent = "Elige uno o más tw-reports-*.json primero."; return; }
+      var recs = all.filter(function (r) { return r && typeof r === "object" && r.reportTimestamp; });
+      if (!recs.length) { out.textContent = "Ningún JSON válido — exporta con reportsExport.js."; return; }
+      recs.sort(function (a, b) { return (b.reportTimestamp || 0) - (a.reportTimestamp || 0); });
+      viewRecords = recs;
+      out.textContent = "";
+      $("viewerLine").textContent = recs.length + " informes — pulsa uno para verlo como en el juego.";
+      $("viewerList").innerHTML = recs.map(function (r, i) {
+        return '<details class="twrr-item" data-i="' + i + '"><summary>' +
+          TWRR.fmtT(r.reportTimestamp) + " · " + TWRR.subjectLine(r) + "</summary></details>";
+      }).join("");
+      $("viewerWrap").hidden = false;
+    });
+  }
+  function viewerToggle(e) {
+    var d = e.target;
+    if (!d || d.className !== "twrr-item" || !d.open || d.childElementCount > 1) return;
+    var r = viewRecords[+d.getAttribute("data-i")];
+    if (r) d.insertAdjacentHTML("beforeend", TWRR.reportHtml(r));
+  }
+
   function init() {
     TW.renderNav("informes");
     $("repUpload").addEventListener("click", repUpload);
+    $("repView").addEventListener("click", repView);
+    $("viewerList").addEventListener("toggle", viewerToggle, true); // toggle doesn't bubble
     loadDbStats();
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

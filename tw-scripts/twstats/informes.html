@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>es100 · Subir Informes</title>
-  <link rel="stylesheet" href="css/twstats.css?v=20260803.3">
+  <link rel="stylesheet" href="css/twstats.css?v=20260803.4">
 </head>
 <body>
   <div id="main">
@@ -30,7 +30,15 @@
     <div class="rep-share-row">
       <input type="file" id="repFiles" multiple accept=".json,application/json">
       <button type="button" class="seg" id="repUpload">Subir</button>
+      <button type="button" class="seg" id="repView">Ver</button>
       <span id="repStatus" class="tz-note"></span>
+    </div>
+
+    <!-- Local viewer: renders the chosen tw-reports-*.json like the in-game
+         reports (report-render.js). Nothing leaves the browser. -->
+    <div id="viewerWrap" hidden>
+      <p class="meta-line" id="viewerLine"></p>
+      <div id="viewerList" class="twrr-list"></div>
     </div>
 
     <p class="meta-line" id="dbLine">Consultando la BD compartida…</p>
@@ -45,10 +53,11 @@
   <!-- Versioned query: Pages serves css/ and js/ with Cache-Control: max-age=600.
        Bump ?v= on EVERY asset change, site-wide; the token is shared by all
        twstats pages. -->
-  <script src="js/common.js?v=20260803.3"></script>
+  <script src="js/common.js?v=20260803.4"></script>
   <!-- The calculator's pure reports-intel module (riAge here) — same file the
        calculator and Entrantes use. -->
-  <script src="../js/reports-intel.js?v=20260803.3"></script>
-  <script src="js/informes.js?v=20260803.3"></script>
+  <script src="../js/reports-intel.js?v=20260803.4"></script>
+  <script src="js/report-render.js?v=20260803.4"></script>
+  <script src="js/informes.js?v=20260803.4"></script>
 </body>
 </html>

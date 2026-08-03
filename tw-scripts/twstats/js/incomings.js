@@ -608,6 +608,58 @@
     return h;
   }
 
+  // === full-report modal (click on a 📄 badge) =============================
+  // The shared FULL-report store (db-full.json — newest raw report per
+  // village) is heavier than the facts DB, so it is fetched lazily on the
+  // first click and cached for the session. Rendered by report-render.js.
+  var REPORTS_FULL_URL = REPORTS_API + "/reports-full?world=es100";
+  var fullDbP = null;
+  function loadFullDb() {
+    if (!fullDbP) {
+      fullDbP = fetch(REPORTS_FULL_URL).then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      }).then(function (db) { return (db && db.villages) ? db.villages : {}; })
+        .catch(function () { fullDbP = null; return null; }); // retry next click
+    }
+    return fullDbP;
+  }
+
+  function closeReportModal() {
+    var bg = $("reportModalBg");
+    if (bg) bg.parentNode.removeChild(bg);
+  }
+  function openReportModal(coord) {
+    rcHide();
+    closeReportModal();
+    var bg = document.createElement("div");
+    bg.id = "reportModalBg";
+    bg.className = "twrr-modal-bg";
+    bg.innerHTML = '<div class="twrr-modal"><div class="twrr-modal-title"><span>📄 Informes de ' +
+      TW.esc(coord) + '</span><button type="button" class="twrr-modal-close" id="reportModalClose">✕</button></div>' +
+      '<div id="reportModalBody" class="tz-note">Cargando informe…</div></div>';
+    bg.addEventListener("click", function (e) { if (e.target === bg) closeReportModal(); });
+    document.body.appendChild(bg);
+    $("reportModalClose").addEventListener("click", closeReportModal);
+    loadFullDb().then(function (villages) {
+      var body = $("reportModalBody");
+      if (!body) return; // modal already closed
+      if (!villages) { body.textContent = "No se pudo cargar la BD de informes completos."; return; }
+      var v = villages[coord];
+      if (!v || (!v.rep && !v.sentRep) || typeof TWRR === "undefined") {
+        body.textContent = "Sin informe completo guardado para este pueblo.";
+        return;
+      }
+      var h = "";
+      if (v.rep) h += '<div class="twrr-srchead">Último informe sobre este pueblo:</div>' + TWRR.reportHtml(v.rep);
+      if (v.sentRep && !(v.rep && v.sentRep.reportId === v.rep.reportId)) {
+        h += '<div class="twrr-srchead">Mayor ataque enviado por este pueblo:</div>' + TWRR.reportHtml(v.sentRep);
+      }
+      body.className = "";
+      body.innerHTML = h;
+    });
+  }
+
   // One floating card, repositioned per badge; pointer-events:none in CSS so
   // it can never trap the cursor (hover off the badge = card gone).
   var rcEl = null;
@@ -1591,6 +1643,14 @@
     document.addEventListener("mouseover", function (e) {
       var b = e.target && e.target.closest ? e.target.closest(".note-badge[data-rc]") : null;
       if (b) rcShowFor(b); else rcHide();
+    });
+    // 📄 badge click → full report modal (lazy-fetches db-full.json once).
+    document.addEventListener("click", function (e) {
+      var b = e.target && e.target.closest ? e.target.closest(".note-badge[data-rc]") : null;
+      if (b) openReportModal(b.getAttribute("data-rc"));
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeReportModal();
     });
   }
 

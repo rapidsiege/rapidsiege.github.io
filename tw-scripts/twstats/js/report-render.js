@@ -1,0 +1,165 @@
+/* report-render.js — render a reportsExport.js record like the in-game report.
+   Classic script; needs common.js first (TW.esc, TW.commas). Used by the
+   Subir Informes viewer (local tw-reports-*.json files) and the Entrantes
+   badge-click modal (shared db-full.json). Pure: TWRR.reportHtml(record)
+   returns HTML, no DOM access, no fetch.
+
+   Faithful to the game's report layout (see Tribalwars/report_image.png):
+   subject + battle time, luck bar + morale, Atacante/Defensor troop tables
+   (all unit columns, zeros muted, Cantidad/Pérdidas rows), Espionaje
+   (resources + building grid) and Unidades fuera. What reportsExport does
+   not capture (result headline, haul, wall damage, loyalty) is not shown —
+   nothing is invented.
+
+   Known-empty vs unknown (mirrors ../js/reports-intel.js): a record with
+   spy data (resources/buildings) but NO defenderTroops means the garrison
+   was provably EMPTY (zeros row); no troops AND no spy data means the
+   defender was never seen (e.g. all spies died) — rendered as "?". */
+(function () {
+  "use strict";
+
+  // es100 unit roster, game column order (no archer/marcher on this world).
+  var UNITS = ["spear", "sword", "axe", "spy", "light", "heavy", "ram", "catapult", "knight", "snob"];
+  var UNIT_ES = {
+    spear: "Lanza", sword: "Espada", axe: "Hacha", spy: "Espía", light: "Caballería ligera",
+    heavy: "Caballería pesada", ram: "Ariete", catapult: "Catapulta", knight: "Paladín", snob: "Noble",
+  };
+  // Building key → [icon file (../icons/buildings/), Spanish name], game order.
+  var BLD = [
+    ["main", "headquarters", "Edificio Principal"], ["barracks", "barracks", "Cuartel"],
+    ["stable", "stable", "Cuadra"], ["garage", "workshop", "Taller"],
+    ["snob", "academy", "Academia"],
+    ["smith", "smithy", "Herrería"], ["place", "rally_point", "Plaza de reuniones"],
+    ["statue", "statue", "Estatua"], ["market", "market", "Mercado"],
+    ["wood", "timber_camp", "Leñador"], ["stone", "clay_pit", "Barrera"],
+    ["iron", "iron_mine", "Mina de hierro"], ["farm", "farm", "Granja"],
+    ["storage", "warehouse", "Almacén"], ["hide", "hiding_place", "Escondrijo"],
+    ["wall", "wall", "Muralla"],
+  ];
+  // Small inline-SVG resource icons (self-contained — no game assets needed).
+  var RES_ICONS = {
+    wood: '<svg class="twrr-res" viewBox="0 0 14 14"><rect x="1" y="5" width="12" height="5" rx="2.5" fill="#8a5a2a"/><ellipse cx="12" cy="7.5" rx="1.8" ry="2.5" fill="#d9b380"/><path d="M2 6.2c2 1 6 1 8 0" stroke="#6e4520" stroke-width=".8" fill="none"/></svg>',
+    clay:  '<svg class="twrr-res" viewBox="0 0 14 14"><path d="M2 11c0-4 2.5-7 5-7s5 3 5 7z" fill="#c86f32"/><path d="M4 10.6c.3-2.4 1.6-4.6 3-4.6" stroke="#e0965e" stroke-width=".9" fill="none"/></svg>',
+    iron:  '<svg class="twrr-res" viewBox="0 0 14 14"><path d="M3 10.5 5 5h4l2 5.5z" fill="#8d9299"/><path d="M5.4 5.8 4.2 9.6" stroke="#c8cdd4" stroke-width=".9"/><rect x="2" y="10.5" width="10" height="1.6" rx=".8" fill="#5f646b"/></svg>',
+  };
+  var RES_ES = { wood: "Madera", clay: "Arcilla", iron: "Hierro" };
+
+  function esc(s) { return TW.esc(String(s == null ? "" : s)); }
+  function n(x) { return TW.commas(+x || 0); }
+  function pad(x) { return (x < 10 ? "0" : "") + x; }
+  // In-game style battle time: 03.08.26 17:06:04 (record timestamps are ms).
+  function fmtT(ms) {
+    var d = new Date(+ms || 0);
+    return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + String(d.getFullYear()).slice(2) +
+      " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+  }
+  function vil(name, x, y) {
+    var c = (x != null && y != null) ? " (" + x + "|" + y + ")" : "";
+    return esc(name || "—") + c + ((x != null && y != null) ? " " + cont(x, y) : "");
+  }
+  function cont(x, y) { return "K" + (Math.floor(y / 100) * 10 + Math.floor(x / 100)); }
+
+  // One in-game troop table: icon header + Cantidad row (+ Pérdidas when the
+  // side fought). `units`/`losses` are cleaned maps (zeros absent).
+  // unknown=true renders "?" cells (defender never seen).
+  function troopTable(units, losses, showLosses, unknown) {
+    var h = '<table class="twrr-units"><tr><td class="twrr-label"></td>' + UNITS.map(function (u) {
+      return '<td><img src="../icons/units/' + u + '.png" alt="" title="' + UNIT_ES[u] + '"></td>';
+    }).join("") + "</tr>";
+    var row = function (label, m) {
+      return '<tr><td class="twrr-label">' + label + ":</td>" + UNITS.map(function (u) {
+        if (unknown) return '<td class="twrr-z">?</td>';
+        var v = (m && m[u]) || 0;
+        return "<td" + (v ? "" : ' class="twrr-z"') + ">" + n(v) + "</td>";
+      }).join("") + "</tr>";
+    };
+    h += row("Cantidad", units);
+    if (showLosses) h += row("Pérdidas", losses);
+    return h + "</table>";
+  }
+
+  function subjectLine(r) {
+    var verb = r.reportType === "scout" ? "espía a" : "ataca a";
+    return esc(r.attackerPlayerName || "—") + " (" + vil(r.attackerVillageName, r.attackerX, r.attackerY) + ") " +
+      verb + " " + vil(r.defenderVillageName, r.defenderX, r.defenderY);
+  }
+
+  // The luck bar: a 100px track centered at 0, colored segment by sign.
+  function luckHtml(luck) {
+    var pct = Math.max(-25, Math.min(25, +luck || 0));
+    var w = Math.abs(pct) * 2; // 25% luck = half the track
+    var seg = pct >= 0
+      ? '<div class="twrr-luck-seg twrr-luck-pos" style="left:50%;width:' + w + "%\"></div>"
+      : '<div class="twrr-luck-seg twrr-luck-neg" style="right:50%;width:' + w + "%\"></div>";
+    return '<div class="twrr-luckwrap"><span class="twrr-lucknum">' + (+luck > 0 ? "+" : "") + (+luck || 0) +
+      '%</span><div class="twrr-luckbar">' + seg + '<div class="twrr-luck-mid"></div></div></div>';
+  }
+
+  function reportHtml(r) {
+    if (!r || typeof r !== "object") return "";
+    var spied = !!(r.resources || r.buildings);
+    var h = '<div class="twrr">';
+
+    // Subject + battle time (the report header block).
+    h += '<table class="twrr-head"><tr><th>Asunto</th><td>' + subjectLine(r) + "</td></tr>" +
+      "<tr><th>Hora de batalla</th><td>" + fmtT(r.reportTimestamp) + "</td></tr></table>";
+
+    // Luck + morale (attack/scout reports carry both).
+    if (r.luck != null || r.morale != null) {
+      h += '<div class="twrr-sec twrr-luckmoral">';
+      if (r.luck != null) h += "<h4>Suerte del atacante</h4>" + luckHtml(r.luck);
+      if (r.morale != null) h += "<h4>Moral: " + (+r.morale || 0) + "%</h4>";
+      h += "</div>";
+    }
+
+    // Atacante
+    if (r.attackerTroops) {
+      h += '<div class="twrr-side"><table class="twrr-who"><tr><th>Atacante:</th><td>' +
+        esc(r.attackerPlayerName || "—") + "</td></tr><tr><th>Origen:</th><td>" +
+        vil(r.attackerVillageName, r.attackerX, r.attackerY) + "</td></tr></table>" +
+        troopTable(r.attackerTroops, r.attackerLosses, true, false) + "</div>";
+    }
+
+    // Defensor — troops row absent + spied ⇒ known-empty (zeros); absent and
+    // not spied ⇒ never seen ("?" cells, like when no spy survives).
+    var defUnknown = !r.defenderTroops && !spied;
+    h += '<div class="twrr-side"><table class="twrr-who"><tr><th>Defensor:</th><td>' +
+      esc(r.defenderPlayerName || "—") + "</td></tr><tr><th>Destino:</th><td>" +
+      vil(r.defenderVillageName, r.defenderX, r.defenderY) + "</td></tr></table>" +
+      troopTable(r.defenderTroops, r.defenderLosses, !defUnknown, defUnknown) + "</div>";
+
+    // Espionaje
+    if (spied) {
+      h += '<div class="twrr-sec"><h4 class="twrr-esp">Espionaje</h4>';
+      if (r.resources) {
+        h += '<table class="twrr-resrow"><tr><th>Recursos espiados:</th><td>' +
+          ["wood", "clay", "iron"].map(function (k) {
+            return '<span class="twrr-resitem" title="' + RES_ES[k] + '">' + RES_ICONS[k] + " " + n(r.resources[k]) + "</span>";
+          }).join(" ") + "</td></tr></table>";
+      }
+      if (r.buildings) {
+        var rows = BLD.filter(function (b) { return (+r.buildings[b[0]] || 0) > 0; });
+        var half = Math.ceil(rows.length / 2);
+        var col = function (list) {
+          return '<table class="twrr-bld"><tr><th>Edificio</th><th>Nivel</th></tr>' + list.map(function (b) {
+            return '<tr><td><img src="../icons/buildings/' + b[1] + '.webp" alt=""> ' + b[2] +
+              "</td><td>" + (+r.buildings[b[0]]) + "</td></tr>";
+          }).join("") + "</table>";
+        };
+        h += '<div class="twrr-bldcols">' + col(rows.slice(0, half)) + col(rows.slice(half)) + "</div>";
+      }
+      h += "</div>";
+    }
+
+    // Unidades fuera — shown when seen, or all-zero when espionage proved
+    // nothing was outside (same known-empty logic as the classifier).
+    if (r.defenderTroopsAway || spied) {
+      h += '<div class="twrr-sec"><table class="twrr-away"><tr><th>Unidades fuera:</th></tr></table>' +
+        troopTable(r.defenderTroopsAway || {}, null, false, false) + "</div>";
+    }
+
+    return h + "</div>";
+  }
+
+  window.TWRR = { reportHtml: reportHtml, subjectLine: subjectLine, fmtT: fmtT };
+})();
