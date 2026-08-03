@@ -57,8 +57,6 @@
     mode: "coords",     // "coords" | "attacks"
     rows: [],           // last analysis result (all rows)
     targets: {},        // attack mode: target coord -> {wall, loyalty, def}
-    notes: {},          // coord -> "OFF" | "DEF" | "MIXED" | "EMPTY" (village_notes.txt)
-    notesCount: 0,
     reports: null,      // coord -> village facts from the shared reports DB (null = unavailable)
     reportsMeta: null,  // { villages, reports, updated } when the DB loaded
     filters: {},        // attack mode table filters
@@ -472,33 +470,8 @@
     }
   }
 
-  // village_notes.txt — a hand-maintained snapshot of "what is this enemy
-  // village built for", classified with the tribe-calculator's own rule
-  // (js/data-load.js applyVilDerived). Lives next to this page, NOT under
-  // data/es100/, which the update Action rsyncs --delete.
-  // Format: "x|y,OFF" per line; # comments allowed.
-  function loadVillageNotes() {
-    return fetch("village_notes.txt").then(function (r) {
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.text();
-    }).then(function (txt) {
-      var n = 0;
-      txt.split(/\r?\n/).forEach(function (line) {
-        if (!line || line.charAt(0) === "#") return;
-        var p = line.split(",");
-        if (p.length < 2) return;
-        var coord = p[0].trim(), type = p[1].trim().toUpperCase();
-        if (/^\d{1,3}\|\d{1,3}$/.test(coord)) { state.notes[coord] = type; n++; }
-      });
-      state.notesCount = n;
-    }).catch(function (e) {
-      state.notesCount = 0;
-      if (window.console) console.warn("Entrantes: sin village_notes.txt:", e.message);
-    });
-  }
-
-  // Shared reports DB — same graceful degradation as village_notes: an
-  // unreachable Worker only costs the report badges, never the page.
+  // Shared reports DB — degrades gracefully: an unreachable Worker only
+  // costs the report badges, never the page.
   function loadReportsDb() {
     return fetch(REPORTS_DB_URL).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
@@ -518,15 +491,19 @@
     });
   }
 
-  // Verdict for a coord from the reports DB, or null. Ownership-checked: intel
-  // observed under a previous owner (riStale vs the CURRENT owner id in
-  // villages.json) is deprecated and contributes nothing.
+  // Verdict for a coord from the reports DB, or null (the DB is the ONLY
+  // source since 2026-08-03 — the hand-made notes file was retired). Ownership-checked
+  // against the CURRENT owner in villages.json: intel observed under a previous
+  // owner comes back as {stale:true} — rendered as an explicit "old owner" tag,
+  // never as a verdict, never feeding the flags.
   function reportTypeOf(coord) {
     if (!state.reports || typeof riClassify !== "function") return null;
     var v = state.reports[coord];
     if (!v) return null;
     var cv = state.byCoord[coord];
-    if (cv && cv.owner && cv.owner.id != null && riStale(v, cv.owner.id)) return null;
+    if (cv && cv.owner && cv.owner.id != null && riStale(v, cv.owner.id)) {
+      return { stale: true, t: v.lastT || 0, oldOwner: v.playerName || "" };
+    }
     var verdict = riClassify(v);
     if (verdict.cls === "off" || verdict.cls === "def" || verdict.cls === "mixed" || verdict.cls === "empty") {
       return { type: verdict.cls === "mixed" ? "MIXED" : verdict.cls.toUpperCase(), sure: verdict.sure, t: v.lastT || 0 };
@@ -534,13 +511,8 @@
     return null;
   }
 
-  // Effective origin type: report evidence wins, the hand-made
-  // village_notes.txt fills the gaps. src marks provenance for the badge.
-  function originTypeOf(coord) {
-    var rep = reportTypeOf(coord);
-    if (rep) { rep.src = "rep"; return rep; }
-    var note = state.notes[coord];
-    return note ? { type: note, sure: true, src: "note", t: 0 } : null;
+  function reportAgeTxt(t) {
+    return (t && typeof riAge === "function") ? riAge(Date.now(), t) : "";
   }
 
   function loadXML(name) {
@@ -566,7 +538,6 @@
       TW.loadJSON("villages.json"),
       TW.loadJSON("conquers.json"),
       cfgP,
-      loadVillageNotes(),
       loadReportsDb(),
     ]).then(function (res) {
       indexData(res[0], res[1]);
@@ -685,16 +656,21 @@
     if (row.village) html = TW.villageCell(row.village);
     else html = '<span class="coord">' + row.coord.key + '</span> <span class="cont">' +
       TW.continent(row.coord.x, row.coord.y) + "</span>";
-    var ot = originTypeOf(row.coord.key);
-    if (ot) {
-      var title = ot.src === "rep"
-        ? "Tipo según la BD de informes compartida" +
-          (ot.t && typeof riAge === "function" ? " · informe de hace " + riAge(Date.now(), ot.t) : "") +
-          (ot.sure ? "" : " · tropas fuera nunca vistas: podría ser OFF con el ejército de viaje")
-        : "Tipo de pueblo según village_notes.txt";
-      html += " <span class='note-badge note-" + ot.type.toLowerCase() +
-        (ot.sure ? "" : " note-unsure") + "' title='" + title + "'>" +
-        (ot.src === "rep" ? "📄" : "") + TW.esc(ot.type) + (ot.sure ? "" : "?") + "</span>";
+    var rt = reportTypeOf(row.coord.key);
+    if (rt) {
+      var ageTxt = reportAgeTxt(rt.t);
+      if (rt.stale) {
+        html += " <span class='note-badge note-old' title='El pueblo cambió de dueño después del último informe" +
+          (rt.oldOwner ? " (era de " + TW.esc(rt.oldOwner) + ")" : "") +
+          " — sin datos del dueño actual'>📄⌛" + (ageTxt ? " " + ageTxt : "") + "</span>";
+      } else {
+        var title = "Tipo según la BD de informes compartida" +
+          (ageTxt ? " · informe de hace " + ageTxt : "") +
+          (rt.sure ? "" : " · tropas fuera nunca vistas: podría ser OFF con el ejército de viaje");
+        html += " <span class='note-badge note-" + rt.type.toLowerCase() +
+          (rt.sure ? "" : " note-unsure") + "' title='" + title + "'>📄" +
+          TW.esc(rt.type) + (rt.sure ? "" : "?") + (ageTxt ? " · " + ageTxt : "") + "</span>";
+      }
     }
     if (row.attack && row.attack.dupTotal > 1) {
       html += " <span class='as-badge' title='Ataques desde este mismo pueblo'>AS " +
@@ -1365,16 +1341,16 @@
           // noble), the attacker shows no fake indicator, and your village
           // isn't armoured enough to shrug it off. Suppressed when the origin
           // already looks like a fake — the two readings would contradict.
-          // Reports evidence wins; village_notes fills the gaps. Only SURE
-          // verdicts drive the flags — a "DEF?" (away troops never seen) must
-          // not call a possible nuke a probable fake.
-          var ot = originTypeOf(a.origin.key);
-          var originNote = (ot && ot.sure) ? ot.type : null;
+          // Only SURE report verdicts drive the flags — a "DEF?" (away troops
+          // never seen) or stale (owner changed) intel must not call a
+          // possible nuke a probable fake.
+          var rt = reportTypeOf(a.origin.key);
+          var originNote = (rt && !rt.stale && rt.sure) ? rt.type : null;
           if ((originNote === "DEF" || originNote === "EMPTY") && a.speed && a.speed.isHeavy) {
             row.flags.push({
               cls: "notedef",
               text: "Fake probable: pueblo " + (originNote === "EMPTY" ? "vacío" : "DEF") +
-                " enviando tropa lenta" + (ot.src === "rep" ? " (según informes)" : ""),
+                " enviando tropa lenta (informe de hace " + reportAgeTxt(rt.t) + ")",
             });
           }
           var looksFake = row.flags.some(function (f) {
@@ -1386,7 +1362,7 @@
             row.flags.push({
               cls: "nuke",
               text: "⚠ Posible " + (a.speed.isNoble ? "tren de nobles" : "nuke") + " real" +
-                (originNote === "OFF" ? " — pueblo OFF confirmado" : "") +
+                (originNote === "OFF" ? " — pueblo OFF confirmado (informe de hace " + reportAgeTxt(rt.t) + ")" : "") +
                 (a.speedFromTag ? " (tropa según etiqueta)" : ""),
             });
           }

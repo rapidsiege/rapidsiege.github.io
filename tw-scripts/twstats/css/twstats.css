@@ -433,3 +433,6 @@ table.vis.own-villages td.zero { color: var(--text-muted); opacity: .5; }
 .col-verdict .flag { white-space: normal; }
 .col-verdict { min-width: 210px; }
 table.vis th.col-verdict { white-space: normal; }
+
+/* Reports-DB intel recorded under a PREVIOUS owner: shown, never trusted. */
+.note-old { color: var(--text-muted); border-color: var(--border-secondary); opacity: .75; }
