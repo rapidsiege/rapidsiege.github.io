@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.4.2', date: '2026-08-03',
+    en: [
+      `<b>🕐 Report times are always server time.</b> Battle time and the derived Send ≈ / Return ≈ in the report modal were formatted with your device's clock — correct only while your device sits in the server's timezone. They now always render in the world's server time (es100 = Spanish time), no matter where you open the tool from. The "Last" age tooltip in Enemy Villages shows server time too (it was UTC). The twstats report views share the renderer, so they're fixed the same way.`,
+    ],
+    es: [
+      `<b>🕐 Las horas de los informes son siempre hora del servidor.</b> La hora de batalla y las derivadas Envío ≈ / Regreso ≈ del modal de informe se formateaban con el reloj de tu dispositivo — correcto solo mientras tu dispositivo esté en la zona horaria del servidor. Ahora se muestran siempre en hora del servidor del mundo (es100 = hora española), desde donde sea que abras la herramienta. El tooltip de antigüedad "Último" en Aldeas Enemigas también muestra hora del servidor (era UTC). Las vistas de informes de twstats comparten el renderizador, así que quedan corregidas igual.`,
+    ],
+  },
   { ver: 'v5.4.1', date: '2026-08-03',
     en: [
       `<b>🐛 Report modal now renders exactly like twstats.</b> The calculator's own dark table theme was leaking into the in-game report (tan text instead of black, UPPERCASE right-aligned headers, and the subject line refusing to wrap — which pushed the report past the modal's edge). The report's tables are now fully shielded from the surrounding theme.`,

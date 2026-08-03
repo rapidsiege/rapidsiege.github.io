@@ -113,8 +113,25 @@
   function n(x) { return Number(+x || 0).toLocaleString("en-US"); }
   function pad(x) { return (x < 10 ? "0" : "") + x; }
   // In-game style battle time: 03.08.26 17:06:04 (record timestamps are ms).
+  // The game always shows SERVER time — record timestamps are epoch instants,
+  // so formatting with the viewer's clock would shift every time for anyone
+  // looking from outside the server's timezone. Render in the world's zone
+  // (es100 = Europe/Madrid); viewer-local only as a last-resort fallback.
+  var TZ_FMT = null;
+  try {
+    TZ_FMT = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/Madrid", hourCycle: "h23",
+      day: "2-digit", month: "2-digit", year: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+    });
+  } catch (e) { /* no Intl / tz data — local fallback below */ }
   function fmtT(ms) {
     var d = new Date(+ms || 0);
+    if (TZ_FMT) {
+      var p = {};
+      TZ_FMT.formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
+      return p.day + "." + p.month + "." + p.year + " " + p.hour + ":" + p.minute + ":" + p.second;
+    }
     return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + String(d.getFullYear()).slice(2) +
       " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
   }

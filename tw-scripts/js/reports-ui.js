@@ -230,7 +230,8 @@ function renderEnemyVillagesTable() {
     const badge = r.stale
       ? `<span class="badge badge-empty" title="${esc(t('ev_stale_tip'))}">⌛ ${esc(t('ev_stale'))}</span>`
       : RI_BADGE[verdict.cls](verdict.sure);
-    const ageHtml = `<span title="${v.lastT ? new Date(v.lastT).toISOString().replace('T', ' ').slice(0, 16) : ''}">${riAge(now, v.lastT)}</span>`;
+    // Tooltip in SERVER time (TWRR.fmtT), like every time the game shows.
+    const ageHtml = `<span title="${v.lastT && typeof TWRR !== 'undefined' ? TWRR.fmtT(v.lastT) : ''}">${riAge(now, v.lastT)}</span>`;
     const dim = r.stale ? 'opacity:0.55;' : '';
 
     // Row 1 — troops seen in the village (or the sent-army note when that's all we have)
