@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.4.3', date: '2026-08-03',
+    en: [
+      `<b>🕐 Report times now match the in-game report exactly.</b> Report timestamps turn out to already BE the server wall-clock as shown on the game page (the exporter stores that string as-is), so v5.4.2's timezone conversion shifted them +2h — and the old device-clock rendering was equally off. The stored time is now shown back 1:1: battle time, Send ≈ and Return ≈ read exactly like the in-game report from any device, and timezone/DST changes never need any handling. The twstats report views shared the same bug since they shipped and are fixed the same way.`,
+    ],
+    es: [
+      `<b>🕐 Las horas de los informes ahora coinciden exactamente con el informe del juego.</b> Resulta que las marcas de tiempo YA SON la hora del servidor tal y como aparece en la página del juego (el exportador guarda esa cadena tal cual), así que la conversión de zona horaria de la v5.4.2 las desplazaba +2h — y el renderizado anterior con el reloj del dispositivo estaba igual de mal. La hora guardada se muestra ahora 1:1: la hora de batalla, Envío ≈ y Regreso ≈ se leen exactamente como en el informe del juego desde cualquier dispositivo, y los cambios de hora (verano/invierno) nunca necesitan tratamiento. Las vistas de informes de twstats compartían el mismo fallo desde su estreno y quedan corregidas igual.`,
+    ],
+  },
   { ver: 'v5.4.2', date: '2026-08-03',
     en: [
       `<b>🕐 Report times are always server time.</b> Battle time and the derived Send ≈ / Return ≈ in the report modal were formatted with your device's clock — correct only while your device sits in the server's timezone. They now always render in the world's server time (es100 = Spanish time), no matter where you open the tool from. The "Last" age tooltip in Enemy Villages shows server time too (it was UTC). The twstats report views share the renderer, so they're fixed the same way.`,
