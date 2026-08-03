@@ -515,6 +515,125 @@
     return (t && typeof riAge === "function") ? riAge(Date.now(), t) : "";
   }
 
+  // === report hover card ===================================================
+  // Rich hover card for the 📄 badges — the same sections the tribe-calculator
+  // shows when hovering a village on its map (js/map.js reportTooltipHtml):
+  // verdict + age, troops seen in the village / outside / biggest off sent
+  // (power lines + unit chips) and the five spied building levels. This IS the
+  // report rendered: the DB keeps the newest observation per section, so the
+  // card shows everything that survives of the underlying reports.
+  // Power maths mirror the calculator's constants.js / data-load.js — RC_
+  // prefix because this file's own OFF_UNITS/DEF_UNITS are pop-shape maps.
+  var RC_UNITS = ["spear", "sword", "axe", "spy", "light", "heavy", "ram", "catapult", "knight", "snob"];
+  var RC_ATT  = { spear: 10, sword: 25, axe: 40, spy: 35, light: 130, heavy: 150, ram: 2,  catapult: 100, knight: 150, snob: 30 };
+  var RC_DINF = { spear: 15, sword: 50, axe: 10, spy: 2,  light: 30,  heavy: 200, ram: 20, catapult: 100, knight: 250, snob: 100 };
+  var RC_DCAV = { spear: 45, sword: 25, axe: 10, spy: 1,  light: 40,  heavy: 80,  ram: 50, catapult: 50,  knight: 400, snob: 100 };
+  var RC_OFF_POOL = ["axe", "light", "ram", "catapult", "snob"];
+  var RC_DEF_POOL = ["spear", "sword", "heavy", "knight"];
+  var RC_CLS = { OFF: "#e06040", DEF: "#6f9fe0", MIXED: "#b08fd0", EMPTY: "#999" };
+  var RC_BLD = [["main", "headquarters", "Edificio Principal"], ["snob", "academy", "Academia"],
+                ["smith", "smithy", "Herrería"], ["farm", "farm", "Granja"], ["wall", "wall", "Muralla"]];
+
+  function rcIc(k) { return '<img class="rc-ic" src="../icons/units/' + k + '.png" alt="">'; }
+  function rcRow(k, v) { return '<div class="rc-row"><span class="rc-k">' + k + '</span><span class="rc-v">' + v + "</span></div>"; }
+  function rcAgeTag(t) { return ' <span class="rc-age">· ' + reportAgeTxt(t) + "</span>"; }
+
+  // One troop block: Off/Def power lines (zero lines dropped) + unit chips.
+  function rcBlock(title, units) {
+    var offP = 0, defP = 0;
+    RC_OFF_POOL.forEach(function (u) { offP += (units[u] || 0) * RC_ATT[u]; });
+    RC_DEF_POOL.forEach(function (u) { defP += (units[u] || 0) * (RC_DINF[u] + RC_DCAV[u]); });
+    var h = '<div class="rc-sec"><div class="rc-h">' + title + "</div>";
+    if (offP > 0) h += rcRow(rcIc("off") + " Pod. Off", TW.commas(offP));
+    if (defP > 0) h += rcRow(rcIc("def") + " Pod. Def", TW.commas(defP));
+    var chips = RC_UNITS.filter(function (u) { return (units[u] || 0) > 0; }).map(function (u) {
+      return '<span class="rc-unit" title="' + (UNIT_ES[u] || u) + '">' + rcIc(u) + TW.commas(units[u]) + "</span>";
+    });
+    if (chips.length) h += '<div class="rc-units">' + chips.join("") + "</div>";
+    return h + "</div>";
+  }
+
+  function reportCardHtml(coord) {
+    var v = state.reports && state.reports[coord];
+    var rt = reportTypeOf(coord);
+    if (!v || !rt) return "";
+
+    var head, sub;
+    if (rt.stale) {
+      head = '<span class="rc-old">⌛ ANTIGUO — cambió de dueño</span>';
+      sub = "El pueblo cambió de dueño después del último informe" +
+        (rt.oldOwner ? " (era de " + TW.esc(rt.oldOwner) + ")" : "") + " — sin datos del dueño actual";
+    } else {
+      head = '<span style="color:' + (RC_CLS[rt.type] || "#999") + ';font-weight:700;">' +
+        (rt.type === "EMPTY" ? "—" : rt.type) + (rt.sure ? "" : "?") + "</span>";
+      sub = "Tipo según la BD de informes compartida · informe de hace " + reportAgeTxt(rt.t) +
+        (rt.sure ? "" : " · tropas fuera nunca vistas: podría ser OFF con el ejército de viaje");
+    }
+    var h = '<div class="rc-head">📄 Informe · ' + head + rcAgeTag(rt.t) + "</div>" +
+      '<div class="rc-sub">' + sub + "</div>";
+
+    // Troops seen in the village — a spied empty garrison is a fact, not absence.
+    if (v.home) {
+      var hasUnits = RC_UNITS.some(function (u) { return (v.home.units[u] || 0) > 0; });
+      if (hasUnits) {
+        h += rcBlock("En la aldea" + rcAgeTag(v.home.t), v.home.units);
+      } else {
+        h += '<div class="rc-sec"><div class="rc-h">En la aldea' + rcAgeTag(v.home.t) +
+          '</div><div class="rc-none">sin unidades vistas</div></div>';
+      }
+    } else if (v.away) {
+      h += '<div class="rc-sec">' + rcRow("En la aldea", '<span class="rc-unk">no vistas</span>') + "</div>";
+    }
+
+    // Units outside: seen / confirmed-empty (spy data, no away table) / never seen.
+    if (v.away && !v.away.empty) {
+      h += rcBlock("Unidades fuera" + rcAgeTag(v.away.t), v.away.units);
+    } else if (v.away && v.away.empty) {
+      h += '<div class="rc-sec">' + rcRow("Unidades fuera", '<span class="rc-empty">nada fuera (espiado)</span>') + "</div>";
+    } else if (v.home) {
+      h += '<div class="rc-sec">' + rcRow("Unidades fuera", '<span class="rc-unk">no vistas</span>') + "</div>";
+    }
+
+    if (v.sent) h += rcBlock("Off enviado visto" + rcAgeTag(v.sent.t), v.sent.units);
+
+    // Always all five spied buildings — 0 = unbuilt/destroyed (muted).
+    if (v.bld) {
+      h += '<div class="rc-sec"><div class="rc-h">Edificios' + rcAgeTag(v.bld.t) + '</div><div class="rc-units">' +
+        RC_BLD.map(function (b) {
+          var lv = v.bld.levels[b[0]] || 0;
+          return '<span class="rc-unit" title="' + b[2] + '"><img class="rc-ic" src="../icons/buildings/' + b[1] + '.webp" alt="">' +
+            "<span" + (lv ? "" : ' class="rc-lv0"') + ">" + lv + "</span></span>";
+        }).join("") + "</div></div>";
+    }
+    return h;
+  }
+
+  // One floating card, repositioned per badge; pointer-events:none in CSS so
+  // it can never trap the cursor (hover off the badge = card gone).
+  var rcEl = null;
+  function rcHide() { if (rcEl) rcEl.style.display = "none"; }
+  function rcShowFor(badge) {
+    var html = reportCardHtml(badge.getAttribute("data-rc"));
+    if (!html) return;
+    if (!rcEl) {
+      rcEl = document.createElement("div");
+      rcEl.id = "reportCard";
+      rcEl.className = "report-card";
+      document.body.appendChild(rcEl);
+    }
+    rcEl.innerHTML = html;
+    rcEl.style.display = "block";
+    // Below the badge, clamped to the viewport's right edge.
+    var r = badge.getBoundingClientRect();
+    var sx = window.pageXOffset || 0, sy = window.pageYOffset || 0;
+    var x = r.left + sx, y = r.bottom + sy + 6;
+    var vw = document.documentElement.clientWidth || 0;
+    var w = rcEl.offsetWidth || 0;
+    if (vw && x + w + 8 > sx + vw) x = Math.max(8, sx + vw - w - 8);
+    rcEl.style.left = x + "px";
+    rcEl.style.top = y + "px";
+  }
+
   function loadXML(name) {
     return fetch(WORLD_DATA + name).then(function (r) {
       if (!r.ok) throw new Error(name + ": HTTP " + r.status);
@@ -659,16 +778,13 @@
     var rt = reportTypeOf(row.coord.key);
     if (rt) {
       var ageTxt = reportAgeTxt(rt.t);
+      // No title attr — the hover card (reportCardHtml) carries those texts.
       if (rt.stale) {
-        html += " <span class='note-badge note-old' title='El pueblo cambió de dueño después del último informe" +
-          (rt.oldOwner ? " (era de " + TW.esc(rt.oldOwner) + ")" : "") +
-          " — sin datos del dueño actual'>📄⌛" + (ageTxt ? " " + ageTxt : "") + "</span>";
+        html += " <span class='note-badge note-old' data-rc='" + row.coord.key +
+          "'>📄⌛" + (ageTxt ? " " + ageTxt : "") + "</span>";
       } else {
-        var title = "Tipo según la BD de informes compartida" +
-          (ageTxt ? " · informe de hace " + ageTxt : "") +
-          (rt.sure ? "" : " · tropas fuera nunca vistas: podría ser OFF con el ejército de viaje");
         html += " <span class='note-badge note-" + rt.type.toLowerCase() +
-          (rt.sure ? "" : " note-unsure") + "' title='" + title + "'>📄" +
+          (rt.sure ? "" : " note-unsure") + "' data-rc='" + row.coord.key + "'>📄" +
           TW.esc(rt.type) + (rt.sure ? "" : "?") + (ageTxt ? " · " + ageTxt : "") + "</span>";
       }
     }
@@ -1470,6 +1586,11 @@
     // Ctrl/Cmd+Enter in the textarea = Analizar.
     $("coords").addEventListener("keydown", function (e) {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); analyze(); }
+    });
+    // 📄 badge hover → report card (delegated: rows re-render on every analyze).
+    document.addEventListener("mouseover", function (e) {
+      var b = e.target && e.target.closest ? e.target.closest(".note-badge[data-rc]") : null;
+      if (b) rcShowFor(b); else rcHide();
     });
   }
 

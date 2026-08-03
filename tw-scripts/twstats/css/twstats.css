@@ -436,3 +436,29 @@ table.vis th.col-verdict { white-space: normal; }
 
 /* Reports-DB intel recorded under a PREVIOUS owner: shown, never trusted. */
 .note-old { color: var(--text-muted); border-color: var(--border-secondary); opacity: .75; }
+
+/* === report hover card (📄 badges, Entrantes) ============================
+   twstats' take on the tribe-calculator map hover: verdict header, troop
+   sections with power lines + unit chips, spied building levels. */
+.note-badge[data-rc] { cursor: help; }
+.report-card {
+  position: absolute; z-index: 50; display: none; pointer-events: none;
+  max-width: 330px; padding: 8px 10px; font-size: 12px; line-height: 1.45;
+  background: var(--bg-widget); color: var(--text-primary);
+  border: 1px solid var(--border-secondary); border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .3);
+}
+.report-card .rc-head { font-weight: 700; }
+.report-card .rc-age { color: var(--text-muted); font-weight: 400; }
+.report-card .rc-sub { color: var(--text-muted); margin-top: 2px; }
+.report-card .rc-old { color: var(--text-muted); font-weight: 700; }
+.report-card .rc-sec { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--border-tab); }
+.report-card .rc-h { font-weight: 600; color: var(--link-color); margin-bottom: 2px; }
+.report-card .rc-row { display: flex; justify-content: space-between; gap: 14px; }
+.report-card .rc-k { color: var(--text-muted); display: inline-flex; align-items: center; gap: 3px; }
+.report-card .rc-units { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 3px; }
+.report-card .rc-unit { display: inline-flex; align-items: center; gap: 2px; }
+.report-card .rc-ic { width: 15px; height: 15px; vertical-align: middle; }
+.report-card .rc-none, .report-card .rc-unk { color: var(--text-muted); font-style: italic; }
+.report-card .rc-empty { color: var(--delta-up); }
+.report-card .rc-lv0 { color: var(--text-muted); }
