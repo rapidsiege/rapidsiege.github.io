@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.3.1', date: '2026-08-03',
+    en: [
+      `<b>🗺 Old-owner intel trimmed on the map hover.</b> When a village changed hands after its last report, the hover card no longer shows the previous owner's troops (in village / outside / sent) — everything resets on a conquest. The spied <b>building levels</b> survive the new owner, so that block stays.`,
+    ],
+    es: [
+      `<b>🗺 La info del dueño anterior se recorta en el hover del mapa.</b> Cuando una aldea cambió de dueño después de su último informe, la tarjeta ya no muestra las tropas del dueño anterior (en la aldea / fuera / enviadas) — todo se resetea con la conquista. Los <b>niveles de edificios</b> espiados sobreviven al nuevo dueño, así que ese bloque se queda.`,
+    ],
+  },
   { ver: 'v5.3.0', date: '2026-08-03',
     en: [
       `<b>🛡 Plan Defense: spies stopped being confetti.</b> Spies only screen a village against enemy scouting — they add nothing to raw defense — so they no longer ride the spread-and-balance allocation that dribbled 1-spy orders across the whole tribe. Spy support now concentrates on few senders: <b>every spy order carries at least ~50 spies</b> (an ask smaller than that ships as one single order), a village too spy-poor to form such an order keeps its scouts home, and leftover sub-50 tails are dropped silently instead of spraying new mini-orders.`,
