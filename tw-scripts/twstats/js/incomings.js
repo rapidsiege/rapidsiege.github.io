@@ -699,7 +699,16 @@
     // The world config is optional: without it the troop-class and train
     // features degrade to "—" rather than taking the whole page down.
     var cfgP = Promise.all([loadXML("get_config.xml"), loadXML("get_unit_info.xml")])
-      .then(function (x) { state.cfg = parseWorldConfig(x[0], x[1]); })
+      .then(function (x) {
+        state.cfg = parseWorldConfig(x[0], x[1]);
+        // Feed the measured per-unit speeds to the report renderer (its
+        // built-in defaults are the same values on es100).
+        if (typeof TWRR !== "undefined" && state.cfg && state.cfg.units) {
+          var mpf = {};
+          state.cfg.units.forEach(function (u) { mpf[u.key] = u.minPerField; });
+          TWRR.setSpeeds(mpf);
+        }
+      })
       .catch(function (e) {
         state.cfg = null;
         if (window.console) console.warn("Entrantes: sin configuración del mundo:", e.message);

@@ -44,6 +44,55 @@
   };
   var RES_ES = { wood: "Madera", clay: "Arcilla", iron: "Hierro" };
 
+  // Minutes per field. Defaults are the base unit speeds, which ARE the es100
+  // values (world_speed 2 × unit_speed 0.5 ⇒ divisor 1 — measured to
+  // 0.00025 min/field on 259 real attacks, see the Entrantes page). Pages
+  // that load get_unit_info.xml can override via TWRR.setSpeeds.
+  var SPEED = {
+    spear: 18, sword: 22, axe: 18, archer: 18, spy: 9, light: 10, marcher: 10,
+    heavy: 11, ram: 30, catapult: 30, knight: 10, snob: 35,
+  };
+  function setSpeeds(map) {
+    for (var k in map) if (+map[k] > 0) SPEED[k] = +map[k];
+  }
+
+  // Slowest unit present in a troops map — an army travels at its slowest
+  // unit's pace. null when empty or when it holds a unit we have no speed
+  // for (no honest estimate then).
+  function slowest(units) {
+    var key = null;
+    for (var u in units) {
+      if (!(+units[u] > 0)) continue;
+      if (SPEED[u] == null) return null;
+      if (key === null || SPEED[u] > SPEED[key]) key = u;
+    }
+    return key;
+  }
+
+  // Derived send/return times. The report only records the battle moment, but
+  // the full sent army is known, so: sent = battle − distance × slowest sent
+  // unit. Return only exists if ≥1 unit survived (sent − losses), and paces
+  // at the slowest SURVIVING unit — send ram+spy, lose the ram, and the spy
+  // walks home alone at spy speed.
+  function travelTimes(r) {
+    if (!r || typeof r.attackerX !== "number" || typeof r.attackerY !== "number" ||
+        typeof r.defenderX !== "number" || typeof r.defenderY !== "number" ||
+        !+r.reportTimestamp || !r.attackerTroops) return null;
+    var dx = r.attackerX - r.defenderX, dy = r.attackerY - r.defenderY;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    var sentBy = slowest(r.attackerTroops);
+    if (!sentBy || !dist) return null;
+    var out = { dist: dist, sentUnit: sentBy, sent: +r.reportTimestamp - dist * SPEED[sentBy] * 60000 };
+    var survivors = {};
+    for (var u in r.attackerTroops) {
+      var left = (+r.attackerTroops[u] || 0) - ((r.attackerLosses && +r.attackerLosses[u]) || 0);
+      if (left > 0) survivors[u] = left;
+    }
+    var backBy = slowest(survivors);
+    if (backBy) { out.retUnit = backBy; out.ret = +r.reportTimestamp + dist * SPEED[backBy] * 60000; }
+    return out;
+  }
+
   function esc(s) { return TW.esc(String(s == null ? "" : s)); }
   function n(x) { return TW.commas(+x || 0); }
   function pad(x) { return (x < 10 ? "0" : "") + x; }
@@ -100,9 +149,23 @@
     var spied = !!(r.resources || r.buildings);
     var h = '<div class="twrr">';
 
-    // Subject + battle time (the report header block).
+    // Subject + battle time (the report header block), plus the derived
+    // send/return times (≈: computed, not in the report — see travelTimes).
+    var tt = travelTimes(r);
     h += '<table class="twrr-head"><tr><th>Asunto</th><td>' + subjectLine(r) + "</td></tr>" +
-      "<tr><th>Hora de batalla</th><td>" + fmtT(r.reportTimestamp) + "</td></tr></table>";
+      "<tr><th>Hora de batalla</th><td>" + fmtT(r.reportTimestamp) + "</td></tr>";
+    if (tt) {
+      var distTxt = tt.dist.toFixed(1) + " campos";
+      h += '<tr><th>Envío ≈</th><td title="Hora de batalla − viaje (unidad más lenta enviada: ' +
+        UNIT_ES[tt.sentUnit] + ", " + SPEED[tt.sentUnit] + " min/campo × " + distTxt + ')">' +
+        fmtT(tt.sent) + "</td></tr>";
+      if (tt.ret) {
+        h += '<tr><th>Regreso ≈</th><td title="Hora de batalla + viaje (unidad superviviente más lenta: ' +
+          UNIT_ES[tt.retUnit] + ", " + SPEED[tt.retUnit] + " min/campo × " + distTxt + ')">' +
+          fmtT(tt.ret) + "</td></tr>";
+      }
+    }
+    h += "</table>";
 
     // Luck + morale (attack/scout reports carry both).
     if (r.luck != null || r.morale != null) {
@@ -161,5 +224,6 @@
     return h + "</div>";
   }
 
-  window.TWRR = { reportHtml: reportHtml, subjectLine: subjectLine, fmtT: fmtT };
+  window.TWRR = { reportHtml: reportHtml, subjectLine: subjectLine, fmtT: fmtT,
+                  travelTimes: travelTimes, setSpeeds: setSpeeds };
 })();
