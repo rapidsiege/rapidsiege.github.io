@@ -71,13 +71,17 @@
     });
   }
 
-  // Read + parse the chosen files into one record array (shared by Subir/Ver).
+  // Read + parse the chosen files AND the pasted JSON (2026-08-06) into one
+  // record array (shared by Subir/Ver). Returns null only when NEITHER source
+  // has anything — a paste alone is a full-fledged input, like the calculator's.
   function readChosen() {
     var input = $("repFiles");
     var files = input && input.files ? [].slice.call(input.files) : [];
-    if (!files.length) return Promise.resolve(null);
+    var pasted = ($("repPaste") && $("repPaste").value.trim()) || "";
+    if (!files.length && !pasted) return Promise.resolve(null);
     return Promise.all(files.map(function (f) { return f.text(); })).then(function (texts) {
       var all = [];
+      if (pasted) texts = texts.concat([pasted]);
       texts.forEach(function (t) {
         try { var d = JSON.parse(t); all = all.concat(Array.isArray(d) ? d : [d]); } catch (e) {}
       });
@@ -88,7 +92,7 @@
   function repUpload() {
     var input = $("repFiles"), out = $("repStatus");
     readChosen().then(function (all) {
-      if (all === null) { out.textContent = "Elige uno o más tw-reports-*.json primero."; return; }
+      if (all === null) { out.textContent = "Elige uno o más tw-reports-*.json (o pega el JSON) primero."; return; }
       if (!all.length) { out.textContent = "Ningún JSON válido — exporta con reportsExport.js."; return; }
       out.textContent = "Verificando navegador…";
       return repGuardToken().then(function (token) {
@@ -104,6 +108,7 @@
             out.textContent = "✔ +" + res.db.added + " nuevos, " + res.db.dupes +
               " duplicados — la BD cubre " + res.db.villages + " pueblos.";
             input.value = "";
+            if ($("repPaste")) $("repPaste").value = "";
             loadDbStats();
             return;
           }
@@ -121,7 +126,7 @@
   function repView() {
     var out = $("repStatus");
     readChosen().then(function (all) {
-      if (all === null) { out.textContent = "Elige uno o más tw-reports-*.json primero."; return; }
+      if (all === null) { out.textContent = "Elige uno o más tw-reports-*.json (o pega el JSON) primero."; return; }
       var recs = all.filter(function (r) { return r && typeof r === "object" && r.reportTimestamp; });
       if (!recs.length) { out.textContent = "Ningún JSON válido — exporta con reportsExport.js."; return; }
       recs.sort(function (a, b) { return (b.reportTimestamp || 0) - (a.reportTimestamp || 0); });
@@ -144,6 +149,11 @@
 
   function init() {
     TW.renderNav("informes");
+    $("repPasteBtn").addEventListener("click", function () {
+      var w = $("repPasteWrap");
+      w.hidden = !w.hidden;
+      if (!w.hidden) $("repPaste").focus();
+    });
     $("repUpload").addEventListener("click", repUpload);
     $("repView").addEventListener("click", repView);
     $("viewerList").addEventListener("toggle", viewerToggle, true); // toggle doesn't bubble

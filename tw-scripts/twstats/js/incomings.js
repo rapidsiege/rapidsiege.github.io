@@ -509,7 +509,7 @@
     var cv = state.byCoord[coord];
     var conqT = (cv && state.lastConquer[cv.id]) ? state.lastConquer[cv.id].t * 1000 : 0;
     var out = null;
-    ["home", "away", "bld", "sent"].forEach(function (k) {
+    ["home", "away", "bld", "sent", "sentBig", "sentCat"].forEach(function (k) {
       if (v[k] && (+v[k].t || 0) >= conqT) {
         if (!out) out = { lastT: v.lastT, id: v.id, name: v.name, playerId: v.playerId, playerName: v.playerName, maxT: 0 };
         out[k] = v[k];
@@ -627,7 +627,16 @@
       h += '<div class="rc-sec">' + rcRow("Unidades fuera", '<span class="rc-unk">no vistas</span>') + "</div>";
     }
 
-    if (v.sent) h += rcBlock("Off enviado visto" + rcAgeTag(v.sent.t), v.sent.units);
+    // Biggest army sent regardless of type (sentBig; the old largest-off `sent`
+    // is the fallback for records merged before 2026-08-06), + the CATAS line
+    // when the village has qualifying catapult strikes on record.
+    var sentShow = v.sentBig || v.sent;
+    if (sentShow) h += rcBlock("Mayor ejército enviado" + rcAgeTag(sentShow.t), sentShow.units);
+    if (v.sentCat) {
+      h += '<div class="rc-sec">' + rcRow("Catapultas",
+        '<span class="rc-catas">💥 suele enviar catas — máx ' + v.sentCat.cat +
+        " (" + v.sentCat.n + "×)" + rcAgeTag(v.sentCat.t) + "</span>") + "</div>";
+    }
 
     // Always all five spied buildings — 0 = unbuilt/destroyed (muted).
     if (v.bld) {
@@ -899,6 +908,18 @@
           TW.esc(rt.type) + (rt.sure ? "" : "?") + (ageTxt ? " · " + ageTxt : "") + "</span>";
       }
     }
+    // CATAS tag (2026-08-06): the village has qualifying catapult strikes on
+    // record (≥50 cats without a regular ram off — see sentCat in the reports
+    // DB). Independent of the OFF/DEF verdict — a village can carry both
+    // badges. Ownership-stale intel never tags (rt.stale covers the newest-
+    // report check; reportFactsOf already applies the conquest cutoff).
+    if (!(rt && rt.stale)) {
+      var fvC = reportFactsOf(row.coord.key);
+      if (fvC && fvC.sentCat) {
+        html += " <span class='note-badge note-catas' data-rc='" + row.coord.key + "'>💥CATAS · " +
+          reportAgeTxt(fvC.sentCat.t) + "</span>";
+      }
+    }
     if (row.attack && row.attack.dupTotal > 1) {
       html += " <span class='as-badge' title='Ataques desde este mismo pueblo'>AS " +
         row.attack.dupIndex + "/" + row.attack.dupTotal + "</span>";
@@ -939,7 +960,7 @@
   // Not every flag is a warning. "Blindado" is reassurance — it must not redden
   // the row, count as "marcado", or survive the «Solo marcados» filter.
   var ALERT_FLAGS = {
-    low: 1, "new": 1, after: 1, maybe: 1, stale: 1, nosent: 1, esquivar: 1, nuke: 1, notedef: 1,
+    low: 1, "new": 1, after: 1, maybe: 1, stale: 1, nosent: 1, esquivar: 1, nuke: 1, notedef: 1, catas: 1,
   };
   function isAlert(r) {
     if (r.unknown) return true;
@@ -948,7 +969,7 @@
   }
 
   var SEVERITY = {
-    nuke: 8, esquivar: 7, notedef: 6.5, after: 6, "new": 5, maybe: 4, low: 3,
+    nuke: 8, esquivar: 7, catas: 6.8, notedef: 6.5, after: 6, "new": 5, maybe: 4, low: 3,
     nosent: 2, stale: 2, unknown: 1, media: 0.5, blindado: 0,
   };
   var SORTERS = {
@@ -1039,6 +1060,17 @@
     if ($("onlyflagged").checked && !isAlert(r)) return false;
     if (state.mode !== "attacks") return true;
     var f = state.filters, a = r.attack;
+    // «Filtros de aviso»: when any flag classes are checked, keep only rows
+    // carrying at least one of them (OR semantics; `unknown` is its own class).
+    if (f.flags && f.flags.length) {
+      var has = false;
+      for (var i = 0; i < f.flags.length && !has; i++) {
+        var want = f.flags[i];
+        if (want === "unknown" && r.unknown) has = true;
+        else has = r.flags.some(function (fl) { return fl.cls === want; });
+      }
+      if (!has) return false;
+    }
     if (f.player && a.player !== f.player) return false;
     if (f.type && (a.speed ? a.speed.label : "?") !== f.type) return false;
     if (f.origin && a.origin.key !== f.origin) return false;
@@ -1330,6 +1362,32 @@
     var arrivals = attacks.map(function (a) { return a.arrival; }).sort(function (p, q) { return p - q; });
     var from = TW.fmtDateTime(arrivals[0]), to = TW.fmtDateTime(arrivals[arrivals.length - 1]);
 
+    // «Filtros de aviso» (2026-08-06): filter rows by the flag classes they
+    // raised — one checkbox per class PRESENT in the current rows (with its
+    // count), multi-select, OR-combined: keep rows carrying ANY checked flag.
+    // Built from state.rows (flags live on rows, not attacks); `unknown` rows
+    // carry no flag object, so they get a pseudo-class of their own.
+    var flagCounts = {};
+    state.rows.forEach(function (r) {
+      var seen = {};
+      r.flags.forEach(function (f) { seen[f.cls] = 1; });
+      if (r.unknown) seen.unknown = 1;
+      Object.keys(seen).forEach(function (c) { flagCounts[c] = (flagCounts[c] || 0) + 1; });
+    });
+    var FLAG_LABELS = {
+      nuke: "Posible nuke/tren real", esquivar: "Esquivar", catas: "Catas (💥)",
+      notedef: "Fake probable (pueblo DEF/vacío)", after: "Conquistado tras el envío",
+      "new": "Conquista reciente", maybe: "Posible conquista reciente", low: "Pocos puntos",
+      nosent: "Sin hora de envío", stale: "Sin puntos actuales", unknown: "Desconocido",
+      media: "Defensa media", blindado: "Blindado",
+    };
+    var flagBoxes = Object.keys(flagCounts)
+      .sort(function (a, b) { return (SEVERITY[b] || 0) - (SEVERITY[a] || 0); })
+      .map(function (c) {
+        return '<label class="fflag"><input type="checkbox" class="fFlag" value="' + c + '"> ' +
+          TW.esc(FLAG_LABELS[c] || c) + " (" + flagCounts[c] + ")</label>";
+      }).join(" ");
+
     $("attackFilters").innerHTML =
       '<div class="filter-grid">' +
       '<div class="f"><label for="fPlayer">Jugador</label><select id="fPlayer">' + opts(players) + "</select></div>" +
@@ -1338,20 +1396,31 @@
       '<div class="f"><label for="fDest">Pueblo objetivo</label><select id="fDest">' + opts(dests) + "</select></div>" +
       '<div class="f"><label for="fFrom">Llegada desde</label><input type="text" id="fFrom" value="' + from + '"></div>' +
       '<div class="f"><label for="fTo">Llegada hasta</label><input type="text" id="fTo" value="' + to + '"></div>' +
-      '</div><div class="filter-actions"><button type="button" id="fApply">Aplicar filtros</button>' +
+      "</div>" +
+      (flagBoxes ? '<div class="fflags"><span class="fflags-h">Filtros de aviso:</span> ' + flagBoxes + "</div>" : "") +
+      '<div class="filter-actions"><button type="button" id="fApply">Aplicar filtros</button>' +
       '<button type="button" id="fReset">Quitar filtros</button></div>';
 
+    function checkedFlags() {
+      var out = [];
+      var boxes = document.querySelectorAll(".fFlag");
+      for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) out.push(boxes[i].value);
+      return out;
+    }
     $("fApply").addEventListener("click", function () {
       state.filters = {
         player: $("fPlayer").value, type: $("fType").value,
         origin: $("fOrigin").value, dest: $("fDest").value,
         from: parseDateTime($("fFrom").value), to: parseDateTime($("fTo").value),
+        flags: checkedFlags(),
       };
       render();
     });
     $("fReset").addEventListener("click", function () {
       ["fPlayer", "fType", "fOrigin", "fDest"].forEach(function (id) { $(id).value = ""; });
       $("fFrom").value = from; $("fTo").value = to;
+      var boxes = document.querySelectorAll(".fFlag");
+      for (var i = 0; i < boxes.length; i++) boxes[i].checked = false;
       state.filters = {};
       render();
     });
@@ -1367,7 +1436,7 @@
   // === summary / warnings ==================================================
   function summarize() {
     var total = state.rows.length, flagged = 0, unknown = 0;
-    var n = { low: 0, "new": 0, after: 0, maybe: 0, stale: 0, nosent: 0, blindado: 0, esquivar: 0, media: 0, nuke: 0, notedef: 0 };
+    var n = { low: 0, "new": 0, after: 0, maybe: 0, stale: 0, nosent: 0, blindado: 0, esquivar: 0, media: 0, nuke: 0, notedef: 0, catas: 0 };
     for (var i = 0; i < total; i++) {
       var r = state.rows[i];
       if (r.unknown) { unknown++; continue; }
@@ -1397,6 +1466,7 @@
     if (n.after) parts.push(n.after + " conquistad" + (state.mode === "attacks" ? "o" : "a") +
       (n.after === 1 ? "" : "s") + " tras el envío");
     if (n.notedef) parts.push(n.notedef + " desde pueblo DEF/vacío");
+    if (n.catas) parts.push(n.catas + " de lanzadores de catas");
     if (n.nuke) parts.push(n.nuke + " posible" + (n.nuke === 1 ? "" : "s") + " real" + (n.nuke === 1 ? "" : "es"));
     if (n.esquivar) parts.push(n.esquivar + " a esquivar");
     if (n.blindado) parts.push(n.blindado + " sobre pueblo blindado");
@@ -1573,7 +1643,24 @@
           // possible nuke a probable fake.
           var rt = reportTypeOf(a.origin.key);
           var originNote = (rt && !rt.stale && rt.sure) ? rt.type : null;
-          if ((originNote === "DEF" || originNote === "EMPTY") && a.speed && a.speed.isHeavy) {
+          // CATAS (2026-08-06): the origin has qualifying catapult strikes on
+          // record (sentCat: ≥50 cats, no regular ram off) AND this command
+          // travels at a pace that could carry them (siege/noble speed; an
+          // unknown speed can't rule them out). Direct observed evidence, so
+          // it doesn't require a `sure` verdict.
+          var fvA = (rt && rt.stale) ? null : reportFactsOf(a.origin.key);
+          var catInfo = (fvA && fvA.sentCat && (!a.speed || a.speed.isHeavy)) ? fvA.sentCat : null;
+          if (catInfo) {
+            row.flags.push({
+              cls: "catas",
+              text: "💥 Suele enviar catas: máx " + catInfo.cat + " (" + catInfo.n +
+                "×, informe de hace " + reportAgeTxt(catInfo.t) + ")",
+            });
+          }
+          // notedef is SUPPRESSED by catas: "fake probable" and "known cata
+          // striker" contradict — a def village's slow command with a cata
+          // record is a building strike, not a fake (the user's whole point).
+          if (!catInfo && (originNote === "DEF" || originNote === "EMPTY") && a.speed && a.speed.isHeavy) {
             row.flags.push({
               cls: "notedef",
               text: "Fake probable: pueblo " + (originNote === "EMPTY" ? "vacío" : "DEF") +
@@ -1585,7 +1672,10 @@
           });
           var heavy = a.speed && a.speed.isHeavy;
           var armoured = a.target && a.target.status === "blindado";
-          if (heavy && !looksFake && !armoured) {
+          // A cata striker that is NOT off-confirmed reads as a cata strike, not
+          // a nuke — the catas flag replaces the nuke one there. An OFF-confirmed
+          // village keeps both readings (it genuinely might be either).
+          if (heavy && !looksFake && !armoured && !(catInfo && originNote !== "OFF")) {
             row.flags.push({
               cls: "nuke",
               text: "⚠ Posible " + (a.speed.isNoble ? "tren de nobles" : "nuke") + " real" +

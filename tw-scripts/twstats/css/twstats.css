@@ -392,6 +392,10 @@ table.vis.inner td { border-bottom: 0; padding: 1px 6px 1px 0; background: none 
   padding: 4px 6px; font-family: Verdana, Arial, sans-serif; font-size: 12px;
 }
 .filter-actions { display: flex; gap: 6px; margin-top: 8px; }
+/* «Filtros de aviso» — one checkbox per flag class present in the rows. */
+.fflags { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 12px; }
+.fflags-h { color: var(--text-muted); font-weight: 600; }
+.fflags .fflag { white-space: nowrap; cursor: pointer; }
 table.vis th.sortable { cursor: pointer; user-select: none; }
 table.vis th.sortable:hover { color: var(--link-hover); }
 table.vis th.sorted { text-decoration: underline; }
@@ -414,6 +418,8 @@ table.vis.own-villages td.zero { color: var(--text-muted); opacity: .5; }
 .flag-esquivar { color: #fff; background: #b25a00; border-color: #b25a00; }
 .flag-media { color: var(--text-muted); border-color: var(--border-secondary); }
 .flag-nuke { color: #fff; background: var(--delta-down); border-color: var(--delta-down); }
+/* Known catapult striker (≥50 catas without a regular ram off) — purple, per the user. */
+.flag-catas { color: #fff; background: #6d3f8e; border-color: #6d3f8e; }
 .note-badge {
   display: inline-block; border-radius: 3px; padding: 0 4px; font-size: 10px; font-weight: 700;
   border: 1px solid var(--border-secondary); color: var(--text-muted);
@@ -425,6 +431,9 @@ table.vis.own-villages td.zero { color: var(--text-muted); opacity: .5; }
 /* Reports-DB verdict with the away troops never seen ("DEF?"): visibly tentative. */
 .note-unsure { border-style: dashed; opacity: .8; }
 .rep-share-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
+/* Subir Informes paste box (2026-08-06). */
+#repPasteWrap { margin: 6px 0; }
+#repPaste { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 12px; }
 .flag-notedef { color: var(--link-color); border-color: var(--link-color); }
 
 /* Aviso badges are long sentences, not chips: inside that column they must wrap
@@ -436,6 +445,9 @@ table.vis th.col-verdict { white-space: normal; }
 
 /* Reports-DB intel recorded under a PREVIOUS owner: shown, never trusted. */
 .note-old { color: var(--text-muted); border-color: var(--border-secondary); opacity: .75; }
+
+/* CATAS village tag — purple, sits next to the 📄OFF/DEF badge. */
+.note-catas { color: #fff; background: #6d3f8e; border-color: #6d3f8e; }
 
 /* === report hover card (📄 badges, Entrantes) ============================
    twstats' take on the tribe-calculator map hover: verdict header, troop
@@ -461,6 +473,7 @@ table.vis th.col-verdict { white-space: normal; }
 .report-card .rc-ic { width: 15px; height: 15px; vertical-align: middle; }
 .report-card .rc-none, .report-card .rc-unk { color: var(--text-muted); font-style: italic; }
 .report-card .rc-empty { color: var(--delta-up); }
+.report-card .rc-catas { color: #b07fd0; font-weight: 600; }
 .report-card .rc-lv0 { color: var(--text-muted); }
 
 /* === in-game report render (report-render.js: .twrr) =====================

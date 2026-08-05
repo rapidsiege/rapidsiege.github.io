@@ -401,8 +401,13 @@ function reportTooltipHtml(coord) {
       + secRow(t('map_tt_rep_away'), `<span style="color:#c0a060;">${t('map_tt_rep_away_unknown')}</span>`) + `</div>`;
   }
 
-  if (showTroops && v.sent) {
-    h += troopBlockHtml(t('map_tt_rep_sent') + age(v.sent.t), reportPowerLines(v.sent.units), v.sent.units);
+  // Biggest army sent regardless of type (v5.8.0) — sentBig, with the classic
+  // largest-off record as fallback for pre-v5.8.0 stores. A known cata striker
+  // (sentCat) is flagged in the section header.
+  const sentShow = (v.sentBig || v.sent);
+  if (showTroops && sentShow) {
+    const catTag = v.sentCat ? ` <span style="color:#b07fd0;">💥${v.sentCat.cat}×${v.sentCat.n}</span>` : '';
+    h += troopBlockHtml(t('map_tt_rep_sent') + age(sentShow.t) + catTag, reportPowerLines(sentShow.units), sentShow.units);
   }
 
   if (v.bld) {

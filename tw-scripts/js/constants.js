@@ -76,6 +76,16 @@ const DEF_SPY_MIN_ORDER = 50;
 // block in defense-plan.js).
 const DEF_SNIP_DEFAULTS = { pct: 35, dist: 100 };
 
+// Village Reports / map obscuring (v5.8.0, user decision 2026-08-06): report-derived intel
+// about villages CURRENTLY owned by these ally ids (es100: 13 = WC.. War Club, 27 = WC) is
+// hidden from the direct lookups — the Village Reports table, the map badges/hover and the
+// Ver-informe modal — so a leaked tool URL can't hand out the tribe's own data. Villages
+// present in the LOCALLY processed reports store stay visible (the operator uploading their
+// own files is not the leak scenario), and a protected player appearing inside ANOTHER
+// village's report is deliberately not scrubbed. The tw-calc-uploads Worker enforces the
+// same rule on the shared-DB endpoints themselves (the real gate; this is the UI layer).
+const RI_PROTECTED_ALLIES = ['13', '27'];
+
 // Catapult target buildings offered in the Offensive Targets catapult cell, in display order.
 // Values are the in-game building keys (the rally-point confirm-page <select name="building">
 // option values), so they drop straight into the rally URL's &building= param. Labels are i18n

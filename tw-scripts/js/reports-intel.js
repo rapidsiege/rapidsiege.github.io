@@ -29,10 +29,25 @@ const RI_MIN = 500;    // FastNotes minValue — an army worth talking about
 const RI_MAX = 20000;  // FastNotes maxValue — a "blindado" (armored) stack
 const RI_OFF_POOL = ['axe', 'light', 'marcher', 'ram'];
 const RI_DEF_POOL = ['spear', 'sword', 'archer', 'heavy'];
+// Farm pop per unit — the size metric behind `sentBig` (v5.8.0). Deliberately a LOCAL copy
+// (constants.js POP): this file is also loaded standalone by the twstats pages, which don't
+// load constants.js. Unknown units count 1 so a new unit never zeroes an army's size.
+const RI_POP = { spear: 1, sword: 1, axe: 1, archer: 1, spy: 2, light: 4, marcher: 5, heavy: 6, ram: 5, catapult: 8, knight: 10, snob: 100 };
+// `sentCat` (v5.8.0): an attack is a CATA STRIKE when it carries at least RI_CAT_MIN
+// catapults WITHOUT being a regular ram off (ram >= RI_CAT_RAM_OFF) — def villages sending
+// heavy+cats, cats alone (+spies), or an off split into building-damage slices all qualify;
+// a real nuke's escort cats don't.
+const RI_CAT_MIN = 50;
+const RI_CAT_RAM_OFF = 200;
 
 function riSum(units, pool) {
   if (!units) return 0;
   return pool.reduce((s, u) => s + (+units[u] || 0), 0);
+}
+// Total farm pop of an army — `sentBig`'s ordering metric.
+function riPop(units) {
+  if (!units) return 0;
+  return Object.keys(units).reduce((s, u) => s + (+units[u] || 0) * (RI_POP[u] || 1), 0);
 }
 function riTotal(units) {
   if (!units) return 0;
@@ -94,13 +109,36 @@ function riMergeReports(store, reports) {
     }
 
     // ── Attacker village: what it SENDS ──
+    // Three independent slots (each carries `pid` = the attacker player at send time, so
+    // the Worker's protected-tribe filter can judge WHOSE army a section describes — these
+    // slots outlive conquests, unlike home/away, which newest-wins replaces):
+    //   sent    — largest OFF pool (a later 1-ram fake must not erase nuke evidence)
+    //   sentBig — largest army by FARM POP regardless of type (v5.8.0: a def village's
+    //             heavy+cats strike is invisible to `sent` — off ≈ 0 — yet it's exactly
+    //             what the Village Reports row must surface)
+    //   sentCat — largest CATA STRIKE (cat ≥ 50, ram < 200; see RI_CAT_MIN) + `n` = how
+    //             many distinct reports showed one (feeds twstats' CATAS tag)
     if (typeof r.attackerX === 'number' && typeof r.attackerY === 'number' && r.attackerTroops) {
       const v = riVillage(store, r.attackerX + '|' + r.attackerY);
       riIdentity(v, t, r.attackerVillageId, r.attackerVillageName, r.attackerPlayerId, r.attackerPlayerName);
       const units = riUnits(r.attackerTroops);
+      const pid = r.attackerPlayerId != null ? String(r.attackerPlayerId) : undefined;
       const off = riSum(units, RI_OFF_POOL);
       if (!v.sent || off > v.sent.off || (off === v.sent.off && t > v.sent.t)) {
-        v.sent = { units, t, off };
+        v.sent = { units, t, off, ...(pid ? { pid } : {}) };
+      }
+      const pop = riPop(units);
+      if (!v.sentBig || pop > v.sentBig.pop || (pop === v.sentBig.pop && t > v.sentBig.t)) {
+        v.sentBig = { units, t, pop, ...(pid ? { pid } : {}) };
+      }
+      const cat = +units.catapult || 0;
+      if (cat >= RI_CAT_MIN && (+units.ram || 0) < RI_CAT_RAM_OFF) {
+        const n = (v.sentCat ? (+v.sentCat.n || 0) : 0) + 1; // every qualifying report counts
+        if (!v.sentCat || cat > v.sentCat.cat || (cat === v.sentCat.cat && t > v.sentCat.t)) {
+          v.sentCat = { units, t, cat, n, ...(pid ? { pid } : {}) };
+        } else {
+          v.sentCat.n = n;
+        }
       }
       used = true;
     }
@@ -195,6 +233,20 @@ function riCombineVillages(a, b) {
   if (a.sent || b.sent) {
     out.sent = !a.sent ? b.sent : !b.sent ? a.sent
       : ((b.sent.off > a.sent.off || (b.sent.off === a.sent.off && (b.sent.t || 0) > (a.sent.t || 0))) ? b.sent : a.sent);
+  }
+  // sentBig / sentCat combine on the same metric that keeps them in the merge
+  // (pop / cat count, ties → newer). sentCat's `n` counts reports each SIDE saw;
+  // local uploads are a subset of the shared DB after a share round-trip, so the
+  // honest combined count is the max, never the sum (that would double-count).
+  if (a.sentBig || b.sentBig) {
+    out.sentBig = !a.sentBig ? b.sentBig : !b.sentBig ? a.sentBig
+      : ((b.sentBig.pop > a.sentBig.pop || (b.sentBig.pop === a.sentBig.pop && (b.sentBig.t || 0) > (a.sentBig.t || 0))) ? b.sentBig : a.sentBig);
+  }
+  if (a.sentCat || b.sentCat) {
+    const win = !a.sentCat ? b.sentCat : !b.sentCat ? a.sentCat
+      : ((b.sentCat.cat > a.sentCat.cat || (b.sentCat.cat === a.sentCat.cat && (b.sentCat.t || 0) > (a.sentCat.t || 0))) ? b.sentCat : a.sentCat);
+    const n = Math.max((a.sentCat ? +a.sentCat.n || 0 : 0), (b.sentCat ? +b.sentCat.n || 0 : 0));
+    out.sentCat = n !== (+win.n || 0) ? { ...win, n } : win;
   }
   return out;
 }

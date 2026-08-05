@@ -157,7 +157,26 @@ function riSortBy(key) {
 // Own-tribe villages and current barbarians are hidden when the world DB can
 // tell us (barb scouting floods the store; own villages aren't "enemy").
 // Without a world DB everything is shown.
+
+// Protected-tribe obscuring (v5.8.0): report intel about villages currently owned
+// by RI_PROTECTED_ALLIES is hidden from every direct lookup — INDEPENDENT of the
+// myAllyIds own-tribe filter, which needs a loaded troop file and is therefore
+// empty exactly in the leak scenario (someone opening the bare hosted URL). A
+// village present in the LOCAL reports store stays visible: the operator who
+// processed their own exports is not the person being defended against. The
+// shared-DB endpoints are stripped server-side too; this layer keeps the rule
+// even for data that reached the browser some other way.
+function riProtected(coord) {
+  if (typeof RI_PROTECTED_ALLIES === 'undefined' || !RI_PROTECTED_ALLIES.length) return false;
+  if (riStore.villages[coord]) return false; // locally uploaded → the operator's own data
+  if (typeof coordDb === 'undefined' || typeof playerAllyDb === 'undefined') return false;
+  const cv = coordDb[coord];
+  if (!cv || !cv.playerId) return false;
+  return RI_PROTECTED_ALLIES.includes(String(playerAllyDb[cv.playerId] || ''));
+}
+
 function riHidden(coord, v) {
+  if (riProtected(coord)) return true;
   if (typeof coordDb === 'undefined') return false;
   const cv = coordDb[coord];
   if (!cv) return false;
@@ -266,12 +285,22 @@ function renderEnemyVillagesTable() {
         + `<td class="left" colspan="11" style="color:${color};font-size:12px;">${esc(note)}</td></tr>`);
     }
 
-    // Row 3 (only when a real off army was seen leaving this village)
-    if (v.sent && v.sent.off >= RI_MIN) {
+    // Row 3 — the biggest army seen leaving this village, REGARDLESS of type
+    // (v5.8.0 user decision): a def village never fires an off, but its
+    // heavy+cats building-strike is exactly what must be visible at first
+    // glance — the old off-only gate (sent.off ≥ 500) hid it. `sentBig` is the
+    // largest army by farm pop; records merged before v5.8.0 (old local store /
+    // stale shared DB) lack it, so the classic real-off row is the fallback.
+    // A 💥 tail flags a known cata striker (sentCat) with its strike count.
+    const big = v.sentBig || (v.sent && v.sent.off >= RI_MIN ? v.sent : null);
+    if (big) {
+      const catTail = v.sentCat
+        ? ` <span style="color:#b07fd0;font-weight:600;white-space:nowrap;" title="${esc(t('ev_catas_tip')(v.sentCat.cat, v.sentCat.n))}">💥${v.sentCat.cat}</span>`
+        : '';
       cells.push(`<tr style="${dim}">${blank}`
-        + `<td class="left" style="white-space:nowrap;color:#5a3a18;">⚔ ${esc(t('ev_row_sent'))}</td>`
-        + riUnitCells(v.sent.units, 'color:#c05040;')
-        + `<td style="color:#e06040;">${fmtM(riOffPow(v.sent.units))}</td></tr>`);
+        + `<td class="left" style="white-space:nowrap;color:#5a3a18;">⚔ ${esc(t('ev_row_sent'))}${catTail}</td>`
+        + riUnitCells(big.units, 'color:#c05040;')
+        + `<td style="color:#e06040;">${fmtM(riOffPow(big.units))}</td></tr>`);
     }
   }
 
@@ -336,6 +365,12 @@ function riOpenReportModal(coord) {
   bg.addEventListener('click', e => { if (e.target === bg) riCloseReportModal(); });
   document.body.appendChild(bg);
   const body = document.getElementById('ev-report-body');
+  // Protected village (v5.8.0): don't even ask the Worker — the endpoint is
+  // stripped anyway; this shows an honest message instead of "no reports".
+  if (riProtected(coord)) {
+    body.textContent = t('ev_rep_protected');
+    return;
+  }
   if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') {
     body.textContent = t('ev_shared_dev');
     return;

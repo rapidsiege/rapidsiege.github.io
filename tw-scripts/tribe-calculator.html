@@ -50,7 +50,7 @@
   <div class="tab" data-tab="players"     data-group="overview"  onclick="switchTab('players')"    data-i18n="tab_players">By Player</div>
   <div class="tab" data-tab="villages"    data-group="overview"  onclick="switchTab('villages')"   data-i18n="tab_byvillages">By Villages</div>
   <div class="tab" data-tab="rankings"    data-group="overview"  onclick="switchTab('rankings')"   data-i18n="tab_rankings">Rankings</div>
-  <div class="tab" data-tab="enemyvillages" data-group="overview" onclick="switchTab('enemyvillages')" data-i18n="tab_enemyvillages">🎯 Enemy Villages</div>
+  <div class="tab" data-tab="enemyvillages" data-group="overview" onclick="switchTab('enemyvillages')" data-i18n="tab_enemyvillages">🎯 Village Reports</div>
   <!-- Map -->
   <div class="tab" data-tab="map"         data-group="map"       onclick="switchTab('map')"        data-i18n="tab_map">🗺 Map</div>
   <!-- Tribe Timings -->
@@ -389,7 +389,7 @@
 <!-- ═══════════════════════════ ENEMY VILLAGES ═══════════════════════════ -->
 <div class="tab-content" id="tab-enemyvillages">
   <div class="section-header">
-    <h2 data-i18n="sec_enemyvillages">🎯 Enemy Villages</h2>
+    <h2 data-i18n="sec_enemyvillages">🎯 Village Reports</h2>
     <button class="btn btn-ghost btn-sm" onclick="riClearReports()" data-i18n="ev_btn_clear">✕ Clear stored reports</button>
   </div>
   <p style="font-size:12px;color:#5a3a18;margin:2px 0 10px;" data-i18n="ev_note">Enemy-village intel built from report exports (reportsExport.js → tw-reports-*.json). Load or paste the JSON and Process: each village shows the troops seen in it, the troops seen away, and an OFF/DEF verdict. A "?" verdict means the away troops were never seen, so an off army could be hiding outbound. Intel observed under a previous owner is marked old.</p>
@@ -1164,7 +1164,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.7.1 &nbsp;·&nbsp; 2026-08-06</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.8.0 &nbsp;·&nbsp; 2026-08-06</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
