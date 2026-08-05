@@ -903,19 +903,25 @@ function generateDefPlan() {
         const cand = [...candSet].sort(defFarFirst
           ? ((a, b) => (dist(senders[b], T) - dist(senders[a], T)) || (vSentPop[a] - vSentPop[b]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1))
           : ((a, b) => (vSentPop[a] - vSentPop[b]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1)));
-        // ── Snip players (v5.6.0): SEQUENTIAL drain instead of an even spread. Villages are
-        // emptied one at a time in `cand` order, so what stays home piles up in the villages
-        // at the END of that order — the user's rule, "one village with 30% beats three with
-        // 10%": a snipe needs a garrison big enough to matter, not three slivers. With
-        // "Prioritize Sending From Far Villages" this is doubly right — the farthest villages
-        // empty first and the reserve settles nearest the action. Deliberately outside the
-        // pack-sizing paths: concentrating already produces chunky orders. ──
+        // ── Snip players (v5.6.0): SEQUENTIAL drain instead of an even spread, in a snip-
+        // specific order — MOST-drained-first (v5.7.1), the OPPOSITE of `cand`. Sequential
+        // fill only concentrates the leftover if a partially-drained village is FINISHED
+        // before a fresh one is opened; cand's least-drained-first order alternates villages
+        // across targets (target 1 dents A, target 2 then prefers untouched B), fragmenting
+        // the reserve — the exact thing the user's rule forbids ("one village with 30% beats
+        // three with 10%": a snipe needs a garrison big enough to matter, not slivers). With
+        // "Prioritize Sending From Far Villages" distance stays primary (that toggle's whole
+        // point is WHERE the leftover pools — nearest the action) and drain-descending breaks
+        // ties. Deliberately outside the pack-sizing paths: concentration is already chunky. ──
         if (snipPhase) {
+          const drainCand = [...cand].sort(defFarFirst
+            ? ((a, b) => (dist(senders[b], T) - dist(senders[a], T)) || (vSentPop[b] - vSentPop[a]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1))
+            : ((a, b) => (vSentPop[b] - vSentPop[a]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1)));
           for (const u of DEF_OBJ_UNITS) {
             let need = give[u] || 0;
             if (need <= 0) continue;
             const eligSet = new Set(eligByType[u][P]);
-            for (const si of cand) {
+            for (const si of drainCand) {
               if (need <= 0) break;
               if (!eligSet.has(si)) continue;
               const q = Math.min(need, senders[si][view][u]);

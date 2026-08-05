@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.7.1', date: '2026-08-06',
+    en: [
+      `<b>🎯 Snip reserve now concentrates across multiple targets too.</b> With several targets drawing on a Snip Player, the plan could leave their reserve scattered over two half-drained villages instead of pooling it in one: each target preferred the sniper's least-drained village, so target 2 opened a fresh village while target 1's was still half full. A sniper's villages are now emptied most-drained-first — a village is finished before the next one is opened — so the leftover ends up in as few villages as possible, exactly as promised in v5.6.0.`,
+    ],
+    es: [
+      `<b>🎯 La reserva Snip ahora también se concentra con varios objetivos.</b> Con varios objetivos tirando de un Jugador Snip, el plan podía dejar su reserva repartida entre dos aldeas a medio vaciar en vez de juntarla en una: cada objetivo prefería la aldea menos vaciada del sniper, así que el objetivo 2 abría una aldea nueva con la del objetivo 1 aún a medias. Las aldeas de un sniper ahora se vacían primero la más vaciada — una aldea se termina antes de abrir la siguiente — de modo que lo que queda se concentra en las menos aldeas posibles, tal y como prometía la v5.6.0.`,
+    ],
+  },
   { ver: 'v5.7.0', date: '2026-08-05',
     en: [
       `<b>⚔ Enemy Tribes is now a picker, not a text box.</b> In <b>Defensive Targets</b>, enemy tribes are chosen from a dropdown of every tribe in the village database, <b>biggest first by total points</b> (each option shows its points), and added as chips like Ignore / Complete / Snip Players. No more typing a tag and hoping it matches — and no more silent misses from a typo, a trailing space, or two tribes with confusingly similar tags.`,
