@@ -17,6 +17,14 @@ let defTargets       = []; // [{id, coord, defender, tribe, spear, sword, spy, h
 let defIgnore        = ''; // raw "Ignore Coordinates" textarea (Plan Defense) — sender villages held home
 let defIgnorePlayers = []; // raw player names whose villages never send support (Plan Defense)
 let defCompletePlayers = []; // raw player names drained to 100% of their available defense (Plan Defense)
+// "Snip Players" (v5.6.0) — the mirror image of Complete Players: raw player names who must
+// keep free defense at home. They are the LAST pool Plan Defense draws from and keep a
+// defSnipPct % reserve against targets within defSnipDist fields. MUTUALLY EXCLUSIVE with
+// defCompletePlayers (100% drained vs. reserve kept) — enforced in the pickers AND re-checked
+// in generateDefPlan, where Complete wins a stale contradiction.
+let defSnipPlayers   = [];
+let defSnipPct       = DEF_SNIP_DEFAULTS.pct;  // % of available def pop kept home
+let defSnipDist      = DEF_SNIP_DEFAULTS.dist; // fields; reserve respected for targets within this radius
 let defEnemyTribes   = ''; // raw "Enemy Tribes" textarea (Plan Defense) — one tribe tag/name per line
 let defEnemyDist     = 0;  // "Distance from enemy tribes" (fields); 0 = filter off
 let defFarFirst      = false; // "Prioritize Sending From Far Villages" — source each player's share farthest-from-target first
@@ -42,6 +50,7 @@ function saveDefensive() {
   // plan stays byte-stable across reloads.
   lsSaveC(DT_STORE_KEY, {
     cfg: dtCfg, targets: defTargets, ignore: defIgnore, ignorePlayers: defIgnorePlayers, completePlayers: defCompletePlayers, enemyTribes: defEnemyTribes, enemyDist: defEnemyDist, farFirst: defFarFirst,
+    snipPlayers: defSnipPlayers, snipPct: defSnipPct, snipDist: defSnipDist,
     packMode: dpMode, packSize: dpPackSize, packMax: dpPackMax, packWeights: dpPackWeights,
     plan: defPlanRows, warnings: defPlanWarnings, nextId: dtNextId,
   });
@@ -56,6 +65,11 @@ function loadDefensive() {
       defIgnore       = typeof d.ignore === 'string' ? d.ignore : '';
       defIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
       defCompletePlayers = Array.isArray(d.completePlayers) ? d.completePlayers : [];
+      defSnipPlayers  = Array.isArray(d.snipPlayers) ? d.snipPlayers : [];
+      // 0 is a legitimate reserve (= "no reserve"), so don't let `|| default` swallow it.
+      const sPct = parseFloat(d.snipPct), sDist = parseFloat(d.snipDist);
+      defSnipPct  = Number.isFinite(sPct)  ? Math.min(100, Math.max(0, sPct)) : DEF_SNIP_DEFAULTS.pct;
+      defSnipDist = Number.isFinite(sDist) ? Math.max(0, sDist) : DEF_SNIP_DEFAULTS.dist;
       defEnemyTribes  = typeof d.enemyTribes === 'string' ? d.enemyTribes : '';
       defEnemyDist    = Math.max(0, parseInt(d.enemyDist, 10) || 0);
       defFarFirst     = d.farFirst === true;
@@ -83,11 +97,14 @@ function loadDefensive() {
   const enm = document.getElementById('dp-enemy-input');
   if (enm) enm.value = defEnemyTribes;
   setVal('plan-def-enemy-dist', defEnemyDist || 0);
+  setVal('plan-def-snip-pct',  defSnipPct);
+  setVal('plan-def-snip-dist', defSnipDist);
   const ff = document.getElementById('plan-def-far-first');
   if (ff) ff.checked = defFarFirst;
   renderDpPackCfg();
   renderDefIgnorePlayers();
   renderDefCompletePlayers();
+  renderDefSnipPlayers();
   renderDefMvPlayers();
   updDefPolyNote(); // a saved map-area filter must be visible from the first paint
 }

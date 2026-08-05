@@ -305,6 +305,7 @@ function parseData(text, filename) {
   if (typeof renderOffIgnorePlayers === 'function') renderOffIgnorePlayers(); // ignore-players picker too
   if (typeof renderDefIgnorePlayers === 'function') renderDefIgnorePlayers(); // Plan-Defense ignore-players picker too
   if (typeof renderDefCompletePlayers === 'function') renderDefCompletePlayers(); // Plan-Defense complete-players picker too
+  if (typeof renderDefSnipPlayers === 'function') renderDefSnipPlayers();         // Plan-Defense snip-players picker too
   if (typeof renderOffMvPlayers === 'function') renderOffMvPlayers(); // MV-pairs picker too
   if (typeof renderDefMvPlayers === 'function') renderDefMvPlayers(); // Plan-Defense MV-pairs picker too
   if (typeof mapDetectAndSeed === 'function') mapDetectAndSeed(); // map: detect uploading tribe + seed My-tribe group

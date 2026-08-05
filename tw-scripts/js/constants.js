@@ -65,6 +65,17 @@ const DP_PACK_DEFAULTS = { size: 500, max: 0, weights: { spear: 1, sword: 1, spy
 //     [spy+ram] fakes, so they are never assignable as support (see defAvailUnits).
 const DEF_SPY_MIN_ORDER = 50;
 
+// Plan Defense "Snip Players" (v5.6.0): players who must keep FREE DEFENSE at home at all
+// times, ready to snipe / react. They are the LAST pool the plan draws from, and it tries not
+// to take them below `pct` % of their available defense.
+//   • pct  — the share of their available def pop that stays home (user's "30-40%").
+//   • dist — the radius (fields, sender village → target) inside which that reserve is
+//            respected. A target FARTHER than this may drain the village fully: a snipe
+//            reserve only has value for the theatre it can actually reach in time.
+// Spies are excluded from the reserve base entirely (they add no defense — see the snip
+// block in defense-plan.js).
+const DEF_SNIP_DEFAULTS = { pct: 35, dist: 100 };
+
 // Catapult target buildings offered in the Offensive Targets catapult cell, in display order.
 // Values are the in-game building keys (the rally-point confirm-page <select name="building">
 // option values), so they drop straight into the rally URL's &building= param. Labels are i18n

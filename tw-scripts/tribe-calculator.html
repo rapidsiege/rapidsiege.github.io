@@ -764,6 +764,7 @@
     <button class="btn btn-ghost btn-sm" onclick="toggleDefIgnore()" data-i18n="btn_ignore_coords">🚫 Ignore Coordinates</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleDefIgnorePlayers()" data-i18n="btn_ignore_players">🙅 Ignore Players</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleDefCompletePlayers()" data-i18n="btn_complete_players">💯 Complete Players</button>
+    <button class="btn btn-ghost btn-sm" onclick="toggleDefSnipPlayers()" data-i18n="btn_snip_players">🎯 Snip Players</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleDefMvPlayers()" data-i18n="btn_mv_players">🏖 MV Players</button>
     <label data-i18n="lbl_enemy_dist">Distance from enemy tribes:</label>
     <input type="number" id="plan-def-enemy-dist" value="0" min="0" style="width:70px;" title="0 = off" oninput="updDefEnemyDist()">
@@ -786,6 +787,10 @@
   <div id="dp-complete-players-wrap" style="display:none;margin-top:10px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="def_complete_players_hint">Pick whole players whose villages send 100% of their available defense in Plan Defense — drained before anyone else contributes, no fair-share rationing, even small garrisons ship. Their villages within the enemy-tribe distance (or on Ignore Coordinates / outside a map area) still stay home. Requires the tribe troop file.</div>
     <div id="dp-complete-players-host"></div>
+  </div>
+  <div id="dp-snip-players-wrap" style="display:none;margin-top:10px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="def_snip_players_hint">Pick whole players who must keep free defense at home at all times, ready to snipe or react. Plan Defense draws from them LAST (after everyone else's home and returning troops) and tries not to take them below the Snip reserve % set in Plan Defense — for targets within Snip max distance; a target farther than that may drain them fully. Their leftover is concentrated in as few villages as possible. Cannot be combined with Complete Players. Requires the tribe troop file.</div>
+    <div id="dp-snip-players-host"></div>
   </div>
   <div id="dp-mv-players-wrap" style="display:none;margin-top:10px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="def_mv_players_hint">Pair players who are in vacation mode (MV): two paired players will never both support the SAME target, and neither may support a village owned by their partner — a game limit during vacation mode and for 48h after. They stay fully pickable otherwise. Requires the tribe troop file.</div>
@@ -845,6 +850,10 @@
       <input type="checkbox" id="plan-def-far-first" onchange="updDefFarFirst()">
       <span data-i18n="lbl_def_far_first">Prioritize Sending From Far Villages</span>
     </label>
+    <label data-i18n="lbl_def_snip_pct" data-i18n-title="def_snip_pct_t" title="Share of a Snip Player's available defense (spears/swords/heavy — scouts don't count) that must stay home as free defense. 0 = no reserve.">Snip reserve %:</label>
+    <input type="number" id="plan-def-snip-pct" value="35" min="0" max="100" style="width:70px;" oninput="updDefSnipPct()">
+    <label data-i18n="lbl_def_snip_dist" data-i18n-title="def_snip_dist_t" title="How many fields away the Snip reserve is respected. A Snip Player's village keeps its reserve for targets within this radius; a target farther away may drain it fully.">Snip max distance:</label>
+    <input type="number" id="plan-def-snip-dist" value="100" min="0" style="width:70px;" oninput="updDefSnipDist()">
     <button class="btn btn-ghost btn-sm" id="dp-packcfg-btn" onclick="toggleDpPackCfg()" data-i18n-title="dp_packcfg_t" title="Choose how support orders are sized: Max Efficiency (precise, many small orders) or Support Packs (chunky orders of at least a chosen farm size).">⚙ Config Support Size</button>
     <button class="btn btn-primary btn-sm" onclick="generateDefPlan()" data-i18n="btn_def_generate">🛡 Generate Defense</button>
     <span id="dp-poly-note" style="font-size:12px;color:#4fd0c0;font-weight:600;"></span>
@@ -1155,7 +1164,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.5.0 &nbsp;·&nbsp; 2026-08-04</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.6.0 &nbsp;·&nbsp; 2026-08-05</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

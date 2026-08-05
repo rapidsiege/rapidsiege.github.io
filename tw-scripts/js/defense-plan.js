@@ -90,7 +90,7 @@ function toggleDefIgnorePlayers() {
 // contradictory, so each picker hides the other's members), alphabetical (label shows
 // village count).
 function defIgnorePlayerOptions() {
-  const ig = new Set([...defIgnorePlayers, ...defCompletePlayers]);
+  const ig = new Set([...defIgnorePlayers, ...defCompletePlayers, ...defSnipPlayers]);
   return Object.keys(players)
     .filter(name => !ig.has(name))
     .map(name => ({ name, villages: players[name].villages.length }))
@@ -138,9 +138,9 @@ function toggleDefCompletePlayers() {
   const el = document.getElementById('dp-complete-players-wrap');
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
-// Loaded troop-file players not already Complete (nor ignored — contradictory), alphabetical.
+// Loaded troop-file players not already Complete (nor ignored / Snip — contradictory), alphabetical.
 function defCompletePlayerOptions() {
-  const taken = new Set([...defCompletePlayers, ...defIgnorePlayers]);
+  const taken = new Set([...defCompletePlayers, ...defIgnorePlayers, ...defSnipPlayers]);
   return Object.keys(players)
     .filter(name => !taken.has(name))
     .map(name => ({ name, villages: players[name].villages.length }))
@@ -148,12 +148,16 @@ function defCompletePlayerOptions() {
 }
 function addDefCompletePlayer(name) {
   if (!name || defCompletePlayers.includes(name)) return;
+  // Complete (drain 100%) and Snip (keep a reserve) are contradictory by definition. The
+  // picker already hides the other list's members, so reaching this is only possible from a
+  // stale/edited state — refuse loudly rather than silently producing a nonsense plan.
+  if (defSnipPlayers.includes(name)) { alert(t('err_def_snip_complete')(decode(name))); return; }
   defCompletePlayers.push(name);
-  saveDefensive(); renderDefCompletePlayers();
+  saveDefensive(); renderDefCompletePlayers(); renderDefSnipPlayers();
 }
 function removeDefCompletePlayer(idx) {
   defCompletePlayers.splice(idx, 1);
-  saveDefensive(); renderDefCompletePlayers();
+  saveDefensive(); renderDefCompletePlayers(); renderDefSnipPlayers(); // freed name becomes Snip-pickable
 }
 // Chip list of Complete players + picker (same chip/select markup as the ignore one).
 function renderDefCompletePlayers() {
@@ -171,6 +175,77 @@ function renderDefCompletePlayers() {
        ${opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('')}
      </select>`;
   host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}${picker}</div>`;
+}
+
+// ── Snip Players (Plan Defense, v5.6.0): the mirror image of Complete Players — whole
+// players who must keep FREE DEFENSE at home at all times, ready to snipe an incoming noble
+// or reinforce on short notice. Two rules:
+//   1. They are the LAST pool the plan draws from: Complete → everyone else (home, then
+//      returning) → Snip. Nobody else's troops stay home so a sniper's can.
+//   2. Against a target within "Snip max distance" fields of the sending village, they are
+//      never drained past a "Snip reserve %" share of their available defense. A target
+//      FARTHER than that radius may drain them fully — a snipe reserve is only worth keeping
+//      for the theatre it can actually reach in time (user decision, v5.6.0).
+// When the reserve genuinely cannot be honoured the plan still ships the troops (coverage
+// wins) and says so — a warning per player plus one alert at the end of Generate Defense.
+// Their leftover is CONCENTRATED, not spread: Pass B drains their villages one at a time, so
+// the reserve ends up in as few villages as possible (one village at 30% beats three at 10% —
+// a snipe needs a real garrison, not three slivers).
+// SPIES never count: they add nothing to a defense reserve, so they're excluded from the
+// reserve base and ride the normal chunked spy pool exactly like Complete players' spies.
+// MUTUALLY EXCLUSIVE with Complete Players (drain 100% vs. keep a reserve) — the pickers hide
+// each other's members, the add paths refuse loudly, and generateDefPlan re-checks a stale
+// blob (Complete wins, as it does over Ignore). State lives in defensive-targets.js. ──
+function toggleDefSnipPlayers() {
+  const el = document.getElementById('dp-snip-players-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+// Loaded troop-file players not already Snip, Complete or ignored, alphabetical.
+function defSnipPlayerOptions() {
+  const taken = new Set([...defSnipPlayers, ...defCompletePlayers, ...defIgnorePlayers]);
+  return Object.keys(players)
+    .filter(name => !taken.has(name))
+    .map(name => ({ name, villages: players[name].villages.length }))
+    .sort((a, b) => decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
+}
+function addDefSnipPlayer(name) {
+  if (!name || defSnipPlayers.includes(name)) return;
+  if (defCompletePlayers.includes(name)) { alert(t('err_def_snip_complete')(decode(name))); return; }
+  defSnipPlayers.push(name);
+  saveDefensive(); renderDefSnipPlayers(); renderDefCompletePlayers();
+}
+function removeDefSnipPlayer(idx) {
+  defSnipPlayers.splice(idx, 1);
+  saveDefensive(); renderDefSnipPlayers(); renderDefCompletePlayers(); // freed name becomes Complete-pickable
+}
+// Chip list of Snip players + picker (same chip/select markup as the Complete one).
+function renderDefSnipPlayers() {
+  const host = document.getElementById('dp-snip-players-host');
+  if (!host) return;
+  if (!Object.keys(players).length && !defSnipPlayers.length) {
+    host.innerHTML = `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+    return;
+  }
+  const chips = defSnipPlayers.map((name, i) =>
+    `<span class="chip">${esc(decode(name))}<span class="chip-x" onclick="removeDefSnipPlayer(${i})">✕</span></span>`).join('');
+  const opts = defSnipPlayerOptions();
+  const picker = `<select class="cell-input" style="width:170px;" onchange="addDefSnipPlayer(this.value)">
+       <option value="">${t('opt_pick_snip_player')}</option>
+       ${opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('')}
+     </select>`;
+  host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}${picker}</div>`;
+}
+function updDefSnipPct() {
+  const el = document.getElementById('plan-def-snip-pct');
+  const n = el ? parseFloat(el.value) : NaN;
+  defSnipPct = Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : DEF_SNIP_DEFAULTS.pct;
+  saveDefensive();
+}
+function updDefSnipDist() {
+  const el = document.getElementById('plan-def-snip-dist');
+  const n = el ? parseFloat(el.value) : NaN;
+  defSnipDist = Number.isFinite(n) ? Math.max(0, n) : DEF_SNIP_DEFAULTS.dist;
+  saveDefensive();
 }
 
 // ── Enemy Tribes: bar senders too close to a hostile tribe's villages ──
@@ -319,8 +394,26 @@ function generateDefPlan() {
   const completePl = new Set(defCompletePlayers.filter(p => !ignorePl.has(p)));
   const enemyDist = parseFloat((document.getElementById('plan-def-enemy-dist') || {}).value) || 0;
   const enemySet  = parseDefEnemySet();
+  // Snip Players — last-resort pool with a protected reserve (see the picker block above).
+  // Ignore wins (they send nothing at all) and Complete wins (100% drain is the stronger,
+  // explicitly opposite instruction); the pickers prevent both contradictions, so anything
+  // caught here came from a stale localStorage blob and is warned about below.
+  const snipPl = new Set(defSnipPlayers.filter(p => !ignorePl.has(p) && !completePl.has(p)));
+  // Reserve knobs: the DOM is the live source (like every other Plan-Defense field), with the
+  // persisted state as fallback so a headless run — where inputs read '' — still sees them.
+  const dpNum = (id, fb) => {
+    const el = document.getElementById(id);
+    const n = el ? parseFloat(el.value) : NaN;
+    return Number.isFinite(n) ? n : fb;
+  };
+  const snipPct  = Math.min(100, Math.max(0, dpNum('plan-def-snip-pct', defSnipPct)));
+  const snipDist = Math.max(0, dpNum('plan-def-snip-dist', defSnipDist));
 
   defPlanRows = []; defPlanWarnings = [];
+
+  for (const p of defSnipPlayers) {
+    if (completePl.has(p)) defPlanWarnings.push(t('warn_def_snip_complete')(decode(p)));
+  }
 
   // ── Enemy Tribes proximity bar. Needs the world DB to locate hostile villages; without
   // it (or with a 0 distance) the filter is a no-op — warn so it doesn't fail silently. ──
@@ -369,6 +462,26 @@ function generateDefPlan() {
   for (const s of senders) capByPlayer[s.v.player] = (capByPlayer[s.v.player] || 0) + s.cap;
   const sentByPlayer = {};
   const vSentPop = senders.map(() => 0);
+
+  // ── Snip reserve budget (v5.6.0) — computed ONCE, before the target loop. It has to be
+  // global: the phase list runs per target, so a per-target "keep 35%" would let five targets
+  // each take 65% of what's left and end the player at zero.
+  //   base   = the player's available def pop across their eligible sender villages, SPIES
+  //            EXCLUDED (a scout screens, it doesn't defend — counting them would make the
+  //            percentage meaningless).
+  //   budget = base × (100 − pct) %, the most they may send to targets inside the radius.
+  // snipSentPop accrues EVERY snip send, including the unconstrained far-target ones: a
+  // player who already gave 50% to a distant war has only 15% of near-budget left, so the
+  // reserve survives as a whole instead of being spent twice.
+  const SNIP_UNITS = DEF_OBJ_UNITS.filter(u => u !== 'spy');
+  const snipPopOf  = tally => SNIP_UNITS.reduce((a, u) => a + (tally[u] || 0) * POP[u], 0);
+  const snipReserve = {}, snipBudget = {}, snipSentPop = {}, snipOverPop = {};
+  for (const P of snipPl) {
+    const base = senders.reduce((a, s) => a + (s.v.player === P ? snipPopOf(s.stock) : 0), 0);
+    snipReserve[P] = Math.ceil(base * snipPct / 100);
+    snipBudget[P]  = Math.max(0, base - snipReserve[P]);
+    snipSentPop[P] = 0; snipOverPop[P] = 0;
+  }
 
   const tgs = defTargets.map((tg, i) => ({ tg, i, c: parseCoordStr(tg.coord), tag: tg.tribe || dbTribeAt(tg.coord) }));
   tgs.filter(T => !T.c).forEach(T => defPlanWarnings.push(t('warn_invalid_coord')(T.tg.coord)));
@@ -516,13 +629,37 @@ function generateDefPlan() {
     // after all four. SPIES skip the Complete phases entirely (v5.3.0: complete players'
     // spies ride the normal chunked pool). With no Complete players, phases 1-2 are skipped
     // and 3-4 run byte-identical to the classic home-then-returning two-round fill. ──
+    // ── Snip pools (v5.6.0) extend the list with three more passes, all AFTER the normal
+    // pool so a sniper's defense is the last thing spent:
+    //   5. snipFar  — snip villages FARTHER than snipDist from T: unbudgeted (the reserve has
+    //                 no value at that range), so they go before any protected troops.
+    //   6. snipNear — snip villages within snipDist: capped by the remaining reserve budget.
+    //   7. snipOver — the same near villages with the budget IGNORED, so a genuine shortfall
+    //                 is still covered. Every unit placed here is counted as an overdraft and
+    //                 reported (warning per player + one alert at the end).
+    // Each runs home-first then returning, exactly like the pools above it. ──
     const placed = { spear: 0, sword: 0, spy: 0, heavy: 0 };
     const phases = [
-      { complete: true,  view: 'stockNow' }, { complete: true,  view: 'stockFut' },
-      { complete: false, view: 'stockNow' }, { complete: false, view: 'stockFut' },
+      { pool: 'complete', view: 'stockNow' }, { pool: 'complete', view: 'stockFut' },
+      { pool: 'normal',   view: 'stockNow' }, { pool: 'normal',   view: 'stockFut' },
+      { pool: 'snipFar',  view: 'stockNow' }, { pool: 'snipFar',  view: 'stockFut' },
+      { pool: 'snipNear', view: 'stockNow' }, { pool: 'snipNear', view: 'stockFut' },
+      { pool: 'snipOver', view: 'stockNow' }, { pool: 'snipOver', view: 'stockFut' },
     ];
+    // Which senders a phase may draw from. Spies are the standing exception: Complete and Snip
+    // players' scouts ride the NORMAL chunked spy pool (their special treatment is about real
+    // defense), so the special pools skip the type entirely and 'normal' accepts everyone.
+    const poolOk = (pool, s, u) => {
+      const P = s.v.player;
+      if (pool === 'complete') return completePl.has(P);
+      if (pool === 'normal')   return u === 'spy' || (!completePl.has(P) && !snipPl.has(P));
+      if (!snipPl.has(P)) return false;
+      return pool === 'snipFar' ? dist(s, T) > snipDist : dist(s, T) <= snipDist;
+    };
     for (const ph of phases) {
-      if (ph.complete && !completePl.size) continue;
+      const snipPhase = ph.pool.startsWith('snip');
+      if (ph.pool === 'complete' && !completePl.size) continue;
+      if (snipPhase && !snipPl.size) continue;
       const view = ph.view;
       // ── Pass A — player-level allocation per unit type. Weight = remaining def-pop
       // capacity (→ equal drain ratio: bigger defenders send proportionally more), capped
@@ -533,7 +670,9 @@ function generateDefPlan() {
       for (const u of DEF_OBJ_UNITS) {
         const n = (T.tg[u] || 0) - placed[u]; // residual: each phase only chases what earlier phases missed
         if (n <= 0) continue;
-        if (ph.complete && u === 'spy') continue; // spies never use the Complete fast path (v5.3.0)
+        // Spies never use the Complete fast path (v5.3.0) nor the Snip reserve (v5.6.0) —
+        // they ride the normal chunked pool for every player (see poolOk).
+        if (ph.pool !== 'normal' && u === 'spy') continue;
         // Per-village stock floor for THIS type. Spies (v5.3.0): a village joins the spy pool
         // only if it alone can ship ≥ DEF_SPY_MIN_ORDER (or the target's whole ORIGINAL ask,
         // when that is smaller — a genuinely tiny ask ships as one small order) — villages
@@ -544,9 +683,15 @@ function generateDefPlan() {
         const minStock = u === 'spy' ? Math.min(DEF_SPY_MIN_ORDER, T.tg[u] || 0) : 1;
         // A sub-chunk spy RESIDUAL isn't worth a new order at all — drop it (silent, by design).
         if (u === 'spy' && n < minStock) continue;
+        // The pool gate lives HERE (v5.6.0) rather than on the name list below, because the
+        // snip pools are split by SENDER distance, not by player: one player can have a far
+        // (unbudgeted) village and a near (protected) one for the same target. Filtering the
+        // candidate map itself keeps Pass B's village set right for each phase. For the
+        // complete/normal pools this is exactly the old `names.filter(...)`, moved earlier.
         const byP = {};
         for (let si = 0; si < senders.length; si++) {
           const s = senders[si];
+          if (!poolOk(ph.pool, s, u)) continue;
           if (s[view][u] >= minStock && sameTribe(s, T) && inBand(s, T) && typeArriveOk(s, T, u) && !mvExcluded.has(s.v.player))
             (byP[s.v.player] || (byP[s.v.player] = [])).push(si);
         }
@@ -579,18 +724,41 @@ function generateDefPlan() {
         // SPIES are exempt (v5.3.0, skipped above): "Complete" is about draining real
         // defense, and a stock-proportional partial drain can shape slivers — complete
         // players' spies ride the normal chunked pool like everyone else's. ──
-        if (ph.complete) {
-          const completeNames = names.filter(P => completePl.has(P));
-          if (completeNames.length) {
-            const ca = apportionCapped(n, completeNames.map(P => ({ weight: stockOf(P), cap: stockOf(P) })));
-            completeNames.forEach((P, pi) => { if (ca[pi] > 0) { record(P, ca[pi]); assigned += ca[pi]; } });
+        if (ph.pool === 'complete') {
+          if (names.length) {
+            const ca = apportionCapped(n, names.map(P => ({ weight: stockOf(P), cap: stockOf(P) })));
+            names.forEach((P, pi) => { if (ca[pi] > 0) { record(P, ca[pi]); assigned += ca[pi]; } });
           }
           placed[u] += assigned;
           continue;
         }
-        // Normal phases (3-4): everyone but Complete players — except spies, where Complete
-        // players join the chunked pool like anyone else.
-        const norm = u === 'spy' ? names : names.filter(P => !completePl.has(P));
+
+        // ── Snip phases (5-10, v5.6.0) — the last pool, capacity-weighted like the normal one
+        // (so snip players drain evenly among themselves) but with a hard per-player ceiling
+        // from the reserve budget. snipFar/snipOver ignore the budget by design; snipNear is
+        // capped at what's left of it, converted from pop to whole units of THIS type. No pack
+        // sizing: Pass B drains these villages sequentially, which already yields chunky
+        // orders, and a pack floor here would only block the last slice of a reserve. ──
+        if (snipPhase) {
+          const budgeted = ph.pool === 'snipNear';
+          const capU = P => budgeted
+            ? Math.min(stockOf(P), Math.floor(Math.max(0, snipBudget[P] - snipSentPop[P]) / POP[u]))
+            : stockOf(P);
+          if (names.length) {
+            const sa = apportionCapped(n, names.map(P => ({ weight: rankP(P), cap: capU(P) })));
+            names.forEach((P, pi) => {
+              if (sa[pi] <= 0) return;
+              record(P, sa[pi]); assigned += sa[pi];
+              snipSentPop[P] += sa[pi] * POP[u];
+              if (ph.pool === 'snipOver') snipOverPop[P] += sa[pi] * POP[u];
+            });
+          }
+          placed[u] += assigned;
+          continue;
+        }
+        // Normal phases (3-4): everyone but Complete and Snip players (poolOk already dropped
+        // them) — except spies, where both join the chunked pool like anyone else.
+        const norm = names;
         const nRem = n - assigned; // assigned is 0 here; kept so the packs arithmetic below reads unchanged
 
         const pu = chunkUnitsOf(u); // 0 in Max Efficiency — except spies, which chunk always
@@ -651,6 +819,28 @@ function generateDefPlan() {
         const cand = [...candSet].sort(defFarFirst
           ? ((a, b) => (dist(senders[b], T) - dist(senders[a], T)) || (vSentPop[a] - vSentPop[b]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1))
           : ((a, b) => (vSentPop[a] - vSentPop[b]) || (senders[a].v.coord < senders[b].v.coord ? -1 : 1)));
+        // ── Snip players (v5.6.0): SEQUENTIAL drain instead of an even spread. Villages are
+        // emptied one at a time in `cand` order, so what stays home piles up in the villages
+        // at the END of that order — the user's rule, "one village with 30% beats three with
+        // 10%": a snipe needs a garrison big enough to matter, not three slivers. With
+        // "Prioritize Sending From Far Villages" this is doubly right — the farthest villages
+        // empty first and the reserve settles nearest the action. Deliberately outside the
+        // pack-sizing paths: concentrating already produces chunky orders. ──
+        if (snipPhase) {
+          for (const u of DEF_OBJ_UNITS) {
+            let need = give[u] || 0;
+            if (need <= 0) continue;
+            const eligSet = new Set(eligByType[u][P]);
+            for (const si of cand) {
+              if (need <= 0) break;
+              if (!eligSet.has(si)) continue;
+              const q = Math.min(need, senders[si][view][u]);
+              if (q > 0) { commit(T, si, u, q, view); need -= q; }
+            }
+          }
+          continue; // this player is fully placed
+        }
+
         // ── Support Packs with a MAX farm size (dpPackMax > 0): bin-fill instead of apportioning.
         // Villages are filled ONE AT A TIME up to the max (weighted farm, all types together), in
         // cand priority order, so each origin→destination order lands in [min, max] by construction.
@@ -766,6 +956,28 @@ function generateDefPlan() {
     else if (leftFut > 0) defPlanWarnings.push(t('warn_def_complete_returning')(decode(P), leftFut));
   }
 
+  // ── Snip Players audit (v5.6.0): report every player who ends the plan below their
+  // reserve, and shout about the ones the engine had to overdraw. Two distinct causes:
+  //   • overdraft — the near-target demand could not be met any other way, so the snipOver
+  //     phases spent protected troops. This is the case the user asked to be ALERTED about:
+  //     coverage still won, but they need to know their sniper is dry.
+  //   • far drain — targets beyond "Snip max distance" took the troops. By design (that's
+  //     what the radius means), so it's a plain note, no alert.
+  // Measured from the REMAINING stock, not from the counters, so the line is always the truth
+  // about what is actually left standing at home. Spies excluded, as in the reserve base.
+  const snipAlert = [];
+  for (const P of snipPl) {
+    const left = senders.reduce((a, s) => a + (s.v.player === P ? snipPopOf(s.stock) : 0), 0);
+    const want = snipReserve[P] || 0;
+    if (left >= want) continue;
+    if (snipOverPop[P] > 0) {
+      defPlanWarnings.push(t('warn_def_snip_over')(decode(P), want - left, want, snipPct));
+      snipAlert.push(decode(P));
+    } else {
+      defPlanWarnings.push(t('warn_def_snip_far')(decode(P), want - left, snipDist));
+    }
+  }
+
   for (const key in packets) {
     const pk = packets[key], s = senders[pk.si], T = pk.T;
     if (DEF_OBJ_UNITS.reduce((a, u) => a + pk.units[u], 0) <= 0) continue;
@@ -795,6 +1007,10 @@ function generateDefPlan() {
   saveDefensive();
   renderDefPlanTable();
   if (typeof cloudSyncPlan === 'function') cloudSyncPlan(); // hosted-site cloud save of the JSON snapshot
+  // Last, so the modal can't hold the cloud upload hostage. The plan is already on screen —
+  // this only makes sure the reserve breach can't be missed (the same players are listed in
+  // the warnings box with the exact numbers).
+  if (snipAlert.length) alert(t('alert_def_snip_over')(snipAlert.join(', '), snipPct));
 }
 
 function delDefPlanRow(i) { defPlanRows.splice(i, 1); saveDefensive(); renderDefPlanTable(); }
