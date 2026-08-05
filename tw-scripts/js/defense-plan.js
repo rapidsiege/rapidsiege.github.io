@@ -249,21 +249,112 @@ function updDefSnipDist() {
 }
 
 // ── Enemy Tribes: bar senders too close to a hostile tribe's villages ──
-// The "Enemy Tribes" textarea holds tribe tags/names (one per line); "Distance from enemy
-// tribes" is a field radius. A sender within that radius of ANY village owned by ANY listed
-// tribe is held home (front-line), exactly like an Ignore coordinate. Needs the world DB.
+// Tribes are PICKED from the world DB (v5.7.0, was a free-text textarea) and stored as ally
+// IDs; "Distance from enemy tribes" is a field radius. A sender within that radius of ANY
+// village owned by ANY selected tribe is held home (front-line), exactly like an Ignore
+// coordinate. Needs the world DB — both to pick and to locate the villages.
 function parseDefEnemySet() {
-  const set = new Set();
-  for (const line of String(defEnemyTribes || '').split('\n')) {
-    const s = line.trim().toLowerCase();
-    if (s) set.add(s);
-  }
-  return set;
+  return new Set(defEnemyIds.map(String));
 }
-function updDefEnemy() {
-  const el = document.getElementById('dp-enemy-input');
-  defEnemyTribes = el ? el.value : '';
-  saveDefensive();
+
+// One-time migration of the pre-v5.7.0 free-text list: each line was a tag OR name, matched
+// case-insensitively — resolve it to an id and drop it from the legacy string. Anything that
+// doesn't resolve STAYS in defEnemyTribes (shown as a note) rather than being thrown away: it
+// may be a typo worth seeing, or a tribe this world's DB simply hasn't loaded yet. No DB → no
+// migration, and the legacy text keeps round-tripping untouched. Returns true if it changed
+// anything, so the caller can save without coupling a write to every repaint.
+function migrateDefEnemyTribes() {
+  const raw = String(defEnemyTribes || '').trim();
+  if (!raw || !Object.keys(allyDb).length) return false;
+  const byToken = {};
+  for (const id in allyDb) {
+    const a = allyDb[id];
+    if (a.tag)  byToken[String(a.tag).toLowerCase()]  = id;
+    if (a.name) byToken[String(a.name).toLowerCase()] = id;
+  }
+  const leftover = [];
+  let changed = false;
+  for (const line of raw.split('\n')) {
+    const tok = line.trim();
+    if (!tok) continue;
+    const id = byToken[tok.toLowerCase()];
+    if (!id) { leftover.push(tok); continue; }
+    if (!defEnemyIds.includes(id)) defEnemyIds.push(id);
+    changed = true;
+  }
+  const next = leftover.join('\n');
+  if (next !== defEnemyTribes) { defEnemyTribes = next; changed = true; }
+  return changed;
+}
+
+// Tribes not already selected, BIGGEST FIRST by total points (the user's sort: the tribe worth
+// worrying about is the big one), ties broken by label so the order is stable.
+function defEnemyTribeOptions() {
+  return Object.keys(allyDb)
+    .filter(id => !defEnemyIds.includes(String(id)))
+    .map(id => ({ id: String(id), label: allyLabel(id), points: allyPointsOf(allyDb[id]) }))
+    .sort((a, b) => (b.points - a.points) || a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
+}
+function addDefEnemyTribe(id) {
+  id = String(id || '');
+  if (!id || defEnemyIds.includes(id)) return;
+  defEnemyIds.push(id);
+  saveDefensive(); renderDefEnemyTribes();
+}
+function removeDefEnemyTribe(idx) {
+  defEnemyIds.splice(idx, 1);
+  saveDefensive(); renderDefEnemyTribes();
+}
+// Drop the un-migratable legacy free text (it filters nothing — see renderDefEnemyTribes).
+function clearDefEnemyLegacy() {
+  defEnemyTribes = '';
+  saveDefensive(); renderDefEnemyTribes();
+}
+// Migrate-then-paint. Kept SEPARATE from the paint (and used by loadDefensive + setDbData)
+// so a repaint can never trigger a write: saveDefensive() serializes the whole defensive blob,
+// so firing it from inside a render would make correctness depend on every caller having
+// finished assigning its state first. Here the save is explicit and only happens on a real
+// change.
+function refreshDefEnemyTribes() {
+  if (migrateDefEnemyTribes()) saveDefensive();
+  renderDefEnemyTribes();
+}
+
+// Chip list of selected tribes + a points-sorted picker. PURE PAINT — no migration, no save.
+// Chips resolve their label from allyDb every paint (a renamed tribe follows automatically);
+// an id the DB no longer knows keeps its place but renders as "?<id>" so it can be seen and
+// removed rather than silently filtering nothing. The leftover legacy free text, if any, is
+// surfaced underneath.
+function renderDefEnemyTribes() {
+  const host = document.getElementById('dp-enemy-host');
+  if (!host) return;
+  const haveDb = Object.keys(allyDb).length > 0;
+  if (!haveDb && !defEnemyIds.length && !defEnemyTribes) {
+    host.innerHTML = `<span class="num-zero" title="${esc(t('def_enemy_need_db'))}">—</span>`;
+    return;
+  }
+  const chips = defEnemyIds.map((id, i) => {
+    const label = allyLabel(id);
+    const unknown = !label;
+    return `<span class="chip"${unknown ? ` title="${esc(t('def_enemy_unknown_id'))}"` : ''}>`
+      + `${unknown ? '?' + esc(id) : esc(label)}<span class="chip-x" onclick="removeDefEnemyTribe(${i})">✕</span></span>`;
+  }).join('');
+  const picker = haveDb
+    ? `<select class="cell-input" style="width:230px;" onchange="addDefEnemyTribe(this.value)">
+         <option value="">${t('opt_pick_enemy_tribe')}</option>
+         ${defEnemyTribeOptions().map(o =>
+           `<option value="${esc(o.id)}">${esc(o.label)} (${o.points.toLocaleString()})</option>`).join('')}
+       </select>`
+    : `<span class="num-zero" title="${esc(t('def_enemy_need_db'))}">${esc(t('def_enemy_need_db'))}</span>`;
+  // The leftover legacy text has no editor any more (the textarea is gone), so the note ships
+  // its own Discard — otherwise an unresolvable typo from the old free-text list would sit
+  // there forever with no way to clear it.
+  const legacy = String(defEnemyTribes || '').trim();
+  const note = legacy
+    ? `<div style="font-size:12px;color:#e0a020;margin-top:6px;">${esc(t('def_enemy_legacy')(legacy.split('\n').join(', ')))}`
+      + ` <button class="btn btn-ghost btn-sm" onclick="clearDefEnemyLegacy()">${t('btn_def_enemy_legacy_clear')}</button></div>`
+    : '';
+  host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}${picker}</div>${note}`;
 }
 function updDefEnemyDist() {
   const el = document.getElementById('plan-def-enemy-dist');
@@ -327,28 +418,16 @@ function toggleDefEnemy() {
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
-// {x,y} of every village owned by a tribe in `enemySet` (matched on TAG or NAME, case-
-// insensitive). Empty when the DB isn't loaded or nothing matches.
+// {x,y} of every village owned by a tribe in `enemySet` (a set of ally IDs since v5.7.0 — an
+// exact id compare, no more tag/name string matching). Empty when the DB isn't loaded or
+// nothing matches.
 function enemyTribeVillageCoords(enemySet) {
   const coords = [];
   if (!enemySet.size || !villageDb.length) return coords;
   for (const v of villageDb) {
-    const a = allyDb[playerAllyDb[v.playerId]];
-    if (!a) continue;
-    if (enemySet.has(String(a.tag || '').toLowerCase()) || enemySet.has(String(a.name || '').toLowerCase()))
-      coords.push({ x: v.x, y: v.y });
+    if (enemySet.has(String(playerAllyDb[v.playerId]))) coords.push({ x: v.x, y: v.y });
   }
   return coords;
-}
-// The set of tribe tags+names (lowercased) the DB knows — to flag unresolved Enemy Tribes entries.
-function knownTribeTokens() {
-  const set = new Set();
-  for (const id in allyDb) {
-    const a = allyDb[id];
-    if (a.tag)  set.add(String(a.tag).toLowerCase());
-    if (a.name) set.add(String(a.name).toLowerCase());
-  }
-  return set;
 }
 
 // Slowest base travel-min among the unit types present in a packet (a mixed def bundle
@@ -422,11 +501,16 @@ function generateDefPlan() {
     if (enemyDist <= 0)            defPlanWarnings.push(t('warn_def_enemy_no_dist'));
     else if (!villageDb.length)   defPlanWarnings.push(t('warn_def_enemy_no_db'));
     else {
-      const known = knownTribeTokens();
-      const unresolved = [...enemySet].filter(x => !known.has(x));
+      // Since v5.7.0 the selection is ids, so "unresolved" means the loaded DB no longer
+      // carries that tribe (disbanded, or a DB from another world) — it filters nothing.
+      const unresolved = [...enemySet].filter(id => !allyDb[id]);
       if (unresolved.length) defPlanWarnings.push(t('warn_def_enemy_unresolved')(unresolved.join(', ')));
     }
   }
+  // Legacy free text that never resolved to a tribe is inert — say so rather than let the
+  // user believe a tribe they typed pre-v5.7.0 is still being filtered on.
+  const enemyLegacy = String(defEnemyTribes || '').trim();
+  if (enemyLegacy) defPlanWarnings.push(t('warn_def_enemy_legacy')(enemyLegacy.split('\n').join(', ')));
   const nearEnemy = s => enemyCoords.length > 0 && enemyCoords.some(e => distXY(s.c, e) <= enemyDist);
 
   // Senders: our troop villages with a parseable coord, not on the ignore list (coords OR

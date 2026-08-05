@@ -25,7 +25,16 @@ let defCompletePlayers = []; // raw player names drained to 100% of their availa
 let defSnipPlayers   = [];
 let defSnipPct       = DEF_SNIP_DEFAULTS.pct;  // % of available def pop kept home
 let defSnipDist      = DEF_SNIP_DEFAULTS.dist; // fields; reserve respected for targets within this radius
-let defEnemyTribes   = ''; // raw "Enemy Tribes" textarea (Plan Defense) — one tribe tag/name per line
+// "Enemy Tribes" (v5.7.0): selected tribes are stored as world-DB ALLY IDs, not tags/names —
+// tribes rename freely and a stored tag would silently stop matching. Labels are resolved live
+// from allyDb at render time (allyLabel), so a rename just shows up.
+let defEnemyIds      = []; // ally ids (strings) whose villages bar nearby senders
+// LEGACY: the pre-v5.7.0 free-text "Enemy Tribes" textarea, one tag/name per line. Kept ONLY as
+// a migration carrier — migrateDefEnemyTribes() converts each line to an id as soon as a world
+// DB is loaded and strips it from here. ⚠ It must keep round-tripping through saveDefensive
+// while unresolved: a session that never loads the DB would otherwise persist '' and lose the
+// user's tribes. Whatever never resolves stays here and is shown as a note next to the picker.
+let defEnemyTribes   = '';
 let defEnemyDist     = 0;  // "Distance from enemy tribes" (fields); 0 = filter off
 let defFarFirst      = false; // "Prioritize Sending From Far Villages" — source each player's share farthest-from-target first
 // "Config Support Size" — pack sizing mode for the defensive plan.
@@ -49,7 +58,7 @@ function saveDefensive() {
   // well under the ~5 MB quota. The plan is KEPT verbatim (not regenerated) so a distributed
   // plan stays byte-stable across reloads.
   lsSaveC(DT_STORE_KEY, {
-    cfg: dtCfg, targets: defTargets, ignore: defIgnore, ignorePlayers: defIgnorePlayers, completePlayers: defCompletePlayers, enemyTribes: defEnemyTribes, enemyDist: defEnemyDist, farFirst: defFarFirst,
+    cfg: dtCfg, targets: defTargets, ignore: defIgnore, ignorePlayers: defIgnorePlayers, completePlayers: defCompletePlayers, enemyIds: defEnemyIds, enemyTribes: defEnemyTribes, enemyDist: defEnemyDist, farFirst: defFarFirst,
     snipPlayers: defSnipPlayers, snipPct: defSnipPct, snipDist: defSnipDist,
     packMode: dpMode, packSize: dpPackSize, packMax: dpPackMax, packWeights: dpPackWeights,
     plan: defPlanRows, warnings: defPlanWarnings, nextId: dtNextId,
@@ -70,6 +79,7 @@ function loadDefensive() {
       const sPct = parseFloat(d.snipPct), sDist = parseFloat(d.snipDist);
       defSnipPct  = Number.isFinite(sPct)  ? Math.min(100, Math.max(0, sPct)) : DEF_SNIP_DEFAULTS.pct;
       defSnipDist = Number.isFinite(sDist) ? Math.max(0, sDist) : DEF_SNIP_DEFAULTS.dist;
+      defEnemyIds     = Array.isArray(d.enemyIds) ? d.enemyIds.map(String) : [];
       defEnemyTribes  = typeof d.enemyTribes === 'string' ? d.enemyTribes : '';
       defEnemyDist    = Math.max(0, parseInt(d.enemyDist, 10) || 0);
       defFarFirst     = d.farFirst === true;
@@ -94,8 +104,6 @@ function loadDefensive() {
   setVal('dt-def-heavy', dtCfg.defHeavy ?? 0);
   const ign = document.getElementById('dp-ignore-input');
   if (ign) ign.value = defIgnore;
-  const enm = document.getElementById('dp-enemy-input');
-  if (enm) enm.value = defEnemyTribes;
   setVal('plan-def-enemy-dist', defEnemyDist || 0);
   setVal('plan-def-snip-pct',  defSnipPct);
   setVal('plan-def-snip-dist', defSnipDist);
@@ -105,6 +113,7 @@ function loadDefensive() {
   renderDefIgnorePlayers();
   renderDefCompletePlayers();
   renderDefSnipPlayers();
+  refreshDefEnemyTribes(); // migrates any legacy free-text tribes once a DB is present, then paints
   renderDefMvPlayers();
   updDefPolyNote(); // a saved map-area filter must be visible from the first paint
 }

@@ -213,9 +213,30 @@ function parseAllyDb(text) { // id,name,tag,members,villages,points,all_points,r
   const out = {};
   for (const line of text.split('\n')) {
     const p = line.trim().split(',');
-    if (p.length >= 3 && p[0]) out[p[0].trim()] = { name: decodeName(p[1]), tag: decodeName(p[2]) };
+    // points / allPoints (v5.7.0) feed the Enemy Tribes picker's "biggest first" sort. `points`
+    // is the ranking figure (top-40 members), `allPoints` the sum over every member — on es100
+    // they're equal, but allPoints is the honest "total". Short/legacy lines simply get 0.
+    if (p.length >= 3 && p[0]) out[p[0].trim()] = {
+      name: decodeName(p[1]), tag: decodeName(p[2]),
+      points: parseInt(p[5], 10) || 0, allPoints: parseInt(p[6], 10) || 0,
+    };
   }
   return out;
+}
+
+// Total points of a tribe, biggest-first sort key for the Enemy Tribes picker. Prefers the
+// all-members total, falls back to the ranking points, then to 0 (fixture/legacy allyDb
+// entries built by hand carry neither).
+function allyPointsOf(a) {
+  return (a && (a.allPoints || a.points)) || 0;
+}
+// "[TAG] Name" for an ally id, resolved LIVE from allyDb — that's the whole reason Enemy
+// Tribes stores ids: a tribe that renames keeps working and shows its new name. An id the
+// loaded DB doesn't know returns '' so callers can mark it as unresolved.
+function allyLabel(id) {
+  const a = allyDb[id];
+  if (!a) return '';
+  return a.tag ? `[${a.tag}] ${a.name || ''}`.trim() : (a.name || '');
 }
 
 function dbTribeTag(v) {
@@ -242,6 +263,7 @@ function setDbData(vText, pText, aText) {
   renderDbTable();
   refreshTargetsFromDb();
   if (typeof refreshDefTargetsFromDb === 'function') refreshDefTargetsFromDb(); // defenders + tribe on defensive targets
+  if (typeof refreshDefEnemyTribes === 'function') refreshDefEnemyTribes();     // Enemy Tribes picker needs allyDb (+ migrates legacy text)
   renderTargetTable(); // refresh owner info in Tribe Timings
   renderPlanTable();   // materialize rally links once DB arrives
   if (typeof mapDetectAndSeed === 'function') mapDetectAndSeed(); // detect my tribe now the DB resolves coords

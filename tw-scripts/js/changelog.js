@@ -18,6 +18,16 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.7.0', date: '2026-08-05',
+    en: [
+      `<b>⚔ Enemy Tribes is now a picker, not a text box.</b> In <b>Defensive Targets</b>, enemy tribes are chosen from a dropdown of every tribe in the village database, <b>biggest first by total points</b> (each option shows its points), and added as chips like Ignore / Complete / Snip Players. No more typing a tag and hoping it matches — and no more silent misses from a typo, a trailing space, or two tribes with confusingly similar tags.`,
+      `<b>⚔ Tribes are remembered by ID, so renames can't break your filter.</b> A picked tribe is stored by its database ID instead of its tag or name, so when a tribe renames or re-tags mid-war the filter keeps working and the chip just shows the new name. Anything you typed in the old box is converted automatically the moment the database loads; whatever matches no tribe stays visible with a Discard button instead of vanishing, and Generate Defense tells you it isn't filtering anything.`,
+    ],
+    es: [
+      `<b>⚔ Tribus Enemigas ahora es un selector, no una caja de texto.</b> En <b>Objetivos Defensivos</b>, las tribus enemigas se eligen de un desplegable con todas las tribus de la base de datos de aldeas, <b>de mayor a menor por puntos totales</b> (cada opción muestra sus puntos), y se añaden como fichas igual que Ignorar / Completos / Snip. Se acabó escribir un tag y cruzar los dedos — y se acabaron los fallos silenciosos por una errata, un espacio de más o dos tribus con tags casi idénticos.`,
+      `<b>⚔ Las tribus se guardan por ID, así que un renombre no te rompe el filtro.</b> Una tribu elegida se guarda por su ID de la base de datos en vez de por su tag o nombre, así que si una tribu se renombra o se cambia el tag en plena guerra el filtro sigue funcionando y la ficha simplemente muestra el nombre nuevo. Lo que tuvieras escrito en la caja antigua se convierte solo en cuanto carga la base de datos; lo que no coincida con ninguna tribu se queda a la vista con un botón Descartar en vez de desaparecer, y Generar Defensa te avisa de que no está filtrando nada.`,
+    ],
+  },
   { ver: 'v5.6.0', date: '2026-08-05',
     en: [
       `<b>🎯 Snip Players — keep free defense at home.</b> A new picker in <b>Defensive Targets</b>, the mirror image of 💯 Complete Players: pick whole players who must always have defense ready to snipe or react. Plan Defense draws from them <b>last</b> — Complete Players, then everyone else's home defense, then everyone else's returning troops, and only then the snipers. A player can't be on both lists (draining 100% and keeping a reserve are opposites), and the picker says so.`,
