@@ -8,8 +8,7 @@ By uploading a user-generated mod for use with Tribal Wars, the creator grants I
 
   /* ── Constants ── */
 
-  // World id is the first hostname label on every TW domain
-  // (en130.tribalwars.net, es100.guerrastribales.es, de245.die-staemme.de, ...)
+  // Server-agnostic world parser (id is the first hostname label on every TW domain -> en130.tribalwars.net, es100.guerrastribales.es, de245.die-staemme.de, ...)
   const worldMatch = location.hostname.match(/^(\w+)\./);
   const world = worldMatch ? worldMatch[1] : null;
 
@@ -20,12 +19,12 @@ By uploading a user-generated mod for use with Tribal Wars, the creator grants I
 
   function parseTWDate(str) {
     const s = str.replace(/\s+/g,' ').trim();
-    // English worlds: "Mar 3, 2026 14:12:33"
+    // EN date format: "Mar 3, 2026 14:12:33"
     let m = s.match(/(\w{3})\s+(\d+),\s+(\d{4})\s+(\d+):(\d+):(\d+)/);
     if (m && m[1] in MONTHS) {
       return Date.UTC(+m[3], MONTHS[m[1]], +m[2], +m[4], +m[5], +m[6]);
     }
-    // Other locales (e.g. es): "02.08.26 17:48:39" (DD.MM.YY, optional trailing :ms)
+    // ES date format: "02.08.26 17:48:39" (DD.MM.YY, optional trailing :ms)
     m = s.match(/(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s+(\d+):(\d+):(\d+)/);
     if (m) {
       const year = +m[3] < 100 ? 2000 + +m[3] : +m[3];
@@ -47,6 +46,13 @@ By uploading a user-generated mod for use with Tribal Wars, the creator grants I
     return Object.keys(u).length ? u : null;
   }
 
+  // A scout run is spies, optionally with a token ram/catapult escort for fakes at slower speeds.
+  function isScoutRun(troops) {
+    if (!troops || !troops.spy) return false;
+    if (Object.keys(troops).some(u => u !== 'spy' && u !== 'ram' && u !== 'catapult')) return false;
+    return (troops.ram || 0) + (troops.catapult || 0) <= 5;
+  }
+
   // Drop keys whose value is null, undefined, empty string, or empty object
   function clean(obj) {
     const out = {};
@@ -59,8 +65,7 @@ By uploading a user-generated mod for use with Tribal Wars, the creator grants I
   }
 
   /* ── Report Parser ── */
-  // Parameterized on a Document so it can run against fetch()-ed report pages
-  // instead of only window.document.
+  // Parameterized on a Document so it can run against fetch()-ed report pages instead of only window.document.
 
   function parseParticipant(doc, r, tblId, unitTblId, pfx) {
     const tbl = doc.getElementById(tblId);
@@ -89,8 +94,7 @@ By uploading a user-generated mod for use with Tribal Wars, the creator grants I
 
     const unitTbl = doc.getElementById(unitTblId);
     if (unitTbl) {
-      // Row labels are localized ("Quantity:"/"Cantidad:"...), but the row order
-      // is fixed: first unit-count row = quantity, second = losses.
+      // Row labels are localized ("Quantity:"/"Cantidad:"...), but the row order is fixed: first unit-count row = quantity, second = losses.
       const rows = [...unitTbl.querySelectorAll('tr')]
         .filter(row => row.querySelector('[data-unit-count]'));
       const troops = extractUnits(rows[0]);
@@ -115,9 +119,7 @@ By uploading a user-generated mod for use with Tribal Wars, the creator grants I
       }
     }
 
-    // Timestamp. Direct-child cells + exact label match only: outer layout
-    // rows contain the whole report as one blob, where a loose match would
-    // pick up the first date on the page (e.g. "Hora de envío" = launch time).
+    // Timestamp. Direct-child cells + exact label match only: outer layout rows contain the whole report as one blob, where a loose match would pick up the first date on the page (e.g. "Hora de envío" = launch time).
     outer: for (const row of doc.querySelectorAll('tr')) {
       const cells = [...row.querySelectorAll(':scope > td')];
       if (cells.length >= 2
@@ -135,21 +137,18 @@ By uploading a user-generated mod for use with Tribal Wars, the creator grants I
       }
     }
 
-    // Luck — the raven icon is the bad-luck marker in every locale; it's the
-    // greyed-out asset (rabe_grau) exactly when luck is positive.
+    // Luck — the clover icon: klee.webp = positive luck, klee_grau.webp (greyed out) = negative.
     const luckBold = doc.querySelector('#attack_luck b');
     if (luckBold) {
       const pct = parseFloat(luckBold.textContent);
       if (!isNaN(pct)) {
-        const srcs = [...doc.querySelectorAll('#attack_luck img')]
-          .map(img => img.getAttribute('src') || '');
-        const positive = srcs.some(s => s.includes('rabe_grau'))
-          || !!doc.querySelector('#attack_luck img[alt="Luck"]');
-        r.luck = positive ? pct : -pct;
+        const negative = [...doc.querySelectorAll('#attack_luck img')]
+          .some(img => (img.getAttribute('src') || '').includes('klee_grau'));
+        r.luck = negative ? -pct : pct;
       }
     }
 
-    // Morale ("Morale:" / "Moral:")
+    // Morale
     for (const h4 of doc.querySelectorAll('h4')) {
       const m = h4.textContent.match(/Moral(?:e)?:\s*(\d+)/);
       if (m) { r.morale = parseInt(m[1]); break; }
@@ -159,11 +158,9 @@ By uploading a user-generated mod for use with Tribal Wars, the creator grants I
     parseParticipant(doc, r, 'attack_info_att', 'attack_info_att_units', 'attacker');
     parseParticipant(doc, r, 'attack_info_def', 'attack_info_def_units', 'defender');
 
-    // Report type — h3 wording is localized (and lost on renamed reports), so
-    // derive it from the attack itself: a scout run sends spies only.
+    // Report type — h3 wording is localized (and lost on renamed reports), so derive it from the attack itself. Must run after the participants are parsed: it reads attackerTroops.
     if (r.attackerTroops) {
-      r.reportType = Object.keys(r.attackerTroops).every(u => u === 'spy')
-        ? 'scout' : 'attack';
+      r.reportType = isScoutRun(r.attackerTroops) ? 'scout' : 'attack';
     } else if (doc.querySelector('h3')) {
       r.reportType = 'combat';
     }
@@ -175,8 +172,7 @@ By uploading a user-generated mod for use with Tribal Wars, the creator grants I
       if (u) r.defenderTroopsAway = u;
     }
 
-    // Buildings — hidden JSON input when present, otherwise the visible spy
-    // tables (building id taken from the icon path, which isn't localized)
+    // Buildings — hidden JSON input when present, otherwise the visible spy tables (building id taken from the icon path, which isn't localized)
     const bldInput = doc.getElementById('attack_spy_building_data');
     if (bldInput?.value) {
       try {
@@ -205,7 +201,7 @@ By uploading a user-generated mod for use with Tribal Wars, the creator grants I
     // Resources + relic
     const resTbl = doc.getElementById('attack_spy_resources');
     if (resTbl) {
-      // Icon classes (wood/stone/iron) are locale-independent; titles aren't.
+      // Icon classes (wood/stone/iron) are locale-independent.
       const get = cls => resTbl.querySelector(`.icon.${cls}`)?.closest('.nowrap');
       const parse = el => el ? parseInt(el.textContent.replace(/\D/g, '')) || 0 : 0;
       const w = get('wood'), c = get('stone'), ir = get('iron');
