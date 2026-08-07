@@ -21,7 +21,11 @@
    Known-empty vs unknown (mirrors js/reports-intel.js): a record with
    spy data (resources/buildings) but NO defenderTroops means the garrison
    was provably EMPTY (zeros row); no troops AND no spy data means the
-   defender was never seen (e.g. all spies died) — rendered as "?". */
+   defender was never seen (e.g. all spies died) — rendered as "?".
+   Unidades fuera is STRICTER: the game only shows that block when ≥90% of
+   the attacking spies survived, so it renders only when the record has an
+   away table or the spy run came back intact (spiesIntact) — otherwise the
+   block is omitted, exactly like the game. */
 (function () {
   "use strict";
 
@@ -166,6 +170,15 @@
       '%</span><div class="twrr-luckbar">' + seg + '<div class="twrr-luck-mid"></div></div></div>';
   }
 
+  // Mirrors riSpiesIntact in js/reports-intel.js: the game only renders the
+  // units-outside block when at least 90% of the attacking spies survived.
+  function spiesIntact(r) {
+    var sent = r.attackerTroops ? +r.attackerTroops.spy || 0 : 0;
+    if (!sent) return false;
+    var lost = r.attackerLosses ? +r.attackerLosses.spy || 0 : 0;
+    return (sent - lost) / sent >= 0.9;
+  }
+
   function reportHtml(r) {
     if (!r || typeof r !== "object") return "";
     var spied = !!(r.resources || r.buildings);
@@ -236,9 +249,11 @@
       h += "</div>";
     }
 
-    // Unidades fuera — shown when seen, or all-zero when espionage proved
-    // nothing was outside (same known-empty logic as the classifier).
-    if (r.defenderTroopsAway || spied) {
+    // Unidades fuera — shown when seen, or all-zero when a CLEAN spy run
+    // proved nothing was outside (same known-empty logic as the classifier).
+    // A mauled spy run (<90% survivors) had this block hidden in the game —
+    // omit it here too.
+    if (r.defenderTroopsAway || (spied && spiesIntact(r))) {
       h += '<div class="twrr-sec"><table class="twrr-away"><tr><th>Unidades fuera:</th></tr></table>' +
         troopTable(r.defenderTroopsAway || {}, null, false, false) + "</div>";
     }

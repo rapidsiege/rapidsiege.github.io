@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.8.1', date: '2026-08-07',
+    en: [
+      `<b>🎯 "Nothing outside (confirmed by espionage)" now requires an intact spy run.</b> The game only shows a report's "Units outside" block when at least 90% of the attacking spies survive — below that the block is hidden even though resources and buildings still show. Village Reports treated every spied report without an away block as proof that nothing was outside, so a village scouted through heavy spy losses could read "Nothing outside (confirmed by espionage)" when its army simply wasn't seen. Such reports now leave the away row as "never seen", the report modal no longer shows an all-zero "Units outside" table for them, and the shared DB was rebuilt under the new rule — ~115 wrongly-confirmed-empty villages went back to unknown (with the DEF? caveat restored where it applies).`,
+    ],
+    es: [
+      `<b>🎯 "Nada fuera (confirmado por espionaje)" ahora exige que los espías volvieran casi intactos.</b> El juego solo muestra el bloque "Unidades fuera" de un informe cuando sobrevive al menos el 90% de los espías atacantes — por debajo de eso el bloque se oculta aunque los recursos y edificios sí se vean. Informes de Aldeas trataba cualquier informe espiado sin bloque de fuera como prueba de que no había nada fuera, así que una aldea espiada perdiendo muchos espías podía decir "Nada fuera (confirmado por espionaje)" cuando su ejército simplemente no se vio. Esos informes ahora dejan la fila de fuera como "nunca vistas", el modal de informe ya no muestra una tabla "Unidades fuera" a ceros para ellos, y la BD compartida se reconstruyó con la nueva regla — unas 115 aldeas mal confirmadas como vacías vuelven a desconocido (recuperando el aviso DEF? donde toca).`,
+    ],
+  },
   { ver: 'v5.8.0', date: '2026-08-06',
     en: [
       `<b>🎯 Enemy Villages is now Village Reports — and it shows the biggest army sent, whatever its type.</b> The ⚔ Sent row used to appear only when a real off (≥500 off-pool) had been seen leaving the village. But a defensive village never fires an off — what it fires is heavy cavalry + catapults to shave your buildings, and that army was invisible. The row now shows the <b>biggest army ever seen leaving the village, by farm size, regardless of composition</b>, and known catapult strikers carry a purple <b>💥N</b> tail (N = the most catapults seen in one non-ram-off attack; hover for how many such attacks are on record). The map hover's sent section follows the same rule.`,

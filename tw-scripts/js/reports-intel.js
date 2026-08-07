@@ -6,9 +6,12 @@
 // villages:
 //   • the DEFENDER village: troops seen at home (defenderTroops), troops
 //     away (defenderTroopsAway), and whether espionage succeeded
-//     (resources/buildings present). Espionage success matters: when a
-//     report has spy data but NO away table, the village provably had
-//     nothing outside — "away" is then KNOWN-EMPTY, not unknown.
+//     (resources/buildings present). Espionage is TIERED: resources/buildings
+//     show up even when the spies took losses, but the game only renders the
+//     units-outside block when ≥90% of the attacking spies survived. So spy
+//     data with NO away table proves "nothing outside" (KNOWN-EMPTY) only
+//     when the spies came back intact (riSpiesIntact); below that the game
+//     HID the block — away stays unknown.
 //   • the ATTACKER village: what it SENT (attackerTroops). A village that
 //     fired a real off army is confirmed OFF even if never scouted — this
 //     is the one signal defense reports give us about enemy villages.
@@ -65,6 +68,18 @@ function riUnits(u) {
   return out;
 }
 
+// TW renders the units-outside block only when the espionage was CLEAN: at
+// least 90% of the attacking spies survived. Below that the report still
+// shows resources/buildings but HIDES the away block, so a missing away
+// table only proves "nothing outside" when the spies came back (nearly)
+// intact. No spy count in the record ⇒ can't verify ⇒ never confirm.
+function riSpiesIntact(r) {
+  const sent = r.attackerTroops ? (+r.attackerTroops.spy || 0) : 0;
+  if (!sent) return false;
+  const lost = r.attackerLosses ? (+r.attackerLosses.spy || 0) : 0;
+  return (sent - lost) / sent >= 0.9;
+}
+
 // Merge an array of reportsExport records into the store. Dedupe is by
 // world:reportId (same report uploaded twice, or present in two exports).
 // Per village, each SECTION keeps the newest observation independently —
@@ -96,8 +111,9 @@ function riMergeReports(store, reports) {
       }
       if (r.defenderTroopsAway) {
         if (!v.away || t >= v.away.t) v.away = { units: riUnits(r.defenderTroopsAway), t };
-      } else if (spied) {
-        // spy data with no away table ⇒ confirmed nothing outside
+      } else if (spied && riSpiesIntact(r)) {
+        // clean spy run with no away table ⇒ confirmed nothing outside
+        // (<90% survival means the game hid the block — away stays unknown)
         if (!v.away || t >= v.away.t) v.away = { units: {}, t, empty: true };
       }
       if (r.buildings && (!v.bld || t >= v.bld.t)) {
