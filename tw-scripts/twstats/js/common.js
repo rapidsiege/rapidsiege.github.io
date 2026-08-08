@@ -191,7 +191,8 @@
     if (!initial || !show(initial)) show(tabs[0].getAttribute("data-tab"));
   }
 
-  // Shared top nav. `active` = one of inicio|jugadores|tribus|pueblos|ennoblecimientos|entrantes.
+  // Shared top nav. `active` = one of
+  // inicio|jugadores|tribus|pueblos|ennoblecimientos|entrantes|historico|informes.
   var NAV = [
     { key: "inicio", href: "index.html", label: "Inicio" },
     { key: "jugadores", href: "rankings.html?mode=players", label: "Jugadores" },
@@ -199,6 +200,7 @@
     { key: "pueblos", href: "villages.html", label: "Pueblos" },
     { key: "ennoblecimientos", href: "ennoblements.html", label: "Ennoblecimientos" },
     { key: "entrantes", href: "incomings.html", label: "Entrantes" },
+    { key: "historico", href: "historico.html", label: "Histórico Informes" },
     { key: "informes", href: "informes.html", label: "Subir Informes" },
   ];
   function renderNav(active) {
