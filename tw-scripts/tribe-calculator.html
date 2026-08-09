@@ -525,6 +525,9 @@
     <button class="btn btn-ghost btn-sm" onclick="toggleOffIgnore()" data-i18n="btn_ignore_coords">🚫 Ignore Coordinates</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleOffIgnorePlayers()" data-i18n="btn_ignore_players">🙅 Ignore Players</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleOffMvPlayers()" data-i18n="btn_mv_players">🏖 MV Players</button>
+    <label data-i18n="lbl_enemy_dist">Distance from enemy tribes:</label>
+    <input type="number" id="ot-enemy-dist" value="0" min="0" style="width:70px;" title="0 = off" oninput="updOffEnemyDist()">
+    <button class="btn btn-ghost btn-sm" onclick="toggleOffEnemy()" data-i18n="btn_enemy_tribes">⚔ Enemy Tribes</button>
     <span style="font-size:12px;color:#5a3a18;" data-i18n="ot_defender_note">Defender auto-fills from the village database.</span>
     <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="toggleOtColVis()" data-i18n="btn_colvis">👁 Columns</button>
     <button class="btn btn-ghost btn-sm" onclick="openMassEdit()" data-i18n="btn_mass_edit">✏ Edit Selected Rows</button>
@@ -545,6 +548,10 @@
   <div id="ot-mv-players-wrap" style="display:none;margin-top:10px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="mv_players_hint">Pair players who are in vacation mode (MV): two paired players will never both attack the SAME enemy player (across all that player's villages) — a game limit during vacation mode and for 48h after. They stay fully pickable otherwise. Requires the tribe troop file.</div>
     <div id="ot-mv-players-host"></div>
+  </div>
+  <div id="ot-enemy-wrap" style="display:none;margin-top:10px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="off_enemy_hint">Pick enemy tribes from the village database, biggest first by total points. Any of your villages within the distance above of ANY village owned by these tribes keeps its off at home — never used as an off sender. This is SEPARATE from "Off min distance" (Plan Offensive): that one measures against your objectives, this one against the enemy's territory, and a village held by either is held. Noble trains are exempt. Tribes are remembered by their database ID, so a tribe that renames keeps working. Requires the village database.</div>
+    <div id="ot-enemy-host"></div>
   </div>
   <div id="ot-bulk-wrap" style="display:none;margin-bottom:12px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="bulk_hint">Paste coordinates (one per line, optionally followed by the defender name) and click Add.</div>
@@ -1153,7 +1160,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.9.0 &nbsp;·&nbsp; 2026-08-09</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.10.0 &nbsp;·&nbsp; 2026-08-10</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

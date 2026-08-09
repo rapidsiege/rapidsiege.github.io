@@ -15,6 +15,15 @@ let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00
 let offTargets   = [];
 let offIgnore        = ''; // raw "Ignore Coordinates" textarea (Offensive Targets) — these villages never send anything
 let offIgnorePlayers = []; // raw player names excluded from the whole plan (no off, no snob, no escort)
+// "Enemy Tribes" (v5.10.0, offensive side): ally IDs whose villages bar nearby SENDERS from
+// launching offs — the front line keeps its offs at home. Deliberately INDEPENDENT of the
+// defensive `defEnemyIds`/`defEnemyDist` (defensive-targets.js): the two plans are run at
+// different moments with different intents, so picking a tribe for one must not silently
+// re-shape the other. IDs (never tags/names), same as the defensive picker since v5.7.0, so a
+// rename can't break the filter; labels resolve from allyDb at render time. There is no legacy
+// free-text form to migrate here — the offensive filter never had one.
+let offEnemyIds      = []; // ally ids (strings) whose villages bar nearby senders
+let offEnemyDist     = 0;  // "Distance from enemy tribes" (fields); 0 = filter off
 let mvPairs          = []; // [[rawA, rawB], …] vacation-mode pairs — SHARED by Plan Offensive AND Plan Defense (edited from either the Offensive-Targets or Defensive-Targets picker; persisted here in tw_tribe_offensive). Offensive rule: two paired players can't both attack the SAME enemy player. Defensive rule: they can't both support the SAME target, nor support a village their partner owns.
 // Coordinate Filter (Plan Offensive): layered X|Y bounds that a village must ALL satisfy to be
 // used as a sender (off OR snob train). [{axis:'x'|'y', op:'>'|'>='|'<'|'<='|'=', val:'<number>'}].
@@ -38,7 +47,10 @@ function emptyPlanStats() {
   // `unused` (pre-v4.22) is split into three geometry-reasoned buckets: `far` (beyond max
   // distance of every target), `outside` (off-capable but outside the sender area — typed
   // coord filters / drawn polygon), and `avail` (free, in-area, in-band, in-time → deployable).
-  const t = () => ({ assigned: 0, heldDist: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0 });
+  // `heldEnemy` (v5.10.0) is its OWN bucket, not folded into `heldDist`: both are distance
+  // holdbacks but they answer different questions ("too close to an objective" vs "too close to
+  // an enemy tribe"), and a user who sees the footer needs to know which knob to turn.
+  const t = () => ({ assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0 });
   return { complete: t(), tq: t(), half: t() };
 }
 let planStats    = emptyPlanStats();
@@ -247,6 +259,7 @@ function otMultiGroup() { return otGroups().length > 1; }
 function saveOffensive() {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
     cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, mvPairs,
+    enemyIds: offEnemyIds, enemyDist: offEnemyDist,
     coordFilters: planCoordFilters, coordPolygon: planCoordPolygon, coordPolygonInv: planCoordPolygonInv,
     plan: planRows, warnings: planWarnings, reserved: planReserved, stats: planStats, nextId: otNextId,
   }));
@@ -263,6 +276,8 @@ function loadOffensive() {
       offTargets   = d.targets || [];
       offIgnore        = typeof d.ignore === 'string' ? d.ignore : '';
       offIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
+      offEnemyIds      = Array.isArray(d.enemyIds) ? d.enemyIds.map(String) : [];
+      offEnemyDist     = Math.max(0, parseInt(d.enemyDist, 10) || 0);
       mvPairs          = Array.isArray(d.mvPairs) ? d.mvPairs.filter(p => Array.isArray(p) && p.length === 2 && p[0] && p[1] && p[0] !== p[1]) : [];
       planCoordFilters = Array.isArray(d.coordFilters) ? d.coordFilters.filter(f => f && (f.axis === 'x' || f.axis === 'y')) : [];
       planCoordPolygonInv = d.coordPolygonInv === true;
@@ -296,8 +311,11 @@ function loadOffensive() {
   if (dsm) dsm.value = otCfg.defSnobMode || 'solo';
   const ign = document.getElementById('ot-ignore-input');
   if (ign) ign.value = offIgnore;
+  const oed = document.getElementById('ot-enemy-dist');
+  if (oed) oed.value = offEnemyDist || 0;
   renderOffIgnorePlayers();
   renderOffMvPlayers();
+  renderOffEnemyTribes();
 }
 
 function updOTCfg(k, v) { otCfg[k] = v.trim(); saveOffensive(); }
@@ -326,6 +344,127 @@ function updOffIgnore() {
 }
 function toggleOffIgnore() {
   const el = document.getElementById('ot-ignore-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+// ── Enemy Tribes (Offensive Targets, v5.10.0) ────────────────────────────────
+// The offensive twin of the Plan-Defense filter: a village within "Distance from enemy tribes"
+// fields of ANY village owned by ANY picked tribe keeps its off at home. It is a SECOND,
+// independent gate alongside "Off min distance" (Plan Offensive) — that one measures against
+// the plan's own objectives, this one against the enemy's whole territory, and a village barred
+// by either is held. Sender-side only: the targets in the table are untouched (attacking an
+// enemy tribe is the point). Needs the world DB, both to pick a tribe and to locate its
+// villages; the tribe-troop file alone is not enough.
+//
+// State/UI here in offensive-targets.js, applied in plan.js (generatePlan). Village lookup
+// reuses enemyTribeVillageCoords() from defense-plan.js — every js/ file shares one flat global
+// scope and functions are hoisted, so the cross-file call is safe and load order is irrelevant.
+function parseOffEnemySet() {
+  return new Set(offEnemyIds.map(String));
+}
+// Tribes not already picked, BIGGEST FIRST by total points (same sort as the defensive picker:
+// the tribe worth worrying about is the big one), ties broken by label so the order is stable.
+function offEnemyTribeOptions() {
+  return Object.keys(allyDb)
+    .filter(id => !offEnemyIds.includes(String(id)))
+    .map(id => ({ id: String(id), label: allyLabel(id), points: allyPointsOf(allyDb[id]) }))
+    .sort((a, b) => (b.points - a.points) || a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
+}
+function addOffEnemyTribe(id) {
+  id = String(id || '');
+  if (!id || offEnemyIds.includes(id)) return;
+  offEnemyIds.push(id);
+  saveOffensive(); renderOffEnemyTribes();
+  renderOtOffsSummary(); // barred villages leave the summary's available pool
+}
+function removeOffEnemyTribe(idx) {
+  offEnemyIds.splice(idx, 1);
+  saveOffensive(); renderOffEnemyTribes();
+  renderOtOffsSummary(); // barred villages leave the summary's available pool
+}
+// Chip list + points-sorted picker. PURE PAINT — no save (saveOffensive serializes the whole
+// offensive blob, so writing from a repaint would couple correctness to caller ordering).
+// Chips resolve their label from allyDb every paint, so a renamed tribe follows automatically;
+// an id the DB no longer knows keeps its place as "?<id>" so it can be seen and removed rather
+// than silently filtering nothing.
+function renderOffEnemyTribes() {
+  const host = document.getElementById('ot-enemy-host');
+  if (!host) return;
+  const haveDb = Object.keys(allyDb).length > 0;
+  if (!haveDb && !offEnemyIds.length) {
+    host.innerHTML = `<span class="num-zero" title="${esc(t('def_enemy_need_db'))}">—</span>`;
+    return;
+  }
+  const chips = offEnemyIds.map((id, i) => {
+    const label = allyLabel(id);
+    const unknown = !label;
+    return `<span class="chip"${unknown ? ` title="${esc(t('def_enemy_unknown_id'))}"` : ''}>`
+      + `${unknown ? '?' + esc(id) : esc(label)}<span class="chip-x" onclick="removeOffEnemyTribe(${i})">✕</span></span>`;
+  }).join('');
+  const picker = haveDb
+    ? `<select class="cell-input" style="width:230px;" onchange="addOffEnemyTribe(this.value)">
+         <option value="">${t('opt_pick_enemy_tribe')}</option>
+         ${offEnemyTribeOptions().map(o =>
+           `<option value="${esc(o.id)}">${esc(o.label)} (${o.points.toLocaleString()})</option>`).join('')}
+       </select>`
+    : `<span class="num-zero" title="${esc(t('def_enemy_need_db'))}">${esc(t('def_enemy_need_db'))}</span>`;
+  host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}${picker}</div>`;
+}
+// The live radius: the DOM is the source of truth (like every other plan field), with the
+// persisted value as fallback so a headless run — where inputs read '' — still sees it.
+function offEnemyDistLive() {
+  const raw = parseFloat((document.getElementById('ot-enemy-dist') || {}).value);
+  return Math.max(0, Number.isFinite(raw) ? raw : (typeof offEnemyDist === 'number' ? offEnemyDist : 0));
+}
+
+// Coord strings of OUR villages barred by the Enemy Tribes filter — THE single definition of
+// "too close to an enemy tribe", used by BOTH generatePlan (plan.js) and the Offensive Targets
+// footer (renderOtOffsSummary), so the count the footer shows can never disagree with the
+// number of offs Generate actually holds back.
+//
+// Computed fresh on every call (no memo): the plan must never be able to run off a stale
+// snapshot of the world DB, and the footer is repainted on every keystroke in the Ignore box.
+// Naive "every village × every enemy village" is O(N×M) and would make that repaint drag on a
+// big war, so enemy villages go into a grid of `dist`-sized cells and each of ours only tests
+// the 3×3 cells around it — the only cells that can hold a village within the radius.
+function offEnemyExcludedCoords() {
+  const excl = new Set();
+  const dist = offEnemyDistLive();
+  if (dist <= 0) return excl;
+  const enemyCoords = enemyTribeVillageCoords(parseOffEnemySet()); // defense-plan.js (flat global scope)
+  if (!enemyCoords.length) return excl;
+  const cell = Math.max(1, Math.ceil(dist));
+  const grid = new Map();
+  const key = (cx, cy) => cx + ':' + cy;
+  for (const e of enemyCoords) {
+    const k = key(Math.floor(e.x / cell), Math.floor(e.y / cell));
+    let b = grid.get(k); if (!b) grid.set(k, b = []);
+    b.push(e);
+  }
+  for (const v of villages) {
+    const c = parseCoordStr(v.coord);
+    if (!c) continue;
+    const cx = Math.floor(c.x / cell), cy = Math.floor(c.y / cell);
+    let near = false;
+    for (let dx = -1; dx <= 1 && !near; dx++) {
+      for (let dy = -1; dy <= 1 && !near; dy++) {
+        const b = grid.get(key(cx + dx, cy + dy));
+        if (b) for (const e of b) if (distXY(c, e) <= dist) { near = true; break; }
+      }
+    }
+    if (near) excl.add(v.coord);
+  }
+  return excl;
+}
+
+function updOffEnemyDist() {
+  const el = document.getElementById('ot-enemy-dist');
+  offEnemyDist = el ? Math.max(0, parseInt(el.value, 10) || 0) : 0;
+  saveOffensive();
+  renderOtOffsSummary(); // the radius shrinks the summary's available pool
+}
+function toggleOffEnemy() {
+  const el = document.getElementById('ot-enemy-wrap');
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
@@ -1365,26 +1504,34 @@ function renderOtOffsSummary() {
     s + (tg.snobMode === 'escorted' ? targetTrainSpec(tg).length : 0), 0);
   const ignoreCoords = parseOffIgnoreSet();
   const ignorePl = new Set(offIgnorePlayers);
-  const stat = { complete: { total: 0, ign: 0 }, tq: { total: 0, ign: 0 }, half: { total: 0, ign: 0 } };
+  // Villages the Enemy Tribes filter holds home are unavailable exactly like ignored ones, so
+  // they come out of the pool here too — otherwise this footer promises offs that Generate
+  // will not assign. Same set generatePlan uses, so the two can't disagree. A village that is
+  // BOTH ignored and enemy-adjacent counts once, under `ign` (the order plan.js's stats use).
+  const enemyExcl = offEnemyExcludedCoords();
+  const stat = { complete: { total: 0, ign: 0, enemy: 0 }, tq: { total: 0, ign: 0, enemy: 0 }, half: { total: 0, ign: 0, enemy: 0 } };
   for (const v of villages) {
     const s = stat[getOffTier(v.offPow)];
     if (!s) continue;
     s.total++;
     if (ignoreCoords.has(v.coord) || ignorePl.has(v.player)) s.ign++;
+    else if (enemyExcl.has(v.coord)) s.enemy++;
   }
   const tierMeta = [['complete', 'badge-complete', 'th_complete'], ['tq', 'badge-tq', 'th_tq'], ['half', 'badge-half', 'th_half']];
-  let ignTotal = 0;
+  let ignTotal = 0, enemyTotal = 0;
   const parts = tierMeta.map(([tier, cls, label]) => {
     // Summed across EVERY window group: a village can only send one off, so a target asking
     // for 2 Completes on Friday and 2 more on Saturday really does cost 4 Completes.
     const used = realTargets.reduce((s, tg) => s + otTierTotal(tg, tier), 0) + (tier === 'complete' ? escortOffs : 0);
-    const avail = stat[tier].total - stat[tier].ign;
+    const avail = stat[tier].total - stat[tier].ign - stat[tier].enemy;
     ignTotal += stat[tier].ign;
+    enemyTotal += stat[tier].enemy;
     const usedHtml = used > avail ? `<span style="color:#e06040;">${used}</span>` : `${used}`;
     return `<span class="badge ${cls}">${t(label)}</span> ${usedHtml} / ${avail}`;
   });
   const notes = [];
   if (ignTotal > 0) notes.push(t('offs_ignored_note')(ignTotal));
+  if (enemyTotal > 0) notes.push(t('offs_enemy_note')(enemyTotal));
   if (escortOffs > 0) notes.push(t('offs_escort_note')(escortOffs));
   const note = notes.length ? ` <span style="color:#806030;font-weight:400;">${notes.join(' ')}</span>` : '';
   el.innerHTML =

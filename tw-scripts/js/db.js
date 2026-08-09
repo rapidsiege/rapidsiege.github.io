@@ -264,6 +264,7 @@ function setDbData(vText, pText, aText) {
   refreshTargetsFromDb();
   if (typeof refreshDefTargetsFromDb === 'function') refreshDefTargetsFromDb(); // defenders + tribe on defensive targets
   if (typeof refreshDefEnemyTribes === 'function') refreshDefEnemyTribes();     // Enemy Tribes picker needs allyDb (+ migrates legacy text)
+  if (typeof renderOffEnemyTribes === 'function') renderOffEnemyTribes();       // same, offensive side (no legacy text → plain repaint)
   renderTargetTable(); // refresh owner info in Tribe Timings
   renderPlanTable();   // materialize rally links once DB arrives
   if (typeof mapDetectAndSeed === 'function') mapDetectAndSeed(); // detect my tribe now the DB resolves coords

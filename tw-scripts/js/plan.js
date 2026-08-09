@@ -298,7 +298,35 @@ function generatePlan() {
   const tooClose = new Set(minDist > 0
     ? pool.filter(p => targetCoords.some(tc => distXY(p.c, tc) < minDist))
     : []);
-  const okOffDist = (p, tc) => !tooClose.has(p) && (maxDist <= 0 || distXY(p.c, tc) <= maxDist);
+
+  // ── Enemy Tribes proximity bar (v5.10.0) — a SECOND, independent holdback ──────────────
+  // minDist above measures against this plan's own objectives; this one measures against the
+  // enemy's whole territory, so "hold everything within 20 of a target AND everything within 10
+  // of tribe X" is one plan, not two runs. A village barred by either is held. Same shape as
+  // tooClose (holds offs + escorts, snob trains exempt — a noble launch is governed by
+  // okSnobDist/snobMax, and nobles usually have to come from close by, front line or not).
+  // Selection + radius live on the Offensive Targets tab (offensive-targets.js) and are
+  // deliberately independent of the Plan-Defense Enemy Tribes filter. Needs the world DB to
+  // locate hostile villages.
+  //
+  // The barred set comes from offEnemyExcludedCoords() (offensive-targets.js) — the SAME call
+  // the Offensive Targets footer makes, so the "N held by enemy tribes" it shows and the offs
+  // this plan actually holds back can never drift apart. It reads the radius DOM-first with the
+  // persisted offEnemyDist as fallback, so a headless run (inputs read '') still filters.
+  const enemyDist = offEnemyDistLive();
+  const enemySet = parseOffEnemySet();
+  if (enemySet.size) {
+    // Fail loudly rather than silently planning as if the filter were on.
+    if (enemyDist <= 0)          planWarnings.push(t('warn_off_enemy_no_dist'));
+    else if (!villageDb.length)  planWarnings.push(t('warn_off_enemy_no_db'));
+    else {
+      const unresolved = [...enemySet].filter(id => !allyDb[id]);
+      if (unresolved.length) planWarnings.push(t('warn_off_enemy_unresolved')(unresolved.join(', ')));
+    }
+  }
+  const enemyExcl = offEnemyExcludedCoords();
+  const nearEnemy = new Set(enemyExcl.size ? pool.filter(p => enemyExcl.has(p.v.coord)) : []);
+  const okOffDist = (p, tc) => !tooClose.has(p) && !nearEnemy.has(p) && (maxDist <= 0 || distXY(p.c, tc) <= maxDist);
   // Nobles have a hard travel limit in the game (70 fields on es100)
   const snobMax = getSnobMax();
   const okSnobDist = (p, tc) => snobMax <= 0 || distXY(p.c, tc) <= snobMax;
@@ -1134,7 +1162,7 @@ function generatePlan() {
   // 1-2) by each village's OWN tier. Computed HERE (after every off pass) so `usedOff` /
   // `isEscort` are final. Over OFF-CAPABLE villages only (tier !== 'none' — a defensive/empty
   // village isn't an off). The buckets PARTITION each tier's gross village count so the footer
-  // reconciles exactly: gross[tier] = assigned + heldDist + heldNoble + heldSplit + heldLate + far + outside + avail + ignored.
+  // reconciles exactly: gross[tier] = assigned + heldDist + heldEnemy + heldNoble + heldSplit + heldLate + far + outside + avail + ignored.
   //   • ignored    = excluded from the pool by the Ignore Coordinates / Ignore Players lists
   //   • outside    = off-capable, NOT ignored, but outside the sender area (typed coord filters
   //                  or the drawn polygon) — so it never enters the pool at all. Counted from the
@@ -1143,6 +1171,8 @@ function generatePlan() {
   //   • split-off  = the village whose off rides WITH a noble as the escort (usedOff + isEscort)
   //   • noble launch = a launch village held free for the noble (snobReserved, not used)
   //   • distance   = the blanket minDist holdback (tooClose), not otherwise used/reserved
+  //   • enemy tribes = held by the Enemy Tribes radius (nearEnemy) — a SEPARATE bucket from
+  //                  `distance` so the footer says which of the two knobs held the village
   //   • far        = free, in-area, but beyond MAX distance of every target (can't reach anything)
   //   • avail      = free, in-area, in-band AND in time for some target → genuinely deployable now
   //                  (the "did I leave usable offs on the table?" number; ideally near 0)
@@ -1187,6 +1217,7 @@ function generatePlan() {
     else if (snobReserved.has(p))                           s.heldNoble++;     // held free for a noble launch
     else if (p.usedOff)                                     s.assigned++;      // an off committed in the plan
     else if (tooClose.has(p))                               s.heldDist++;      // blanket min-distance holdback
+    else if (nearEnemy.has(p))                              s.heldEnemy++;     // inside the Enemy Tribes radius
     else if (offLate(p))                                    s.heldLate++;      // reachable by distance but too late everywhere
     else if (offFar(p))                                     s.far++;           // free, in-area, but beyond max distance of every target
     else                                                    s.avail++;         // free, in-area, in-band, in time → deployable now
@@ -1226,12 +1257,13 @@ function renderPlanTable() {
   if (planRows.length && planStats) {
     // One line per off tier, behind a collapsible toggle (native <details>, file://-safe).
     const segs = ['complete', 'tq', 'half'].map(tier => {
-      const s = planStats[tier] || { assigned: 0, heldDist: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0 };
+      // A plan saved before v5.10.0 has no `heldEnemy` — the string treats it as 0.
+      const s = planStats[tier] || { assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0 };
       // [N] = gross count of villages of this tier tribe-wide (same denominator as the
       // Offensive Targets footer — total selectable offs, before any holdback/reservation).
       const gross = villages.filter(v => getOffTier(v.offPow) === tier).length;
       return `<span class="badge ${TIER_BADGE[tier]}">${t('tier_' + tier)} [${gross}]</span> `
-        + esc(t('plan_offs_summary')(s.assigned, s.heldDist, s.heldNoble, s.heldSplit, s.heldLate, s.far, s.outside, s.avail, s.ignored));
+        + esc(t('plan_offs_summary')(s.assigned, s.heldDist, s.heldNoble, s.heldSplit, s.heldLate, s.far, s.outside, s.avail, s.ignored, s.heldEnemy));
     });
     summary += `<details style="margin-top:6px;"><summary style="cursor:pointer;">${esc(t('btn_show_off_counts'))}</summary>`
       + `<div style="margin-top:4px;line-height:1.9;">${segs.join('<br>')}</div></details>`;
