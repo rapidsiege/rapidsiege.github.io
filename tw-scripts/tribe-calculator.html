@@ -494,27 +494,16 @@
       <button class="btn btn-ghost btn-sm" onclick="clearOffTargets()" data-i18n="btn_clear_targets">✕ Clear All</button>
     </div>
   </div>
-  <div class="filter-row" style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
-    <label data-i18n="lbl_date_label">Arrival date:</label>
-    <input type="date" id="ot-date" onchange="updOTCfg('dateISO',this.value)">
-    <span id="ot-date-preview" style="font-size:12px;color:#f0c040;font-weight:600;"></span>
-    <label data-i18n="lbl_def_winoff">Default off window:</label>
-    <span style="display:inline-flex;gap:3px;align-items:center;">
-      <input type="time" id="ot-def-winoff-s" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinOff')">
-      <button class="btn btn-ghost btn-sm" id="ot-def-winoff-fix" style="padding:1px 6px;" onclick="fixDefWin('defWinOff')">=</button>
-      <input type="time" id="ot-def-winoff-e" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinOff')">
-    </span>
-    <label data-i18n="lbl_def_winsnob">Default snob window:</label>
-    <span style="display:inline-flex;gap:3px;align-items:center;">
-      <input type="time" id="ot-def-winsnob-s" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinSnob')">
-      <button class="btn btn-ghost btn-sm" id="ot-def-winsnob-fix" style="padding:1px 6px;" onclick="fixDefWin('defWinSnob')">=</button>
-      <input type="time" id="ot-def-winsnob-e" class="cell-input mono" style="width:88px;" onchange="updDefWin('defWinSnob')">
-    </span>
-    <span class="map-tb-sep"></span>
-    <button class="btn btn-ghost btn-sm" onclick="applyDefArrivalToAll()" data-i18n="btn_apply_arrival" data-i18n-title="apply_arrival_title">↻ Update arrival times</button>
+  <!-- Off Window Groups: each is an independent wave with its own arrival date, off window and
+       snob window. Rows are rendered by renderOffWindowGroups() (js/offensive-targets.js). -->
+  <div style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:8px;font-weight:600;" data-i18n="lbl_window_groups">Off window groups</div>
+    <div id="ot-groups-host"></div>
   </div>
   <div class="filter-row" style="margin-top:8px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
     <label data-i18n="lbl_def_offs">Default offs:</label>
+    <span id="ot-def-group-lbl" style="display:none;"><label data-i18n="lbl_def_group">in group:</label></span>
+    <select id="ot-def-group" class="cell-input" style="width:auto;display:none;" data-i18n-title="def_group_title" onchange="updDefGroup(this.value)"></select>
     <span class="badge badge-complete" data-i18n="opt_complete">Complete Off</span>
     <input type="number" id="ot-def-complete" min="0" max="99" style="width:55px;" oninput="updOTCfgInt('defComplete',this.value)">
     <span class="badge badge-tq" data-i18n="opt_tq">3/4</span>
@@ -1164,7 +1153,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.8.1 &nbsp;·&nbsp; 2026-08-07</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.9.0 &nbsp;·&nbsp; 2026-08-09</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
@@ -1247,6 +1236,11 @@ document.addEventListener('drop', e => {
         <span id="ot-mass-catb-host" style="display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center;"></span>
         <button class="btn btn-primary btn-sm" onclick="massSetCatBuildings()" data-i18n="mass_apply" data-i18n-title="mass_catb_title">Apply</button>
       </div>
+      <div class="mass-row" id="ot-mass-group-row" style="display:none;">
+        <span class="mass-lbl">🅰 <span data-i18n="lbl_window_group">Window group</span></span>
+        <select id="ot-mass-group" class="cell-input" style="width:auto;" data-i18n-title="mass_group_title"></select>
+        <span style="font-size:12px;color:#806030;" data-i18n="mass_group_hint">The Offs row below writes into this group only.</span>
+      </div>
       <div class="mass-row">
         <span class="mass-lbl"><img class="tw-ic" src="icons/units/off.png" alt=""> <span data-i18n="mass_lbl_offs">Offs:</span></span>
         <span class="badge badge-complete" data-i18n="th_complete">Complete</span>
@@ -1269,17 +1263,10 @@ document.addEventListener('drop', e => {
         <button class="btn btn-ghost btn-sm" onclick="massSetCatMode('farm')" data-i18n="catb_farm">Farm</button>
         <button class="btn btn-ghost btn-sm" onclick="massSetCatMode('wall')" data-i18n="catb_wall">Wall</button>
       </div>
-      <div class="mass-row">
-        <span class="mass-lbl">⏱ <span data-i18n="th_win_off">Off Windows</span></span>
-        <span id="ot-mass-winoff-host" style="display:flex;flex-direction:column;gap:3px;"></span>
-        <button class="btn btn-primary btn-sm" onclick="massSetOffWin()" data-i18n="mass_apply" data-i18n-title="mass_winoff_title">Apply</button>
-      </div>
-      <div class="mass-row">
-        <span class="mass-lbl">⏱ <span data-i18n="th_win_snob">Snob Window</span></span>
-        <input type="time" id="ot-mass-winsnob-s" class="cell-input mono" style="width:88px;">
-        <button class="btn btn-ghost btn-sm" style="padding:1px 6px;" data-i18n-title="fix_time_title" onclick="fixMassWin('ot-mass-winsnob')">=</button>
-        <input type="time" id="ot-mass-winsnob-e" class="cell-input mono" style="width:88px;">
-        <button class="btn btn-primary btn-sm" onclick="massSetSnobWin()" data-i18n="mass_apply">Apply</button>
+      <div class="mass-row" id="ot-mass-snobgroup-row" style="display:none;">
+        <span class="mass-lbl"><img class="tw-ic" src="icons/units/snob.png" alt=""> <span data-i18n="th_win_snob">Snob Window</span></span>
+        <select id="ot-mass-snobgroup" class="cell-input" style="width:auto;" data-i18n-title="mass_snobgroup_title"></select>
+        <button class="btn btn-primary btn-sm" onclick="massSetSnobGroup()" data-i18n="mass_apply" data-i18n-title="mass_snobgroup_title">Apply</button>
       </div>
       <div class="mass-row">
         <span class="mass-lbl"></span>

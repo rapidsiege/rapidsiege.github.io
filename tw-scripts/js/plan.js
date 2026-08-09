@@ -10,6 +10,14 @@ function parseWindowStr(s) {
   const m = String(s || '').match(/(\d{1,2}):(\d{2})\s*[\/\-–]\s*(\d{1,2}):(\d{2})/);
   return m ? { f: +m[1] * 60 + +m[2], to: +m[3] * 60 + +m[4] } : null;
 }
+// The arrival DATE a plan row lands on. Since v5.9 the row carries it (stamped from its window
+// group at generation time); rows restored from a pre-v5.9 save have none, and fall back to the
+// first group's date — which is exactly the single global date those saves were built with.
+function planRowDateISO(r) {
+  if (r && r.dateISO) return r.dateISO;
+  if (r && r.group != null && otGroupIndex(r.group) >= 0) return otGroupById(r.group).dateISO || '';
+  return otGroups()[0].dateISO || '';
+}
 
 // ── Server time (local clock → epoch → server UTC offset) ──
 function serverNowMs() { return Date.now(); } // separate so tests can freeze the clock
@@ -40,8 +48,10 @@ function updateServerNow() {
   if (sp) sp.textContent = t('server_now')(serverNowStr());
 }
 
-// Launch window = landing window minus travel time (wraps past midnight)
-function launchWindowStr(winStr, travelMin) {
+// Launch window = landing window minus travel time (wraps past midnight). `dateISO` is the
+// arrival date the window sits on — the row's own window group's since v5.9; omitted, it falls
+// back to the first group's, which is the only date a single-wave plan has.
+function launchWindowStr(winStr, travelMin, dateISO) {
   const w = parseWindowStr(winStr);
   if (!w) return '—';
   const tr = Math.round(travelMin);
@@ -51,7 +61,7 @@ function launchWindowStr(winStr, travelMin) {
   const span = w.f === w.to ? fm(w.f - tr) : `${fm(w.f - tr)}–${fm(w.to - tr)}`;
   if (!days) return span;
   // with an arrival date set, name the actual launch day next to the −Nd marker
-  const m = String(otCfg.dateISO || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const m = String(dateISO === undefined ? (otGroups()[0].dateISO || '') : (dateISO || '')).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]) - days * 86400000) : null;
   const ds = d ? ` · ${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}` : '';
   return `${span} (−${days}d${ds})`;
@@ -59,7 +69,7 @@ function launchWindowStr(winStr, travelMin) {
 
 // Same launch-window math as launchWindowStr, but returns the parts the per-player BB needs
 // separately: the time span and the launch day-of-month (null when no arrival date is set).
-function launchWindowParts(winStr, travelMin) {
+function launchWindowParts(winStr, travelMin, dateISO) {
   const w = parseWindowStr(winStr);
   if (!w) return null;
   const tr = Math.round(travelMin);
@@ -68,7 +78,7 @@ function launchWindowParts(winStr, travelMin) {
   const days = w.f - tr < 0 ? Math.ceil((tr - w.f) / 1440) : 0;
   const single = w.f === w.to;
   const span = single ? fm(w.f - tr) : `${fm(w.f - tr)}–${fm(w.to - tr)}`;
-  const m = String(otCfg.dateISO || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const m = String(dateISO === undefined ? (otGroups()[0].dateISO || '') : (dateISO || '')).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]) - days * 86400000) : null;
   return { span, single, day: d ? d.getUTCDate() : null };
 }
@@ -317,15 +327,20 @@ function generatePlan() {
   // pushes the launch before the current server time can never make it.
   // Vetted against the target's LATEST possible landing minute; the assigned
   // window may still be earlier — those rows get flagged late after assignment.
+  // Each window group is an independent wave with its own arrival DATE and landing window, so
+  // "can this village still launch in time?" is answered per (target, group), not per target.
+  // T.gEnd[gid] = the latest landing minute for that group's off window; T.snobEnd carries the
+  // same for the target's noble train, which lands in its primary group's snob window.
   for (const T of targets) {
     if (!T.c) continue;
-    const wins = (T.tg.offWindows && T.tg.offWindows.length ? T.tg.offWindows : [{ win: '' }])
-      .map(w => w.win || T.tg.winSnob || '');
-    T.offEndMin = wins.reduce((best, w) => {
-      const pw = parseWindowStr(w);
-      return pw && (best === null || pw.to > best) ? pw.to : best;
-    }, null);
-    const sw = parseWindowStr(T.tg.winSnob || wins[wins.length - 1] || '');
+    T.gEnd = {};
+    for (const g of otActiveGroups(T.tg)) {
+      const pw = parseWindowStr(g.winOff || g.winSnob || '');
+      T.gEnd[g.id] = pw ? pw.to : null;
+    }
+    const pg = otGroupById(otPrimaryGroupId(T.tg));
+    T.snobGroup = pg;
+    const sw = parseWindowStr(pg.winSnob || pg.winOff || '');
     T.snobEndMin = sw ? sw.to : null;
   }
   // Earliest send floor. A launch can never be scheduled before "now", nor (when the user set
@@ -339,18 +354,24 @@ function generatePlan() {
   // If the earliest-send is at/after a target's whole arrival window, nothing can reach it
   // (max travel = window end − floor ≤ 0) — flag it so the target doesn't just silently empty.
   if (esMs !== null) for (const T of targets) {
-    if (!T.c || T.offEndMin === null || T.offEndMin === undefined) continue;
-    const landMs = serverWallMs(otCfg.dateISO, T.offEndMin);
-    if (landMs !== null && esMs >= landMs) planWarnings.push(t('warn_earliest_after_window')(T.tg.coord));
+    if (!T.c) continue;
+    for (const g of otActiveGroups(T.tg)) {
+      const endMin = T.gEnd[g.id];
+      if (endMin === null || endMin === undefined) continue;
+      const landMs = serverWallMs(g.dateISO, endMin);
+      if (landMs !== null && esMs >= landMs) planWarnings.push(t('warn_earliest_after_window')(T.tg.coord));
+    }
   }
-  const okTime = (p, T, endMin, baseMin) => {
+  // `dateISO` is the group's arrival date — with several groups the same window minute means a
+  // different epoch in each, so it must travel with the gate rather than be read globally.
+  const okTime = (p, T, endMin, baseMin, dateISO) => {
     if (endMin === null || endMin === undefined) return true;
-    const landMs = serverWallMs(otCfg.dateISO, endMin);
+    const landMs = serverWallMs(dateISO, endMin);
     if (landMs === null) return true;
     return landMs - travelTimeMin(distXY(p.c, T.c), baseMin, ws, us) * 60000 >= sendFloorMs;
   };
-  const okOffTime  = (p, T) => okTime(p, T, T.offEndMin,  PLAN_BASE_MIN.off);
-  const okSnobTime = (p, T) => okTime(p, T, T.snobEndMin, PLAN_BASE_MIN.snob);
+  const okOffTime  = (p, T, g) => okTime(p, T, T.gEnd[g.id], PLAN_BASE_MIN.off, g.dateISO);
+  const okSnobTime = (p, T) => okTime(p, T, T.snobEndMin, PLAN_BASE_MIN.snob, T.snobGroup ? T.snobGroup.dateISO : '');
 
   // ── Sorting: named pins go by distance, auto picks "optimize" ──────────────
   // Morale only helps when the target's defender points are actually known (world
@@ -689,12 +710,16 @@ function generatePlan() {
   // from their OWN tier-matching villages and never tier-bump — a shortfall is warned and left
   // unassigned (mirrors the snob trains), reserving those slots so auto doesn't backfill.
   // Reserved launch/escort villages are off-limits to everyone, pins included.
-  const namedOffReserved = {}; // 'tIdx|tier' → reserved slots (assigned + shortfall)
+  // Reservations are keyed per (target, tier, window group) — asking for 2 Completes on Friday
+  // and 2 on Saturday is two independent requests that must not consume each other's slots.
+  const namedOffReserved = {}; // 'tIdx|tier|groupId' → reserved slots (assigned + shortfall)
+  const resKey = (T, tier, g) => `${T.i}|${tier}|${g.id}`;
   for (const tier of ['complete', 'tq', 'half']) {
     for (const T of targets) {
       if (!T.c || isFake(T)) continue; // a fake's Complete column is its fake count, not an off request
-      const N = T.tg[TIER_FIELD[tier]] || 0;
-      const assign = targetOffAssign(T.tg, tier);
+      for (const g of otActiveGroups(T.tg)) {
+      const N = otTierCount(T.tg, g.id, tier);
+      const assign = targetOffAssign(T.tg, tier, g.id);
       if (!assign.length) continue;
       const reqSum = assign.reduce((s, a) => s + a.count, 0);
       if (reqSum > N) planWarnings.push(t('warn_offs_mismatch')(t('tier_' + tier), T.tg.coord, reqSum, N));
@@ -703,31 +728,32 @@ function generatePlan() {
         const want = Math.min(a.count, Math.max(0, N - placed)); // never exceed the tier request
         if (want <= 0) continue;
         const cands = pool.filter(p => !p.usedOff && !offBlocked(p) && p.v.player === a.name && p.tier === tier
-          && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T)).sort(byDist(T));
+          && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T)).sort(byDist(T));
         let got = 0;
         for (const p of cands) {
           if (got >= want) break;
           p.usedOff = true; got++; placed++; noteOffUsed(p.v.player); noteMvClaim(p, T);
           const d = distXY(p.c, T.c);
           noteClusterDist(decode(p.v.player), d);
-          T.offRows.push({ type: tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+          T.offRows.push({ type: tier, group: g.id, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
             dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
         }
         if (got < want) {
           placed += want - got; // reserve the shortfall so the auto pass won't backfill it
           const owned = pool.filter(p => p.v.player === a.name && p.tier === tier);
           const inRange = owned.filter(p => okOffDist(p, T.c));
-          const inRangeTime = inRange.filter(p => okOffTime(p, T) && !p.usedOff && !offBlocked(p));
+          const inRangeTime = inRange.filter(p => okOffTime(p, T, g) && !p.usedOff && !offBlocked(p));
           planWarnings.push(
             owned.length && !inRange.length ? t('warn_off_range')(decode(a.name), t('tier_' + tier), T.tg.coord)
-            : inRange.length && !inRange.some(p => okOffTime(p, T)) ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
+            : inRange.length && !inRange.some(p => okOffTime(p, T, g)) ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
             // all otherwise-usable villages blocked by an MV pair conflict → say so
             : inRangeTime.length && inRangeTime.every(p => mvBlocked(p, T)) ? t('warn_mv')(decode(a.name), T.tg.coord)
             : t('warn_sender_short_off')(decode(a.name), t('tier_' + tier), T.tg.coord));
-          for (let z = 0; z < want - got; z++) T.offRows.push({ type: tier, unassigned: true });
+          for (let z = 0; z < want - got; z++) T.offRows.push({ type: tier, group: g.id, unassigned: true });
         }
       }
-      namedOffReserved[T.i + '|' + tier] = placed;
+      namedOffReserved[resKey(T, tier, g)] = placed;
+      }
     }
   }
 
@@ -793,22 +819,25 @@ function generatePlan() {
     const conqOk = new Set([...conq].filter(name => playerMorale(name) >= gate));
 
     // candidate villages for a tier, restricted by a sender predicate (decoded names)
+    // The coordination off rides in the SAME wave as the noble it clears for — the target's
+    // primary group — so the clear and the train can't end up on different days.
+    const cg = T.snobGroup || otGroupById(otPrimaryGroupId(T.tg));
     const candsFor = (allow, tt) => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt
-      && allow(p) && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T));
+      && allow(p) && okOffDist(p, T.c) && okOffTime(p, T, cg) && !mvBlocked(p, T));
     const reserve = (p, tier) => {
       p.usedOff = true; noteOffUsed(p.v.player); noteMvClaim(p, T);
-      namedOffReserved[T.i + '|' + tier] = (namedOffReserved[T.i + '|' + tier] || 0) + 1;
+      namedOffReserved[resKey(T, tier, cg)] = (namedOffReserved[resKey(T, tier, cg)] || 0) + 1;
       const d = distXY(p.c, T.c);
       noteClusterDist(decode(p.v.player), d);
       // Sent AS the village's own (≥ requested) tier; no "tier bumped" warning — this is a
       // deliberate coordination off, not a shortage fallback. Tagged `conqueror` so the window
       // pass can land it LAST among the offs (the decisive clear right before the noble).
-      T.offRows.push({ type: p.tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+      T.offRows.push({ type: p.tier, group: cg.id, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us), conqueror: true });
     };
 
     for (const tier of ['complete', 'tq', 'half']) {
-      if (((T.tg[TIER_FIELD[tier]] || 0) - (namedOffReserved[T.i + '|' + tier] || 0)) <= 0) continue;
+      if ((otTierCount(T.tg, cg.id, tier) - (namedOffReserved[resKey(T, tier, cg)] || 0)) <= 0) continue;
       const bump = allow => { // requested tier first, then bump UP only (stronger covers weaker)
         let c = candsFor(allow, tier);
         for (const up of TIER_UP[tier]) { if (c.length) break; c = candsFor(allow, up); }
@@ -846,30 +875,40 @@ function generatePlan() {
   // raw off power across all POWER targets — the next-strongest off goes to whichever
   // POWER target currently has the lowest assigned power and still has an open slot it
   // can reach (range + launch time). Runs before the auto pass so it isn't starved.
+  // A POWER target's slots are counted per window group (each wave asks for its own offs), but
+  // the power BALANCE is still per target — the point is to spread the strongest offs evenly
+  // over the POWER targets, whichever wave they belong to.
   const powerTargets = targets.filter(T => T.c && T.tg.power && !isFake(T));
   if (powerTargets.length) {
     const remaining = {}, powSum = {}, warned = new Set();
+    const slots = []; // {T, g} — one entry per (POWER target, group) with open slots
     let totalSlots = 0;
     for (const T of powerTargets) {
-      const total = ['complete', 'tq', 'half'].reduce((s, tr) => s + (T.tg[TIER_FIELD[tr]] || 0), 0);
-      const named = ['complete', 'tq', 'half'].reduce((s, tr) => s + (namedOffReserved[T.i + '|' + tr] || 0), 0);
-      remaining[T.i] = Math.max(0, total - named); powSum[T.i] = 0; totalSlots += remaining[T.i];
+      powSum[T.i] = 0;
+      for (const g of otActiveGroups(T.tg)) {
+        const total = ['complete', 'tq', 'half'].reduce((s, tr) => s + otTierCount(T.tg, g.id, tr), 0);
+        const named = ['complete', 'tq', 'half'].reduce((s, tr) => s + (namedOffReserved[resKey(T, tr, g)] || 0), 0);
+        const open = Math.max(0, total - named);
+        remaining[T.i + '|' + g.id] = open;
+        totalSlots += open;
+        if (open > 0) slots.push({ T, g });
+      }
     }
     for (let s = 0; s < totalSlots; s++) {
-      const open = powerTargets.filter(T => remaining[T.i] > 0).sort((a, b) => powSum[a.i] - powSum[b.i]);
+      const open = slots.filter(x => remaining[x.T.i + '|' + x.g.id] > 0).sort((a, b) => powSum[a.T.i] - powSum[b.T.i]);
       if (!open.length) break;
-      const T = open[0];
-      const cands = preferCatOffs(T, pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T)));
-      remaining[T.i]--;
+      const { T, g } = open[0];
+      const cands = preferCatOffs(T, pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T)));
+      remaining[T.i + '|' + g.id]--;
       if (!cands.length) {
         if (!warned.has(T.i)) {
           const inBand = pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c));
-          planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T))
+          planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T, g))
             ? t('warn_off_too_late')(t('tier_complete'), T.tg.coord)
             : t('warn_missed_off')(t('tier_complete'), T.tg.coord));
           warned.add(T.i);
         }
-        T.offRows.push({ type: 'complete', unassigned: true });
+        T.offRows.push({ type: 'complete', group: g.id, unassigned: true });
         continue;
       }
       // Raw off power leads on POWER targets; clustering is only a within-tolerance tiebreaker.
@@ -877,7 +916,7 @@ function generatePlan() {
       p.usedOff = true; powSum[T.i] += p.v.offPow; noteOffUsed(p.v.player); noteMvClaim(p, T);
       const d = distXY(p.c, T.c);
       noteClusterDist(decode(p.v.player), d);
-      T.offRows.push({ type: p.tier, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+      T.offRows.push({ type: p.tier, group: g.id, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
     }
   }
@@ -890,7 +929,8 @@ function generatePlan() {
   for (const tier of ['complete', 'tq', 'half']) {
     for (const T of targets) {
       if (!T.c || T.tg.power || isFake(T)) continue; // POWER targets are filled by the balanced pass above; fakes by their own pass below
-      const autoNeed = Math.max(0, (T.tg[TIER_FIELD[tier]] || 0) - (namedOffReserved[T.i + '|' + tier] || 0));
+      for (const g of otActiveGroups(T.tg)) {
+      const autoNeed = Math.max(0, otTierCount(T.tg, g.id, tier) - (namedOffReserved[resKey(T, tier, g)] || 0));
       // Min. Morale (off) gate — once the TIER is resolved (the tier-bump below still fires only
       // when a tier is empty, never for morale), PREFER candidates whose morale on this target
       // clears minMoraleOff (default 100%), and fall back to the best below-gate village only when
@@ -899,7 +939,7 @@ function generatePlan() {
       const offGate = moraleUsable(T) ? minMoraleOff : 0;
       const candMorale = p => { const m = planAttackMorale(p.v.coord, T.tg.coord); return m == null ? 1 : m; };
       for (let k = 0; k < autoNeed; k++) {
-        const tierCands = tt => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T));
+        const tierCands = tt => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
         let sent = tier, cands = tierCands(tier);
         for (const up of TIER_UP[tier]) {
           if (cands.length) break;
@@ -908,10 +948,10 @@ function generatePlan() {
         }
         if (!cands.length) {
           const inBand = pool.filter(p => !p.usedOff && !offBlocked(p) && okOffDist(p, T.c));
-          planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T))
+          planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T, g))
             ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
             : t('warn_missed_off')(t('tier_' + tier), T.tg.coord));
-          T.offRows.push({ type: tier, unassigned: true });
+          T.offRows.push({ type: tier, group: g.id, unassigned: true });
           continue;
         }
         if (sent !== tier) planWarnings.push(t('warn_tier_bumped')(t('tier_' + tier), t('tier_' + sent), T.tg.coord));
@@ -926,9 +966,10 @@ function generatePlan() {
         const d = distXY(p.c, T.c);
         noteClusterDist(decode(p.v.player), d);
         T.offRows.push({
-          type: sent, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+          type: sent, group: g.id, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
           dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us),
         });
+      }
       }
     }
   }
@@ -943,23 +984,25 @@ function generatePlan() {
   // in-game attack, so the vacation-mode limit still binds; morale is irrelevant and skipped).
   for (const T of targets) {
     if (!T.c || !isFake(T)) continue;
-    const want = T.tg.nComplete || 0;
+    for (const g of otActiveGroups(T.tg)) {
+    const want = otTierCount(T.tg, g.id, 'complete');
     for (let k = 0; k < want; k++) {
       const candsOf = filt => pool.filter(p => p.tier === 'complete' && !p.usedFake
         && (p.v.ram || 0) >= 1 && !ignorePlayers.has(p.v.player) && filt(p)
-        && okOffDist(p, T.c) && okOffTime(p, T) && !mvBlocked(p, T));
+        && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
       let cands = candsOf(p => p.usedOff && !p.isEscort);           // primary: assigned real offs
       if (!cands.length) cands = candsOf(p => p.isEscort || escortReserved.has(p)); // fallback: escorts
       if (!cands.length) {
         planWarnings.push(t('warn_missed_fake')(T.tg.coord));
-        T.offRows.push({ type: 'fake', unassigned: true });
+        T.offRows.push({ type: 'fake', group: g.id, unassigned: true });
         continue;
       }
       const p = cands.sort(byDist(T))[0];
       p.usedFake = true; noteMvClaim(p, T);
       const d = distXY(p.c, T.c);
-      T.offRows.push({ type: 'fake', srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+      T.offRows.push({ type: 'fake', group: g.id, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
+    }
     }
   }
 
@@ -1032,31 +1075,32 @@ function generatePlan() {
   // remainder. Snob trains land in the snob window, independent of the offs.
   for (const T of targets) {
     if (!T.c) continue;
-    T.offRows.sort((a, b) => (TIER_RANK[b.type] || 0) - (TIER_RANK[a.type] || 0)); // 'fake' has no tier rank → 0
+    // Group order first (wave A's offs before wave B's), then strongest-first within a wave.
+    // 'fake' has no tier rank → 0, so fakes land last inside their group.
+    T.offRows.sort((a, b) => (otGroupIndex(a.group) - otGroupIndex(b.group))
+      || ((TIER_RANK[b.type] || 0) - (TIER_RANK[a.type] || 0)));
     // The conqueror's own off lands LAST among this target's offs (immediately before its
     // noble row), so the snob sender owns the final clear→noble handoff. Done after the
     // tier sort and as a single splice so it doesn't disturb the strongest-first order of
     // the rest. (At most one conqueror off per target — see the reservation pass.)
     const ci = T.offRows.findIndex(r => r.conqueror);
     if (ci !== -1) T.offRows.push(T.offRows.splice(ci, 1)[0]);
-    const wins = T.tg.offWindows.length ? T.tg.offWindows : [{ win: '', count: 0 }];
-    const counts = windowOffCounts(wins, T.offRows.length);
-    let wi = 0, slot = 0;
-    for (const r of T.offRows) {
-      while (wi < wins.length - 1 && slot >= counts[wi]) { wi++; slot = 0; }
-      r.window = wins[wi].win || T.tg.winSnob || '';
-      slot++;
-    }
-    T.snobRows.forEach(r => { r.window = T.tg.winSnob || (wins[wins.length - 1].win || ''); });
-    // Catapult attacks land in the target's off window(s) too (extra attacks alongside the
-    // offs), distributed the same way but as their own stream so they don't disturb off counts.
-    const catCounts = windowOffCounts(wins, T.catRows.length);
-    let cwi = 0, cslot = 0;
-    for (const r of T.catRows) {
-      while (cwi < wins.length - 1 && cslot >= catCounts[cwi]) { cwi++; cslot = 0; }
-      r.window = wins[cwi].win || T.tg.winSnob || '';
-      cslot++;
-    }
+    // Every off row already knows its window group (the group WAS the request), so its landing
+    // window and arrival date come straight off that group — no post-hoc splitting.
+    const snobG = T.snobGroup || otGroupById(otPrimaryGroupId(T.tg));
+    const stamp = (r, g) => { r.group = g.id; r.window = g.winOff || g.winSnob || ''; r.dateISO = g.dateISO || ''; };
+    for (const r of T.offRows) stamp(r, otGroupById(r.group));
+    // The noble train lands in its target's primary group, in that group's SNOB window.
+    T.snobRows.forEach(r => {
+      r.group = snobG.id;
+      r.window = snobG.winSnob || snobG.winOff || '';
+      r.dateISO = snobG.dateISO || '';
+    });
+    // Catapult attacks are extra demolition alongside the offs, so they follow the offs: dealt
+    // round-robin across the groups this target actually attacks in (a target with no offs
+    // anywhere falls back to its primary group, which is what otActiveGroups returns there).
+    const catGroups = otActiveGroups(T.tg);
+    T.catRows.forEach((r, k) => stamp(r, catGroups[k % catGroups.length]));
     // Catapult Mode: every OFF row carries this target's off-sender building objective (the cats
     // riding with the clearing/destroyer/noble-escort off aim here). POWER forces Wall. Catapult
     // attacks keep their own per-attack building (set above); snob trains carry none.
@@ -1079,7 +1123,7 @@ function generatePlan() {
     // carry no off-pool launch contract — exempt them from the late flag, like snob trains.
     if (r.unassigned || r.type === 'snob' || r.type === 'catapult') continue;
     const pw = parseWindowStr(r.window);
-    const landMs = pw ? serverWallMs(otCfg.dateISO, pw.to) : null;
+    const landMs = pw ? serverWallMs(planRowDateISO(r), pw.to) : null;
     if (landMs !== null && landMs - r.travel * 60000 < sendFloorMs) {
       r.late = true;
       planWarnings.push(t('warn_row_late')(r.srcCoord, r.tCoord));
@@ -1111,12 +1155,14 @@ function generatePlan() {
   // least one target but is too LATE for every such target (fails okOffTime) — i.e. timing is the
   // ONLY thing stopping it, so pushing the arrival date (or the Earliest send) later would free
   // it. Villages out of DISTANCE range everywhere go to `far`; the rest (reachable + in time) to `avail`.
+  // With several window groups a village is only "too late" when it misses EVERY wave of every
+  // reachable target — making wave B on Saturday is reason enough not to call it late.
   const offLate = p => {
     let reachable = false;
     for (const T of targets) {
       if (!T.c || !okOffDist(p, T.c)) continue;
       reachable = true;
-      if (okOffTime(p, T)) return false; // in time for at least one reachable target → not late
+      for (const g of otActiveGroups(T.tg)) if (okOffTime(p, T, g)) return false;
     }
     return reachable;
   };
@@ -1237,10 +1283,17 @@ function renderPlanTable() {
       }</td>
       <td class="left">${r.srcPlayer ? `<span class="player-tag">${esc(r.srcPlayer)}</span>` : '—'}</td>
       <td style="color:${moraleColor(r.morale)};font-weight:600;">${isSnob ? '—' : fmtMorale(r.morale)}</td>
-      <td style="color:#60a0e0;font-weight:600;font-family:monospace;">${esc(fmtWindow(r.window) || '—')}</td>
+      <td style="color:#60a0e0;font-weight:600;font-family:monospace;">${
+        // With several window groups the window alone is ambiguous — 01:00 on which day? — so the
+        // cell also names the wave and its date. Single-group plans keep the bare window.
+        otMultiGroup() && r.group != null
+          ? `<span class="badge" style="font-size:9px;padding:0 4px;background:#2a1e08;color:#c8a060;">${esc(otLabelOf(r.group))}</span> ${esc(fmtWindow(r.window) || '—')}`
+            + `<div style="font-size:10px;color:#806030;font-weight:400;">${esc(bbDateLabelOf(planRowDateISO(r)))}</div>`
+          : esc(fmtWindow(r.window) || '—')
+      }</td>
       <td style="color:#f0c040;">${showTiming ? r.dist.toFixed(1) : '—'}</td>
       <td>${showTiming ? fmtTime(r.travel) : '—'}</td>
-      <td style="font-family:monospace;${r.late ? 'color:#e06040;font-weight:600;' : ''}">${showTiming ? (r.late ? '⚠ ' : '') + launchWindowStr(r.window, r.travel) : '—'}</td>
+      <td style="font-family:monospace;${r.late ? 'color:#e06040;font-weight:600;' : ''}">${showTiming ? (r.late ? '⚠ ' : '') + launchWindowStr(r.window, r.travel, planRowDateISO(r)) : '—'}</td>
       <td>${(() => { const url = showTiming ? rallyUrl(r.srcCoord, r.tCoord, planRowRallyUnits(r)) : null; return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
     </tr>`;
@@ -1317,14 +1370,32 @@ function exportPlanCoords() {
 }
 
 // ── Build objective groups from the plan (one per target, in plan order) ──
-function planGroups() {
+function planGroups(rows) {
   const groups = [];
-  for (const r of planRows) {
+  for (const r of (rows || planRows)) {
     let g = groups.find(x => x.idx === r.tIdx);
     if (!g) { g = { idx: r.tIdx, coord: r.tCoord, player: r.tPlayer, rows: [] }; groups.push(g); }
     g.rows.push(r);
   }
   return groups;
+}
+// ── Window groups present in the plan, as export sections ─────────────────────
+// Returns [{g, label, rows}] in group order, skipping groups this plan has no rows for.
+// A single-group plan yields exactly one section, which is what keeps every export
+// byte-identical to the pre-v5.9 output.
+function planWindowSections(rows) {
+  const src = rows || planRows;
+  const known = new Set(otGroups().map(g => g.id));
+  // Rows saved before v5.9 carry no group, and a plan generated before a group was deleted can
+  // carry an id that no longer exists. Either way they are real orders, so they join the FIRST
+  // section rather than being silently dropped from every export.
+  const orphan = r => r.group == null || !known.has(r.group);
+  return otGroups()
+    .map((g, i) => ({
+      g, label: otGroupLabel(i),
+      rows: src.filter(r => r.group === g.id || (i === 0 && orphan(r))),
+    }))
+    .filter(s => s.rows.length);
 }
 
 // ── Forum-style BB row (shared by the Forum export and the per-player objective context) ──
@@ -1355,7 +1426,14 @@ function showPlanBB() {
   const nobleCounts = [...new Set(offTargets.map(x => x.nobles).filter(Boolean))].sort((a, b) => a - b);
   const noblesLabel = nobleCounts.length ? nobleCounts.join(' ó ') : '4';
 
-  let bb = `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabel()}[/size]\n\n`;
+  // With several window groups the objective list is repeated once per wave, each under its own
+  // ARRIVAL DATE header — the header is the only place a date is stated, so a wave must never
+  // share one with another. Every header (the first included) is taken from the section it
+  // actually heads: planWindowSections skips empty groups, so the first section is not
+  // necessarily group A. A single-group plan prints exactly one section, as it always did.
+  const sections = planWindowSections();
+  if (!sections.length) { alert(t('empty_no_plan')); return; }
+  let bb = `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabelOf(sections[0].g.dateISO)}[/size]\n\n`;
   bb += `[unit]ram[/unit] --> ${t('bb_legend_ram')}\n`;
   if (planRows.some(r => r.type === 'tq')) bb += `[unit]axe[/unit] (${t('tier_tq')}) --> ${t('bb_legend_tq')}\n`;
   if (planRows.some(r => r.type === 'half')) bb += `[unit]axe[/unit] (${t('tier_half')}) --> ${t('bb_legend_axe')}\n`;
@@ -1366,12 +1444,15 @@ function showPlanBB() {
   if (planRows.some(r => r.type === 'snob' && r.fake)) bb += `[unit]snob[/unit] [b][color=#0e8f0e](${t('ttype_fake')})[/color][/b] --> ${t('bb_legend_snob_fake')(noblesLabel)}\n`;
   bb += '\n';
 
-  const groups = planGroups();
-  groups.forEach((g, gi) => {
-    bb += `${gi + 1}. ${g.coord}${g.player ? ` - [player]${g.player}[/player]` : ''}\n`;
-    const multiSnob = g.rows.filter(x => x.type === 'snob').length > 1;
-    for (const r of g.rows) bb += planRowForumBB(r, multiSnob, true) + '\n';
-    bb += '\n';
+  sections.forEach((sec, si) => {
+    // The first section's date is already in the header above; later waves announce their own.
+    if (si > 0) bb += `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabelOf(sec.g.dateISO)}[/size]\n\n`;
+    planGroups(sec.rows).forEach((g, gi) => {
+      bb += `${gi + 1}. ${g.coord}${g.player ? ` - [player]${g.player}[/player]` : ''}\n`;
+      const multiSnob = g.rows.filter(x => x.type === 'snob').length > 1;
+      for (const r of g.rows) bb += planRowForumBB(r, multiSnob, true) + '\n';
+      bb += '\n';
+    });
   });
 
   document.getElementById('bb-output').value = bb.trimEnd() + '\n';
@@ -1381,7 +1462,8 @@ function showPlanBB() {
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // ⚠ FORMAT CONTRACT — attack-planner.html IMPORTS the exports below.
 // parsePlayerPlanBB() in attack-planner.html parses the Per-Player Orders / Per-Player All
-// output line by line: the "========== NAME (n) ==========" sender headers, the ARRIVAL DATE
+// output line by line: the "========== NAME (n) ==========" sender headers (one per wave when the
+// plan spans several OFF WINDOW GROUPS — each block carries its own ARRIVAL DATE), the ARRIVAL DATE
 // header (bbDateLabel — it reads the trailing day-of-month), off lines ("src → [coord]tgt
 // [/coord] (defender) window"), the LAUNCH TIME continuation line (rally URL → village-ID
 // pins), and snob order lines ("Prepare Snob Train for [coord]…", detected by
@@ -1431,9 +1513,20 @@ function snobOrderLineBB(r) {
 //    the full objective-context dump. `allGroups` = planGroups() (passed in so the caller
 //    builds it once). Ends with a trailing blank line, matching the legacy layout. Shared by
 //    the on-screen Per-Player Orders export and the combined Per-Player All download. ──
-function playerPlanBBBlock(name, rows, allGroups) {
+// Multi-wave plans emit ONE such block per window group the player has orders in, each headed
+// by its own sender header + ARRIVAL DATE, so a block is always internally single-dated.
+// ⚠ The attack planner's importer keeps ONE arrival date per paste (import.js), so several
+// blocks pasted together date every attack to the FIRST wave and the import warns about it —
+// import one wave at a time. A single-group plan produces exactly one block, unchanged.
+function playerPlanBBBlocks(name, rows, allGroups) {
+  const secs = planWindowSections(rows);
+  return (secs.length ? secs : [{ g: otGroups()[0], rows }])
+    .map(sec => playerPlanBBBlock(name, sec.rows, allGroups, sec.g))
+    .join('\n');
+}
+function playerPlanBBBlock(name, rows, allGroups, winGroup) {
   let bb = `========== ${name} (${rows.length}) ==========\n`;
-  bb += `[b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabel()}\n\n`;
+  bb += `[b][u]${t('bb_arrival_date')}:[/u][/b] ${winGroup ? bbDateLabelOf(winGroup.dateISO) : bbDateLabel()}\n\n`;
   // Order lines come out send-time-sorted (earliest launch first), matching the Per-Player
   // Table, with a blank line between each attack. planRowsBySendTime is side-effect free.
   const lines = [];
@@ -1461,7 +1554,7 @@ function playerPlanBBBlock(name, rows, allGroups) {
       ? ` [b](${r.cats}${bldg ? ` → ${bldg}` : ''})[/b]`
       : (bldg ? ` [b](→ ${bldg})[/b]` : '');
     const win     = (fmtWindow(r.window) || '??:??').replace('/', '-');
-    const lp      = launchWindowParts(r.window, r.travel);
+    const lp      = launchWindowParts(r.window, r.travel, planRowDateISO(r));
     // Line 1 = village → target + arrival window; line 2 = the launch-time call-out (carries the
     // rally link) — red for real attacks, green for fakes. [b] opens on line 1, closes after it.
     const launchColor = r.type === 'fake' ? '#0e8f0e' : '#ff0e0e';
@@ -1516,7 +1609,7 @@ function showPlayerPlanBB() {
   const allGroups  = planGroups(); // for the per-player "objective context" dump
 
   let bb = '';
-  for (const name of names) bb += playerPlanBBBlock(name, byPlayer[name], allGroups);
+  for (const name of names) bb += playerPlanBBBlocks(name, byPlayer[name], allGroups);
   if (unassigned.length) bb += unassignedPlanBBBlock(unassigned);
 
   document.getElementById('bb-output').value = bb.trimEnd() + '\n';
@@ -1539,7 +1632,7 @@ function offPmMessagesFrom(planRows, allGroups) {
   const byPlayer   = groupPlanRowsByPlayer(named);
   const msgs = playerNamesAZ(byPlayer).map(name => {
     const rows = byPlayer[name];
-    return { player: name, parts: [playerPlanBBBlock(name, rows, allGroups).trimEnd()], orderCount: rows.length };
+    return { player: name, parts: [playerPlanBBBlocks(name, rows, allGroups).trimEnd()], orderCount: rows.length };
   });
   if (unassigned.length)
     msgs.push({ player: t('bb_unassigned'), parts: [unassignedPlanBBBlock(unassigned).trimEnd()], orderCount: unassigned.length, unassigned: true });
@@ -1686,7 +1779,7 @@ function planRowTableType(r) {
 // by working in absolute epoch ms. Returns null if no arrival date is set or the window is
 // unparseable — the caller then leaves the time cells blank.
 function planRowAbsTimes(r) {
-  const md = String(otCfg.dateISO || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const md = String(planRowDateISO(r) || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const w  = parseWindowStr(r.window);
   if (!md || !w) return null;
   const p = n => String(n).padStart(2, '0');
@@ -1811,7 +1904,7 @@ function buildPlayerPlanAll() {
   let out = '';
   for (const name of names) {
     const rows = byPlayer[name];
-    out += codeWrapPlanSection(playerPlanBBBlock(name, rows, allGroups), planTableBlock(rows));
+    out += codeWrapPlanSection(playerPlanBBBlocks(name, rows, allGroups), planTableBlock(rows));
   }
   if (unassigned.length) {
     out += codeWrapPlanSection(unassignedPlanBBBlock(unassigned), planTableBlock(unassigned));

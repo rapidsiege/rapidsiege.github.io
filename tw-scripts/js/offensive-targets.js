@@ -7,8 +7,12 @@ const TIER_RANK = { complete: 3, tq: 2, half: 1, none: 0 };
 const PLAN_BASE_MIN = { off: 30, snob: 35 };
 const TIER_FIELD = { complete: 'nComplete', tq: 'nTq', half: 'nHalf' };
 
-let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30', serverUrl: 'es100.guerrastribales.es', serverUtcOffset: 2, defComplete: 1, defTq: 0, defHalf: 0, defSnobMode: 'solo' };
-let offTargets   = []; // [{id, coord, player, nComplete, nTq, nHalf, snobPlayers, nobles, offWindows:[{win,count}], winSnob, snobMode, snobAssignees:[{name,count}]}]
+let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30', serverUrl: 'es100.guerrastribales.es', serverUtcOffset: 2, defComplete: 1, defTq: 0, defHalf: 0, defSnobMode: 'solo', groups: [], nextGroupId: 1 };
+// [{id, coord, player, groupOffs:{<groupId>:{nComplete,nTq,nHalf}}, group, snobPlayers, nobles,
+//   snobMode, snobAssignees:[{name,count}], offAssignees:[{tier,name,count,group}]}]
+// `group` = the target's PRIMARY window group (its noble train's wave); `groupOffs` says how
+// many offs of each tier it wants in each window group.
+let offTargets   = [];
 let offIgnore        = ''; // raw "Ignore Coordinates" textarea (Offensive Targets) — these villages never send anything
 let offIgnorePlayers = []; // raw player names excluded from the whole plan (no off, no snob, no escort)
 let mvPairs          = []; // [[rawA, rawB], …] vacation-mode pairs — SHARED by Plan Offensive AND Plan Defense (edited from either the Offensive-Targets or Defensive-Targets picker; persisted here in tw_tribe_offensive). Offensive rule: two paired players can't both attack the SAME enemy player. Defensive rule: they can't both support the SAME target, nor support a village their partner owns.
@@ -62,6 +66,184 @@ function snobCapable(coord) {
   return pts === null || pts > SNOB_RANGE_MIN_POINTS;   // unknown → legacy points heuristic
 }
 
+// ── OFF WINDOW GROUPS ────────────────────────────────────────────────────────
+// A group is one coordinated wave: its own ARRIVAL DATE, off window and snob window.
+// Groups are INDEPENDENT — a plan can span several days by giving each group its own
+// date. Every target then says, per group, how many Complete / 3-4 / 1-2 offs it wants
+// (tg.groupOffs), so one target can be hit on Friday and again on Saturday.
+//
+// Stored in otCfg.groups (so they ride along with the offensive export/import) as
+// [{id, dateISO, winOff, winSnob}] — `id` is stable, the A/B/C label is DERIVED from the
+// position (otGroupLabel) so deleting B re-letters C into B instead of leaving a hole.
+// The legacy single-date/multi-window model (otCfg.dateISO + tg.offWindows + tg.winSnob)
+// migrates in otMigrateGroups(); with one group everything behaves exactly as before.
+const GROUP_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function otGroupLabel(idx) {
+  if (idx < 0) return '?';
+  let s = '';
+  for (let n = idx; ; n = Math.floor(n / 26) - 1) { s = GROUP_LABELS[n % 26] + s; if (n < 26) break; }
+  return s;
+}
+// The group list, never empty: a calculator with no groups yet gets group A seeded from
+// the legacy defaults so every caller can assume groups[0] exists.
+function otGroups() {
+  if (!Array.isArray(otCfg.groups)) otCfg.groups = [];
+  if (!otCfg.groups.length) {
+    otCfg.groups.push({ id: otCfg.nextGroupId ? otCfg.nextGroupId++ : (otCfg.nextGroupId = 2, 1),
+      dateISO: otCfg.dateISO || '', winOff: otCfg.defWinOff || '', winSnob: otCfg.defWinSnob || '' });
+  }
+  return otCfg.groups;
+}
+function otGroupIndex(gid) { return otGroups().findIndex(g => g.id === gid); }
+function otGroupById(gid) { const i = otGroupIndex(gid); return i < 0 ? otGroups()[0] : otGroups()[i]; }
+// Label of the group a row/plan-row belongs to ('A', 'B', …); '?' for an unknown id.
+function otLabelOf(gid) { const i = otGroupIndex(gid); return i < 0 ? '?' : otGroupLabel(i); }
+// The target's PRIMARY group: the one its noble train uses (snob window + arrival date),
+// and the anchor its catapult attacks fall back to. Defaults to the first group.
+function otPrimaryGroupId(tg) {
+  return (tg && otGroupIndex(tg.group) >= 0) ? tg.group : otGroups()[0].id;
+}
+// Per-group off request. tg.groupOffs is keyed by String(groupId) — JSON object keys are
+// strings, so every read/write goes through these two so the key type can never drift.
+function otTierCount(tg, gid, tier) {
+  const e = tg && tg.groupOffs && tg.groupOffs[String(gid)];
+  return e ? (e[TIER_FIELD[tier]] || 0) : 0;
+}
+function otSetTierCount(tg, gid, tier, n) {
+  if (!tg.groupOffs) tg.groupOffs = {};
+  const k = String(gid);
+  if (!tg.groupOffs[k]) tg.groupOffs[k] = { nComplete: 0, nTq: 0, nHalf: 0 };
+  tg.groupOffs[k][TIER_FIELD[tier]] = Math.max(0, parseInt(n) || 0);
+}
+// Offs of `tier` this target wants across ALL groups (the summary line, capacity warnings
+// and any "how many offs does this row cost" question use this, never a single group).
+function otTierTotal(tg, tier) {
+  return otGroups().reduce((s, g) => s + otTierCount(tg, g.id, tier), 0);
+}
+function otAllTiersTotal(tg) {
+  return ['complete', 'tq', 'half'].reduce((s, tr) => s + otTierTotal(tg, tr), 0);
+}
+// Groups this target actually attacks in (any tier > 0), in group order. A target with no
+// offs anywhere still reports its primary group so its catapults/nobles have a window.
+function otActiveGroups(tg) {
+  const act = otGroups().filter(g => ['complete', 'tq', 'half'].some(tr => otTierCount(tg, g.id, tr) > 0));
+  return act.length ? act : [otGroupById(otPrimaryGroupId(tg))];
+}
+
+// ── Legacy → groups migration ────────────────────────────────────────────────
+// Pre-v5.9 saves had ONE global arrival date (otCfg.dateISO), per-target off windows
+// (tg.offWindows = [{win, count}]) and a per-target snob window (tg.winSnob). Each distinct
+// (off window, snob window) pair becomes a group on that one date, and the target's tier
+// counts are dealt across its windows with the old windowOffCounts rule.
+//
+// ⚠ This is APPROXIMATE by construction and cannot be otherwise: the old counts split the
+// target's off rows with all tiers MIXED (a window took "3 offs", not "3 Complete"), while a
+// group's counts are per tier. A multi-window target therefore comes back with its per-tier
+// counts spread proportionally rather than in the exact old order. Single-window targets —
+// the overwhelming majority — convert exactly.
+function otMigrateGroups() {
+  const legacy = offTargets.filter(tg => tg && !tg.groupOffs);
+  if (!legacy.length) { otGroups(); return; }
+  if (!Array.isArray(otCfg.groups)) otCfg.groups = [];
+  if (!otCfg.nextGroupId) otCfg.nextGroupId = 1;
+  // A group seeded before the legacy date was known (an empty session that then loaded an old
+  // save) adopts it now — otherwise the whole migrated plan would land on no date at all.
+  for (const g of otCfg.groups) if (!g.dateISO && otCfg.dateISO) g.dateISO = otCfg.dateISO;
+  const findOrAdd = (winOff, winSnob) => {
+    let g = otCfg.groups.find(x => (x.winOff || '') === (winOff || '') && (x.winSnob || '') === (winSnob || ''));
+    if (!g) {
+      g = { id: otCfg.nextGroupId++, dateISO: otCfg.dateISO || '', winOff: winOff || '', winSnob: winSnob || '' };
+      otCfg.groups.push(g);
+    }
+    return g;
+  };
+  for (const tg of legacy) {
+    // Old shapes: offWindows list, or the even older single winOff string, or nothing at all.
+    let wins = Array.isArray(tg.offWindows) && tg.offWindows.length
+      ? tg.offWindows.map(w => typeof w === 'string' ? { win: w, count: 0 } : { win: w.win || '', count: Math.max(0, parseInt(w.count) || 0) })
+      : [{ win: tg.winOff !== undefined ? tg.winOff : (otCfg.defWinOff || ''), count: 0 }];
+    const snob = tg.winSnob !== undefined ? tg.winSnob : (otCfg.defWinSnob || '');
+    const gids = wins.map(w => findOrAdd(w.win, snob).id);
+    tg.groupOffs = {};
+    // The old window counts split the target's offs with all tiers MIXED, and the engine filled
+    // the windows from a strongest-first row list. Replay exactly that: build the tier-ordered
+    // stream, then deal it into the groups using the same windowOffCounts shares. Applying the
+    // shares per tier instead would multiply the counts (a "2 offs here" window would demand 2
+    // Completes AND 2 3-4s AND 2 1-2s).
+    const per = tier => Math.max(0, parseInt(tg[TIER_FIELD[tier]]) || 0);
+    const stream = [];
+    for (const tier of ['complete', 'tq', 'half']) for (let i = 0; i < per(tier); i++) stream.push(tier);
+    const share = windowOffCounts(wins, stream.length);
+    let gi = 0, used = 0;
+    for (const tier of stream) {
+      while (gi < gids.length - 1 && used >= share[gi]) { gi++; used = 0; }
+      otSetTierCount(tg, gids[gi], tier, otTierCount(tg, gids[gi], tier) + 1);
+      used++;
+    }
+    tg.group = gids[0];
+    // Pinned off senders were per (target, tier); they now also name a group — the first one.
+    if (Array.isArray(tg.offAssignees)) tg.offAssignees.forEach(a => { if (a && a.group === undefined) a.group = gids[0]; });
+    delete tg.nComplete; delete tg.nTq; delete tg.nHalf;
+    delete tg.offWindows; delete tg.winOff; delete tg.winSnob;
+  }
+  otGroups(); // guarantee at least one even if every legacy target somehow produced none
+}
+
+// Add a group after the last one, seeded from it (same windows, blank date so the user is
+// forced to say WHICH day this wave lands — that's the whole point of a second group).
+function addOffWindowGroup() {
+  const gs = otGroups();
+  const last = gs[gs.length - 1];
+  if (!otCfg.nextGroupId) otCfg.nextGroupId = Math.max(0, ...gs.map(g => g.id)) + 1;
+  gs.push({ id: otCfg.nextGroupId++, dateISO: '', winOff: last.winOff || '', winSnob: last.winSnob || '' });
+  saveOffensive(); renderOffWindowGroups(); renderOffTargets();
+}
+// Removing a group drops every target's offs in it (they have nowhere to land) and re-points
+// any target whose primary group it was. The last group can never be removed.
+function removeOffWindowGroup(gid) {
+  const gs = otGroups();
+  if (gs.length <= 1) return;
+  const idx = otGroupIndex(gid);
+  if (idx < 0) return;
+  const offs = offTargets.reduce((s, tg) => s + ['complete', 'tq', 'half'].reduce((x, tr) => x + otTierCount(tg, gid, tr), 0), 0);
+  if (!confirm(t('confirm_del_group')(otGroupLabel(idx), offs))) return;
+  otCfg.groups.splice(idx, 1);
+  const fallback = otCfg.groups[0].id;
+  for (const tg of offTargets) {
+    if (tg.groupOffs) delete tg.groupOffs[String(gid)];
+    if (tg.group === gid) tg.group = fallback;
+    if (Array.isArray(tg.offAssignees)) tg.offAssignees = tg.offAssignees.filter(a => a.group !== gid);
+  }
+  // Orders already generated for that wave describe attacks that no longer exist — drop them so
+  // the plan table, the exports and Manage Offensive can't disagree about what is still planned.
+  planRows = planRows.filter(r => r.group !== gid);
+  saveOffensive(); renderOffWindowGroups(); renderOffTargets();
+  if (typeof renderPlanTable === 'function') renderPlanTable();
+}
+function updGroupDate(gid, v) {
+  const g = otGroups().find(x => x.id === gid);
+  if (!g) return;
+  g.dateISO = String(v || '').trim();
+  saveOffensive(); renderOffWindowGroups(); renderOffTargets();
+}
+// Window edits do NOT re-render the group rows: rebuilding the <input type="time"> mid-edit
+// would drop focus after each keystroke (same rule as the coordinate-filter rows).
+function updGroupWin(gid, kind) {
+  const g = otGroups().find(x => x.id === gid);
+  if (!g) return;
+  g[kind === 'snob' ? 'winSnob' : 'winOff'] = readWinInputs(`otg-${gid}-${kind}`);
+  saveOffensive(); renderOffTargets();
+}
+function fixGroupWin(gid, kind) {
+  const s = document.getElementById(`otg-${gid}-${kind}-s`), e = document.getElementById(`otg-${gid}-${kind}-e`);
+  if (s && e) { e.value = s.value; updGroupWin(gid, kind); }
+}
+// A group's arrival date as the localized "Miércoles 10" label used by the BB exports.
+function groupDateLabel(g) { return bbDateLabelOf(g && g.dateISO); }
+// True once the plan really spans several days — the exports section themselves per group
+// only then, so a normal single-wave plan keeps its exact historical output.
+function otMultiGroup() { return otGroups().length > 1; }
+
 function saveOffensive() {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
     cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, mvPairs,
@@ -75,6 +257,9 @@ function loadOffensive() {
     const d = JSON.parse(localStorage.getItem(OT_STORE_KEY));
     if (d) {
       otCfg        = { ...otCfg, ...(d.cfg || {}) };
+      // A pre-v5.9 save has no groups: drop whatever placeholder group this session may already
+      // have seeded so otMigrateGroups() rebuilds them from the stored date + per-target windows.
+      if (!Array.isArray((d.cfg || {}).groups) || !(d.cfg || {}).groups.length) otCfg.groups = [];
       offTargets   = d.targets || [];
       offIgnore        = typeof d.ignore === 'string' ? d.ignore : '';
       offIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
@@ -91,17 +276,12 @@ function loadOffensive() {
       otNextId     = d.nextId || (Math.max(0, ...offTargets.map(x => x.id)) + 1);
     }
   } catch {}
-  // normalize targets saved by older versions
+  // normalize targets saved by older versions (this is also what migrates a pre-v5.9 save's
+  // single arrival date + per-target windows into window groups)
   offTargets.forEach(normalizeOffTarget);
-  document.getElementById('ot-date').value = otCfg.dateISO || '';
+  renderOffWindowGroups();
   const esInput = document.getElementById('plan-earliest-send'); // Plan Offensive tab, but stored in otCfg (round-trips with the plan)
   if (esInput) esInput.value = otCfg.earliestSendISO || '';
-  setWinInputs('ot-def-winoff', otCfg.defWinOff);
-  setWinInputs('ot-def-winsnob', otCfg.defWinSnob);
-  for (const id of ['ot-def-winoff-fix', 'ot-def-winsnob-fix']) {
-    const b = document.getElementById(id);
-    if (b) b.title = t('fix_time_title');
-  }
   const su = document.getElementById('setting-server-url');
   if (su) su.value = otCfg.serverUrl || '';
   const so = document.getElementById('setting-server-offset');
@@ -354,45 +534,39 @@ function readWinInputs(prefix) {
   const si = document.getElementById(prefix + '-s'), ei = document.getElementById(prefix + '-e');
   return winStrFrom(si ? si.value : '', ei ? ei.value : '');
 }
-function updDefWin(key) {
-  otCfg[key] = readWinInputs(key === 'defWinOff' ? 'ot-def-winoff' : 'ot-def-winsnob');
-  saveOffensive();
+// ── The "Default offs" row ────────────────────────────────────────────────────
+// The default counts seed new targets (newOffTarget) and can be pushed onto every existing
+// target with the ↻ button. Both act on ONE group — the one picked in `defGroup` — so you can
+// build wave B by switching the picker, then adding or mass-updating rows. Windows and arrival
+// dates are NOT here any more: they belong to the group itself (the Window Groups editor).
+function otDefGroupId() {
+  return otGroupIndex(otCfg.defGroup) >= 0 ? otCfg.defGroup : otGroups()[0].id;
 }
-function fixDefWin(key) {
-  const prefix = key === 'defWinOff' ? 'ot-def-winoff' : 'ot-def-winsnob';
-  const si = document.getElementById(prefix + '-s'), ei = document.getElementById(prefix + '-e');
-  if (si && ei) { ei.value = si.value; updDefWin(key); }
+function updDefGroup(v) {
+  const gid = parseInt(v, 10);
+  if (otGroupIndex(gid) >= 0) otCfg.defGroup = gid;
+  saveOffensive(); renderOffWindowGroups();
 }
-
-// ── Mass-apply the top default inputs to EVERY existing target ────────────────
-// Normally the defaults only seed targets at add-time (newOffTarget). These three buttons
-// push the current inputs onto the targets already in the list. Each overwrites only its
-// own slice and asks first (it can't be undone). The arrival date is global (otCfg.dateISO)
-// so it already applies to every target; "arrival" here pushes the per-target windows.
-function applyDefArrivalToAll() {
-  if (!offTargets.length) return;
-  if (!confirm(t('confirm_apply_arrival')(offTargets.length))) return;
-  for (const tg of offTargets) {
-    tg.offWindows = [{ win: otCfg.defWinOff || '', count: 0 }]; // collapses to the single default window
-    tg.winSnob = otCfg.defWinSnob || '';
-  }
-  saveOffensive(); renderOffTargets();
-}
+// Overwrites the picked group's Complete / 3-4 / 1-2 counts AND the snob mode on every target.
+// Other groups' counts are untouched — that's the point of groups being independent.
 function applyDefOffsSnobToAll() {
   if (!offTargets.length) return;
-  if (!confirm(t('confirm_apply_offssnob')(offTargets.length))) return;
+  const gid = otDefGroupId();
+  if (!confirm(t('confirm_apply_offssnob')(offTargets.length, otLabelOf(gid)))) return;
   for (const tg of offTargets) {
-    tg.nComplete = otCfg.defComplete ?? 1;
-    tg.nTq       = otCfg.defTq ?? 0;
-    tg.nHalf     = otCfg.defHalf ?? 0;
-    tg.snobMode  = otCfg.defSnobMode || 'solo';
+    otSetTierCount(tg, gid, 'complete', otCfg.defComplete ?? 1);
+    otSetTierCount(tg, gid, 'tq', otCfg.defTq ?? 0);
+    otSetTierCount(tg, gid, 'half', otCfg.defHalf ?? 0);
+    tg.snobMode = otCfg.defSnobMode || 'solo';
   }
   saveOffensive(); renderOffTargets();
 }
 
-// Normalize a target saved by (or pasted from) older versions:
-// winOff string → offWindows list, assignee names → {name, count} objects
+// Normalize a target saved by (or pasted from) older versions: legacy windows/date → window
+// groups (otMigrateGroups, which sweeps EVERY legacy target on its first call and then
+// early-returns), assignee names → {name, count} objects, and the various type/catapult fields.
 function normalizeOffTarget(tg) {
+  otMigrateGroups();
   if (!TARGET_TYPES.includes(tg.type)) tg.type = 'off'; // pre-v4.17 saves had no type
   if (typeof tg.power !== 'boolean') tg.power = false;
   if (typeof tg.catapult !== 'number' || !(tg.catapult >= 0)) tg.catapult = Math.max(0, parseInt(tg.catapult) || 0);
@@ -409,32 +583,42 @@ function normalizeOffTarget(tg) {
     ? { name: a, count: 0 }
     : { name: a.name, count: Math.max(0, parseInt(a.count) || 0) });
   if (!Array.isArray(tg.offAssignees)) tg.offAssignees = [];
+  // A pinned off sender names a (group, tier) pair. Entries from a deleted group would pin
+  // offs nowhere, so they fall back to the primary group rather than silently disappearing.
   tg.offAssignees = tg.offAssignees
     .filter(a => a && a.name && ['complete', 'tq', 'half'].includes(a.tier))
-    .map(a => ({ tier: a.tier, name: a.name, count: Math.max(0, parseInt(a.count) || 0) }));
-  if (!Array.isArray(tg.offWindows) || !tg.offWindows.length) {
-    tg.offWindows = [{ win: tg.winOff !== undefined ? tg.winOff : (otCfg.defWinOff || ''), count: 0 }];
+    .map(a => ({ tier: a.tier, name: a.name, count: Math.max(0, parseInt(a.count) || 0),
+      group: otGroupIndex(a.group) >= 0 ? a.group : otPrimaryGroupId(tg) }));
+  // Per-group off requests, keyed by String(groupId); drop entries for groups that no longer
+  // exist and coerce every count to a non-negative integer.
+  if (!tg.groupOffs || typeof tg.groupOffs !== 'object') tg.groupOffs = {};
+  for (const k of Object.keys(tg.groupOffs)) {
+    if (otGroupIndex(Number(k)) < 0) { delete tg.groupOffs[k]; continue; }
+    const e = tg.groupOffs[k] || {};
+    tg.groupOffs[k] = { nComplete: Math.max(0, parseInt(e.nComplete) || 0),
+      nTq: Math.max(0, parseInt(e.nTq) || 0), nHalf: Math.max(0, parseInt(e.nHalf) || 0) };
   }
-  tg.offWindows = tg.offWindows.map(w => typeof w === 'string'
-    ? { win: w, count: 0 }
-    : { win: w.win || '', count: Math.max(0, parseInt(w.count) || 0) });
-  delete tg.winOff;
+  tg.group = otPrimaryGroupId(tg);
   return tg;
 }
 
 // `type` ∈ TARGET_TYPES (default 'off'); only the bulk-add dropdown and the mass edit set
 // anything else. A DESTROYER starts with the catapult toggle ON at the default attack count.
+// The default off counts seed ONE group — the one picked in the "Default offs" row. A fresh
+// target that silently requested offs in every group would quietly multiply the whole plan, so
+// later waves are always something you opt into per row.
 function newOffTarget(coord, player, type) {
   if (!TARGET_TYPES.includes(type)) type = 'off';
   const destroyer = type === 'destroyer';
+  const g0 = otDefGroupId();
   return {
     id: otNextId++, coord, player, type, power: false,
     catEnabled: destroyer, catapult: destroyer ? CAT_ATTACKS_DEFAULT : 0, catBuildings: [], catMode: 'smith',
-    nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0, snobPlayers: 0, nobles: 4,
+    groupOffs: { [String(g0)]: { nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0 } },
+    group: g0, snobPlayers: 0, nobles: 4,
     // A FAKE target's noble train, if any, defaults to a bare fake decoy; everything else uses
     // the configured default snob mode. (Bulk-add as FAKE therefore lands on 'fake' automatically.)
     snobMode: type === 'fake' ? 'fake' : (otCfg.defSnobMode || 'solo'), snobAssignees: [], offAssignees: [],
-    offWindows: [{ win: otCfg.defWinOff, count: 0 }], winSnob: otCfg.defWinSnob,
   };
 }
 
@@ -469,10 +653,28 @@ function bulkAddTargets() {
   if (added) { input.value = ''; saveOffensive(); renderOffTargets(); }
 }
 
+// Per-group off count cell (Complete / 3-4 / 1-2 × window group). No re-render: the summary
+// line is refreshed on its own so typing in one cell can't steal focus from it.
+function updOTGroupCount(id, gid, tier, val) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg || otGroupIndex(gid) < 0) return;
+  otSetTierCount(tg, gid, tier, val);
+  saveOffensive();
+  renderOtOffsSummary();
+}
+// The target's primary group — the one its noble train (and, when it requests offs nowhere,
+// its catapults) lands in. Changing it re-renders: the row's snob window text follows.
+function updOTGroup(id, val) {
+  const tg = offTargets.find(x => x.id === id);
+  const gid = parseInt(val, 10);
+  if (!tg || otGroupIndex(gid) < 0) return;
+  tg.group = gid;
+  saveOffensive(); renderOffTargets();
+}
 function updOT(id, field, val) {
   const tg = offTargets.find(x => x.id === id);
   if (!tg) return;
-  if (['nComplete','nTq','nHalf','snobPlayers','nobles','catapult'].includes(field)) tg[field] = Math.max(0, parseInt(val) || 0);
+  if (['snobPlayers','nobles','catapult'].includes(field)) tg[field] = Math.max(0, parseInt(val) || 0);
   else tg[field] = val.trim();
   if (field === 'coord') {
     // defender is DB-derived; refresh it (clear if the DB doesn't know the new coord)
@@ -658,25 +860,27 @@ function openMassEdit() {
   document.getElementById('ot-mass-cat-count').value = 5;
   massCatBuildings = [];
   renderMassCatBuildings();
-  massOffWins = [{ win: otCfg.defWinOff || '', count: 0 }];
-  renderMassOffWins();
-  setWinInputs('ot-mass-winsnob', otCfg.defWinSnob);
+  // Both group pickers start on the "Default offs" group, and the whole group row is hidden
+  // while there is only one group — nothing to choose.
+  for (const id of ['ot-mass-group', 'ot-mass-snobgroup']) {
+    const s = document.getElementById(id);
+    if (s) s.innerHTML = otGroupOptionsHtml(otDefGroupId());
+  }
+  for (const id of ['ot-mass-group-row', 'ot-mass-snobgroup-row']) {
+    const r = document.getElementById(id);
+    if (r) r.style.display = otMultiGroup() ? '' : 'none';
+  }
   document.getElementById('ot-mass-status').textContent = '';
   document.getElementById('ot-mass-modal').classList.add('open');
 }
 function closeMassEdit() {
   document.getElementById('ot-mass-modal').classList.remove('open');
 }
-function fixMassWin(prefix) {
-  const s = document.getElementById(prefix + '-s'), e = document.getElementById(prefix + '-e');
-  if (s && e) e.value = s.value;
-}
 
-// ── Mass-edit staging lists (catapult buildings + off windows) ────────────────
-// Both are LOCAL drafts for the modal: openMassEdit resets them, their Apply copies
-// them onto every selected target (same shapes as tg.catBuildings / tg.offWindows).
+// ── Mass-edit staging list (catapult buildings) ───────────────────────────────
+// A LOCAL draft for the modal: openMassEdit resets it, its Apply copies it onto every
+// selected target (same shape as tg.catBuildings).
 let massCatBuildings = []; // [{building, count}] — mirrors the per-target Catapults cell
-let massOffWins      = []; // [{win, count}]      — mirrors the per-target Off Windows cell
 
 function renderMassCatBuildings() {
   const host = document.getElementById('ot-mass-catb-host');
@@ -709,38 +913,6 @@ function massSetCatBuildings() {
   });
 }
 
-// Off-window staging — same editor as the per-target cell (time / = / time, count +
-// ✕ only when >1 windows, trailing + to add). Ids `ot-mass-winoff-<k>-s/-e` so the
-// shared winParts/readWinInputs helpers work; onchange keeps the staging list in
-// sync so add/remove re-renders don't lose typed times.
-function renderMassOffWins() {
-  const host = document.getElementById('ot-mass-winoff-host');
-  if (!host) return;
-  const multi = massOffWins.length > 1;
-  host.innerHTML = massOffWins.map((w, k) => {
-    const [ws, we] = winParts(w.win);
-    return `<div style="display:flex;gap:2px;align-items:center;">
-      <input type="time" id="ot-mass-winoff-${k}-s" class="cell-input mono" style="width:78px;" value="${ws}" onchange="updMassOffWin(${k})">
-      <button class="btn btn-ghost btn-sm" style="padding:1px 5px;" title="${esc(t('fix_time_title'))}" onclick="fixMassWin('ot-mass-winoff-${k}');updMassOffWin(${k})">=</button>
-      <input type="time" id="ot-mass-winoff-${k}-e" class="cell-input mono" style="width:78px;" value="${we}" onchange="updMassOffWin(${k})">
-      ${multi ? `<input type="number" min="0" value="${w.count || 0}" title="${esc(t('win_count_title'))}" class="cell-input num" style="width:38px;" onchange="updMassOffWinCount(${k},this.value)">` : ''}
-      ${multi ? `<span class="chip-x" title="${esc(t('del_window_title'))}" onclick="massDelOffWin(${k})">✕</span>` : ''}
-    </div>`;
-  }).join('')
-  + `<button class="btn btn-ghost btn-sm" style="padding:0 6px;align-self:flex-start;" title="${esc(t('add_window_title'))}" onclick="massAddOffWin()">+</button>`;
-}
-function updMassOffWin(k) { if (massOffWins[k]) massOffWins[k].win = readWinInputs(`ot-mass-winoff-${k}`); }
-function updMassOffWinCount(k, v) { if (massOffWins[k]) massOffWins[k].count = Math.max(0, parseInt(v) || 0); }
-function massAddOffWin() {
-  const last = massOffWins[massOffWins.length - 1];
-  massOffWins.push({ win: last ? last.win : (otCfg.defWinOff || ''), count: 0 });
-  renderMassOffWins();
-}
-function massDelOffWin(k) {
-  massOffWins.splice(k, 1);
-  if (!massOffWins.length) massOffWins.push({ win: otCfg.defWinOff || '', count: 0 });
-  renderMassOffWins();
-}
 // Run `fn` on every selected target, save + re-render (the selection survives the
 // rebuild), and confirm in the modal footer. The modal stays open so several mass
 // edits can be chained on the same selection.
@@ -778,20 +950,30 @@ function massSetCatapult(v) {
   const cnt = massCatCount();
   massApply(tg => { tg.catEnabled = !!v; if (v) tg.catapult = cnt; });
 }
+// The modal's group picker, defaulting to the "Default offs" group when the row is hidden
+// (single-group plan) or somehow stale.
+function massGroupId(id) {
+  const gid = parseInt((document.getElementById(id) || {}).value, 10);
+  return otGroupIndex(gid) >= 0 ? gid : otDefGroupId();
+}
+// Writes the three counts into ONE window group on every selected row; the other groups'
+// counts are left alone, so this is how you fill wave B without disturbing wave A.
 function massSetOffs() {
   const n = id => Math.max(0, parseInt(document.getElementById(id).value) || 0);
   const c = n('ot-mass-complete'), q = n('ot-mass-tq'), h = n('ot-mass-half');
-  massApply(tg => { tg.nComplete = c; tg.nTq = q; tg.nHalf = h; });
+  const gid = massGroupId('ot-mass-group');
+  massApply(tg => {
+    otSetTierCount(tg, gid, 'complete', c);
+    otSetTierCount(tg, gid, 'tq', q);
+    otSetTierCount(tg, gid, 'half', h);
+  });
 }
 function massSetSnobMode(v) { massApply(tg => { tg.snobMode = (v === 'escorted' || v === 'fake') ? v : 'solo'; }); }
 function massSetCatMode(v)  { if (CAT_MODE_KEYS.includes(v)) massApply(tg => { tg.catMode = v; }); }
-// Replaces ALL of each selected row's off windows with the staged list
-function massSetOffWin() {
-  massApply(tg => { tg.offWindows = massOffWins.map(w => ({ win: w.win || '', count: w.count || 0 })); });
-}
-function massSetSnobWin() {
-  const win = readWinInputs('ot-mass-winsnob');
-  massApply(tg => { tg.winSnob = win; });
+// Moves every selected row's noble train to one window group (its snob window + arrival date).
+function massSetSnobGroup() {
+  const gid = massGroupId('ot-mass-snobgroup');
+  massApply(tg => { tg.group = gid; });
 }
 function massDeleteSelected() {
   otPruneSelection();
@@ -893,11 +1075,13 @@ function offSenderOptions(tier) {
     .filter(x => x.count > 0)
     .sort((a, b) => b.count - a.count);
 }
-// Resolve a target tier's named off senders to [{name, count}] (explicit counts honored;
-// count-0 senders auto-share the tier's remaining slots evenly, like snob trains).
-function targetOffAssign(tg, tier) {
-  const N = tg[TIER_FIELD[tier]] || 0;
-  const assignees = (tg.offAssignees || []).filter(a => a && a.name && a.tier === tier);
+// Resolve a target tier's named off senders IN ONE WINDOW GROUP to [{name, count}] (explicit
+// counts honored; count-0 senders auto-share that group's remaining slots evenly, like snob
+// trains). A pin belongs to exactly one (group, tier) pair, so pinning Bob to Complete in
+// group A leaves group B's Completes free for the auto pass.
+function targetOffAssign(tg, tier, gid) {
+  const N = otTierCount(tg, gid, tier);
+  const assignees = (tg.offAssignees || []).filter(a => a && a.name && a.tier === tier && a.group === gid);
   if (!N || !assignees.length) return [];
   const explicitSum = assignees.reduce((s, a) => s + (a.count > 0 ? a.count : 0), 0);
   const auto = assignees.filter(a => !(a.count > 0));
@@ -907,15 +1091,15 @@ function targetOffAssign(tg, tier) {
     .map(a => ({ name: a.name, count: a.count > 0 ? a.count : (shares[ai++] || 0) }))
     .filter(x => x.count > 0);
 }
-function addOffAssignee(id, tier, name) {
+function addOffAssignee(id, gid, tier, name) {
   if (!name) return;
   const tg = offTargets.find(x => x.id === id);
-  if (!tg) return;
+  if (!tg || otGroupIndex(gid) < 0) return;
   if (!Array.isArray(tg.offAssignees)) tg.offAssignees = [];
-  tg.offAssignees.push({ tier, name, count: 0 });
-  // assigning a sender implies at least one off of that tier is wanted
-  const cnt = tg.offAssignees.filter(a => a.tier === tier).length;
-  if ((tg[TIER_FIELD[tier]] || 0) < cnt) tg[TIER_FIELD[tier]] = cnt;
+  tg.offAssignees.push({ tier, name, count: 0, group: gid });
+  // assigning a sender implies at least one off of that tier is wanted IN THAT GROUP
+  const cnt = tg.offAssignees.filter(a => a.tier === tier && a.group === gid).length;
+  if (otTierCount(tg, gid, tier) < cnt) otSetTierCount(tg, gid, tier, cnt);
   saveOffensive(); renderOffTargets();
 }
 function removeOffAssignee(id, idx) {
@@ -929,41 +1113,6 @@ function updOffCount(id, idx, val) {
   if (!tg || !tg.offAssignees[idx]) return;
   tg.offAssignees[idx].count = Math.max(0, parseInt(val) || 0);
   saveOffensive(); renderOffTargets();
-}
-
-// Per-target window editing (inputs are looked up by id prefix; no re-render
-// on time changes so the picker keeps focus)
-function updTgWin(id, kind, widx) {
-  const tg = offTargets.find(x => x.id === id);
-  if (!tg) return;
-  if (kind === 'snob') tg.winSnob = readWinInputs(`otsw-${id}`);
-  else if (tg.offWindows[widx]) tg.offWindows[widx].win = readWinInputs(`otw-${id}-${widx}`);
-  saveOffensive();
-}
-function fixTgWin(id, kind, widx) {
-  const prefix = kind === 'snob' ? `otsw-${id}` : `otw-${id}-${widx}`;
-  const si = document.getElementById(prefix + '-s'), ei = document.getElementById(prefix + '-e');
-  if (si && ei) { ei.value = si.value; updTgWin(id, kind, widx); }
-}
-function addOffWin(id) {
-  const tg = offTargets.find(x => x.id === id);
-  if (!tg) return;
-  const last = tg.offWindows[tg.offWindows.length - 1];
-  tg.offWindows.push({ win: last ? last.win : otCfg.defWinOff, count: 0 });
-  saveOffensive(); renderOffTargets();
-}
-function delOffWin(id, widx) {
-  const tg = offTargets.find(x => x.id === id);
-  if (!tg) return;
-  tg.offWindows.splice(widx, 1);
-  if (!tg.offWindows.length) tg.offWindows.push({ win: otCfg.defWinOff, count: 0 });
-  saveOffensive(); renderOffTargets();
-}
-function updOffWinCount(id, widx, val) {
-  const tg = offTargets.find(x => x.id === id);
-  if (!tg || !tg.offWindows[widx]) return;
-  tg.offWindows[widx].count = Math.max(0, parseInt(val) || 0);
-  saveOffensive();
 }
 
 // Effective noble count per train: explicit sender counts are honored, the
@@ -996,8 +1145,10 @@ function senderNobleTotals() {
   return agg;
 }
 
-// How many offs each window takes: explicit counts first, windows with
-// count 0 share the remainder evenly (earlier windows absorb the rounding)
+// How many offs each window takes: explicit counts first, windows with count 0 share the
+// remainder evenly (earlier windows absorb the rounding). Since v5.9 windows live on window
+// groups and this rule no longer drives the plan — it survives only to deal a legacy
+// multi-window target's counts across the groups it migrates into (otMigrateGroups).
 function windowOffCounts(wins, total) {
   const counts = wins.map(w => w.count > 0 ? w.count : 0);
   let left = total - counts.reduce((s, x) => s + x, 0);
@@ -1013,12 +1164,12 @@ function windowOffCounts(wins, total) {
   return counts;
 }
 
-// Localized "Miércoles 10"-style label derived from the arrival date picker.
+// Localized "Miércoles 10"-style label for an arrival date.
 // ⚠ FORMAT CONTRACT: the attack-planner import reads the trailing day-of-month from the
 // "ARRIVAL DATE: <weekday> <day>" header this feeds — see the contract note in js/plan.js.
-function bbDateLabel() {
-  if (otCfg.dateISO) {
-    const d = new Date(otCfg.dateISO + 'T00:00:00');
+function bbDateLabelOf(dateISO) {
+  if (dateISO) {
+    const d = new Date(dateISO + 'T00:00:00');
     if (!isNaN(d)) {
       const days = lang === 'es'
         ? ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado']
@@ -1028,11 +1179,10 @@ function bbDateLabel() {
   }
   return otCfg.dateLabel || ''; // legacy free-text fallback
 }
-
-function updateDatePreview() {
-  const el = document.getElementById('ot-date-preview');
-  if (el) el.textContent = bbDateLabel();
-}
+// The plan's headline arrival date — the FIRST group's. With one group (the usual case) this
+// is the plan's only date; with several, exports that name a single date name this one and the
+// per-group sections carry their own (see planGroupDateLabel in plan.js).
+function bbDateLabel() { return bbDateLabelOf(otGroups()[0].dateISO); }
 
 // Option HTML for the sender pickers, rebuilt by renderOffTargets() once per render and
 // injected per-<select> on demand by otFillPicker().
@@ -1152,6 +1302,58 @@ function renderOtColVis() {
     + `<button class="btn btn-ghost btn-sm" style="padding:1px 8px;" onclick="otShowAllCols()">${esc(t('colvis_show_all'))}</button>`;
 }
 
+// ── Window Groups editor (top of the Offensive Targets tab) ───────────────────
+// One row per group: its letter, arrival date (+ the localized "Miércoles 10" preview the BB
+// exports use), off window and snob window, and a ✕ that is only offered from the second group
+// on. Below the rows, the picker that says which group the "Default offs" inputs write to.
+// Time inputs deliberately do NOT re-render this block on change (updGroupWin) — rebuilding an
+// <input type="time"> mid-edit drops focus after every keystroke.
+function renderOffWindowGroups() {
+  const host = document.getElementById('ot-groups-host');
+  if (!host) return; // headless test sandbox / not on this tab
+  const gs = otGroups();
+  const multi = gs.length > 1;
+  const winCell = (g, kind) => {
+    const [s, e] = winParts(kind === 'snob' ? g.winSnob : g.winOff);
+    return `<span style="display:inline-flex;gap:3px;align-items:center;">
+      <input type="time" id="otg-${g.id}-${kind}-s" class="cell-input mono" style="width:88px;" value="${s}" onchange="updGroupWin(${g.id},'${kind}')">
+      <button class="btn btn-ghost btn-sm" style="padding:1px 6px;" title="${esc(t('fix_time_title'))}" onclick="fixGroupWin(${g.id},'${kind}')">=</button>
+      <input type="time" id="otg-${g.id}-${kind}-e" class="cell-input mono" style="width:88px;" value="${e}" onchange="updGroupWin(${g.id},'${kind}')">
+    </span>`;
+  };
+  host.innerHTML = gs.map((g, i) => `
+    <div class="filter-row" style="gap:8px;align-items:center;margin:0 0 6px 0;">
+      <span class="badge badge-complete" style="min-width:22px;text-align:center;" title="${esc(t('group_label_title'))}">${esc(otGroupLabel(i))}</span>
+      <label data-i18n="lbl_date_label">${esc(t('lbl_date_label'))}</label>
+      <input type="date" value="${esc(g.dateISO || '')}" onchange="updGroupDate(${g.id},this.value)">
+      <span style="font-size:12px;color:#f0c040;font-weight:600;min-width:90px;">${esc(groupDateLabel(g))}</span>
+      <label>${esc(t('lbl_group_winoff'))}</label>${winCell(g, 'off')}
+      <label>${esc(t('lbl_group_winsnob'))}</label>${winCell(g, 'snob')}
+      ${multi ? `<button class="btn btn-ghost btn-sm" title="${esc(t('del_group_title'))}" onclick="removeOffWindowGroup(${g.id})">✕</button>` : ''}
+    </div>`).join('')
+    + `<div class="filter-row" style="gap:8px;align-items:center;margin:0;">
+         <button class="btn btn-ghost btn-sm" onclick="addOffWindowGroup()" title="${esc(t('add_group_title'))}">${esc(t('btn_add_group'))}</button>
+         <span style="font-size:12px;color:#5a3a18;">${esc(t('groups_hint'))}</span>
+       </div>`;
+  const sel = document.getElementById('ot-def-group');
+  if (sel) {
+    sel.innerHTML = otGroupOptionsHtml(otDefGroupId());
+    sel.style.display = multi ? '' : 'none';
+  }
+  const lbl = document.getElementById('ot-def-group-lbl');
+  if (lbl) lbl.style.display = multi ? '' : 'none';
+}
+// <option> list for every group picker: "A · 01:00/02:00 · Wednesday 10" (the parts that exist).
+function otGroupOptionsHtml(selectedId) {
+  return otGroups().map((g, i) => {
+    const bits = [otGroupLabel(i)];
+    if (fmtWindow(g.winOff)) bits.push(fmtWindow(g.winOff));
+    const dl = groupDateLabel(g);
+    if (dl) bits.push(dl);
+    return `<option value="${g.id}"${g.id === selectedId ? ' selected' : ''}>${esc(bits.join(' · '))}</option>`;
+  }).join('');
+}
+
 function renderOtOffsSummary() {
   const el = document.getElementById('ot-offs-summary');
   if (!el) return;
@@ -1173,7 +1375,9 @@ function renderOtOffsSummary() {
   const tierMeta = [['complete', 'badge-complete', 'th_complete'], ['tq', 'badge-tq', 'th_tq'], ['half', 'badge-half', 'th_half']];
   let ignTotal = 0;
   const parts = tierMeta.map(([tier, cls, label]) => {
-    const used = realTargets.reduce((s, tg) => s + (tg[TIER_FIELD[tier]] || 0), 0) + (tier === 'complete' ? escortOffs : 0);
+    // Summed across EVERY window group: a village can only send one off, so a target asking
+    // for 2 Completes on Friday and 2 more on Saturday really does cost 4 Completes.
+    const used = realTargets.reduce((s, tg) => s + otTierTotal(tg, tier), 0) + (tier === 'complete' ? escortOffs : 0);
     const avail = stat[tier].total - stat[tier].ign;
     ignTotal += stat[tier].ign;
     const usedHtml = used > avail ? `<span style="color:#e06040;">${used}</span>` : `${used}`;
@@ -1189,8 +1393,8 @@ function renderOtOffsSummary() {
 }
 
 function renderOffTargets() {
-  updateDatePreview();
   offTargets.forEach(normalizeOffTarget);
+  renderOffWindowGroups();
   otPruneSelection();
   const warnEl = document.getElementById('ot-warnings');
   const warns = (villageDb.length ? offTargets.filter(tg => !coordDb[tg.coord]) : [])
@@ -1232,6 +1436,7 @@ function renderOffTargets() {
     tierHasSenders[tier] = opts.length > 0;
     otPickerOptsHtml[tier] = opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.count})</option>`).join('');
   }
+  const multiGroup = otMultiGroup(); // hoisted: every row asks, and the answer can't change mid-render
   tbody.innerHTML = offTargets.map((tg, i) => {
     const isUnknown = villageDb.length && !coordDb[tg.coord];
     const dbTitle = esc(dbOwnerLabel(tg.coord));
@@ -1246,44 +1451,55 @@ function renderOffTargets() {
     // how many offs of THAT tier the player owns. Chips = assignees of that tier (editable count).
     const TIER_BADGE_CLS = { complete: 'badge-complete', tq: 'badge-tq', half: 'badge-half' };
     const TIER_TH = { complete: 'th_complete', tq: 'th_tq', half: 'th_half' };
+    // With several groups a pin has to say WHICH wave it sends in, so each tier row repeats
+    // per group the row actually attacks in (otActiveGroups) — pinning a sender to a wave this
+    // target isn't part of would be a pin that can never fire. The group letter is only shown
+    // when there is more than one, so a single-wave plan looks exactly as it always did.
     const offSenderCell = Object.keys(players).length
-      ? ['complete', 'tq', 'half'].map(tier => {
-          const tierChips = tg.offAssignees.map((a, j) => a.tier !== tier ? '' :
-            `<span class="chip">${esc(decode(a.name))} ×<input type="number" min="0" value="${a.count || 0}" title="${esc(t('off_count_title'))}" style="width:30px;background:transparent;border:none;border-bottom:1px solid #7a5c10;color:inherit;font-size:11px;text-align:center;" onchange="updOffCount(${tg.id},${j},this.value)"><span class="chip-x" onclick="removeOffAssignee(${tg.id},${j})">✕</span></span>`).join('');
-          const picker = tierHasSenders[tier]
-            ? `<select class="cell-input" style="width:104px;" onfocus="otFillPicker(this,'${tier}')" onmousedown="otFillPicker(this,'${tier}')" onchange="addOffAssignee(${tg.id},'${tier}',this.value)">
-                 <option value="">${t('opt_pick_sender')}</option>
-               </select>`
-            : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
-          return `<div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;margin:1px 0;">
-                    <span class="badge ${TIER_BADGE_CLS[tier]}" style="font-size:9px;padding:0 4px;">${t(TIER_TH[tier])}</span>${picker}${tierChips}
-                  </div>`;
-        }).join('')
+      ? ['complete', 'tq', 'half'].map(tier =>
+          otActiveGroups(tg).map(g => {
+            const tierChips = tg.offAssignees.map((a, j) => (a.tier !== tier || a.group !== g.id) ? '' :
+              `<span class="chip">${esc(decode(a.name))} ×<input type="number" min="0" value="${a.count || 0}" title="${esc(t('off_count_title'))}" style="width:30px;background:transparent;border:none;border-bottom:1px solid #7a5c10;color:inherit;font-size:11px;text-align:center;" onchange="updOffCount(${tg.id},${j},this.value)"><span class="chip-x" onclick="removeOffAssignee(${tg.id},${j})">✕</span></span>`).join('');
+            const picker = tierHasSenders[tier]
+              ? `<select class="cell-input" style="width:104px;" onfocus="otFillPicker(this,'${tier}')" onmousedown="otFillPicker(this,'${tier}')" onchange="addOffAssignee(${tg.id},${g.id},'${tier}',this.value)">
+                   <option value="">${t('opt_pick_sender')}</option>
+                 </select>`
+              : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+            const gTag = multiGroup ? `<span class="badge" style="font-size:9px;padding:0 4px;background:#2a1e08;color:#c8a060;">${esc(otLabelOf(g.id))}</span>` : '';
+            return `<div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;margin:1px 0;">
+                      <span class="badge ${TIER_BADGE_CLS[tier]}" style="font-size:9px;padding:0 4px;">${t(TIER_TH[tier])}</span>${gTag}${picker}${tierChips}
+                    </div>`;
+          }).join('')).join('')
       : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
-    const winEditor = (prefix, winStr, chgJs, fixJs) => {
-      const [ws, we] = winParts(winStr);
-      return `<input type="time" id="${prefix}-s" class="cell-input mono" style="width:78px;" value="${ws}" onchange="${chgJs}">` +
-             `<button class="btn btn-ghost btn-sm" style="padding:1px 5px;" title="${esc(t('fix_time_title'))}" onclick="${fixJs}">=</button>` +
-             `<input type="time" id="${prefix}-e" class="cell-input mono" style="width:78px;" value="${we}" onchange="${chgJs}">`;
-    };
-    const multiWin = tg.offWindows.length > 1;
-    const offWinCell = tg.offWindows.map((w, k) =>
-      `<div style="display:flex;gap:2px;align-items:center;justify-content:center;margin:1px 0;">
-        ${winEditor(`otw-${tg.id}-${k}`, w.win, `updTgWin(${tg.id},'off',${k})`, `fixTgWin(${tg.id},'off',${k})`)}
-        ${multiWin ? `<input type="number" min="0" value="${w.count || 0}" title="${esc(t('win_count_title'))}" class="cell-input num" style="width:38px;" onchange="updOffWinCount(${tg.id},${k},this.value)">` : ''}
-        ${multiWin ? `<span class="chip-x" title="${esc(t('del_window_title'))}" onclick="delOffWin(${tg.id},${k})">✕</span>` : ''}
-      </div>`).join('')
-      + `<button class="btn btn-ghost btn-sm" style="padding:0 6px;margin-top:1px;" title="${esc(t('add_window_title'))}" onclick="addOffWin(${tg.id})">+</button>`;
-    const snobWinCell = `<div style="display:flex;gap:2px;align-items:center;justify-content:center;">
-        ${winEditor(`otsw-${tg.id}`, tg.winSnob, `updTgWin(${tg.id},'snob',0)`, `fixTgWin(${tg.id},'snob',0)`)}
-      </div>`;
+    const isFakeTg = tg.type === 'fake';
+    // Off Windows column: read-only, one line per group this target attacks in — the windows
+    // themselves are edited once, up in the Window Groups editor, not per row.
+    const offWinCell = otActiveGroups(tg).map(g =>
+      `<div style="display:flex;gap:4px;align-items:center;justify-content:center;margin:1px 0;white-space:nowrap;">
+        ${multiGroup ? `<span class="badge" style="font-size:9px;padding:0 4px;background:#2a1e08;color:#c8a060;">${esc(otLabelOf(g.id))}</span>` : ''}
+        <span class="mono" style="font-size:11px;color:#c8a060;">${esc(fmtWindow(g.winOff) || '—')}</span>
+        ${multiGroup ? `<span style="font-size:10px;color:#806030;">${esc(groupDateLabel(g))}</span>` : ''}
+      </div>`).join('');
+    // Snob Window column: the picker for this target's PRIMARY group — the wave its noble train
+    // lands in. Shown as a plain window read-out while there is only one group to choose from.
+    const primary = otGroupById(otPrimaryGroupId(tg));
+    const snobWinCell = multiGroup
+      ? `<select class="cell-input" style="width:150px;" title="${esc(t('snob_group_title'))}" onchange="updOTGroup(${tg.id},this.value)">${otGroupOptionsHtml(primary.id)}</select>
+         <div class="mono" style="font-size:11px;color:#c8a060;margin-top:2px;">${esc(fmtWindow(primary.winSnob) || '—')}</div>`
+      : `<span class="mono" style="font-size:11px;color:#c8a060;">${esc(fmtWindow(primary.winSnob) || '—')}</span>`;
+    // One number input per group in each tier cell. Single group → a bare input, exactly the
+    // pre-v5.9 cell; several → a letter-tagged input per group, stacked.
+    const tierCell = (tier) => otGroups().map(g =>
+      `<div style="display:flex;gap:3px;align-items:center;justify-content:center;">
+        ${multiGroup ? `<span class="badge" style="font-size:9px;padding:0 4px;background:#2a1e08;color:#c8a060;" title="${esc(groupDateLabel(g))}">${esc(otLabelOf(g.id))}</span>` : ''}
+        <input type="number" min="0" class="cell-input num" value="${otTierCount(tg, g.id, tier)}"${isFakeTg && tier === 'complete' ? ` title="${esc(t('fake_count_title'))}"` : ''} onchange="updOTGroupCount(${tg.id},${g.id},'${tier}',this.value)">
+      </div>`).join('');
     const sel = otSelected.has(tg.id);
     // FAKE rows use the type, coord, Complete (= number of 1-ram fakes) and Off Windows cells,
     // PLUS the noble-train cells (Snob Players / Nobles / Senders / Snob Mode / Snob Window) so a
     // fake target can also field a FAKE noble train (a bare decoy — mode defaults to 'fake'). The
     // remaining cells (other off tiers, POWER, catapults, off senders, Catapult Mode) are ignored
     // by the plan for a fake target, so they render an inert dash (type changes go through mass edit).
-    const isFakeTg = tg.type === 'fake';
     const dash = '<span class="num-zero">—</span>';
     return `
     <tr${sel ? ' class="ot-row-sel"' : ''}>
@@ -1300,9 +1516,9 @@ function renderOffTargets() {
         const txt = pts.toLocaleString();
         return url ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:#c8a060;">${txt}</a>` : `<span style="color:#c8a060;">${txt}</span>`;
       })()}</td>
-      <td><input type="number" min="0" class="cell-input num" value="${tg.nComplete}"${isFakeTg ? ` title="${esc(t('fake_count_title'))}"` : ''} onchange="updOT(${tg.id},'nComplete',this.value)"></td>
-      <td>${isFakeTg ? dash : `<input type="number" min="0" class="cell-input num" value="${tg.nTq}" onchange="updOT(${tg.id},'nTq',this.value)">`}</td>
-      <td>${isFakeTg ? dash : `<input type="number" min="0" class="cell-input num" value="${tg.nHalf}" onchange="updOT(${tg.id},'nHalf',this.value)">`}</td>
+      <td>${tierCell('complete')}</td>
+      <td>${isFakeTg ? dash : tierCell('tq')}</td>
+      <td>${isFakeTg ? dash : tierCell('half')}</td>
       <td title="${esc(t('ot_power_title'))}">${isFakeTg ? dash : `<label class="ot-power"><input type="checkbox" ${tg.power ? 'checked' : ''} onchange="setOTPower(${tg.id},this.checked)">⚡</label>`}</td>
       <td title="${esc(t('ot_catapult_title'))}">${isFakeTg ? dash : ''}<div style="display:${isFakeTg ? 'none' : 'flex'};flex-direction:column;align-items:center;gap:3px;">
         <label class="ot-power"><input type="checkbox" ${tg.catEnabled ? 'checked' : ''} onchange="setOTCatapult(${tg.id},this.checked)">${twIcon('catapult')}</label>

@@ -153,12 +153,14 @@ function moParseImport(text) {
 }
 
 // ── Arrival vs the row's landing window ───────────────────────────────────────
-// {status:'in'|'early'|'late'|'unknown', deltaMin}. Window times live on the plan
-// date (otCfg.dateISO) in server wall time, same clock the arrival was parsed on.
-function moTimingVerdict(windowStr, arrivalMs) {
+// {status:'in'|'early'|'late'|'unknown', deltaMin}. Window times live on the ROW's arrival
+// date — the date of its off window group since v5.9 — in server wall time, the same clock the
+// arrival was parsed on. A plan spanning several days would otherwise judge every wave against
+// the first one and call the later ones days late.
+function moTimingVerdict(windowStr, arrivalMs, dateISO) {
   const w = parseWindowStr(windowStr);
   if (!w || arrivalMs == null) return { status: 'unknown', deltaMin: 0 };
-  const from = serverWallMs(otCfg.dateISO, w.f), to = serverWallMs(otCfg.dateISO, w.to);
+  const from = serverWallMs(dateISO, w.f), to = serverWallMs(dateISO, w.to);
   if (from === null) return { status: 'unknown', deltaMin: 0 };
   if (arrivalMs < from) return { status: 'early', deltaMin: (from - arrivalMs) / 60000 };
   if (arrivalMs > to)   return { status: 'late',  deltaMin: (arrivalMs - to) / 60000 };
@@ -172,7 +174,7 @@ function moCmdScore(cmd, r) {
   const SIZE = { large: 0, medium: 1, small: 2 };
   let sz = cmd.size in SIZE ? SIZE[cmd.size] : 1.5;
   if (r.type === 'catapult') sz = 2 - sz;
-  const v = moTimingVerdict(r.window, cmd.arrivalMs);
+  const v = moTimingVerdict(r.window, cmd.arrivalMs, planRowDateISO(r));
   return sz * 10000 + (v.status === 'unknown' ? 5000 : v.deltaMin);
 }
 
@@ -255,7 +257,7 @@ function moMatchPlan(rows, commands) {
 // may simply not exist yet. Past that moment it's MISSING. No window/date = pending.
 function moRowPending(r) {
   const w = parseWindowStr(r.window);
-  const landMs = w ? serverWallMs(otCfg.dateISO, w.to) : null;
+  const landMs = w ? serverWallMs(planRowDateISO(r), w.to) : null;
   if (landMs === null) return true;
   return serverNowMs() < landMs - (typeof r.travel === 'number' ? r.travel : 0) * 60000;
 }
@@ -319,8 +321,8 @@ function moTipHide() {
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 function moFmtDelta(min) { return fmtTime(Math.round(min)); }
-function moTimingCell(windowStr, arrivalMs) {
-  const v = moTimingVerdict(windowStr, arrivalMs);
+function moTimingCell(windowStr, arrivalMs, dateISO) {
+  const v = moTimingVerdict(windowStr, arrivalMs, dateISO);
   if (v.status === 'in')    return `<span style="color:#40c060;font-weight:600;">${esc(t('mo_tm_in'))}</span>`;
   if (v.status === 'early') return `<span style="color:#e0a020;font-weight:600;">${esc(t('mo_tm_early')(moFmtDelta(v.deltaMin)))}</span>`;
   if (v.status === 'late')  return `<span style="color:#e06040;font-weight:600;">${esc(t('mo_tm_late')(moFmtDelta(v.deltaMin)))}</span>`;
@@ -399,7 +401,7 @@ function renderManageTable() {
   // summary tallies — snob trains count PER NOBLE (they render per noble too)
   let nExact = 0, nPlayer = 0, nNoble = 0, nMiss = 0, nPend = 0, total = 0;
   const tm = { in: 0, early: 0, late: 0, unknown: 0 };
-  const tally = (windowStr, arrivalMs) => { tm[moTimingVerdict(windowStr, arrivalMs).status]++; };
+  const tally = (r, arrivalMs) => { tm[moTimingVerdict(r.window, arrivalMs, planRowDateISO(r)).status]++; };
   rows.forEach((r, i) => {
     const m = M.rowMatch[i];
     if (r.type === 'snob') {
@@ -408,10 +410,10 @@ function renderManageTable() {
       nNoble += m.cmds.length;
       const unfilled = want - m.cmds.length;
       if (unfilled > 0) (moRowPending(r) ? nPend += unfilled : nMiss += unfilled);
-      m.cmds.forEach(c => tally(r.window, c.arrivalMs));
+      m.cmds.forEach(c => tally(r, c.arrivalMs));
     } else {
       total++;
-      if (m) { (m.kind === 'exact' ? nExact++ : nPlayer++); tally(r.window, m.cmd.arrivalMs); }
+      if (m) { (m.kind === 'exact' ? nExact++ : nPlayer++); tally(r, m.cmd.arrivalMs); }
       else (moRowPending(r) ? nPend++ : nMiss++);
     }
   });
@@ -460,7 +462,7 @@ function renderManageTable() {
         originPlayer = cmd.originPlayer ? `<span class="player-tag">${esc(cmd.originPlayer)}</span>` : '—';
         distTravel = moDistTravel(cmd.originCoord, r.tCoord, r.type);
         arrival = moArrivalCell(cmd);
-        timing = moTimingCell(r.window, cmd.arrivalMs);
+        timing = moTimingCell(r.window, cmd.arrivalMs, planRowDateISO(r));
       } else {
         status = moRowPending(r)
           ? `<span style="color:#a08050;">${esc(t('mo_st_pending'))}</span>`

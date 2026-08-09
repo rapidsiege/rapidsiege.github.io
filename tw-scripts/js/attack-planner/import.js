@@ -9,14 +9,23 @@
 
 function parseOffPlanBB(text) {
   const targets = [];
+  // A target listed under several ARRIVAL DATE sections — a tribe-calculator plan with multiple
+  // OFF WINDOW GROUPS repeats its objective list once per wave — must ACCUMULATE every wave's
+  // requirements. Re-opening the same coord returns the existing entry instead of a fresh one,
+  // otherwise the last section would silently replace the earlier waves downstream (importOffTargets
+  // assigns `existing.requirements = p.requirements`).
+  const byCoord = {};
   let current = null;
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     // Village line: "N. X|Y - Player." (optional spaces/trailing dot)
     const vm = line.match(/^\d+\.\s+(\d+)\|(\d+)\s*-\s*(.+?)\.?\s*$/);
     if (vm) {
-      if (current) targets.push(current);
+      const key = `${parseInt(vm[1])}|${parseInt(vm[2])}`;
+      if (byCoord[key]) { current = byCoord[key]; continue; }
       current = { x: parseInt(vm[1]), y: parseInt(vm[2]), player: vm[3].trim().replace(/\[\/?[^\]]+\]/g, '').trim(), requirements: [] };
+      byCoord[key] = current;
+      targets.push(current);
       continue;
     }
     if (!current) continue;
@@ -32,8 +41,7 @@ function parseOffPlanBB(text) {
       current.requirements.push({ unitType, attacker: am[2].trim(), timeFrom: am[3], timeTo: am[4] || '' });
     }
   }
-  if (current) targets.push(current);
-  return targets;
+  return targets;   // entries are pushed as they open, so nothing is left dangling here
 }
 
 // ── Per-player plan BB (tribe-calculator "Per-Player Orders" / combined "Per-Player All") ──
@@ -54,6 +62,9 @@ function parseOffPlanBB(text) {
 // Line shapes handled (EN and ES):
 //   header  ========== Vanquished (4) ==========
 //   date    [b][u]ARRIVAL DATE:[/u][/b] Thursday 18            → arrivalDay (day-of-month)
+//           A tribe-calculator plan with several OFF WINDOW GROUPS repeats this header (and the
+//           sender header) once per wave. Only ONE date can apply to a paste, so the first wins
+//           and importPlayerPlan warns — the user imports the later waves separately.
 //   off     [unit]ram[/unit] 547|552 → [coord]583|524[/coord] ([player]Def[/player]) [b]…01:00…
 //   fake    [unit]spy[/unit][unit]ram[/unit] [b](FAKE)[/b] 547|552 → [coord]583|524[/coord] …  (parses like an
 //           off but classified 'fake' — the spy icon is its only reliable structural marker)
@@ -85,6 +96,7 @@ function parsePlayerPlanBB(text) {
   const byKey   = {};        // coord/id key → target (merge lines that hit the same target)
   let sender = '';           // current "========== SENDER (n) ==========" block owner
   let arrivalDay = null;
+  const arrivalDays = [];   // every distinct ARRIVAL DATE day seen, in order (multi-wave plans)
 
   const attackRe = /→\s*\[coord\](\d{1,3}\|\d{1,3})\[\/coord\]/;   // off / cat attack line
   const coordRe  = /\[coord\](\d{1,3}\|\d{1,3})\[\/coord\]/;       // any tagged coord (snob line)
@@ -102,8 +114,17 @@ function parsePlayerPlanBB(text) {
     const hm = line.match(/^=+\s*(.+?)\s*\(\d+\)\s*=+$/);
     if (hm) { sender = hm[1].trim(); cur = null; continue; }
     if (/^=+.*=+$/.test(line)) { sender = ''; cur = null; continue; } // other dividers (UNASSIGNED)
+    // A tribe-calculator plan built from several OFF WINDOW GROUPS repeats this header once per
+    // wave, each with its own day. A paste can only carry ONE plan date, so the FIRST (nearest)
+    // wave wins and `arrivalDays` records the rest — importPlayerPlan surfaces them so the user
+    // knows the later waves need importing separately.
     const dm = line.match(/(?:ARRIVAL DATE|FECHA DE LLEGADA)[^0-9]*(\d{1,2})\s*$/i);
-    if (dm) { arrivalDay = parseInt(dm[1], 10); continue; }
+    if (dm) {
+      const d = parseInt(dm[1], 10);
+      if (!arrivalDays.includes(d)) arrivalDays.push(d);
+      if (arrivalDay === null) arrivalDay = d;
+      continue;
+    }
     if (attackRe.test(line)) {
       cur = { sender, kind: 'attack', text: line, ...windowAfterCoord(line) };
       records.push(cur);                                             // start of a new attack
@@ -194,6 +215,7 @@ function parsePlayerPlanBB(text) {
   }
 
   targets.arrivalDay = arrivalDay;   // array property — invisible to JSON/length, callers opt in
+  targets.arrivalDays = arrivalDays;
   return targets;
 }
 
@@ -277,7 +299,12 @@ function importPlayerPlan(text) {
     .replace('{fakes}', fakes)
     .replace('{players}', senders.size)
     .replace('{senders}', senderList)
-    + (planDateISO ? '\n' + t('alert_plan_date').replace('{date}', planDateISO) : ''));
+    + (planDateISO ? '\n' + t('alert_plan_date').replace('{date}', planDateISO) : '')
+    // Several ARRIVAL DATE headers = a multi-wave tribe-calculator plan. Only the first wave's
+    // date could be applied, so say so rather than let the later waves land on the wrong day.
+    + ((parsed.arrivalDays || []).length > 1
+        ? '\n' + t('alert_plan_multi_date').replace('{days}', parsed.arrivalDays.join(', '))
+        : ''));
 }
 
 // Structural routing between the two BB importers: per-player exports have
