@@ -131,6 +131,7 @@ const LANG = {
     mt_count: 'Count (noble-train size for snobs)',
     mt_src: 'src',
     mt_src_title: 'Origin village coord X|Y — pins which village sends this attack (optional)',
+    mt_date_title: 'Own arrival date — overrides the Auto-Generate date for this attack (empty = use the Auto-Generate date)',
     lbl_points: 'Points',
 
     // Select options
@@ -189,7 +190,8 @@ const LANG = {
     alert_off_imported: 'Off targets: {added} added, {updated} updated.',
     alert_plan_imported: 'Per-player plan: {added} target(s) added, {updated} updated ({fakes} fake) — requirements for {players} player(s): {senders}.\nSet "My Player" to your exact name (above), then Auto-Generate to assign your villages.',
     alert_plan_date: 'Arrival date {date} — pre-filled in Auto-Generate.',
-    alert_plan_multi_date: '⚠ This plan spans several arrival days ({days}). Only the first was applied — import each wave separately to get its own date.',
+    alert_plan_multi_date: '⚠ This plan spans several arrival days ({days}), but {undated} attack(s) carried no recognizable day — those will land on the Auto-Generate date. Check them.',
+    alert_plan_dates_applied: 'This plan spans several arrival days ({days}) — each attack keeps its own day; the Auto-Generate date only applies to attacks without one.',
     alert_fake_imported: 'Fake targets: {added} added, {skipped} skipped.',
     alert_no_targets: 'No targets added. Import targets first.',
     alert_no_villages: 'No villages added. Add your villages first.',
@@ -330,6 +332,7 @@ const LANG = {
     mt_count: 'Cantidad (tamaño del tren de nobles)',
     mt_src: 'orig',
     mt_src_title: 'Coordenada de aldea de origen X|Y — fija qué aldea envía este ataque (opcional)',
+    mt_date_title: 'Fecha de llegada propia — anula la fecha de Auto-Generar para este ataque (vacío = usar la fecha de Auto-Generar)',
     lbl_points: 'Puntos',
 
     // Select options
@@ -388,7 +391,8 @@ const LANG = {
     alert_off_imported: 'Obj. off: {added} añadidos, {updated} actualizados.',
     alert_plan_imported: 'Plan por jugador: {added} objetivo(s) añadidos, {updated} actualizados ({fakes} fake) — requisitos para {players} jugador(es): {senders}.\nPon "Mi Jugador" con tu nombre exacto (arriba) y usa Auto-Generar para asignar tus pueblos.',
     alert_plan_date: 'Fecha de llegada {date} — pre-rellenada en Auto-Generar.',
-    alert_plan_multi_date: '⚠ Este plan abarca varios días de llegada ({days}). Solo se aplicó el primero — importa cada oleada por separado para que tenga su fecha.',
+    alert_plan_multi_date: '⚠ Este plan abarca varios días de llegada ({days}), pero {undated} ataque(s) no traían un día reconocible — esos caerán en la fecha de Auto-Generar. Revísalos.',
+    alert_plan_dates_applied: 'Este plan abarca varios días de llegada ({days}) — cada ataque conserva su propio día; la fecha de Auto-Generar solo aplica a los ataques sin día.',
     alert_fake_imported: 'Obj. fake: {added} añadidos, {skipped} omitidos.',
     alert_no_targets: 'No hay objetivos. Importa primero los objetivos.',
     alert_no_villages: 'No hay pueblos. Añade primero tus pueblos.',

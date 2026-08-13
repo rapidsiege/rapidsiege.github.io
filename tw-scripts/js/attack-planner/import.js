@@ -47,9 +47,10 @@ function parseOffPlanBB(text) {
 // ── Per-player plan BB (tribe-calculator "Per-Player Orders" / combined "Per-Player All") ──
 //
 // ⚠ FORMAT CONTRACT with tribe-calculator js/plan.js: this parser consumes the BB emitted by
-// playerPlanBBBlock / snobOrderLineBB / unassignedPlanBBBlock (and bbDateLabel for the date
-// header). Whenever that export changes shape, update this parser + .omc/test_attack_import.js
-// in the same change — there is a matching contract note above those functions in plan.js.
+// playerPlanBBBlock / planRowWindowBB / snobOrderLineBB / unassignedPlanBBBlock (and
+// bbDateLabelOf for the date header). Whenever that export changes shape, update this parser
+// + tests/test_attack_import.js in the same change — there is a matching contract note above
+// those functions in plan.js.
 // To stay robust across cosmetic tweaks, anchor only on STRUCTURE (unit tags, "→ [coord]",
 // [coord] targets, line order) — never on presentation such as [color=…] hexes or [b] nesting.
 //
@@ -62,15 +63,21 @@ function parseOffPlanBB(text) {
 // Line shapes handled (EN and ES):
 //   header  ========== Vanquished (4) ==========
 //   date    [b][u]ARRIVAL DATE:[/u][/b] Thursday 18            → arrivalDay (day-of-month)
-//           A tribe-calculator plan with several OFF WINDOW GROUPS repeats this header (and the
-//           sender header) once per wave. Only ONE date can apply to a paste, so the first wins
-//           and importPlayerPlan warns — the user imports the later waves separately.
+//           Since tribe-calculator v5.12 a multi-wave plan emits ONE block per player whose
+//           header lists every arrival day (" & "-joined): "ARRIVAL DATE: Thursday 13 &
+//           Friday 14". Every day on the line is captured; the days scope to the sender block
+//           they head (older per-wave exports repeat header + date per wave — each of those
+//           blocks is single-dated, so they too now import fully dated).
 //   off     [unit]ram[/unit] 547|552 → [coord]583|524[/coord] ([player]Def[/player]) [b]…01:00…
+//           In a multi-date block the blue arrival window carries a "<day> · " day-of-month
+//           prefix ("13 · 01:00-02:00", tribe-calculator planRowWindowBB) — that day dates the
+//           attack's requirement individually (requirement.arrivalDay → dateISO on import).
 //   fake    [unit]spy[/unit][unit]ram[/unit] [b](FAKE)[/b] 547|552 → [coord]583|524[/coord] …  (parses like an
 //           off but classified 'fake' — the spy icon is its only reliable structural marker)
 //   launch  …LAUNCH TIME:… — [url=…]ATTACK URL▶[/url][/b]      (continuation line: rally URL
 //           carrying the village=/target= IDs; old single-line exports put it on the off line)
 //   snob    4x [unit]snob[/unit] ⚠ Prepare Snob Train for [coord]572|521[/coord] ⚠ ([player]Def[/player]) [b]…02:00-03:00…
+//           (same "<day> · " prefix rule as off lines)
 //
 // Ignored on purpose: the "Objective N." context dump (its off rows have no "→ [coord]" and its
 // snob rows carry no [coord] at all), "Villages in snob range" lines (bare coords), the
@@ -82,21 +89,29 @@ function parseOffPlanBB(text) {
 // attack/snob line itself, with every BB tag stripped first — so color hexes, [b] nesting, or
 // any future presentation tag can neither gate nor pollute the match. Launch/continuation
 // lines are never scanned for times, so the red launch span can't be mistaken for the arrival.
+// `day` = the optional "<day> · " day-of-month prefix tribe-calculator (v5.12+) puts before
+// the window when a player's block spans several arrival dates (planRowWindowBB — FORMAT
+// CONTRACT, change in lockstep). The "·" separator is what keeps a trailing digit in a
+// defender's name from ever matching as a day.
 function windowAfterCoord(line) {
   const i = line.indexOf('[/coord]');
-  if (i < 0) return { timeFrom: '', timeTo: '' };
+  if (i < 0) return { day: null, timeFrom: '', timeTo: '' };
   const tail = line.slice(i + 8).replace(/\[[^\]]*\]/g, ' ');
-  const m = tail.match(/(\d{1,2}:\d{2})(?:\s*[\/\-–]\s*(\d{1,2}:\d{2}))?/);
-  return { timeFrom: m ? m[1] : '', timeTo: m && m[2] ? m[2] : '' };
+  const m = tail.match(/(?:(\d{1,2})\s*·\s*)?(\d{1,2}:\d{2})(?:\s*[\/\-–]\s*(\d{1,2}:\d{2}))?/);
+  return { day: m && m[1] ? parseInt(m[1], 10) : null, timeFrom: m ? m[2] : '', timeTo: m && m[3] ? m[3] : '' };
 }
 
 function parsePlayerPlanBB(text) {
   const targets = [];        // [{ x, y, villageId, player, requirements }] — plus a non-JSON
-                             // .arrivalDay property (day-of-month from the ARRIVAL DATE header)
+                             // .arrivalDay property (first ARRIVAL DATE day-of-month seen).
+                             // Each requirement carries its OWN arrivalDay (day-of-month) when
+                             // one is knowable: the "<day> · " window prefix wins, else the
+                             // single day of the sender block's ARRIVAL DATE header, else null.
   const byKey   = {};        // coord/id key → target (merge lines that hit the same target)
   let sender = '';           // current "========== SENDER (n) ==========" block owner
   let arrivalDay = null;
-  const arrivalDays = [];   // every distinct ARRIVAL DATE day seen, in order (multi-wave plans)
+  const arrivalDays = [];   // every distinct ARRIVAL DATE day seen, in order (multi-date plans)
+  let blockDays = null;     // the day(s) named by the CURRENT sender block's ARRIVAL DATE line
 
   const attackRe = /→\s*\[coord\](\d{1,3}\|\d{1,3})\[\/coord\]/;   // off / cat attack line
   const coordRe  = /\[coord\](\d{1,3}\|\d{1,3})\[\/coord\]/;       // any tagged coord (snob line)
@@ -106,27 +121,33 @@ function parsePlayerPlanBB(text) {
   // Coalesce the URL line into its record so the village-ID pins still bind; the arrival
   // window is captured from the attack line itself, up front, so nothing on a continuation
   // line can ever corrupt it. Old single-line exports parse identically.
-  const records = [];        // [{ sender, kind: 'attack'|'snob', text, timeFrom, timeTo }]
+  const records = [];        // [{ sender, kind: 'attack'|'snob', text, day, timeFrom, timeTo }]
   let cur = null;
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     if (!line) continue;
     const hm = line.match(/^=+\s*(.+?)\s*\(\d+\)\s*=+$/);
-    if (hm) { sender = hm[1].trim(); cur = null; continue; }
-    if (/^=+.*=+$/.test(line)) { sender = ''; cur = null; continue; } // other dividers (UNASSIGNED)
-    // A tribe-calculator plan built from several OFF WINDOW GROUPS repeats this header once per
-    // wave, each with its own day. A paste can only carry ONE plan date, so the FIRST (nearest)
-    // wave wins and `arrivalDays` records the rest — importPlayerPlan surfaces them so the user
-    // knows the later waves need importing separately.
-    const dm = line.match(/(?:ARRIVAL DATE|FECHA DE LLEGADA)[^0-9]*(\d{1,2})\s*$/i);
-    if (dm) {
-      const d = parseInt(dm[1], 10);
-      if (!arrivalDays.includes(d)) arrivalDays.push(d);
-      if (arrivalDay === null) arrivalDay = d;
+    if (hm) { sender = hm[1].trim(); cur = null; blockDays = null; continue; }
+    if (/^=+.*=+$/.test(line)) { sender = ''; cur = null; blockDays = null; continue; } // other dividers (UNASSIGNED)
+    // ARRIVAL DATE header. Since tribe-calculator v5.12 one block may list SEVERAL days
+    // ("Thursday 13 & Friday 14") — capture them all, scoped to the current sender block.
+    // The line must be nothing but the label + a "&"-joined weekday/day list once tags are
+    // stripped, so the PM template's decorated date line (label + date + trailing prose)
+    // still falls through ignored, exactly as before. Older per-wave exports (one header per
+    // block, one day each) scope naturally: each block's single day dates its requirements.
+    if (/ARRIVAL DATE|FECHA DE LLEGADA/i.test(line)) {
+      const tail = line.replace(/\[[^\]]*\]/g, ' ').replace(/^.*?(?:ARRIVAL DATE|FECHA DE LLEGADA)\s*:?/i, '');
+      if (/^[^0-9]*\d{1,2}(?:\s*&\s*[^0-9]*\d{1,2})*\s*$/.test(tail)) {
+        blockDays = [...tail.matchAll(/\d{1,2}/g)].map(m => parseInt(m[0], 10));
+        for (const d of blockDays) if (!arrivalDays.includes(d)) arrivalDays.push(d);
+        if (arrivalDay === null) arrivalDay = blockDays[0];
+      }
       continue;
     }
     if (attackRe.test(line)) {
-      cur = { sender, kind: 'attack', text: line, ...windowAfterCoord(line) };
+      const win = windowAfterCoord(line);
+      if (win.day == null && blockDays && blockDays.length === 1) win.day = blockDays[0];
+      cur = { sender, kind: 'attack', text: line, ...win };
       records.push(cur);                                             // start of a new attack
     } else if (/\[unit\]snob\[\/unit\]/i.test(line) && coordRe.test(line)
                && !/SNOBS NEED RECRUITING|NECESITAS RECLUTAR NOBLES/i.test(line)) {
@@ -136,7 +157,9 @@ function parsePlayerPlanBB(text) {
       // so they can never match here and double-import. Legacy v2.4–v3.11 exports flagged
       // display-only recruiting notes with [SNOBS NEED RECRUITING] / [NECESITAS RECLUTAR
       // NOBLES] (sometimes with a [coord]); those are never orders, so old pastes skip them.
-      records.push({ sender, kind: 'snob', text: line, ...windowAfterCoord(line) });
+      const win = windowAfterCoord(line);
+      if (win.day == null && blockDays && blockDays.length === 1) win.day = blockDays[0];
+      records.push({ sender, kind: 'snob', text: line, ...win });
       cur = null;
     } else if (cur && line.includes('[url=')) {
       cur.text += ' ' + line;                                        // continuation: the LAUNCH TIME line carrying the rally URL
@@ -211,7 +234,9 @@ function parsePlayerPlanBB(text) {
     byKey[`${tx}|${ty}`] = tg;
     if (tgtVid) byKey['id:' + tgtVid] = tg;
     // srcCoord + srcVillageId pin the exact origin so Auto-Generate sends from this village.
-    tg.requirements.push({ unitType, attacker: sender, timeFrom, timeTo, count, srcCoord, srcVillageId: srcVid });
+    // arrivalDay (day-of-month or null) is transient: importPlayerPlan resolves it to a real
+    // per-requirement dateISO on multi-date pastes and then drops it.
+    tg.requirements.push({ unitType, attacker: sender, timeFrom, timeTo, count, srcCoord, srcVillageId: srcVid, arrivalDay: rec.day });
   }
 
   targets.arrivalDay = arrivalDay;   // array property — invisible to JSON/length, callers opt in
@@ -250,6 +275,28 @@ function importPlayerPlan(text) {
   // openAutoGenerate pre-fills its landing date from this instead of defaulting to today.
   const planDateISO = arrivalDayToISO(parsed.arrivalDay);
   if (planDateISO) DATA.settings.planDateISO = planDateISO;
+
+  // Multi-date paste (tribe-calculator v5.12 merged per-player blocks, or several single-dated
+  // wave blocks pasted together): every requirement gets its OWN dateISO from its arrivalDay,
+  // and Auto-Generate lands it on that date regardless of the date input (which then only
+  // covers requirements without one). Single-date pastes deliberately store NO per-requirement
+  // date — there the Auto-Generate date input keeps full control, so moving the whole op a day
+  // still works by just changing it. The transient arrivalDay never reaches DATA.targets.
+  // "Multi-date" is judged from the headers AND from the per-line day stamps — a fragment
+  // pasted without its ARRIVAL DATE header still carries "<day> · " prefixes, and those must
+  // not be silently discarded.
+  const lineDays = new Set();
+  parsed.forEach(p => p.requirements.forEach(r => { if (r.arrivalDay != null) lineDays.add(r.arrivalDay); }));
+  const multiDate = (parsed.arrivalDays || []).length > 1 || lineDays.size > 1;
+  let undated = 0;
+  parsed.forEach(p => p.requirements.forEach(r => {
+    if (multiDate) {
+      const iso = arrivalDayToISO(r.arrivalDay);
+      if (iso) r.dateISO = iso; else undated++;
+    }
+    delete r.arrivalDay;
+  }));
+  const dayList = ((parsed.arrivalDays || []).length ? parsed.arrivalDays : [...lineDays]).join(', ');
 
   // A paste of just YOUR OWN block usually lacks the "========== NAME ==========" header, so
   // its requirements come back with a blank attacker — and the My-Player filter in
@@ -300,10 +347,12 @@ function importPlayerPlan(text) {
     .replace('{players}', senders.size)
     .replace('{senders}', senderList)
     + (planDateISO ? '\n' + t('alert_plan_date').replace('{date}', planDateISO) : '')
-    // Several ARRIVAL DATE headers = a multi-wave tribe-calculator plan. Only the first wave's
-    // date could be applied, so say so rather than let the later waves land on the wrong day.
-    + ((parsed.arrivalDays || []).length > 1
-        ? '\n' + t('alert_plan_multi_date').replace('{days}', parsed.arrivalDays.join(', '))
+    // Multi-date plan: normally every attack was dated individually (say so); if some carried
+    // no recognizable day, warn that those fall back to the Auto-Generate date input.
+    + (multiDate
+        ? '\n' + t(undated ? 'alert_plan_multi_date' : 'alert_plan_dates_applied')
+            .replace('{days}', dayList)
+            .replace('{undated}', String(undated))
         : ''));
 }
 

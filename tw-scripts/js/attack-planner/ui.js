@@ -289,6 +289,7 @@ function renderMtReqs() {
       </select>
       <input type="text" value="${escHtml(r.attacker || '')}" oninput="mtReqs[${i}].attacker=this.value" placeholder="${t('lbl_player')}" style="${MT_REQ_INPUT};flex:1;min-width:100px">
       <input type="number" min="1" value="${r.count || 1}" oninput="mtReqs[${i}].count=parseInt(this.value)||1" title="${t('mt_count')}" style="${MT_REQ_INPUT};width:46px">
+      <input type="date" value="${escHtml(r.dateISO || '')}" onchange="mtReqs[${i}].dateISO=this.value" title="${t('mt_date_title')}" style="${MT_REQ_INPUT};width:118px">
       <input type="text" value="${escHtml(r.timeFrom || '')}" oninput="mtReqs[${i}].timeFrom=this.value.trim()" placeholder="HH:MM" style="${MT_REQ_INPUT};width:58px">
       <input type="text" value="${escHtml(r.timeTo || '')}" oninput="mtReqs[${i}].timeTo=this.value.trim()" placeholder="HH:MM" style="${MT_REQ_INPUT};width:58px">
       <input type="text" value="${escHtml(r.srcCoord || '')}" oninput="mtReqs[${i}].srcCoord=this.value.trim()" placeholder="${t('mt_src')}" title="${t('mt_src_title')}" style="${MT_REQ_INPUT};width:66px">
@@ -330,6 +331,11 @@ function normalizeReqs(reqs, villages) {
         timeFrom: (r.timeFrom || '').trim(),
         timeTo:   (r.timeTo || '').trim(),
       };
+      // Per-requirement arrival date (multi-date plan imports / the editor's date field).
+      // Kept only when it is a real, valid ISO date — Auto-Generate trusts it verbatim, and
+      // a well-shaped garbage date ("2026-13-45") would throw inside landingISO.
+      const dateISO = (r.dateISO || '').trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateISO) && !Number.isNaN(new Date(dateISO + 'T00:00:00').getTime())) out.dateISO = dateISO;
       const cnt = Math.max(1, parseInt(r.count, 10) || 1);
       if (r.unitType === 'snob' || cnt > 1) out.count = cnt;
       const srcCoord = (r.srcCoord || '').trim();
@@ -400,7 +406,11 @@ function renderRequirements(reqs) {
   if (!reqs || !reqs.length) return '<span class="text-dim">—</span>';
   return reqs.map(r => {
     const cnt  = (r.unitType === 'snob' && r.count > 1) ? `<small style="color:#d4b483;font-weight:bold">${r.count}× </small>` : '';
-    const win  = fmtTimeWindow(r.timeFrom, r.timeTo);
+    // A requirement with its own arrival date (multi-date plan import) shows its day-of-month
+    // before the window, mirroring the tribe-calculator export ("12 · 05:00–06:00").
+    const day  = /^\d{4}-\d{2}-\d{2}$/.test(r.dateISO || '') ? parseInt(r.dateISO.slice(8), 10) : null;
+    const tw   = fmtTimeWindow(r.timeFrom, r.timeTo);
+    const win  = day != null ? (tw ? `${day} · ${tw}` : String(day)) : tw;
     const time = win ? `<span style="font-family:monospace;color:#6090c0;font-size:10px"> ${escHtml(win)}</span>` : '';
     const from = r.srcCoord ? `<small style="color:#6a7a4a;font-size:10px"> from ${escHtml(r.srcCoord)}</small>` : '';
     return `${cnt}${reqBadgeHtml(r.unitType)}<small style="color:#806838;font-size:10px"> ${escHtml(r.attacker)}</small>${time}${from}`;

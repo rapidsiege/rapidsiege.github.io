@@ -85,8 +85,10 @@ function autoGenerateAttacks(landingDateStr, criteria = { power: true, distance:
     return myName ? reqs.filter(r => r.attacker.toLowerCase() === myName) : reqs;
   }
 
-  function landingISO(timeStr) {
-    return new Date(`${landingDateStr}T${timeStr || '02:00'}:00`).toISOString();
+  // A requirement lands on its OWN date when the import stamped one (multi-date plan);
+  // the modal's landing date covers everything else.
+  function landingISO(timeStr, dateISO) {
+    return new Date(`${dateISO || landingDateStr}T${timeStr || '02:00'}:00`).toISOString();
   }
 
   const offTargets  = DATA.targets.filter(t => t.targetType === 'off');
@@ -128,7 +130,7 @@ function autoGenerateAttacks(landingDateStr, criteria = { power: true, distance:
     myReqs(target).forEach(req => {
       const v = resolvePinned(req);
       if (!v) return;   // not pinned → handled by the assignment passes / fake spray below
-      const iso = landingISO(req.timeFrom || defaultTime);
+      const iso = landingISO(req.timeFrom || defaultTime, req.dateISO);
       if (req.unitType === 'snob') {
         const nc = Math.max(1, req.count || 4);
         vs[v.id].noblesLeft = Math.max(0, vs[v.id].noblesLeft - nc);
@@ -152,7 +154,7 @@ function autoGenerateAttacks(landingDateStr, criteria = { power: true, distance:
     const snobLines = myReqs(target).filter(r => r.unitType === 'snob' && !r.srcCoord);
     if (!snobLines.length) return;
     snobLines.forEach(req => {
-      const iso = landingISO(req.timeFrom || defaultTime);
+      const iso = landingISO(req.timeFrom || defaultTime, req.dateISO);
       const wf = req.timeFrom, wt = req.timeTo;
       const v = DATA.villages
         .filter(v => vs[v.id].noblesLeft > 0)
@@ -172,11 +174,11 @@ function autoGenerateAttacks(landingDateStr, criteria = { power: true, distance:
   const offNeeds = [];
   offTargets.forEach(target => {
     myReqs(target).filter(r => r.unitType === 'ram' && !r.srcCoord).forEach(r => {
-      const iso = landingISO(r.timeFrom || defaultTime);
+      const iso = landingISO(r.timeFrom || defaultTime, r.dateISO);
       offNeeds.push({ target, iso, windowFrom: r.timeFrom, windowTo: r.timeTo, minPow: TIER.tq, fallbackPow: TIER.half, unitType: 'off' });
     });
     myReqs(target).filter(r => r.unitType === 'axe' && !r.srcCoord).forEach(r => {
-      const iso = landingISO(r.timeFrom || defaultTime);
+      const iso = landingISO(r.timeFrom || defaultTime, r.dateISO);
       offNeeds.push({ target, iso, windowFrom: r.timeFrom, windowTo: r.timeTo, minPow: TIER.half, fallbackPow: TIER.half, unitType: 'axe' });
     });
   });
@@ -204,7 +206,10 @@ function autoGenerateAttacks(landingDateStr, criteria = { power: true, distance:
 
     for (const target of allFakeTargets) {
       if (vilsWithRams.every(v => vs[v.id].fakeCount >= 10)) break;
-      const iso = landingISO(defaultTime);
+      // A sprayed fake should ride with the target's real wave: on a multi-date plan the
+      // target's requirements carry their own dateISO, so borrow the first one found.
+      const tDate = ((target.requirements || []).find(r => r.dateISO) || {}).dateISO;
+      const iso = landingISO(defaultTime, tDate);
       for (let attempt = 0; attempt < vilsWithRams.length; attempt++) {
         const v = vilsWithRams[(vi + attempt) % vilsWithRams.length];
         if (vs[v.id].fakeCount < 10) {

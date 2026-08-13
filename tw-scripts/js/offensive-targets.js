@@ -1304,8 +1304,9 @@ function windowOffCounts(wins, total) {
 }
 
 // Localized "Miércoles 10"-style label for an arrival date.
-// ⚠ FORMAT CONTRACT: the attack-planner import reads the trailing day-of-month from the
-// "ARRIVAL DATE: <weekday> <day>" header this feeds — see the contract note in js/plan.js.
+// ⚠ FORMAT CONTRACT: the attack-planner import reads every day-of-month from the
+// "ARRIVAL DATE: <weekday> <day>[ & <weekday> <day>…]" header this feeds (the per-player
+// header " & "-joins one label per date since v5.12) — see the contract note in js/plan.js.
 function bbDateLabelOf(dateISO) {
   if (dateISO) {
     const d = new Date(dateISO + 'T00:00:00');

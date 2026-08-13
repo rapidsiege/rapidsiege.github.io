@@ -1429,8 +1429,9 @@ function planGroups(rows) {
 }
 // ── Window groups present in the plan, as export sections ─────────────────────
 // Returns [{g, label, rows}] in group order, skipping groups this plan has no rows for.
-// A single-group plan yields exactly one section, which is what keeps every export
-// byte-identical to the pre-v5.9 output.
+// A single-group plan yields exactly one section. Since v5.12 only the Forum export still
+// sections per wave — the per-player exports merge every wave into one block and use
+// planRowDatesOf() / planRowsMultiDate() instead.
 function planWindowSections(rows) {
   const src = rows || planRows;
   const known = new Set(otGroups().map(g => g.id));
@@ -1444,6 +1445,20 @@ function planWindowSections(rows) {
       rows: src.filter(r => r.group === g.id || (i === 0 && orphan(r))),
     }))
     .filter(s => s.rows.length);
+}
+// Distinct arrival dates of a set of plan rows, chronological (ISO strings sort right).
+// Dateless rows (no group date set) contribute nothing — callers fall back to bbDateLabel().
+function planRowDatesOf(rows) {
+  return [...new Set((rows || []).map(planRowDateISO).filter(Boolean))].sort();
+}
+// TRUE when a set of rows must stamp each order line with its landing day-of-month: more
+// than one distinct date, or dated rows mixed with dateless ones (a group missing its date).
+// In the mixed case the dateless lines come out visibly UNSTAMPED next to stamped ones,
+// instead of silently reading as if they landed on the header's date. All-dateless plans
+// (legacy free-text label) never stamp — that keeps their output byte-identical.
+function planRowsMultiDate(rows) {
+  const dates = planRowDatesOf(rows);
+  return dates.length > 1 || (dates.length > 0 && (rows || []).some(r => !planRowDateISO(r)));
 }
 
 // ── Forum-style BB row (shared by the Forum export and the per-player objective context) ──
@@ -1510,19 +1525,23 @@ function showPlanBB() {
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // ⚠ FORMAT CONTRACT — attack-planner.html IMPORTS the exports below.
 // parsePlayerPlanBB() in attack-planner.html parses the Per-Player Orders / Per-Player All
-// output line by line: the "========== NAME (n) ==========" sender headers (one per wave when the
-// plan spans several OFF WINDOW GROUPS — each block carries its own ARRIVAL DATE), the ARRIVAL DATE
-// header (bbDateLabel — it reads the trailing day-of-month), off lines ("src → [coord]tgt
-// [/coord] (defender) window"), the LAUNCH TIME continuation line (rally URL → village-ID
-// pins), and snob order lines ("Prepare Snob Train for [coord]…", detected by
-// [unit]snob[/unit] + a [coord] tag). parseOffPlanBB() likewise parses the Forum BB export
-// (showPlanBB's "N. X|Y - Player." groups). Lines meant to be IGNORED by the importer rely on
-// staying structurally distinct: objective-context rows have no "→ [coord]" and their snob
-// rows have no [coord]; snob-range and UNASSIGNED lines use bare coords only.
-// → If you change the SHAPE of anything emitted here (playerPlanBBBlock, snobOrderLineBB,
-//   planRowForumBB, unassignedPlanBBBlock, bbDateLabel, showPlanBB), update the attack-planner
-//   importer + .omc/test_attack_import.js in the same change. Cosmetic changes (colors, bold,
-//   labels) are safe — the importer anchors on structure, never on presentation tags.
+// output line by line: the "========== NAME (n) ==========" sender headers (ONE per player —
+// since v5.12 a multi-wave plan merges every wave into the player's single block), the ARRIVAL
+// DATE header (bbDateLabelOf labels, " & "-joined when the block spans several dates — the
+// importer reads every day-of-month on the line), off lines ("src → [coord]tgt [/coord]
+// (defender) window" — in a multi-date block the blue window carries a "<day> · " day-of-month
+// prefix, see planRowWindowBB, which dates that attack individually), the LAUNCH TIME
+// continuation line (rally URL → village-ID pins), and snob order lines ("Prepare Snob Train
+// for [coord]…", detected by [unit]snob[/unit] + a [coord] tag; same "<day> · " prefix rule).
+// parseOffPlanBB() likewise parses the Forum BB export (showPlanBB's "N. X|Y - Player."
+// groups). Lines meant to be IGNORED by the importer rely on staying structurally distinct:
+// objective-context rows have no "→ [coord]" and their snob rows have no [coord]; snob-range
+// and UNASSIGNED lines use bare coords only.
+// → If you change the SHAPE of anything emitted here (playerPlanBBBlock, planRowWindowBB,
+//   snobOrderLineBB, planRowForumBB, unassignedPlanBBBlock, bbDateLabelOf, showPlanBB), update
+//   the attack-planner importer + tests/test_attack_import.js in the same change. Cosmetic
+//   changes (colors, bold, labels) are safe — the importer anchors on structure, never on
+//   presentation tags.
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
 // ── Grouping shared by all three per-player exports (Orders BB, Table, combined All):
@@ -1545,38 +1564,50 @@ function playerNamesAZ(byPlayer) {
 //    window, then a trailing "Villages in snob range: …" line (bare X|Y coords, also skipped).
 //    Shared by the Per-Player Orders BB and the Per-Player Table export (snobs sit BELOW the
 //    [table] there, since a noble train has no launch village to fill the table columns). ──
-function snobOrderLineBB(r) {
+function snobOrderLineBB(r, withDay) {
   const iconBB   = planRowIconBB(r);
   const prefix   = r.count > 1 ? `${r.count}x ` : '';
   const prep     = t('plan_prepare_snob')(r.escorted, `[coord]${r.tCoord}[/coord]`);
   const defender = r.tPlayer ? ` ([player]${r.tPlayer}[/player])` : '';
   const rt       = snobRangeText(r);
   const range    = rt ? `\n${rt}` : '';
-  const win      = (fmtWindow(r.window) || '??:??').replace('/', '-');
   // needNobles rows are no longer flagged — "Prepare Snob Train" already implies recruiting one.
-  return `${prefix}${iconBB} ${prep}${defender} [b][color=#2e2eff]${win}[/color][/b]${range}`;
+  return `${prefix}${iconBB} ${prep}${defender} [b][color=#2e2eff]${planRowWindowBB(r, withDay)}[/color][/b]${range}`;
 }
 
-// ── One player's Orders block: header + arrival date + order lines + (if they send a snob)
-//    the full objective-context dump. `allGroups` = planGroups() (passed in so the caller
-//    builds it once). Ends with a trailing blank line, matching the legacy layout. Shared by
-//    the on-screen Per-Player Orders export and the combined Per-Player All download. ──
-// Multi-wave plans emit ONE such block per window group the player has orders in, each headed
-// by its own sender header + ARRIVAL DATE, so a block is always internally single-dated.
-// ⚠ The attack planner's importer keeps ONE arrival date per paste (import.js), so several
-// blocks pasted together date every attack to the FIRST wave and the import warns about it —
-// import one wave at a time. A single-group plan produces exactly one block, unchanged.
-function playerPlanBBBlocks(name, rows, allGroups) {
-  const secs = planWindowSections(rows);
-  return (secs.length ? secs : [{ g: otGroups()[0], rows }])
-    .map(sec => playerPlanBBBlock(name, sec.rows, allGroups, sec.g))
-    .join('\n');
+// A plan row's blue arrival window for the per-player order lines ("01:00-02:00"), prefixed
+// with its landing day-of-month ("12 · 01:00-02:00") when `withDay` — a block that spans
+// several arrival dates must say per line which day each attack lands on. Single-date blocks
+// never carry the prefix, keeping their output identical to the pre-v5.12 shape.
+// ⚠ FORMAT CONTRACT: windowAfterCoord() in the attack-planner importer parses this exact
+// "<day> · " prefix to date each requirement individually — change the two in lockstep.
+function planRowWindowBB(r, withDay) {
+  const win = (fmtWindow(r.window) || '??:??').replace('/', '-');
+  const day = withDay ? parseInt(String(planRowDateISO(r) || '').slice(8), 10) : NaN;
+  return isNaN(day) ? win : `${day} · ${win}`;
 }
-function playerPlanBBBlock(name, rows, allGroups, winGroup) {
+
+// ── One player's Orders block: header + arrival date(s) + order lines + (if they send a
+//    snob) the full objective-context dump. `allGroups` = planGroups() (passed in so the
+//    caller builds it once). Ends with a trailing blank line, matching the legacy layout.
+//    Shared by the on-screen Per-Player Orders export, the ✉ PM export and the combined
+//    Per-Player All download. ──
+// Whatever the number of window groups, a player gets exactly ONE block (v5.12 — the per-wave
+// blocks made players hop between blocks to send in departure order): the ARRIVAL DATE header
+// lists every date the player's orders land on (" & "-joined, chronological) and the lines are
+// sorted by absolute departure time across the whole set. When the block spans several dates,
+// every order line's blue arrival window carries its landing day-of-month ("12 · 05:00-06:00",
+// planRowWindowBB) — the attack-planner importer dates each requirement from that prefix. A
+// single-date plan emits no prefixes and stays byte-identical to the pre-v5.9 output.
+function playerPlanBBBlock(name, rows, allGroups) {
+  const dates    = planRowDatesOf(rows);
+  const withDay  = planRowsMultiDate(rows);
   let bb = `========== ${name} (${rows.length}) ==========\n`;
-  bb += `[b][u]${t('bb_arrival_date')}:[/u][/b] ${winGroup ? bbDateLabelOf(winGroup.dateISO) : bbDateLabel()}\n\n`;
-  // Order lines come out send-time-sorted (earliest launch first), matching the Per-Player
-  // Table, with a blank line between each attack. planRowsBySendTime is side-effect free.
+  bb += `[b][u]${t('bb_arrival_date')}:[/u][/b] ${dates.length ? dates.map(bbDateLabelOf).join(' & ') : bbDateLabel()}\n\n`;
+  // Order lines come out send-time-sorted (earliest launch first) ACROSS dates, matching the
+  // Per-Player Table, with a blank line between each attack. planRowsBySendTime keys on the
+  // absolute epoch (each row's own arrival date − travel), so a two-day plan interleaves
+  // correctly. Side-effect free.
   const lines = [];
   for (const r of planRowsBySendTime(rows)) {
     const iconBB   = planRowIconBB(r);
@@ -1586,7 +1617,7 @@ function playerPlanBBBlock(name, rows, allGroups, winGroup) {
     if (r.type === 'snob') {
       // Snob trains never name an origin village — just a "Prepare Snob Train for <target>"
       // call-out + arrival window + the in-range village list (shared with the Table export).
-      lines.push(snobOrderLineBB(r));
+      lines.push(snobOrderLineBB(r, withDay));
       continue;
     }
 
@@ -1601,7 +1632,7 @@ function playerPlanBBBlock(name, rows, allGroups, winGroup) {
     const catPart = r.type === 'catapult'
       ? ` [b](${r.cats}${bldg ? ` → ${bldg}` : ''})[/b]`
       : (bldg ? ` [b](→ ${bldg})[/b]` : '');
-    const win     = (fmtWindow(r.window) || '??:??').replace('/', '-');
+    const win     = planRowWindowBB(r, withDay);
     const lp      = launchWindowParts(r.window, r.travel, planRowDateISO(r));
     // Line 1 = village → target + arrival window; line 2 = the launch-time call-out (carries the
     // rally link) — red for real attacks, green for fakes. [b] opens on line 1, closes after it.
@@ -1657,7 +1688,7 @@ function showPlayerPlanBB() {
   const allGroups  = planGroups(); // for the per-player "objective context" dump
 
   let bb = '';
-  for (const name of names) bb += playerPlanBBBlocks(name, byPlayer[name], allGroups);
+  for (const name of names) bb += playerPlanBBBlock(name, byPlayer[name], allGroups);
   if (unassigned.length) bb += unassignedPlanBBBlock(unassigned);
 
   document.getElementById('bb-output').value = bb.trimEnd() + '\n';
@@ -1680,7 +1711,9 @@ function offPmMessagesFrom(planRows, allGroups) {
   const byPlayer   = groupPlanRowsByPlayer(named);
   const msgs = playerNamesAZ(byPlayer).map(name => {
     const rows = byPlayer[name];
-    return { player: name, parts: [playerPlanBBBlocks(name, rows, allGroups).trimEnd()], orderCount: rows.length };
+    // `dates` = the player's own arrival dates (ISO, chronological) — the PM template's {date}
+    // placeholder names THIS player's day(s), not the whole plan's.
+    return { player: name, parts: [playerPlanBBBlock(name, rows, allGroups).trimEnd()], orderCount: rows.length, dates: planRowDatesOf(rows) };
   });
   if (unassigned.length)
     msgs.push({ player: t('bb_unassigned'), parts: [unassignedPlanBBBlock(unassigned).trimEnd()], orderCount: unassigned.length, unassigned: true });
@@ -1693,9 +1726,11 @@ function showPlayerPlanPm() {
   // brackets) always reports the real message being copied.
   pmTplCtx = 'off';
   const tpl  = pmTemplateCurrent('off');
-  const date = bbDateLabel().toUpperCase();
+  // {date} substitutes each player's OWN arrival date(s) (" & "-joined like the block header);
+  // a plan with no date set keeps the legacy free-text label.
+  const dateFor = m => ((m.dates || []).length ? m.dates.map(bbDateLabelOf).join(' & ') : bbDateLabel()).toUpperCase();
   const msgs = offPmMessagesFrom(planRows, planGroups()).map(m =>
-    m.unassigned ? m : { ...m, parts: m.parts.map((p, k) => pmApplyTemplate(tpl, p, date, pmPartLabel(k, m.parts.length))) });
+    m.unassigned ? m : { ...m, parts: m.parts.map((p, k) => pmApplyTemplate(tpl, p, dateFor(m), pmPartLabel(k, m.parts.length))) });
   renderPmModal(msgs, t('pm_hint_off'), pmTemplateBarHtml());
 }
 
@@ -1894,10 +1929,13 @@ function planTableBlock(rows) {
 }
 
 // Noble-train text lines for a set of plan rows (send-time-sorted), or '' if none — the snob
-// half of the Per-Player Table export, shown below the offs-only [table].
+// half of the Per-Player Table export, shown below the offs-only [table]. The day-of-month
+// prefix follows the same rule as the Orders block: only when the PLAYER's full row set
+// (passed in — not just the snobs) spans several arrival dates.
 function planTableSnobLines(rows) {
   const snobs = rows.filter(r => r.type === 'snob');
-  return snobs.length ? planRowsBySendTime(snobs).map(snobOrderLineBB).join('\n') : '';
+  const withDay = planRowsMultiDate(rows);
+  return snobs.length ? planRowsBySendTime(snobs).map(r => snobOrderLineBB(r, withDay)).join('\n') : '';
 }
 
 function showPlayerPlanTable() {
@@ -1952,7 +1990,7 @@ function buildPlayerPlanAll() {
   let out = '';
   for (const name of names) {
     const rows = byPlayer[name];
-    out += codeWrapPlanSection(playerPlanBBBlocks(name, rows, allGroups), planTableBlock(rows));
+    out += codeWrapPlanSection(playerPlanBBBlock(name, rows, allGroups), planTableBlock(rows));
   }
   if (unassigned.length) {
     out += codeWrapPlanSection(unassignedPlanBBBlock(unassigned), planTableBlock(unassigned));
