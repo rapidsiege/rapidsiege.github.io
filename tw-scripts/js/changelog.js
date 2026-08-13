@@ -18,6 +18,16 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.11.0', date: '2026-08-13',
+    en: [
+      `<b>⚡ Morale now outranks the POWER tag.</b> The pass that fills <b>POWER</b> targets picked the globally strongest available offs by raw offensive power and ignored morale completely — so a low-point defender could be hit exclusively by the tribe's giants at 50–80% morale while full-morale offs sat unused. Every POWER slot now applies the same <b>Min. morale (off)</b> gate as regular targets first: only senders at or above the threshold (default 100%) compete, and raw off power ranks <b>those</b>. Only when no reachable sender clears the bar does the slot fall back to the strongest off regardless of morale — the same soft-gate rule regular clearing offs already follow.`,
+      `<b>⚡ Everything else about POWER targets is unchanged.</b> The strongest-offs balancing across all POWER targets, the catapult preference on destroyer targets and the launch-distance clustering all still apply — they just choose among the morale-cleared senders now. Set <b>Min. morale (off)</b> to 0 to get the old take-the-biggest-nuke behaviour back.`,
+    ],
+    es: [
+      `<b>⚡ La moral manda ahora sobre la etiqueta POWER.</b> La pasada que rellena los objetivos <b>POWER</b> elegía los offs disponibles más fuertes por poder ofensivo bruto e ignoraba la moral por completo — así que un defensor con pocos puntos podía recibir solo a los gigantes de la tribu con 50–80% de moral mientras offs con moral al 100% se quedaban sin usar. Cada hueco POWER aplica ahora primero la misma puerta de <b>Moral mín. (off)</b> que los objetivos normales: solo compiten los remitentes con esa moral o más (por defecto 100), y el poder bruto ordena <b>esos</b>. Solo cuando ningún remitente alcanzable supera el umbral, el hueco recurre al off más fuerte sin mirar la moral — la misma regla blanda que ya siguen los offs de limpieza normales.`,
+      `<b>⚡ Todo lo demás de los objetivos POWER sigue igual.</b> El reparto equilibrado de los offs más fuertes entre todos los objetivos POWER, la preferencia por catapultas en objetivos demoledores y el agrupado por distancia de lanzamiento siguen aplicándose — solo que ahora eligen entre los remitentes que pasan la puerta de moral. Pon <b>Moral mín. (off)</b> a 0 para recuperar el comportamiento antiguo de «el nuke más grande».`,
+    ],
+  },
   { ver: 'v5.10.0', date: '2026-08-10',
     en: [
       `<b>⚔ Enemy Tribes, now on the offensive side too.</b> <b>Offensive Targets</b> gains the <b>⚔ Enemy Tribes</b> picker and its <b>“Distance from enemy tribes”</b> field, the twin of the one Plan Defense has had since v3.2.0. Pick the tribes you're at war with, set a radius, and any of your villages within that many fields of <b>any village those tribes own</b> keeps its off at home — it is never assigned a clearing off or a split-off escort. The front line stops being stripped by the plan.`,

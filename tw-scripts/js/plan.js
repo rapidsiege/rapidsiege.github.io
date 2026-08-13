@@ -183,9 +183,10 @@ function generatePlan() {
   // 0 disables the gate entirely (the conqueror always keeps their own off, pre-v3.12 behaviour).
   const minMoraleRaw = parseFloat((document.getElementById('plan-min-morale') || {}).value);
   const minMorale = (isNaN(minMoraleRaw) ? 90 : minMoraleRaw) / 100;
-  // Min. Morale (%) for ANY regular clearing off (auto pass) — default 100, so the engine
-  // only sends offs at full morale and falls back to the best below-threshold sender only
-  // when no qualifying village can reach the target (soft gate, mirrors the snob-off gate).
+  // Min. Morale (%) for ANY clearing off — auto pass AND POWER pass (v5.11.0) — default 100,
+  // so the engine only sends offs at full morale and falls back to the best below-threshold
+  // sender only when no qualifying village can reach the target (soft gate, mirrors the
+  // snob-off gate).
   // A noble sender's OWN coordination off is exempt: it's governed by minMorale (the snob-off
   // gate) and reserved before the auto pass runs, so this gate never re-touches it. 0 disables.
   const minMoraleOffRaw = parseFloat((document.getElementById('plan-min-morale-off') || {}).value);
@@ -412,6 +413,18 @@ function generatePlan() {
   const effPow = (p, T) => {
     const m = planAttackMorale(p.v.coord, T.tg.coord);
     return (m == null ? 1 : m) * p.v.offPow;
+  };
+  // Min. Morale (off) soft gate, shared by the POWER pass and the regular auto pass (v5.11.0:
+  // morale leads EVERYWHERE, POWER targets included): keep only the candidates whose per-player
+  // morale on this target clears minMoraleOff (default 100%), falling back to the full set when
+  // none qualify (a low-morale clear still beats an uncleared target). Inert when there is no
+  // morale signal (no DB / barbarian target — moraleUsable) or the field is 0. A candidate whose
+  // own morale can't be resolved counts as 1.0 so it's never gated out.
+  const moraleFirst = (T, cands) => {
+    const gate = moraleUsable(T) ? minMoraleOff : 0;
+    if (!gate) return cands;
+    const hi = cands.filter(p => { const m = planAttackMorale(p.v.coord, T.tg.coord); return (m == null ? 1 : m) >= gate; });
+    return hi.length ? hi : cands;
   };
   // Manually-pinned senders: distance only (closest of their own villages first; no
   // morale, no fairness — the pin is the user's explicit choice).
@@ -903,6 +916,8 @@ function generatePlan() {
   // raw off power across all POWER targets — the next-strongest off goes to whichever
   // POWER target currently has the lowest assigned power and still has an open slot it
   // can reach (range + launch time). Runs before the auto pass so it isn't starved.
+  // The Min. Morale (off) gate still leads (v5.11.0): each pick prefers candidates that
+  // clear minMoraleOff and only ranks by raw power among those (moraleFirst, soft).
   // A POWER target's slots are counted per window group (each wave asks for its own offs), but
   // the power BALANCE is still per target — the point is to spread the strongest offs evenly
   // over the POWER targets, whichever wave they belong to.
@@ -926,7 +941,11 @@ function generatePlan() {
       const open = slots.filter(x => remaining[x.T.i + '|' + x.g.id] > 0).sort((a, b) => powSum[a.T.i] - powSum[b.T.i]);
       if (!open.length) break;
       const { T, g } = open[0];
-      const cands = preferCatOffs(T, pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T)));
+      // Min. Morale (off) gate leads even here (v5.11.0) — morale outranks the POWER tag: only
+      // when no reachable candidate clears minMoraleOff does the pick fall back to the full set
+      // (soft, via moraleFirst). Raw off power then ranks the survivors — that's the tag's job.
+      const rawCands = pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
+      const cands = preferCatOffs(T, moraleFirst(T, rawCands));
       remaining[T.i + '|' + g.id]--;
       if (!cands.length) {
         if (!warned.has(T.i)) {
@@ -962,10 +981,8 @@ function generatePlan() {
       // Min. Morale (off) gate — once the TIER is resolved (the tier-bump below still fires only
       // when a tier is empty, never for morale), PREFER candidates whose morale on this target
       // clears minMoraleOff (default 100%), and fall back to the best below-gate village only when
-      // none qualify (soft — a low-morale clear beats an uncleared target). Inert with no morale
-      // signal (offGate = 0) or when the field is 0. Per-PLAYER morale via the source village.
-      const offGate = moraleUsable(T) ? minMoraleOff : 0;
-      const candMorale = p => { const m = planAttackMorale(p.v.coord, T.tg.coord); return m == null ? 1 : m; };
+      // none qualify (soft — a low-morale clear beats an uncleared target; see moraleFirst).
+      // Per-PLAYER morale via the source village.
       for (let k = 0; k < autoNeed; k++) {
         const tierCands = tt => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
         let sent = tier, cands = tierCands(tier);
@@ -986,10 +1003,9 @@ function generatePlan() {
         // The conqueror's own off was already reserved up front (see the conqueror reservation
         // above), so the auto pass just fills the remaining slots by optimize — preferring the
         // villages that clear the Min. Morale (off) gate, else falling back to all candidates.
-        const hi = cands.filter(p => candMorale(p) >= offGate);
         // Morale gate first (usual requirement), then prefer cat-carriers on a destroyer target;
         // clustering (if on) breaks near-ties among the survivors without overriding morale/power.
-        const p = pickClustered(preferCatOffs(T, hi.length ? hi : cands), T, byOptimize(T));
+        const p = pickClustered(preferCatOffs(T, moraleFirst(T, cands)), T, byOptimize(T));
         p.usedOff = true; noteOffUsed(p.v.player); noteMvClaim(p, T);
         const d = distXY(p.c, T.c);
         noteClusterDist(decode(p.v.player), d);
