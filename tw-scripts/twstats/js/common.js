@@ -215,8 +215,31 @@
     el.innerHTML = html;
   }
 
+  // Shared reports-DB API (tw-calc-uploads Worker) with hostname failover:
+  // *.workers.dev sits on a shared Cloudflare IP range that Spanish ISPs
+  // block intermittently (LaLiga court orders, match windows) — the browser
+  // surfaces that as "Failed to fetch". tw-calc-proxy.pages.dev is a Pages
+  // Function in front of the SAME Worker (service binding, responses
+  // byte-identical) on an unaffected range, so it goes first; workers.dev
+  // stays as the fallback for the day pages.dev is the blocked one. Only
+  // NETWORK failures fail over — an HTTP error is the Worker answering,
+  // and it would answer the same on either host.
+  var API_HOSTS = [
+    "https://tw-calc-proxy.pages.dev",
+    "https://tw-calc-uploads.gdqshd.workers.dev",
+  ];
+  function apiFetch(pathQuery, opts) {
+    function attempt(i) {
+      return fetch(API_HOSTS[i] + pathQuery, opts).catch(function (e) {
+        return i + 1 < API_HOSTS.length ? attempt(i + 1) : Promise.reject(e);
+      });
+    }
+    return attempt(0);
+  }
+
   window.TW = {
     WORLD: WORLD, DATA: DATA, GAME: GAME, SRV_FMT: SRV_FMT,
+    apiFetch: apiFetch,
     fmtTime: fmtTime, fmtStamp: fmtStamp, fmtDate: fmtDate, fmtDateTime: fmtDateTime, weekday: weekday,
     srvEpoch: srvEpoch,
     esc: esc, commas: commas, continent: continent, loadJSON: loadJSON,

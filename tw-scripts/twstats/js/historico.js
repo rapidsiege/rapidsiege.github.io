@@ -8,7 +8,7 @@
   "use strict";
   function $(id) { return document.getElementById(id); }
 
-  var HIST_URL = "https://tw-calc-uploads.gdqshd.workers.dev/reports-hist?world=es100";
+  var HIST_PATH = "/reports-hist?world=es100"; // fetched via TW.apiFetch (hostname failover)
   var PAGE = 200; // summaries appended per «Mostrar más»
 
   // Protected allies (es100: 13 = WC.. / 27 = WC) — mirrors the calculator's
@@ -104,7 +104,7 @@
   }
 
   function load() {
-    loadProtCoords().then(function () { return fetch(HIST_URL); }).then(function (r) {
+    loadProtCoords().then(function () { return TW.apiFetch(HIST_PATH); }).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
     }).then(function (db) {

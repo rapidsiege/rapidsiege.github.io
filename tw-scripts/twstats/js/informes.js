@@ -7,14 +7,15 @@
   "use strict";
   function $(id) { return document.getElementById(id); }
 
-  var REPORTS_API = "https://tw-calc-uploads.gdqshd.workers.dev";
-  var REPORTS_DB_URL = REPORTS_API + "/reports?world=es100";
+  // Worker endpoints, fetched via TW.apiFetch (hostname failover).
+  var REPORTS_DB_PATH = "/reports?world=es100";
+  var UPLOAD_PATH = "/";
   var TURNSTILE_SITEKEY = "0x4AAAAAADvKZN-ZLjRH8UQe";
 
   // Current DB stats line — informational only; a Worker outage degrades to a
   // note, uploads can still be attempted.
   function loadDbStats() {
-    fetch(REPORTS_DB_URL).then(function (r) {
+    TW.apiFetch(REPORTS_DB_PATH).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
     }).then(function (db) {
@@ -98,7 +99,7 @@
       return repGuardToken().then(function (token) {
         if (!token) { out.textContent = "No se pudo verificar el navegador — inténtalo de nuevo."; return; }
         out.textContent = "Subiendo " + all.length + " informes…";
-        return fetch(REPORTS_API, {
+        return TW.apiFetch(UPLOAD_PATH, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: "twstats", content: JSON.stringify(all), token: token,

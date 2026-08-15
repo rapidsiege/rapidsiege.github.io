@@ -67,8 +67,7 @@
   // uploads (troops seen at home / away / sent, spied buildings). Classified
   // client-side by ../js/reports-intel.js — the SAME file the calculator
   // ships, loaded by incomings.html, so the verdicts can never diverge.
-  var REPORTS_API = "https://tw-calc-uploads.gdqshd.workers.dev";
-  var REPORTS_DB_URL = REPORTS_API + "/reports?world=es100";
+  var REPORTS_DB_PATH = "/reports?world=es100"; // fetched via TW.apiFetch (hostname failover)
 
   // === world config ========================================================
   // Travel minutes per field = base_speed / (world_speed × unit_speed).
@@ -473,7 +472,7 @@
   // Shared reports DB — degrades gracefully: an unreachable Worker only
   // costs the report badges, never the page.
   function loadReportsDb() {
-    return fetch(REPORTS_DB_URL).then(function (r) {
+    return TW.apiFetch(REPORTS_DB_PATH).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
     }).then(function (db) {
@@ -654,11 +653,11 @@
   // The shared FULL-report store (db-full.json — newest raw report per
   // village) is heavier than the facts DB, so it is fetched lazily on the
   // first click and cached for the session. Rendered by report-render.js.
-  var REPORTS_FULL_URL = REPORTS_API + "/reports-full?world=es100";
+  var REPORTS_FULL_PATH = "/reports-full?world=es100"; // via TW.apiFetch too
   var fullDbP = null;
   function loadFullDb() {
     if (!fullDbP) {
-      fullDbP = fetch(REPORTS_FULL_URL).then(function (r) {
+      fullDbP = TW.apiFetch(REPORTS_FULL_PATH).then(function (r) {
         if (!r.ok) throw new Error("HTTP " + r.status);
         return r.json();
       }).then(function (db) { return (db && db.villages) ? db.villages : {}; })
@@ -1571,7 +1570,7 @@
   // like the button did nothing. Anything that goes wrong must SAY so.
   function reportError(e) {
     if (window.console) console.error("Entrantes:", e);
-    var stale = typeof TW.srvEpoch !== "function";
+    var stale = typeof TW.srvEpoch !== "function" || typeof TW.apiFetch !== "function";
     $("status").textContent = stale
       ? "Tu navegador está usando una versión antigua de js/common.js en caché. " +
         "Recarga con Ctrl+F5 (o Cmd+Shift+R) y vuelve a intentarlo."
@@ -1727,10 +1726,11 @@
   function init() {
     TW.renderNav("entrantes");
 
-    // This page needs a common.js new enough to have TW.srvEpoch. The ?v= on the
-    // script tags should guarantee that, but a proxy or an odd cache can still
-    // pair a new incomings.js with an old common.js — fail loudly, not silently.
-    if (typeof TW.srvEpoch !== "function") {
+    // This page needs a common.js new enough to have TW.srvEpoch AND
+    // TW.apiFetch. The ?v= on the script tags should guarantee that, but a
+    // proxy or an odd cache can still pair a new incomings.js with an old
+    // common.js — fail loudly, not silently.
+    if (typeof TW.srvEpoch !== "function" || typeof TW.apiFetch !== "function") {
       $("status").textContent = "Tu navegador está usando una versión antigua de " +
         "js/common.js en caché. Recarga con Ctrl+F5 (o Cmd+Shift+R).";
       $("analyze").disabled = true;
