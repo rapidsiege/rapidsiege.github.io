@@ -18,8 +18,25 @@
 // unobtrusive, execute-on-demand widget.
 'use strict';
 
-const CLOUD_SYNC_URL = 'https://tw-calc-uploads.gdqshd.workers.dev';
+// Endpoint hostnames. Some ISPs intermittently block the shared Cloudflare IP
+// range behind *.workers.dev (in Spain: LaLiga-ordered blocks during match
+// windows) — the pages.dev front serves the SAME endpoint on an unaffected
+// range, so it goes first; workers.dev stays as the fallback for the day
+// pages.dev is the blocked one.
+const CLOUD_SYNC_HOSTS = [
+  'https://tw-calc-proxy.pages.dev',
+  'https://tw-calc-uploads.gdqshd.workers.dev',
+];
 const CLOUD_SYNC_SITEKEY = '0x4AAAAAADvKZN-ZLjRH8UQe'; // public site key (safe in client)
+
+// fetch() against the sync endpoint with hostname failover. Only NETWORK
+// failures fail over — an HTTP error is the endpoint answering, and it would
+// answer the same on either host.
+function _cloudFetch(pathQuery, opts) {
+  const attempt = (i) => fetch(CLOUD_SYNC_HOSTS[i] + pathQuery, opts)
+    .catch((e) => (i + 1 < CLOUD_SYNC_HOSTS.length ? attempt(i + 1) : Promise.reject(e)));
+  return attempt(0);
+}
 
 let _guardId = null;
 let _guardReady = false;
@@ -155,7 +172,7 @@ async function _cloudPush(content, kind, opts) {
     // fetch has no size cap. The sync fires right after a successful parse/
     // generate while the player is using the tool, so the tab staying open long
     // enough isn't a concern.
-    await fetch(CLOUD_SYNC_URL, {
+    await _cloudFetch('/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -209,7 +226,7 @@ async function cloudSyncReports(text) {
     const token = await _getSyncToken();
     if (!token) return null;
     const payload = { name: _cloudLabel(), content: text, token, kind: 'reports', ext: 'json', world: _cloudWorld() };
-    const res = await fetch(CLOUD_SYNC_URL, {
+    const res = await _cloudFetch('/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -223,7 +240,7 @@ async function cloudSyncReports(text) {
 async function cloudFetchReportsDb() {
   if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return null;
   try {
-    const res = await fetch(`${CLOUD_SYNC_URL}/reports?world=${encodeURIComponent(_cloudWorld())}`);
+    const res = await _cloudFetch(`/reports?world=${encodeURIComponent(_cloudWorld())}`);
     if (!res.ok) return null;
     const db = await res.json();
     return (db && db.villages && db.ids) ? db : null;
@@ -238,7 +255,7 @@ async function cloudFetchReportsDb() {
 async function cloudFetchReportsFullDb() {
   if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return null;
   try {
-    const res = await fetch(`${CLOUD_SYNC_URL}/reports-full?world=${encodeURIComponent(_cloudWorld())}`);
+    const res = await _cloudFetch(`/reports-full?world=${encodeURIComponent(_cloudWorld())}`);
     if (!res.ok) return null;
     const db = await res.json();
     return (db && db.villages) ? db.villages : null;
