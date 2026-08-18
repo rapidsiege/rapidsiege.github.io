@@ -143,7 +143,9 @@ function autoGenerateAttacks(landingDateStr, criteria = { power: true, distance:
         pinnedFakeTargets.add(target.id);
         attacks.push({ id: uid(), fromId: v.id, targetId: target.id, type: 'fake', nobleCount: 1, landingTime: iso, windowFrom: req.timeFrom, windowTo: req.timeTo, sent: false });
       } else {
-        attacks.push({ id: uid(), fromId: v.id, targetId: target.id, type: 'off', nobleCount: 1, landingTime: iso, windowFrom: req.timeFrom, windowTo: req.timeTo, sent: false });
+        // building = the Catapult Mode "(→ Building)" objective imported with the requirement
+        // (undefined otherwise — JSON drops it), shown as the attack row's 🏛 column.
+        attacks.push({ id: uid(), fromId: v.id, targetId: target.id, type: 'off', nobleCount: 1, landingTime: iso, windowFrom: req.timeFrom, windowTo: req.timeTo, building: req.building, sent: false });
       }
     });
   });
@@ -175,11 +177,11 @@ function autoGenerateAttacks(landingDateStr, criteria = { power: true, distance:
   offTargets.forEach(target => {
     myReqs(target).filter(r => r.unitType === 'ram' && !r.srcCoord).forEach(r => {
       const iso = landingISO(r.timeFrom || defaultTime, r.dateISO);
-      offNeeds.push({ target, iso, windowFrom: r.timeFrom, windowTo: r.timeTo, minPow: TIER.tq, fallbackPow: TIER.half, unitType: 'off' });
+      offNeeds.push({ target, iso, windowFrom: r.timeFrom, windowTo: r.timeTo, building: r.building, minPow: TIER.tq, fallbackPow: TIER.half, unitType: 'off' });
     });
     myReqs(target).filter(r => r.unitType === 'axe' && !r.srcCoord).forEach(r => {
       const iso = landingISO(r.timeFrom || defaultTime, r.dateISO);
-      offNeeds.push({ target, iso, windowFrom: r.timeFrom, windowTo: r.timeTo, minPow: TIER.half, fallbackPow: TIER.half, unitType: 'axe' });
+      offNeeds.push({ target, iso, windowFrom: r.timeFrom, windowTo: r.timeTo, building: r.building, minPow: TIER.half, fallbackPow: TIER.half, unitType: 'axe' });
     });
   });
 
@@ -187,13 +189,13 @@ function autoGenerateAttacks(landingDateStr, criteria = { power: true, distance:
   const offAssignments = assignOffsComposite(offNeeds, vs, criteria, dividedOffVillages);
 
   offAssignments.forEach(({ v, need }) => {
-    attacks.push({ id: uid(), fromId: v.id, targetId: need.target.id, type: 'off', nobleCount: 1, landingTime: need.iso, windowFrom: need.windowFrom, windowTo: need.windowTo, sent: false });
+    attacks.push({ id: uid(), fromId: v.id, targetId: need.target.id, type: 'off', nobleCount: 1, landingTime: need.iso, windowFrom: need.windowFrom, windowTo: need.windowTo, building: need.building, sent: false });
   });
 
   const assignedNeeds = new Set(offAssignments.map(a => a.need));
   const missedOffs = offNeeds
     .filter(need => !assignedNeeds.has(need))
-    .map(need => ({ targetId: need.target.id, unitType: need.unitType, iso: need.iso, windowFrom: need.windowFrom, windowTo: need.windowTo }));
+    .map(need => ({ targetId: need.target.id, unitType: need.unitType, iso: need.iso, windowFrom: need.windowFrom, windowTo: need.windowTo, building: need.building }));
 
   // ── Fakes (bulk spray) ──
   // Adds up-to-one extra fake per target across every off + fake target, round-robin over
@@ -416,7 +418,7 @@ function runAutoGenerate() {
   const { attacks, missedSnobs, missedOffs } = autoGenerateAttacks(dateStr, criteria, includeFakes, dividedOffVillages);
   const unassigned = [
     ...missedSnobs.map(m => ({ id: uid(), fromId: null, targetId: m.targetId, type: 'unassigned', unitType: m.unitType, landingTime: m.iso, windowFrom: m.windowFrom, windowTo: m.windowTo, sent: false })),
-    ...missedOffs.map(m =>  ({ id: uid(), fromId: null, targetId: m.targetId, type: 'unassigned', unitType: m.unitType, landingTime: m.iso, windowFrom: m.windowFrom, windowTo: m.windowTo, sent: false })),
+    ...missedOffs.map(m =>  ({ id: uid(), fromId: null, targetId: m.targetId, type: 'unassigned', unitType: m.unitType, landingTime: m.iso, windowFrom: m.windowFrom, windowTo: m.windowTo, building: m.building, sent: false })),
   ];
 
   if (!attacks.length && !unassigned.length) {

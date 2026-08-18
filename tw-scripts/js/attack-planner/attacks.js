@@ -219,6 +219,7 @@ function renderAttacks() {
       case 'playerName':  return (target?.player || '').toLowerCase();
       case 'type':        return atk.type;
       case 'offPow':      return (atk.type === 'off' && village) ? calcOffPow(village) : -1;
+      case 'building':    return (atk.building || '').toLowerCase();
       case 'dist':        return computed ? computed.d    : Infinity;
       case 'travel':      return computed ? computed.tMs  : Infinity;
       case 'landing':     return new Date(atk.landingTime).getTime();
@@ -235,14 +236,14 @@ function renderAttacks() {
   });
 
   // ── Update sort icons ──
-  ['from','target','villageName','playerName','type','offPow','dist','travel','landing','sendAt'].forEach(col => {
+  ['from','target','villageName','playerName','type','offPow','building','dist','travel','landing','sendAt'].forEach(col => {
     const el = document.getElementById('si-' + col);
     if (el) el.textContent = col === attackSortCol ? (attackSortDir === 1 ? '▲' : '▼') : '';
   });
 
   if (filtered.length === 0) {
     const hasFilter = fFrom || fTarget || fVname || fPlayer || fType;
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="13">${hasFilter ? t('empty_attacks_filtered') : t('empty_attacks')}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="14">${hasFilter ? t('empty_attacks_filtered') : t('empty_attacks')}</td></tr>`;
     return;
   }
 
@@ -293,6 +294,7 @@ function renderAttacks() {
         <td>${playerName}</td>
         <td><span class="req-badge ${unitCls}">${unitLabel}</span></td>
         <td><span class="text-dim">—</span></td>
+        <td>${a.building ? `<span style="color:#c08040;font-weight:bold">🏛 ${escHtml(a.building)}</span>` : '<span class="text-dim">—</span>'}</td>
         <td><span class="text-dim">—</span></td>
         <td><span class="text-dim">—</span></td>
         <td>${winLabel}</td>
@@ -335,6 +337,7 @@ function renderAttacks() {
       <td>${playerName}</td>
       <td>${typeBadge}${a.type === 'snob' ? ` <small style="color:#6090e0">×${a.nobleCount}</small>` : ''}${a.speed && BASE_MIN[a.speed] ? ` <small style="color:#c0a060">@${SPEED_LABEL[a.speed] || a.speed}</small>` : ''}</td>
       <td>${a.type === 'off' && village ? `${calcOffPow(village).toLocaleString()} ${offTierBadge(calcOffPow(village))}` : '<span class="text-dim">—</span>'}</td>
+      <td>${a.building ? `<span style="color:#c08040;font-weight:bold">🏛 ${escHtml(a.building)}</span>` : '<span class="text-dim">—</span>'}</td>
       <td>${distCell}</td>
       <td style="font-family:monospace;font-size:12px">${travelCell}</td>
       <td style="font-family:monospace;font-size:12px">${landingCell}</td>

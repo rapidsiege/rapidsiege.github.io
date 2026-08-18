@@ -7,6 +7,18 @@
 // MASS TARGET IMPORT
 // ══════════════════════════════════════════════
 
+// Catapult-target building label of an attack line: the "(→ Building)" parenthetical
+// tribe-calculator stamps on off rows in Catapult Mode (the building the off's riding
+// catapults aim at — FORMAT CONTRACT, plan.js catTargetLabel/planRowForumBB/
+// playerPlanBBBlock). Also matches the "(N → Building)" form catapult-attack rows use.
+// The arrow INSIDE the parens is what keeps every other parenthetical — "(FAKE)",
+// "(1/2 off)", "(Split Off)", "([player]…)" — from ever matching. The label is the
+// export's localized building name; it's carried verbatim (never translated back).
+function buildingLabelOf(line) {
+  const m = line.match(/\((?:\d+\s*)?→\s*([^)]+)\)/);
+  return m ? m[1].trim() : '';
+}
+
 function parseOffPlanBB(text) {
   const targets = [];
   // A target listed under several ARRIVAL DATE sections — a tribe-calculator plan with multiple
@@ -38,7 +50,11 @@ function parseOffPlanBB(text) {
       // FAKE rows lead with the spy icon ([unit]spy[/unit][unit]ram[/unit] in the forum export);
       // record them as a 'fake' requirement so importOffTargets can mark an all-fake target.
       const unitType = am[1].toLowerCase() === 'spy' ? 'fake' : am[1];
-      current.requirements.push({ unitType, attacker: am[2].trim(), timeFrom: am[3], timeTo: am[4] || '' });
+      const req = { unitType, attacker: am[2].trim(), timeFrom: am[3], timeTo: am[4] || '' };
+      // Catapult Mode: the off row's "(→ Building)" objective for its riding catapults.
+      const building = buildingLabelOf(line);
+      if (building) req.building = building;
+      current.requirements.push(req);
     }
   }
   return targets;   // entries are pushed as they open, so nothing is left dangling here
@@ -69,6 +85,9 @@ function parseOffPlanBB(text) {
 //           they head (older per-wave exports repeat header + date per wave — each of those
 //           blocks is single-dated, so they too now import fully dated).
 //   off     [unit]ram[/unit] 547|552 → [coord]583|524[/coord] ([player]Def[/player]) [b]…01:00…
+//           In Catapult Mode the icon is followed by the off's catapult-target building —
+//           "[b](→ Granja)[/b]" — which imports as requirement.building (buildingLabelOf)
+//           so the Attacks table can show which building to pick on the confirm screen.
 //           In a multi-date block the blue arrival window carries a "<day> · " day-of-month
 //           prefix ("13 · 01:00-02:00", tribe-calculator planRowWindowBB) — that day dates the
 //           attack's requirement individually (requirement.arrivalDay → dateISO on import).
@@ -236,7 +255,15 @@ function parsePlayerPlanBB(text) {
     // srcCoord + srcVillageId pin the exact origin so Auto-Generate sends from this village.
     // arrivalDay (day-of-month or null) is transient: importPlayerPlan resolves it to a real
     // per-requirement dateISO on multi-date pastes and then drops it.
-    tg.requirements.push({ unitType, attacker: sender, timeFrom, timeTo, count, srcCoord, srcVillageId: srcVid, arrivalDay: rec.day });
+    const req = { unitType, attacker: sender, timeFrom, timeTo, count, srcCoord, srcVillageId: srcVid, arrivalDay: rec.day };
+    // Catapult Mode: an off line's "(→ Building)" objective. Only attack lines carry one
+    // (snob order lines never do), and buildingLabelOf's paren-anchored arrow can't match
+    // the bare "src → [coord]" arrow or anything on a coalesced launch line.
+    if (rec.kind === 'attack') {
+      const building = buildingLabelOf(line);
+      if (building) req.building = building;
+    }
+    tg.requirements.push(req);
   }
 
   targets.arrivalDay = arrivalDay;   // array property — invisible to JSON/length, callers opt in

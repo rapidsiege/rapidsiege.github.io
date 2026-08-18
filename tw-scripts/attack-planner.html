@@ -125,6 +125,7 @@
           <th class="sortable" onclick="setAttackSort('playerName')" data-i18n="lbl_player">Player <span class="sort-icon" id="si-playerName"></span></th>
           <th class="sortable" onclick="setAttackSort('type')" data-i18n="lbl_type">Type <span class="sort-icon" id="si-type"></span></th>
           <th class="sortable" onclick="setAttackSort('offPow')" data-i18n="lbl_off_power">Off Power <span class="sort-icon" id="si-offPow"></span></th>
+          <th class="sortable" onclick="setAttackSort('building')" data-i18n="lbl_building" data-i18n-title="lbl_building_title" title="Catapult target building (pick it on the confirm screen)">🏛 Building <span class="sort-icon" id="si-building"></span></th>
           <th class="sortable" onclick="setAttackSort('dist')" data-i18n="lbl_dist">Dist <span class="sort-icon" id="si-dist"></span></th>
           <th class="sortable" onclick="setAttackSort('travel')" data-i18n="lbl_travel">Travel <span class="sort-icon" id="si-travel"></span></th>
           <th class="sortable" onclick="setAttackSort('landing')" data-i18n="lbl_landing">Landing <span class="sort-icon" id="si-landing"></span></th>
@@ -139,11 +140,11 @@
           <th><input class="col-filter" id="af-villageName" oninput="renderAttacks()" data-i18n-placeholder="ph_filter" placeholder="Filter…"></th>
           <th><input class="col-filter" id="af-playerName" oninput="renderAttacks()" data-i18n-placeholder="ph_filter" placeholder="Filter…"></th>
           <th><input class="col-filter" id="af-type" oninput="renderAttacks()" data-i18n-placeholder="ph_filter" placeholder="Filter…"></th>
-          <th colspan="8"></th>
+          <th colspan="9"></th>
         </tr>
       </thead>
       <tbody id="attack-tbody">
-        <tr class="empty-row"><td colspan="13" data-i18n="empty_attacks">No attacks planned yet. Click "+ Add Attack" to begin.</td></tr>
+        <tr class="empty-row"><td colspan="14" data-i18n="empty_attacks">No attacks planned yet. Click "+ Add Attack" to begin.</td></tr>
       </tbody>
     </table>
   </div>
@@ -730,7 +731,7 @@
 <script src="js/attack-planner/attacks.js"></script>
 <script src="js/attack-planner/init.js"></script>
 <div class="footer">
-  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.6.0 &nbsp;·&nbsp; 2026-08-13
+  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.7.0 &nbsp;·&nbsp; 2026-08-18
 </div>
 </body>
 </html>
