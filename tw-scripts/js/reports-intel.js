@@ -42,6 +42,14 @@ const RI_POP = { spear: 1, sword: 1, axe: 1, archer: 1, spy: 2, light: 4, marche
 // a real nuke's escort cats don't.
 const RI_CAT_MIN = 50;
 const RI_CAT_RAM_OFF = 200;
+// `dead`/`alive` (2026-08-18, twstats "Tropas muertas"): a battle can prove a village's
+// troops DEAD — as defender when the attacker won (every fought unit died) and the same
+// report's clean espionage confirmed nothing outside; as attacker when its whole army was
+// annihilated. Only a real army qualifies on the attacker side (a wiped 1-ram fake says
+// nothing about the village), and `alive` records the newest LIVING-troops observation so
+// a later rebuilt/surviving army retracts the claim. Facts stay observations: the client
+// compares dead.t vs alive.t at render time.
+const RI_DEAD_MIN = 1000; // farm pop — a wiped army below this proves nothing
 
 function riSum(units, pool) {
   if (!units) return 0;
@@ -121,6 +129,21 @@ function riMergeReports(store, reports) {
         for (const k in r.buildings) { const n = +r.buildings[k]; if (n > 0) levels[k] = n; }
         if (Object.keys(levels).length) v.bld = { levels, t };
       }
+      // 💀 dead (defender side): every unit that fought died AND this same
+      // report proves nothing was outside (clean-spy known-empty) — the whole
+      // village's army is gone as of t. An away table with units, or any
+      // survivor, records `alive` instead (survivors may be support — enough
+      // to retract a dead claim, never proof of whose troops they are).
+      const dq = riUnits(r.defenderTroops);
+      const dl = r.defenderLosses || {};
+      const dFought = Object.keys(dq).length > 0;
+      const dAllDied = dFought && Object.keys(dq).every((u) => (+dl[u] || 0) >= dq[u]);
+      if (dAllDied && !r.defenderTroopsAway && spied && riSpiesIntact(r)) {
+        if (!v.dead || t >= v.dead.t) v.dead = { t, kind: 'def', pop: riPop(dq) };
+      }
+      if ((dFought && !dAllDied) || riTotal(riUnits(r.defenderTroopsAway)) > 0) {
+        if (!v.alive || t >= v.alive.t) v.alive = { t };
+      }
       used = true;
     }
 
@@ -155,6 +178,17 @@ function riMergeReports(store, reports) {
         } else {
           v.sentCat.n = n;
         }
+      }
+      // 💀 dead (attacker side): the defender won — the whole sent army died.
+      // Only a real army (pop floor) proves anything; substantial survivors
+      // coming home are living troops (`alive`), a surviving token fake is not.
+      const aLost = r.attackerLosses || {};
+      const surv = {};
+      for (const k in units) { const s = units[k] - (+aLost[k] || 0); if (s > 0) surv[k] = s; }
+      if (!Object.keys(surv).length) {
+        if (pop >= RI_DEAD_MIN && (!v.dead || t >= v.dead.t)) v.dead = { t, kind: 'off', pop };
+      } else if (riPop(surv) >= RI_DEAD_MIN) {
+        if (!v.alive || t >= v.alive.t) v.alive = { t };
       }
       used = true;
     }
@@ -246,6 +280,8 @@ function riCombineVillages(a, b) {
   const home = newer(a.home, b.home); if (home) out.home = home;
   const away = newer(a.away, b.away); if (away) out.away = away;
   const bld = newer(a.bld, b.bld); if (bld) out.bld = bld;
+  const dead = newer(a.dead, b.dead); if (dead) out.dead = dead;
+  const alive = newer(a.alive, b.alive); if (alive) out.alive = alive;
   if (a.sent || b.sent) {
     out.sent = !a.sent ? b.sent : !b.sent ? a.sent
       : ((b.sent.off > a.sent.off || (b.sent.off === a.sent.off && (b.sent.t || 0) > (a.sent.t || 0))) ? b.sent : a.sent);

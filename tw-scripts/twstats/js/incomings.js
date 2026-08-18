@@ -60,7 +60,19 @@
     reports: null,      // coord -> village facts from the shared reports DB (null = unavailable)
     reportsMeta: null,  // { villages, reports, updated } when the DB loaded
     orders: null,       // optional incoming_orders*.json upload («.json Órdenes»)
+    bonus: {},          // "x|y" -> bonus_id (only the ids BONUS_META knows)
     filters: {},        // attack mode table filters
+  };
+
+  // Bonus-village icons (Origen del ataque): recruit-speed and farm bonuses
+  // change what an origin can field — resource bonuses (ids 1-3, 8-9) don't,
+  // so they deliberately get no icon. bonus_id mapping = the standard TW
+  // village.txt column (same table as tw_world_data's notify_bonus_barbs.py).
+  var BONUS_META = {
+    4: { icon: "farm", title: "Pueblo bonificado: +10% de población (granja)" },
+    5: { icon: "barracks", title: "Pueblo bonificado: reclutamiento un 33% más rápido (cuartel)" },
+    6: { icon: "stable", title: "Pueblo bonificado: reclutamiento un 33% más rápido (establo)" },
+    7: { icon: "workshop", title: "Pueblo bonificado: reclutamiento un 50% más rápido (taller)" },
   };
 
   // === shared reports DB (tribe-calculator Enemy Villages pipeline) =========
@@ -607,7 +619,7 @@
     var cv = state.byCoord[coord];
     var conqT = (cv && state.lastConquer[cv.id]) ? state.lastConquer[cv.id].t * 1000 : 0;
     var out = null;
-    ["home", "away", "bld", "sent", "sentBig", "sentCat"].forEach(function (k) {
+    ["home", "away", "bld", "sent", "sentBig", "sentCat", "dead", "alive"].forEach(function (k) {
       if (v[k] && (+v[k].t || 0) >= conqT) {
         if (!out) out = { lastT: v.lastT, id: v.id, name: v.name, playerId: v.playerId, playerName: v.playerName, maxT: 0 };
         out[k] = v[k];
@@ -734,6 +746,14 @@
       h += '<div class="rc-sec">' + rcRow("Catapultas",
         '<span class="rc-catas">💥 suele enviar catas — máx ' + v.sentCat.cat +
         " (" + v.sentCat.n + "×)" + rcAgeTag(v.sentCat.t) + "</span>") + "</div>";
+    }
+
+    // 💀 dead troops — only while no newer living-troops observation exists.
+    if (v.dead && (!v.alive || v.dead.t >= v.alive.t)) {
+      h += '<div class="rc-sec">' + rcRow("Tropas",
+        '<span class="rc-dead">💀 muertas ' + (v.dead.kind === "def"
+          ? "(arrasado defendiendo)" : "(ejército aniquilado atacando)") +
+        rcAgeTag(v.dead.t) + "</span>") + "</div>";
     }
 
     // Always all five spied buildings — 0 = unbuilt/destroyed (muted).
@@ -871,11 +891,28 @@
         if (window.console) console.warn("Entrantes: sin configuración del mundo:", e.message);
       });
 
+    // Bonus villages: villages.json drops the bonus_id column, but the raw
+    // village.txt in the calculators' mirrored world data keeps it
+    // (id,name,x,y,player,points,bonus_id). Best-effort — without it only
+    // the bonus icons are missing.
+    var bonusP = fetch(WORLD_DATA + "village.txt").then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.text();
+    }).then(function (txt) {
+      txt.split("\n").forEach(function (line) {
+        var p = line.split(",");
+        if (p.length >= 7 && BONUS_META[+p[6]]) state.bonus[+p[2] + "|" + +p[3]] = +p[6];
+      });
+    }).catch(function (e) {
+      if (window.console) console.warn("Entrantes: sin village.txt (iconos de bonificación):", e.message);
+    });
+
     state.ready = Promise.all([
       TW.loadJSON("villages.json"),
       TW.loadJSON("conquers.json"),
       cfgP,
       loadReportsDb(),
+      bonusP,
     ]).then(function (res) {
       indexData(res[0], res[1]);
       $("status").textContent = "Listo. Pega las coordenadas (o tus entrantes) y pulsa «Analizar»." +
@@ -993,6 +1030,12 @@
     if (row.village) html = TW.villageCell(row.village);
     else html = '<span class="coord">' + row.coord.key + '</span> <span class="cont">' +
       TW.continent(row.coord.x, row.coord.y) + "</span>";
+    // Bonus village: icon right after the name/coord, before the report badges.
+    var bId = state.bonus[row.coord.key];
+    if (bId && BONUS_META[bId]) {
+      html += ' <img class="bonus-ic" src="../icons/buildings/' + BONUS_META[bId].icon +
+        '.webp" alt="' + BONUS_META[bId].icon + '" title="' + TW.esc(BONUS_META[bId].title) + '">';
+    }
     var rt = reportTypeOf(row.coord.key);
     if (rt) {
       var ageTxt = reportAgeTxt(rt.t);
@@ -1058,7 +1101,7 @@
   // Not every flag is a warning. "Blindado" is reassurance — it must not redden
   // the row, count as "marcado", or survive the «Solo marcados» filter.
   var ALERT_FLAGS = {
-    low: 1, "new": 1, after: 1, maybe: 1, stale: 1, nosent: 1, esquivar: 1, nuke: 1, notedef: 1, catas: 1,
+    low: 1, "new": 1, after: 1, maybe: 1, stale: 1, nosent: 1, esquivar: 1, nuke: 1, notedef: 1, catas: 1, dead: 1,
   };
   function isAlert(r) {
     if (r.unknown) return true;
@@ -1067,7 +1110,7 @@
   }
 
   var SEVERITY = {
-    nuke: 8, esquivar: 7, catas: 6.8, notedef: 6.5, after: 6, "new": 5, maybe: 4, low: 3,
+    nuke: 8, esquivar: 7, dead: 6.9, catas: 6.8, notedef: 6.5, after: 6, "new": 5, maybe: 4, low: 3,
     nosent: 2, stale: 2, unknown: 1, media: 0.5, blindado: 0,
   };
   var SORTERS = {
@@ -1476,7 +1519,7 @@
       Object.keys(seen).forEach(function (c) { flagCounts[c] = (flagCounts[c] || 0) + 1; });
     });
     var FLAG_LABELS = {
-      nuke: "Posible nuke/tren real", esquivar: "Esquivar", catas: "Catas (💥)",
+      nuke: "Posible nuke/tren real", esquivar: "Esquivar", dead: "Tropas muertas (💀)", catas: "Catas (💥)",
       notedef: "Fake probable (pueblo DEF/vacío)", after: "Conquistado tras el envío",
       "new": "Conquista reciente", maybe: "Posible conquista reciente", low: "Pocos puntos",
       nosent: "Sin hora de envío", stale: "Sin puntos actuales", unknown: "Desconocido",
@@ -1537,7 +1580,7 @@
   // === summary / warnings ==================================================
   function summarize() {
     var total = state.rows.length, flagged = 0, unknown = 0;
-    var n = { low: 0, "new": 0, after: 0, maybe: 0, stale: 0, nosent: 0, blindado: 0, esquivar: 0, media: 0, nuke: 0, notedef: 0, catas: 0 };
+    var n = { low: 0, "new": 0, after: 0, maybe: 0, stale: 0, nosent: 0, blindado: 0, esquivar: 0, media: 0, nuke: 0, notedef: 0, catas: 0, dead: 0 };
     for (var i = 0; i < total; i++) {
       var r = state.rows[i];
       if (r.unknown) { unknown++; continue; }
@@ -1567,6 +1610,7 @@
     if (n.after) parts.push(n.after + " conquistad" + (state.mode === "attacks" ? "o" : "a") +
       (n.after === 1 ? "" : "s") + " tras el envío");
     if (n.notedef) parts.push(n.notedef + " desde pueblo DEF/vacío");
+    if (n.dead) parts.push(n.dead + " con tropas muertas");
     if (n.catas) parts.push(n.catas + " de lanzadores de catas");
     if (n.nuke) parts.push(n.nuke + " posible" + (n.nuke === 1 ? "" : "s") + " real" + (n.nuke === 1 ? "" : "es"));
     if (n.esquivar) parts.push(n.esquivar + " a esquivar");
@@ -1758,6 +1802,21 @@
                 "×, informe de hace " + reportAgeTxt(catInfo.t) + ")",
             });
           }
+          // 💀 Tropas muertas (2026-08-18): the newest battle evidence says
+          // this village's troops are DEAD — defending (everything at home
+          // wiped and a clean spy run saw nothing outside) or attacking (its
+          // whole real army annihilated; a dead 1-ram fake never qualifies —
+          // the merge applies the pop floor). Any NEWER living-troops
+          // observation retracts it; facts stay pure, the comparison is here.
+          var deadInfo = (fvA && fvA.dead && (!fvA.alive || fvA.dead.t >= fvA.alive.t)) ? fvA.dead : null;
+          if (deadInfo) {
+            row.flags.push({
+              cls: "dead",
+              text: "💀 Tropas muertas " + (deadInfo.kind === "def"
+                ? "(arrasado defendiendo)" : "(su ejército aniquilado atacando)") +
+                " — hace " + reportAgeTxt(deadInfo.t),
+            });
+          }
           // notedef is SUPPRESSED by catas: "fake probable" and "known cata
           // striker" contradict — a def village's slow command with a cata
           // record is a building strike, not a fake (the user's whole point).
@@ -1768,8 +1827,10 @@
                 " enviando tropa lenta (informe de hace " + reportAgeTxt(rt.t) + ")",
             });
           }
+          // Dead troops count as a fake signal: a village whose army just
+          // died can't be sending the real thing (suppresses the nuke flag).
           var looksFake = row.flags.some(function (f) {
-            return f.cls === "low" || f.cls === "new" || f.cls === "notedef";
+            return f.cls === "low" || f.cls === "new" || f.cls === "notedef" || f.cls === "dead";
           });
           var heavy = a.speed && a.speed.isHeavy;
           var armoured = a.target && a.target.status === "blindado";

@@ -420,6 +420,10 @@ table.vis.own-villages td.zero { color: var(--text-muted); opacity: .5; }
 .flag-nuke { color: #fff; background: var(--delta-down); border-color: var(--delta-down); }
 /* Known catapult striker (≥50 catas without a regular ram off) — purple, per the user. */
 .flag-catas { color: #fff; background: #6d3f8e; border-color: #6d3f8e; }
+/* Troops confirmed dead in battle (💀) — dark blood-red, distinct from nuke's red. */
+.flag-dead { color: #fff; background: #7a1f1f; border-color: #7a1f1f; }
+/* Bonus-village icon (barracks/stable/workshop/farm), inline after the name. */
+.bonus-ic { width: 14px; height: 14px; vertical-align: -2px; }
 .note-badge {
   display: inline-block; border-radius: 3px; padding: 0 4px; font-size: 10px; font-weight: 700;
   border: 1px solid var(--border-secondary); color: var(--text-muted);
@@ -482,6 +486,7 @@ table.vis th.col-verdict { white-space: normal; }
 .report-card .rc-none, .report-card .rc-unk { color: var(--text-muted); font-style: italic; }
 .report-card .rc-empty { color: var(--delta-up); }
 .report-card .rc-catas { color: #b07fd0; font-weight: 600; }
+.report-card .rc-dead { color: #d05050; font-weight: 600; }
 .report-card .rc-lv0 { color: var(--text-muted); }
 
 /* === in-game report render (report-render.js: .twrr) =====================
