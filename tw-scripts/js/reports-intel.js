@@ -45,11 +45,14 @@ const RI_CAT_RAM_OFF = 200;
 // `dead`/`alive` (2026-08-18, twstats "Tropas muertas"): a battle can prove a village's
 // troops DEAD — as defender when the attacker won (every fought unit died) and the same
 // report's clean espionage confirmed nothing outside; as attacker when its whole army was
-// annihilated. Only a real army qualifies on the attacker side (a wiped 1-ram fake says
-// nothing about the village), and `alive` records the newest LIVING-troops observation so
-// a later rebuilt/surviving army retracts the claim. Facts stay observations: the client
-// compares dead.t vs alive.t at render time.
-const RI_DEAD_MIN = 1000; // farm pop — a wiped army below this proves nothing
+// annihilated. Only a real army qualifies on the attacker side — the floor was raised
+// 1000 → 5000 the same day (user call after auditing the first rebuild: 11% of flags came
+// from 1-3k cat-splash fakes dying against stacks, which proves nothing about the village;
+// half-nuke-or-bigger deaths are the intel). Retraction is deliberately EASIER than
+// flagging (RI_ALIVE_MIN stays low): a wrong "dead" claim costs more than a lost flag.
+// Facts stay observations: the client compares dead.t vs alive.t at render time.
+const RI_DEAD_MIN = 5000;  // farm pop — only a half-nuke-or-bigger wipe flags a village
+const RI_ALIVE_MIN = 1000; // farm pop — survivors above this retract a dead claim
 
 function riSum(units, pool) {
   if (!units) return 0;
@@ -187,7 +190,7 @@ function riMergeReports(store, reports) {
       for (const k in units) { const s = units[k] - (+aLost[k] || 0); if (s > 0) surv[k] = s; }
       if (!Object.keys(surv).length) {
         if (pop >= RI_DEAD_MIN && (!v.dead || t >= v.dead.t)) v.dead = { t, kind: 'off', pop };
-      } else if (riPop(surv) >= RI_DEAD_MIN) {
+      } else if (riPop(surv) >= RI_ALIVE_MIN) {
         if (!v.alive || t >= v.alive.t) v.alive = { t };
       }
       used = true;
