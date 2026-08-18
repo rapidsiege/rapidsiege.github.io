@@ -172,6 +172,7 @@ const LANG = {
     // Countdown statuses
     status_sent: 'SENT',
     status_send_now: 'SEND NOW!',
+    status_left: 'left',
     status_late: 'LATE',
 
     // Alerts & confirms
@@ -375,6 +376,7 @@ const LANG = {
     // Countdown statuses
     status_sent: 'ENVIADO',
     status_send_now: '¡ENVIAR AHORA!',
+    status_left: 'restante',
     status_late: 'TARDE',
 
     // Alerts & confirms

@@ -396,9 +396,10 @@ function updateCountdowns() {
     rowEl.className = '';
 
     if (diff <= 0 && endDiff > 0) {
-      // Inside the send window: still on time — SEND NOW plus how long the window stays open.
+      // Inside the send window: still on time — SEND NOW plus how long the window stays open
+      // (time-left in the cd-soon yellow so it reads apart from the red SEND NOW).
       // Windowless attacks never get here (endDiff === diff) and fall to LATE as before.
-      cdEl.textContent = `${t('status_send_now')} · ${fmtDuration(endDiff)}`;
+      cdEl.innerHTML   = `${t('status_send_now')} · <span style="color:#d0c030">${fmtDuration(endDiff)}</span> ${t('status_left')}`;
       cdEl.className   = 'cd-now';
       rowEl.className  = 'row-now';
     } else if (diff > 30 * 60000) {
