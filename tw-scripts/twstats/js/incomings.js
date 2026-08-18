@@ -59,6 +59,7 @@
     targets: {},        // attack mode: target coord -> {wall, loyalty, def}
     reports: null,      // coord -> village facts from the shared reports DB (null = unavailable)
     reportsMeta: null,  // { villages, reports, updated } when the DB loaded
+    orders: null,       // optional incoming_orders*.json upload («.json Órdenes»)
     filters: {},        // attack mode table filters
   };
 
@@ -398,6 +399,104 @@
       flush();
     });
     return attacks;
+  }
+
+  // === órdenes .json (incomingOrders exporter, optional) ===================
+  // The BB dump never carries the army inside a command — the incomingOrders
+  // userscript export does (real per-unit counts + the game's small/medium/
+  // large size icon). Uploading one is optional; each dump row is matched by
+  // target village + origin village + EXACT arrival: the arrival (with its
+  // milliseconds) is the command's identity in-game, so two exports taken at
+  // different moments still agree on it. Nothing is guessed — an unmatched
+  // row simply shows no units.
+  var ORD_STAMP_RE = /^(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s+(\d{1,2}):(\d{2}):(\d{2})(?::(\d{1,3}))?$/;
+  function ordArrival(s) {
+    var m = ORD_STAMP_RE.exec(String(s || "").trim());
+    if (!m) return null;
+    var year = m[3].length <= 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    return {
+      t: TW.srvEpoch(year, Number(m[2]), Number(m[1]), Number(m[4]), Number(m[5]), Number(m[6])),
+      ms: m[7] ? Number((m[7] + "00").slice(0, 3)) : 0,
+    };
+  }
+  function ordCoord(s) {
+    var m = /^(\d{1,3})\|(\d{1,3})$/.exec(String(s || "").trim());
+    return m ? Number(m[1]) + "|" + Number(m[2]) : null;
+  }
+  function parseOrders(json) {
+    if (!json || !Array.isArray(json.targets)) {
+      throw new Error("no parece un incoming_orders*.json (falta la lista targets)");
+    }
+    var exact = {}, bySec = {}, n = 0;
+    json.targets.forEach(function (t) {
+      var tKey = ordCoord(t.coords);
+      (t.commands || []).forEach(function (c) {
+        if (c.type && c.type !== "attack") return;   // supports never match dump rows
+        var oKey = ordCoord(c.origin_coords);
+        var arr = ordArrival(c.arrival);
+        if (!tKey || !oKey || !arr || !c.units) return;
+        n++;
+        var kSec = tKey + ">" + oKey + "@" + arr.t;
+        exact[kSec + ":" + arr.ms] = c;
+        (bySec[kSec] = bySec[kSec] || []).push(c);
+      });
+    });
+    if (!n) throw new Error("el archivo no contiene ningún comando de ataque legible");
+    return { exact: exact, bySec: bySec, commands: n, file: "" };
+  }
+  function orderFor(a) {
+    if (!state.orders || !a.target) return null;
+    var kSec = a.target.key + ">" + a.origin.key + "@" + a.arrival;
+    var hit = state.orders.exact[kSec + ":" + a.arrivalMs];
+    if (hit) return hit;
+    // One side missing the milliseconds (older exports): a second-level match
+    // is accepted only when it is unambiguous — trains 100 ms apart share the
+    // same second, and picking one would show the WRONG army as fact.
+    var cands = state.orders.bySec[kSec];
+    return (cands && cands.length === 1) ? cands[0] : null;
+  }
+  // Attach the matched command to every analysed row (cached on the attack so
+  // sorting/filtering re-renders don't re-match) and surface the tally. Runs
+  // after every analysis and again when a .json is uploaded mid-session.
+  function matchOrders() {
+    var el = $("ordersNote");
+    if (!state.orders) { el.hidden = true; return; }
+    var total = 0, matched = 0;
+    state.rows.forEach(function (r) {
+      if (!r.attack) return;
+      total++;
+      r.attack.order = orderFor(r.attack);
+      if (r.attack.order) matched++;
+    });
+    el.textContent = "Órdenes .json" + (state.orders.file ? " (" + state.orders.file + ")" : "") +
+      ": " + state.orders.commands + " comandos cargados" +
+      (total ? " · " + matched + " de " + total +
+        " ataques emparejados (objetivo + origen + hora de llegada exacta)"
+             : " — se emparejarán al analizar tus entrantes");
+    el.hidden = false;
+  }
+
+  // Units of a matched command: the game's size icon + one chip per nonzero
+  // unit, in the canonical unit order. Icons live in the calculators' shared
+  // ../icons/units/ (same set the hover card uses).
+  var ORD_UNIT_ORDER = ["spear", "sword", "axe", "archer", "spy", "light",
+                        "marcher", "heavy", "ram", "catapult", "knight", "snob"];
+  var ORD_SIZE_ES = { small: "pequeño", medium: "mediano", large: "grande" };
+  function ordersCellHtml(c) {
+    var chips = ORD_UNIT_ORDER.filter(function (u) { return (c.units[u] || 0) > 0; })
+      .map(function (u) {
+        return '<span class="ord-unit" title="' + TW.esc(UNIT_ES[u] || u) +
+          '"><img class="ord-ic" src="../icons/units/' + u + '.png" alt="' +
+          TW.esc(UNIT_ES[u] || u) + '">' + TW.commas(c.units[u]) + "</span>";
+      });
+    var size = ORD_SIZE_ES[c.size]
+      ? '<img class="ord-ic ord-size" src="../icons/units/attack_' + c.size +
+        '.webp" alt="' + c.size + '" title="Ataque ' + ORD_SIZE_ES[c.size] +
+        ' (icono del juego)">'
+      : "";
+    if (!chips.length && !size) return "";
+    return '<span class="ord-units" title="Unidades según el .json de órdenes' +
+      (c.label ? " · " + TW.esc(c.label) : "") + '">' + size + chips.join("") + "</span>";
   }
 
   // === your attacked villages: Blindado / Esquivar =========================
@@ -1158,7 +1257,10 @@
         "<td>" + villageCellOf(r) + "</td>" +
         "<td class='col-pts'>" + pointsCellOf(r) + "</td>" +
         "<td>" + (r.village ? TW.ownerCell(r.village.owner) : "<span class='barb'>—</span>") + "</td>" +
-        (state.mode === "attacks" ? "<td>" + speedCell(r.attack) + "</td>" : "") +
+        (state.mode === "attacks"
+          ? "<td>" + speedCell(r.attack) +
+            (r.attack.order ? "<br>" + ordersCellHtml(r.attack.order) : "") + "</td>"
+          : "") +
         targetCell + timeCell +
         "<td class='col-conq'>" + conquerCell(r) + "</td>" +
         "<td class='col-verdict'>" + verdictCell(r) + "</td></tr>";
@@ -1718,6 +1820,7 @@
         $("warnLine").hidden = true;
       }
 
+      matchOrders();
       summarize();
       render();
     }
@@ -1771,7 +1874,36 @@
       $("tableWrap").hidden = true;
       $("status").style.display = "";
       $("status").textContent = "Pega las coordenadas (o tus entrantes) y pulsa «Analizar».";
+      matchOrders();   // a loaded .json survives Limpiar — back to "se emparejarán"
       $("coords").focus();
+    });
+    // «.json Órdenes» — optional incoming_orders*.json upload. The file never
+    // leaves the browser; parse errors report themselves in the note line.
+    $("ordersBtn").addEventListener("click", function () { $("ordersFile").click(); });
+    $("ordersFile").addEventListener("change", function () {
+      var f = this.files && this.files[0];
+      this.value = "";   // re-choosing the same file must fire change again
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          state.orders = parseOrders(JSON.parse(reader.result));
+          state.orders.file = f.name;
+          matchOrders();
+          if (state.rows.length) render();
+        } catch (e) {
+          // A bad file must not wipe a good one already loaded — report and keep.
+          var el = $("ordersNote");
+          el.textContent = "No se pudo leer el .json de órdenes: " + (e && e.message ? e.message : e);
+          el.hidden = false;
+        }
+      };
+      reader.onerror = function () {
+        var el = $("ordersNote");
+        el.textContent = "No se pudo leer el archivo .json de órdenes.";
+        el.hidden = false;
+      };
+      reader.readAsText(f);
     });
     $("onlyflagged").addEventListener("change", function () {
       if (state.rows.length) render();

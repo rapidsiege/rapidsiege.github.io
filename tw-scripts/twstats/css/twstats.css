@@ -446,6 +446,14 @@ table.vis th.col-verdict { white-space: normal; }
 /* Reports-DB intel recorded under a PREVIOUS owner: shown, never trusted. */
 .note-old { color: var(--text-muted); border-color: var(--border-secondary); opacity: .75; }
 
+/* Units from the optional «.json Órdenes» upload (incomingOrders exporter):
+   the real army inside a matched command + the game's size icon, rendered as
+   a second line inside the Tropa cell. */
+.ord-units { display: inline-flex; flex-wrap: wrap; gap: 7px; margin-top: 3px; align-items: center; }
+.ord-unit { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; white-space: nowrap; }
+.ord-ic { width: 15px; height: 15px; vertical-align: middle; }
+.ord-size { width: 14px; height: 14px; }
+
 /* CATAS village tag — purple, sits next to the 📄OFF/DEF badge. */
 .note-catas { color: #fff; background: #6d3f8e; border-color: #6d3f8e; }
 
