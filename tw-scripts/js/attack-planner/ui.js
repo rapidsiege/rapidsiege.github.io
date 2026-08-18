@@ -417,7 +417,7 @@ function renderRequirements(reqs) {
     const win  = day != null ? (tw ? `${day} · ${tw}` : String(day)) : tw;
     const time = win ? `<span style="font-family:monospace;color:#6090c0;font-size:10px"> ${escHtml(win)}</span>` : '';
     // Catapult Mode: the imported "(→ Building)" objective of this off's riding catapults.
-    const bldg = r.building ? `<small style="color:#c08040;font-size:10px;font-weight:bold"> 🏛 ${escHtml(r.building)}</small>` : '';
+    const bldg = r.building ? `<small style="color:#c08040;font-size:10px;font-weight:bold"> → ${escHtml(r.building)}</small>` : '';
     const from = r.srcCoord ? `<small style="color:#6a7a4a;font-size:10px"> from ${escHtml(r.srcCoord)}</small>` : '';
     return `${cnt}${reqBadgeHtml(r.unitType)}<small style="color:#806838;font-size:10px"> ${escHtml(r.attacker)}</small>${time}${bldg}${from}`;
   }).join('<br>');

@@ -144,7 +144,7 @@ function autoGenerateAttacks(landingDateStr, criteria = { power: true, distance:
         attacks.push({ id: uid(), fromId: v.id, targetId: target.id, type: 'fake', nobleCount: 1, landingTime: iso, windowFrom: req.timeFrom, windowTo: req.timeTo, sent: false });
       } else {
         // building = the Catapult Mode "(→ Building)" objective imported with the requirement
-        // (undefined otherwise — JSON drops it), shown as the attack row's 🏛 column.
+        // (undefined otherwise — JSON drops it), shown as the attack row's Building column.
         attacks.push({ id: uid(), fromId: v.id, targetId: target.id, type: 'off', nobleCount: 1, landingTime: iso, windowFrom: req.timeFrom, windowTo: req.timeTo, building: req.building, sent: false });
       }
     });

@@ -64,6 +64,17 @@ function travelMs(d, type, ws, us) {
   return d * BASE_MIN[type] / (ws * us) * 60000;
 }
 
+// Length of an attack's landing window in ms (0 when no real window — missing, malformed, or
+// from === to). Landing time is anchored at windowFrom, so the whole send window is the same
+// span shifted back by travel: [sendMs, sendMs + span]. A to < from window (23:00-01:00)
+// wraps past midnight.
+function windowSpanMs(from, to) {
+  const mins = s => { const m = /^(\d{1,2}):(\d{2})$/.exec((s || '').trim()); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+  const a = mins(from), b = mins(to);
+  if (a == null || b == null || a === b) return 0;
+  return ((b - a + 1440) % 1440) * 60000;
+}
+
 function computeAttackRow(atk) {
   const village = DATA.villages.find(v => v.id === atk.fromId);
   const target  = DATA.targets.find(t => t.id === atk.targetId);
@@ -78,6 +89,9 @@ function computeAttackRow(atk) {
   const tMs    = travelMs(d, speedKey, ws, us);
   const landMs = new Date(atk.landingTime).getTime();
   const sendMs = landMs - tMs;
+  // Latest acceptable send: landing anywhere inside the window is on time, so the send window
+  // ends a full window-span after the earliest send. Windowless attacks: sendEndMs === sendMs.
+  const sendEndMs = sendMs + windowSpanMs(atk.windowFrom, atk.windowTo);
   const url    = buildAttackUrl(
     DATA.settings.serverUrl,
     village.villageId,
@@ -87,7 +101,7 @@ function computeAttackRow(atk) {
     atk.nobleCount,
     atk.dividedOff
   );
-  return { d, tMs, sendMs, landMs, url };
+  return { d, tMs, sendMs, sendEndMs, landMs, url };
 }
 
 function buildAttackUrl(server, fromVillageId, targetVillageId, type, village, nobleCount, dividedOff = false) {

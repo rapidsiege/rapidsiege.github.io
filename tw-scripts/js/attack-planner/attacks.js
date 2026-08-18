@@ -294,7 +294,7 @@ function renderAttacks() {
         <td>${playerName}</td>
         <td><span class="req-badge ${unitCls}">${unitLabel}</span></td>
         <td><span class="text-dim">—</span></td>
-        <td>${a.building ? `<span style="color:#c08040;font-weight:bold">🏛 ${escHtml(a.building)}</span>` : '<span class="text-dim">—</span>'}</td>
+        <td>${a.building ? `<span style="color:#c08040;font-weight:bold">${escHtml(a.building)}</span>` : '<span class="text-dim">—</span>'}</td>
         <td><span class="text-dim">—</span></td>
         <td><span class="text-dim">—</span></td>
         <td>${winLabel}</td>
@@ -317,9 +317,17 @@ function renderAttacks() {
       const winSub = (a.windowFrom && a.windowTo && a.windowFrom !== a.windowTo)
         ? `<br><small style="color:#6090c0;font-size:10px">${escHtml(a.windowFrom)}–${escHtml(a.windowTo)}</small>` : '';
       landingCell = fmtDateLocal(a.landingTime) + winSub;
-      const sd = new Date(c.sendMs);
       const sp = n => String(n).padStart(2,'0');
-      sendCell = `${sp(sd.getDate())}/${sp(sd.getMonth()+1)} ${sp(sd.getHours())}:${sp(sd.getMinutes())}:${sp(sd.getSeconds())}`;
+      const sendParts = ms => { const d = new Date(ms); return { day: `${sp(d.getDate())}/${sp(d.getMonth()+1)}`, time: `${sp(d.getHours())}:${sp(d.getMinutes())}:${sp(d.getSeconds())}` }; };
+      const s0 = sendParts(c.sendMs);
+      sendCell = `${s0.day} ${s0.time}`;
+      // Windowed attack: any send inside [sendMs, sendEndMs] lands in the window — show the
+      // whole bracket, mirroring the Landing column's window sub-label. The end repeats its
+      // date only when the send window crosses midnight.
+      if (c.sendEndMs > c.sendMs) {
+        const s1 = sendParts(c.sendEndMs);
+        sendCell += `<br><small style="color:#6090c0;font-size:10px">–${s1.day === s0.day ? '' : s1.day + ' '}${s1.time}</small>`;
+      }
     }
 
     const attackBtns = c
@@ -337,7 +345,7 @@ function renderAttacks() {
       <td>${playerName}</td>
       <td>${typeBadge}${a.type === 'snob' ? ` <small style="color:#6090e0">×${a.nobleCount}</small>` : ''}${a.speed && BASE_MIN[a.speed] ? ` <small style="color:#c0a060">@${SPEED_LABEL[a.speed] || a.speed}</small>` : ''}</td>
       <td>${a.type === 'off' && village ? `${calcOffPow(village).toLocaleString()} ${offTierBadge(calcOffPow(village))}` : '<span class="text-dim">—</span>'}</td>
-      <td>${a.building ? `<span style="color:#c08040;font-weight:bold">🏛 ${escHtml(a.building)}</span>` : '<span class="text-dim">—</span>'}</td>
+      <td>${a.building ? `<span style="color:#c08040;font-weight:bold">${escHtml(a.building)}</span>` : '<span class="text-dim">—</span>'}</td>
       <td>${distCell}</td>
       <td style="font-family:monospace;font-size:12px">${travelCell}</td>
       <td style="font-family:monospace;font-size:12px">${landingCell}</td>
@@ -381,12 +389,19 @@ function updateCountdowns() {
       return;
     }
 
-    const diff = c.sendMs - now; // ms until send time
+    const diff    = c.sendMs - now;                    // ms until the send window opens
+    const endDiff = (c.sendEndMs || c.sendMs) - now;   // ms until it closes (== diff when windowless)
 
     // Remove existing state classes
     rowEl.className = '';
 
-    if (diff > 30 * 60000) {
+    if (diff <= 0 && endDiff > 0) {
+      // Inside the send window: still on time — SEND NOW plus how long the window stays open.
+      // Windowless attacks never get here (endDiff === diff) and fall to LATE as before.
+      cdEl.textContent = `${t('status_send_now')} · ${fmtDuration(endDiff)}`;
+      cdEl.className   = 'cd-now';
+      rowEl.className  = 'row-now';
+    } else if (diff > 30 * 60000) {
       // > 30 min: green
       cdEl.textContent = fmtDuration(diff);
       cdEl.className   = 'cd-ok';
@@ -406,8 +421,8 @@ function updateCountdowns() {
       cdEl.className   = 'cd-now';
       rowEl.className  = 'row-now';
     } else {
-      // past send time
-      const late = -diff;
+      // past the send window (its end for windowed attacks, the exact time otherwise)
+      const late = -endDiff;
       cdEl.textContent = `${t('status_late')} ${fmtDuration(late)}`;
       cdEl.className   = 'cd-late';
       rowEl.className  = 'row-now';
