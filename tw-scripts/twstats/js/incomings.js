@@ -472,7 +472,7 @@
   // after every analysis and again when a .json is uploaded mid-session.
   function matchOrders() {
     var el = $("ordersNote");
-    if (!state.orders) { el.hidden = true; return; }
+    if (!state.orders) { el.hidden = true; buildOrdersFilters(); return; }
     var total = 0, matched = 0;
     state.rows.forEach(function (r) {
       if (!r.attack) return;
@@ -486,6 +486,7 @@
         " ataques emparejados (objetivo + origen + hora de llegada exacta)"
              : " — se emparejarán al analizar tus entrantes");
     el.hidden = false;
+    buildOrdersFilters();
   }
 
   // Units of a matched command: the game's size icon + one chip per nonzero
@@ -509,6 +510,60 @@
     if (!chips.length && !size) return "";
     return '<span class="ord-units" title="Unidades según el .json de órdenes' +
       (c.label ? " · " + TW.esc(c.label) : "") + '">' + size + chips.join("") + "</span>";
+  }
+
+  // «Filtros de órdenes» (2026-08-21): with a .json loaded, what it revealed is
+  // itself filterable — the game's size icon, armies bigger than the 2-unit
+  // token fake (1 espía + 1 ariete/catapulta), and «Tropas desconocidas» (rows
+  // the .json could NOT identify). One checkbox per state PRESENT in the rows
+  // (with counts), OR-combined with each other exactly like the flag filters
+  // and AND-combined with everything else — «desconocidas» sits in the same OR
+  // group on purpose: "grande + mediano + desconocidas" = everything that could
+  // still be real. Built from matchOrders, not buildAttackFilters, because a
+  // .json can arrive mid-session without a re-analysis.
+  var ORD_FILTERS = [
+    { key: "small", label: "Ataque pequeño", icon: true },
+    { key: "medium", label: "Ataque mediano", icon: true },
+    { key: "large", label: "Ataque grande", icon: true },
+    { key: "multi", label: "Más de 2 unidades",
+      title: "Más de 2 unidades en total según el .json: no puede ser el fake típico de 1 espía + 1 ariete/catapulta" },
+    { key: "unknown", label: "Tropas desconocidas",
+      title: "Sin orden emparejada en el .json: las tropas del comando se desconocen" },
+  ];
+  function ordUnitTotal(c) {
+    var n = 0;
+    for (var u in c.units) n += c.units[u] || 0;
+    return n;
+  }
+  function ordFilterHit(a, want) {
+    if (want === "unknown") return !a.order;
+    if (!a.order) return false;
+    if (want === "multi") return ordUnitTotal(a.order) > 2;
+    return a.order.size === want;
+  }
+  function buildOrdersFilters() {
+    var box = $("fOrders");
+    if (!box) return;   // nothing analysed yet — the filter grid doesn't exist
+    if (!state.orders || state.mode !== "attacks" || !state.rows.length) {
+      box.innerHTML = ""; box.hidden = true; return;
+    }
+    var counts = {};
+    state.rows.forEach(function (r) {
+      ORD_FILTERS.forEach(function (d) {
+        if (ordFilterHit(r.attack, d.key)) counts[d.key] = (counts[d.key] || 0) + 1;
+      });
+    });
+    var boxes = ORD_FILTERS.filter(function (d) { return counts[d.key]; })
+      .map(function (d) {
+        var ic = d.icon
+          ? '<img class="ord-ic ord-size" src="../icons/units/attack_' + d.key + '.webp" alt=""> '
+          : "";
+        return '<label class="fflag"' + (d.title ? ' title="' + TW.esc(d.title) + '"' : "") +
+          '><input type="checkbox" class="fOrd" value="' + d.key + '"> ' + ic +
+          TW.esc(d.label) + " (" + counts[d.key] + ")</label>";
+      }).join(" ");
+    box.innerHTML = boxes ? '<span class="fflags-h">Filtros de órdenes:</span> ' + boxes : "";
+    box.hidden = !boxes;
   }
 
   // === your attacked villages: Blindado / Esquivar =========================
@@ -1212,6 +1267,13 @@
       }
       if (!has) return false;
     }
+    // «Filtros de órdenes»: same OR semantics over what the matched .json said
+    // — the game's size icon, >2-unit armies, or rows with no matched order.
+    if (f.ords && f.ords.length) {
+      var hasOrd = false;
+      for (var j = 0; j < f.ords.length && !hasOrd; j++) hasOrd = ordFilterHit(a, f.ords[j]);
+      if (!hasOrd) return false;
+    }
     if (f.player && a.player !== f.player) return false;
     if (f.type && (a.speed ? a.speed.label : "?") !== f.type) return false;
     if (f.origin && a.origin.key !== f.origin) return false;
@@ -1504,7 +1566,10 @@
     var dests = sortedEntries(countBy(attacks, function (a) { return a.target ? a.target.key : null; }));
 
     var arrivals = attacks.map(function (a) { return a.arrival; }).sort(function (p, q) { return p - q; });
-    var from = TW.fmtDateTime(arrivals[0]), to = TW.fmtDateTime(arrivals[arrivals.length - 1]);
+    // Second-resolution prefill (2026-08-21 fix): arrivals carry seconds, so a
+    // minute-truncated "hasta" silently dropped anything arriving after :00 in
+    // the final minute — the latest row vanished on every «Aplicar filtros».
+    var from = TW.fmtTime(arrivals[0]), to = TW.fmtTime(arrivals[arrivals.length - 1]);
 
     // «Filtros de aviso» (2026-08-06): filter rows by the flag classes they
     // raised — one checkbox per class PRESENT in the current rows (with its
@@ -1542,12 +1607,16 @@
       '<div class="f"><label for="fTo">Llegada hasta</label><input type="text" id="fTo" value="' + to + '"></div>' +
       "</div>" +
       (flagBoxes ? '<div class="fflags"><span class="fflags-h">Filtros de aviso:</span> ' + flagBoxes + "</div>" : "") +
+      // Filled by buildOrdersFilters (via matchOrders) once a .json de órdenes
+      // is loaded — a fresh analysis rebuilds the grid, so the placeholder must
+      // always exist here even when no file is loaded yet.
+      '<div class="fflags" id="fOrders" hidden></div>' +
       '<div class="filter-actions"><button type="button" id="fApply">Aplicar filtros</button>' +
       '<button type="button" id="fReset">Quitar filtros</button></div>';
 
-    function checkedFlags() {
+    function checkedVals(sel) {
       var out = [];
-      var boxes = document.querySelectorAll(".fFlag");
+      var boxes = document.querySelectorAll(sel);
       for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) out.push(boxes[i].value);
       return out;
     }
@@ -1556,14 +1625,14 @@
         player: $("fPlayer").value, type: $("fType").value,
         origin: $("fOrigin").value, dest: $("fDest").value,
         from: parseDateTime($("fFrom").value), to: parseDateTime($("fTo").value),
-        flags: checkedFlags(),
+        flags: checkedVals(".fFlag"), ords: checkedVals(".fOrd"),
       };
       render();
     });
     $("fReset").addEventListener("click", function () {
       ["fPlayer", "fType", "fOrigin", "fDest"].forEach(function (id) { $(id).value = ""; });
       $("fFrom").value = from; $("fTo").value = to;
-      var boxes = document.querySelectorAll(".fFlag");
+      var boxes = document.querySelectorAll(".fFlag, .fOrd");
       for (var i = 0; i < boxes.length; i++) boxes[i].checked = false;
       state.filters = {};
       render();
