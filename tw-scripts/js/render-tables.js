@@ -196,9 +196,11 @@ function saveSettings() {
   const v = id => document.getElementById(id)?.value;
   const plan = {};
   for (const id of PLAN_SETTING_IDS) { const val = v(id); if (val != null) plan[id] = val; }
-  // Cluster launch times is a checkbox → persist its checked state (not .value).
+  // Cluster launch times / Don't reserve villages are checkboxes → persist checked state (not .value).
   const clusterEl = document.getElementById('plan-cluster');
   if (clusterEl) plan['plan-cluster'] = !!clusterEl.checked;
+  const noResEl = document.getElementById('plan-no-reserve');
+  if (noResEl) plan['plan-no-reserve'] = !!noResEl.checked;
   try {
     localStorage.setItem(TRIBE_SETTINGS_KEY, JSON.stringify({
       lang: (typeof lang === 'string') ? lang : undefined,
@@ -219,10 +221,14 @@ function loadSettings() {
   const set = (id, val) => { const e = document.getElementById(id); if (e && val != null && val !== '') e.value = val; };
   if (s.thresholds) { set('thresh-complete', s.thresholds.complete); set('thresh-tq', s.thresholds.tq); set('thresh-half', s.thresholds.half); }
   if (s.plan) for (const id of PLAN_SETTING_IDS) set(id, s.plan[id]);
-  // Cluster launch times checkbox (stored as a boolean, restored via .checked).
+  // Cluster launch times / Don't reserve villages checkboxes (stored as booleans, restored via .checked).
   if (s.plan && 'plan-cluster' in s.plan) {
     const clusterEl = document.getElementById('plan-cluster');
     if (clusterEl) clusterEl.checked = !!s.plan['plan-cluster'];
+  }
+  if (s.plan && 'plan-no-reserve' in s.plan) {
+    const noResEl = document.getElementById('plan-no-reserve');
+    if (noResEl) noResEl.checked = !!s.plan['plan-no-reserve'];
   }
   // Offensive Targets hidden columns — drop keys OT_COLS no longer knows (renamed/removed).
   if (Array.isArray(s.otCols) && typeof otHiddenCols !== 'undefined')

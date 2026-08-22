@@ -18,6 +18,24 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.12.2', date: '2026-08-22',
+    en: [
+      `<b>✅ Force Players (Offensive Targets).</b> A whitelist next to Ignore Players: pick the ONLY players who take part in this offensive, and everyone else in the loaded troop file is left out completely — no offs, no snob trains, no escorts, no fakes, no catapult attacks, hidden from every sender picker, and dropped from Export Unused Offs. Perfect for small player-specific operations without ignoring the rest of the tribe one by one. Empty list = everyone participates, exactly as before; the ignore lists still apply on top of the whitelist.`,
+      `<b>🏃 "Don't reserve villages" toggle (Plan Offensive), off by default.</b> Normally each noble sender's two villages closest to their objective are held out of the off passes, kept free to launch the nobles. With the toggle on, that hold is skipped: <b>every off in range is sent</b>, and players keep a few units at home themselves to send their solo snob trains. Split-off escort reservations still apply — that off genuinely rides with the noble. The setting survives a refresh like the other Plan Offensive controls.`,
+    ],
+    es: [
+      `<b>✅ Forzar Jugadores (Objetivos Ofensivos).</b> Una lista blanca junto a Ignorar Jugadores: elige los ÚNICOS jugadores que participan en esta ofensiva, y todos los demás del archivo de tropas quedan fuera por completo — ni offs, ni trenes de nobles, ni escoltas, ni fakes, ni ataques de catapulta, ocultos de todos los selectores de remitentes y fuera de Exportar Offs Sin Usar. Perfecto para operaciones pequeñas de jugadores concretos sin ignorar al resto de la tribu uno a uno. Lista vacía = participan todos, exactamente como antes; las listas de ignorados se aplican igualmente encima.`,
+      `<b>🏃 Interruptor «No reservar aldeas» (Planear Ofensiva), desactivado por defecto.</b> Normalmente las dos aldeas de cada emisor de nobles más cercanas a su objetivo se apartan de las pasadas de offs, libres para lanzar los nobles. Con el interruptor activado esa reserva se salta: <b>se envía todo off al alcance</b>, y los jugadores se guardan ellos mismos unas pocas unidades en casa para enviar sus trenes de nobles solos. Las reservas de escolta split-off siguen aplicándose — ese off viaja de verdad con el noble. El ajuste sobrevive a un refresco como los demás controles de Planear Ofensiva.`,
+    ],
+  },
+  { ver: 'v5.12.1', date: '2026-08-22',
+    en: [
+      `<b>📋 Paste coordinates with any separator.</b> The coordinate paste boxes — <b>Add multiple</b> in Offensive and Defensive Targets and the two <b>Ignore coordinates</b> lists — used to read one coordinate per line. They now take any number of <b>x|y</b> coords per line, separated by anything: spaces, commas, tabs or line breaks. In the bulk-add boxes, text following a coord (up to the next one) is still kept as that village's pasted name, so the old one-per-line format with names keeps working exactly as before.`,
+    ],
+    es: [
+      `<b>📋 Pega coordenadas con cualquier separador.</b> Las cajas de pegado de coordenadas — <b>Añadir varias</b> en Objetivos Ofensivos y Defensivos y las dos listas de <b>Ignorar coordenadas</b> — leían una coordenada por línea. Ahora aceptan cualquier número de coords <b>x|y</b> por línea, separadas por lo que sea: espacios, comas, tabuladores o saltos de línea. En las cajas de añadir en bloque, el texto que sigue a una coord (hasta la siguiente) se conserva como el nombre pegado de ese pueblo, así que el formato antiguo de una por línea con nombres sigue funcionando exactamente igual.`,
+    ],
+  },
   { ver: 'v5.12.0', date: '2026-08-13',
     en: [
       `<b>📋 One Orders block per player — waves merged, sorted by departure.</b> A multi-day plan used to give each player one block per window group, so someone with attacks landing across waves had to hop between blocks to send in the right order. The per-player Orders, the ✉ PMs and the Per-Player All download now emit a <b>single block per player</b> with every attack <b>sorted by launch time</b> across the whole operation, and the header lists every landing day at the top: <b>ARRIVAL DATE: Thursday 13 & Friday 14</b>. The PM template's {date} names each player's own day(s) too. Single-wave plans keep their exact old output; two waves that share one day now merge as well.`,

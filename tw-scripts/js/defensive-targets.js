@@ -164,12 +164,14 @@ function bulkAddDefTargets() {
   const input = document.getElementById('dt-bulk-input');
   let added = 0;
   for (const line of input.value.split('\n')) {
-    const m = line.match(/(\d{1,3})\s*\|\s*(\d{1,3})\s*(.*)/);
-    if (!m) continue;
-    const pastedName = m[3].replace(/\[\/?player\]/g, '').replace(/^[-–—.\s]+|[-–—.\s]+$/g, '').trim();
-    const coord = `${m[1]}|${m[2]}`;
-    defTargets.push(newDefTarget(coord, dbOwnerName(coord) || pastedName));
-    added++;
+    // v5.12.1: a line may carry several coords (any separator — spaces, commas, tabs);
+    // each keeps the text trailing it as its pasted name
+    for (const e of lineCoordEntries(line)) {
+      const pastedName = e.rest.replace(/\[\/?player\]/g, '').replace(/^[-–—.,;\s]+|[-–—.,;\s]+$/g, '').trim();
+      const coord = `${e.x}|${e.y}`;
+      defTargets.push(newDefTarget(coord, dbOwnerName(coord) || pastedName));
+      added++;
+    }
   }
   if (added) { input.value = ''; saveDefensive(); renderDefTargets(); }
 }

@@ -5,6 +5,19 @@ function parseCoordStr(s) {
   const m = String(s || '').trim().match(/(\d{1,3})\s*[|:., ]\s*(\d{1,3})/);
   return m ? { x: +m[1], y: +m[2] } : null;
 }
+// Every explicit "x|y" coord in one line of pasted text, each with the text that follows
+// it up to the next coord (the pasted village/player name, when there is one). Coords on
+// a line may be separated by anything — spaces, commas, tabs — not just line breaks.
+// Only the unambiguous pipe form multi-matches: "500 500" as a whole line still goes
+// through parseCoordStr at the call sites that accept it.
+function lineCoordEntries(line) {
+  const s = String(line || '');
+  const ms = [...s.matchAll(/(\d{1,3})\s*\|\s*(\d{1,3})/g)];
+  return ms.map((m, i) => ({
+    x: +m[1], y: +m[2],
+    rest: s.slice(m.index + m[0].length, i + 1 < ms.length ? ms[i + 1].index : s.length),
+  }));
+}
 function distXY(a, b) { return Math.sqrt((b.x-a.x)**2 + (b.y-a.y)**2); }
 
 // Travel time in minutes for a given distance and unit base speed

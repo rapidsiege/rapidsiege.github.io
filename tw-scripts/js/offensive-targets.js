@@ -15,6 +15,7 @@ let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00
 let offTargets   = [];
 let offIgnore        = ''; // raw "Ignore Coordinates" textarea (Offensive Targets) — these villages never send anything
 let offIgnorePlayers = []; // raw player names excluded from the whole plan (no off, no snob, no escort)
+let offForcePlayers = [];  // v5.12.2: non-empty → ONLY these players participate in the offensive plan (whitelist)
 // "Enemy Tribes" (v5.10.0, offensive side): ally IDs whose villages bar nearby SENDERS from
 // launching offs — the front line keeps its offs at home. Deliberately INDEPENDENT of the
 // defensive `defEnemyIds`/`defEnemyDist` (defensive-targets.js): the two plans are run at
@@ -258,7 +259,7 @@ function otMultiGroup() { return otGroups().length > 1; }
 
 function saveOffensive() {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
-    cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, mvPairs,
+    cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, forcePlayers: offForcePlayers, mvPairs,
     enemyIds: offEnemyIds, enemyDist: offEnemyDist,
     coordFilters: planCoordFilters, coordPolygon: planCoordPolygon, coordPolygonInv: planCoordPolygonInv,
     plan: planRows, warnings: planWarnings, reserved: planReserved, stats: planStats, nextId: otNextId,
@@ -276,6 +277,7 @@ function loadOffensive() {
       offTargets   = d.targets || [];
       offIgnore        = typeof d.ignore === 'string' ? d.ignore : '';
       offIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
+      offForcePlayers  = Array.isArray(d.forcePlayers) ? d.forcePlayers : [];
       offEnemyIds      = Array.isArray(d.enemyIds) ? d.enemyIds.map(String) : [];
       offEnemyDist     = Math.max(0, parseInt(d.enemyDist, 10) || 0);
       mvPairs          = Array.isArray(d.mvPairs) ? d.mvPairs.filter(p => Array.isArray(p) && p.length === 2 && p[0] && p[1] && p[0] !== p[1]) : [];
@@ -314,6 +316,7 @@ function loadOffensive() {
   const oed = document.getElementById('ot-enemy-dist');
   if (oed) oed.value = offEnemyDist || 0;
   renderOffIgnorePlayers();
+  renderOffForcePlayers();
   renderOffMvPlayers();
   renderOffEnemyTribes();
 }
@@ -331,8 +334,11 @@ function updOTCfgInt(k, v) { otCfg[k] = parseInt(v, 10) || 0; saveOffensive(); }
 function parseOffIgnoreSet() {
   const set = new Set();
   for (const line of String(offIgnore || '').split('\n')) {
-    const c = parseCoordStr(line);
-    if (c) set.add(`${c.x}|${c.y}`);
+    // several x|y coords per line allowed (any separator); a line without an explicit
+    // pipe coord keeps the old tolerant single-coord parse ("500 500", "500:500")
+    const entries = lineCoordEntries(line);
+    if (!entries.length) { const c = parseCoordStr(line); if (c) set.add(`${c.x}|${c.y}`); }
+    for (const e of entries) set.add(`${e.x}|${e.y}`);
   }
   return set;
 }
@@ -607,6 +613,53 @@ function renderOffIgnorePlayers() {
   host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}${picker}</div>`;
 }
 
+// ── Force Players (v5.12.2): a WHITELIST of participants ────────────────────────────────
+// Empty = everyone participates (the normal case). Non-empty = ONLY these players' villages
+// exist for the whole offensive plan — offs, snob trains, escorts, fakes and catapult attacks
+// all come from them alone — so a small player-specific operation can be planned without
+// ignoring everyone else one by one. The ignore lists still apply ON TOP of the whitelist
+// (a forced player's ignored coords stay out), and unlike Ignore Players this bar is
+// absolute: a non-forced player can't even be hand-picked as a noble sender.
+function offForceSet() { return new Set(offForcePlayers); }
+function toggleOffForcePlayers() {
+  const el = document.getElementById('ot-force-players-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+// Loaded troop-file players not already forced, alphabetical (label shows village count).
+function forcePlayerOptions() {
+  const f = offForceSet();
+  return Object.keys(players)
+    .filter(name => !f.has(name))
+    .map(name => ({ name, villages: players[name].villages.length }))
+    .sort((a, b) => decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
+}
+function addForcePlayer(name) {
+  if (!name || offForcePlayers.includes(name)) return;
+  offForcePlayers.push(name);
+  saveOffensive(); renderOffForcePlayers(); renderOffTargets(); renderOtOffsSummary(); // sender pickers + pool shrink to the forced set
+}
+function removeForcePlayer(idx) {
+  offForcePlayers.splice(idx, 1);
+  saveOffensive(); renderOffForcePlayers(); renderOffTargets(); renderOtOffsSummary();
+}
+// Chip list of forced players + picker (same chip/select markup as the ignore list).
+function renderOffForcePlayers() {
+  const host = document.getElementById('ot-force-players-host');
+  if (!host) return;
+  if (!Object.keys(players).length && !offForcePlayers.length) {
+    host.innerHTML = `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+    return;
+  }
+  const chips = offForcePlayers.map((name, i) =>
+    `<span class="chip">${esc(decode(name))}<span class="chip-x" onclick="removeForcePlayer(${i})">✕</span></span>`).join('');
+  const opts = forcePlayerOptions();
+  const picker = `<select class="cell-input" style="width:170px;" onchange="addForcePlayer(this.value)">
+       <option value="">${t('opt_pick_force_player')}</option>
+       ${opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('')}
+     </select>`;
+  host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}${picker}</div>`;
+}
+
 // ── MV (vacation-mode) pairs: two players who can't both attack the same enemy player ──
 function toggleOffMvPlayers() {
   const el = document.getElementById('ot-mv-players-wrap');
@@ -782,12 +835,14 @@ function bulkAddTargets() {
   const type = (document.getElementById('ot-bulk-type') || {}).value || 'off';
   let added = 0;
   for (const line of input.value.split('\n')) {
-    const m = line.match(/(\d{1,3})\s*\|\s*(\d{1,3})\s*(.*)/);
-    if (!m) continue;
-    const pastedName = m[3].replace(/\[\/?player\]/g, '').replace(/^[-–—.\s]+|[-–—.\s]+$/g, '').trim();
-    const coord = `${m[1]}|${m[2]}`;
-    offTargets.push(newOffTarget(coord, dbOwnerName(coord) || pastedName, type));
-    added++;
+    // v5.12.1: a line may carry several coords (any separator — spaces, commas, tabs);
+    // each keeps the text trailing it as its pasted name
+    for (const e of lineCoordEntries(line)) {
+      const pastedName = e.rest.replace(/\[\/?player\]/g, '').replace(/^[-–—.,;\s]+|[-–—.,;\s]+$/g, '').trim();
+      const coord = `${e.x}|${e.y}`;
+      offTargets.push(newOffTarget(coord, dbOwnerName(coord) || pastedName, type));
+      added++;
+    }
   }
   if (added) { input.value = ''; saveOffensive(); renderOffTargets(); }
 }
@@ -1130,7 +1185,11 @@ function massDeleteSelected() {
 function snobSenderOptions() {
   // Ignored players ARE listed here (unlike the off-sender picker): an ignored player can still
   // be hand-picked to send a noble train; they're only barred from regular off assignment.
+  // Force Players is absolute though: with a non-empty whitelist, non-forced players don't
+  // participate at all, so they aren't offered as noble senders either.
+  const force = offForceSet();
   return Object.entries(players)
+    .filter(([name]) => !force.size || force.has(name))
     .map(([name, p]) => ({ name, snob: p.totals.snob }))
     .sort((a, b) => decode(a.name).toLowerCase().localeCompare(decode(b.name).toLowerCase()));
 }
@@ -1149,8 +1208,10 @@ function snobSenderOptionsForTarget(tg) {
   const tc = tg && parseCoordStr(tg.coord);
   if (!tc) return null;
   const snobMax = (typeof getSnobMax === 'function') ? getSnobMax() : 70;
+  const force = offForceSet(); // Force Players whitelist bars non-forced players here too
   const out = [];
   for (const [name, p] of Object.entries(players)) {
+    if (force.size && !force.has(name)) continue;
     let n = 0, unknownInRange = 0, min = Infinity, max = 0;
     for (const v of p.villages) {
       const c = parseCoordStr(v.coord);
@@ -1208,8 +1269,9 @@ function playerOffTierCounts(name) {
 // Loaded troop-file players that own ≥1 off of `tier`, richest first (label shows the count)
 function offSenderOptions(tier) {
   const ig = new Set(offIgnorePlayers);
+  const force = offForceSet(); // non-empty → only forced players are offered
   return Object.keys(players)
-    .filter(name => !ig.has(name))
+    .filter(name => !ig.has(name) && (!force.size || force.has(name)))
     .map(name => ({ name, count: playerOffTierCounts(name)[tier] }))
     .filter(x => x.count > 0)
     .sort((a, b) => b.count - a.count);
@@ -1510,28 +1572,34 @@ function renderOtOffsSummary() {
   // will not assign. Same set generatePlan uses, so the two can't disagree. A village that is
   // BOTH ignored and enemy-adjacent counts once, under `ign` (the order plan.js's stats use).
   const enemyExcl = offEnemyExcludedCoords();
-  const stat = { complete: { total: 0, ign: 0, enemy: 0 }, tq: { total: 0, ign: 0, enemy: 0 }, half: { total: 0, ign: 0, enemy: 0 } };
+  // Force Players (v5.12.2): with a non-empty whitelist, everyone else's off villages are
+  // unavailable exactly like ignored ones — counted in their own bucket so the note can say so.
+  const forcePl = offForceSet();
+  const stat = { complete: { total: 0, ign: 0, forced: 0, enemy: 0 }, tq: { total: 0, ign: 0, forced: 0, enemy: 0 }, half: { total: 0, ign: 0, forced: 0, enemy: 0 } };
   for (const v of villages) {
     const s = stat[getOffTier(v.offPow)];
     if (!s) continue;
     s.total++;
     if (ignoreCoords.has(v.coord) || ignorePl.has(v.player)) s.ign++;
+    else if (forcePl.size && !forcePl.has(v.player)) s.forced++;
     else if (enemyExcl.has(v.coord)) s.enemy++;
   }
   const tierMeta = [['complete', 'badge-complete', 'th_complete'], ['tq', 'badge-tq', 'th_tq'], ['half', 'badge-half', 'th_half']];
-  let ignTotal = 0, enemyTotal = 0;
+  let ignTotal = 0, forcedTotal = 0, enemyTotal = 0;
   const parts = tierMeta.map(([tier, cls, label]) => {
     // Summed across EVERY window group: a village can only send one off, so a target asking
     // for 2 Completes on Friday and 2 more on Saturday really does cost 4 Completes.
     const used = realTargets.reduce((s, tg) => s + otTierTotal(tg, tier), 0) + (tier === 'complete' ? escortOffs : 0);
-    const avail = stat[tier].total - stat[tier].ign - stat[tier].enemy;
+    const avail = stat[tier].total - stat[tier].ign - stat[tier].forced - stat[tier].enemy;
     ignTotal += stat[tier].ign;
+    forcedTotal += stat[tier].forced;
     enemyTotal += stat[tier].enemy;
     const usedHtml = used > avail ? `<span style="color:#e06040;">${used}</span>` : `${used}`;
     return `<span class="badge ${cls}">${t(label)}</span> ${usedHtml} / ${avail}`;
   });
   const notes = [];
   if (ignTotal > 0) notes.push(t('offs_ignored_note')(ignTotal));
+  if (forcedTotal > 0) notes.push(t('offs_forced_note')(forcedTotal));
   if (enemyTotal > 0) notes.push(t('offs_enemy_note')(enemyTotal));
   if (escortOffs > 0) notes.push(t('offs_escort_note')(escortOffs));
   const note = notes.length ? ` <span style="color:#806030;font-weight:400;">${notes.join(' ')}</span>` : '';

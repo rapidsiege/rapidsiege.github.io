@@ -303,6 +303,7 @@ function parseData(text, filename) {
   renderTargetTable();
   renderOffTargets(); // sender picker depends on the troop data
   if (typeof renderOffIgnorePlayers === 'function') renderOffIgnorePlayers(); // ignore-players picker too
+  if (typeof renderOffForcePlayers === 'function') renderOffForcePlayers();   // force-players picker too
   if (typeof renderDefIgnorePlayers === 'function') renderDefIgnorePlayers(); // Plan-Defense ignore-players picker too
   if (typeof renderDefCompletePlayers === 'function') renderDefCompletePlayers(); // Plan-Defense complete-players picker too
   if (typeof renderDefSnipPlayers === 'function') renderDefSnipPlayers();         // Plan-Defense snip-players picker too

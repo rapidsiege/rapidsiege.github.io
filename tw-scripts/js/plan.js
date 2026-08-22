@@ -203,19 +203,30 @@ function generatePlan() {
   const clusterTolRaw = parseFloat((document.getElementById('plan-cluster-tol') || {}).value);
   const clusterTol    = isNaN(clusterTolRaw) ? 10 : Math.max(0, clusterTolRaw);
 
+  // "Don't reserve villages" (v5.12.2): skip the noble-sender launch-village holdback
+  // (snobReserved stays empty) — every off in range is sent, and noble senders are trusted
+  // to keep a token escort at home for their solo trains. Escort (split-off) reservations
+  // are NOT affected: an escorted train's off really rides with the noble, so that hold stays.
+  const noReserve = !!(document.getElementById('plan-no-reserve') || {}).checked;
+
   // Ignore lists (Offensive Targets). Ignored COORDINATES are dropped from the pool entirely
   // (those villages never send anything). Ignored PLAYERS stay IN the pool but are barred from
   // every regular-OFF pass (folded into offBlocked below) — they may still be hand-picked as
   // noble (snob) senders, sending the train + its escort, just never a regular clearing off.
   const ignoreCoords  = parseOffIgnoreSet();
   const ignorePlayers = new Set(offIgnorePlayers);
+  // Force Players (v5.12.2): a non-empty whitelist drops everyone else's villages from the
+  // pool entirely (like ignored coords) — no pass (offs, snobs, escorts, fakes) ever sees
+  // them, and a pinned sender outside the list simply finds no candidates (warned as usual).
+  const forcePlayers  = new Set(offForcePlayers);
+  const inForce = name => !forcePlayers.size || forcePlayers.has(name);
   // Sender region = typed X|Y filters AND (if drawn) the map polygon. Both empty → every
   // village is eligible. See passesCoordFilters (typed) + passesCoordPolygon (drawn, honours
   // "Select Reverse" inversion), both pure world-space.
   const pool = villages.map(v => ({
     v, c: parseCoordStr(v.coord), tier: getOffTier(v.offPow),
     snobLeft: v.snob, usedOff: false, usedSnob: false,
-  })).filter(p => p.c && !ignoreCoords.has(p.v.coord)
+  })).filter(p => p.c && !ignoreCoords.has(p.v.coord) && inForce(p.v.player)
     && passesCoordFilters(p.c, planCoordFilters)
     && passesCoordPolygon(p.c.x, p.c.y));
 
@@ -731,7 +742,7 @@ function generatePlan() {
     return pts === null || pts >= RESERVE_MIN_POINTS;
   };
   const snobReserved = new Set();
-  for (const [rawName, tset] of Object.entries(snobSenderTargets)) {
+  if (!noReserve) for (const [rawName, tset] of Object.entries(snobSenderTargets)) {
     const tcs = [...tset].map(i => targets[i]).filter(T => T && T.c).map(T => T.c);
     if (!tcs.length) continue;
     const mine = pool.filter(p => p.v.player === rawName && reserveEligible(p));
@@ -1081,7 +1092,7 @@ function generatePlan() {
   const catsPerAttack = Math.max(1, parseInt((document.getElementById('plan-cat-count') || {}).value) || 20);
   const catPool = villages
     .map(v => ({ v, c: parseCoordStr(v.coord), budget: Math.floor((v.catapult || 0) / catsPerAttack) }))
-    .filter(s => s.c && s.v.type === 'def' && s.budget > 0);
+    .filter(s => s.c && s.v.type === 'def' && s.budget > 0 && inForce(s.v.player));
   for (const T of targets) {
     if (!T.c || isFake(T)) continue; // fake targets get 1-ram rows only, never real demolition
     const want = T.tg.catEnabled ? (T.tg.catapult || 0) : 0; // only when the target's catapult toggle is on
@@ -2021,8 +2032,12 @@ function planUsedOffCoords() {
 function unusedOffs() {
   const used = planUsedOffCoords();
   const reserved = new Set(planReserved); // launch villages held for nobles — not free offs
+  // With Force Players on, non-forced players aren't part of the operation, so their whole
+  // roster is not "unused offs" to offer as a second wave.
+  const force = new Set(offForcePlayers);
   return villages
-    .filter(v => getOffTier(v.offPow) !== 'none' && !used.has(v.coord) && !reserved.has(v.coord))
+    .filter(v => getOffTier(v.offPow) !== 'none' && !used.has(v.coord) && !reserved.has(v.coord)
+      && (!force.size || force.has(v.player)))
     .sort((a, b) => b.offPow - a.offPow);
 }
 
