@@ -215,18 +215,21 @@ function generatePlan() {
   // noble (snob) senders, sending the train + its escort, just never a regular clearing off.
   const ignoreCoords  = parseOffIgnoreSet();
   const ignorePlayers = new Set(offIgnorePlayers);
-  // Force Players (v5.12.2): a non-empty whitelist drops everyone else's villages from the
-  // pool entirely (like ignored coords) — no pass (offs, snobs, escorts, fakes) ever sees
-  // them, and a pinned sender outside the list simply finds no candidates (warned as usual).
+  // Force Players (v5.12.2) / Force Coords (v5.12.3): a non-empty whitelist drops everything
+  // outside it from the pool entirely (like ignored coords) — no pass (offs, snobs, escorts,
+  // fakes) ever sees it, and a pinned sender outside a list simply finds no candidates
+  // (warned as usual). A village must pass BOTH lists (owner forced AND coord forced).
   const forcePlayers  = new Set(offForcePlayers);
-  const inForce = name => !forcePlayers.size || forcePlayers.has(name);
+  const forceCoords   = parseOffForceSet();
+  const inForce = v => (!forcePlayers.size || forcePlayers.has(v.player))
+    && (!forceCoords.size || forceCoords.has(v.coord));
   // Sender region = typed X|Y filters AND (if drawn) the map polygon. Both empty → every
   // village is eligible. See passesCoordFilters (typed) + passesCoordPolygon (drawn, honours
   // "Select Reverse" inversion), both pure world-space.
   const pool = villages.map(v => ({
     v, c: parseCoordStr(v.coord), tier: getOffTier(v.offPow),
     snobLeft: v.snob, usedOff: false, usedSnob: false,
-  })).filter(p => p.c && !ignoreCoords.has(p.v.coord) && inForce(p.v.player)
+  })).filter(p => p.c && !ignoreCoords.has(p.v.coord) && inForce(p.v)
     && passesCoordFilters(p.c, planCoordFilters)
     && passesCoordPolygon(p.c.x, p.c.y));
 
@@ -1092,7 +1095,7 @@ function generatePlan() {
   const catsPerAttack = Math.max(1, parseInt((document.getElementById('plan-cat-count') || {}).value) || 20);
   const catPool = villages
     .map(v => ({ v, c: parseCoordStr(v.coord), budget: Math.floor((v.catapult || 0) / catsPerAttack) }))
-    .filter(s => s.c && s.v.type === 'def' && s.budget > 0 && inForce(s.v.player));
+    .filter(s => s.c && s.v.type === 'def' && s.budget > 0 && inForce(s.v));
   for (const T of targets) {
     if (!T.c || isFake(T)) continue; // fake targets get 1-ram rows only, never real demolition
     const want = T.tg.catEnabled ? (T.tg.catapult || 0) : 0; // only when the target's catapult toggle is on
@@ -2032,12 +2035,13 @@ function planUsedOffCoords() {
 function unusedOffs() {
   const used = planUsedOffCoords();
   const reserved = new Set(planReserved); // launch villages held for nobles — not free offs
-  // With Force Players on, non-forced players aren't part of the operation, so their whole
-  // roster is not "unused offs" to offer as a second wave.
+  // With Force Players / Force Coords on, non-forced villages aren't part of the operation,
+  // so they're not "unused offs" to offer as a second wave.
   const force = new Set(offForcePlayers);
+  const forceCo = parseOffForceSet();
   return villages
     .filter(v => getOffTier(v.offPow) !== 'none' && !used.has(v.coord) && !reserved.has(v.coord)
-      && (!force.size || force.has(v.player)))
+      && (!force.size || force.has(v.player)) && (!forceCo.size || forceCo.has(v.coord)))
     .sort((a, b) => b.offPow - a.offPow);
 }
 

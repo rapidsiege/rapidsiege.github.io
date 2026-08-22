@@ -18,6 +18,18 @@ function lineCoordEntries(line) {
     rest: s.slice(m.index + m[0].length, i + 1 < ms.length ? ms[i + 1].index : s.length),
   }));
 }
+// A pasted coordinate-list blob → Set of "x|y" strings (the ignore/force coord lists).
+// Per line: every explicit x|y coord, any separator between them; a line without one
+// keeps the tolerant single-coord parse ("500 500", "500:500").
+function coordSetOf(text) {
+  const set = new Set();
+  for (const line of String(text || '').split('\n')) {
+    const entries = lineCoordEntries(line);
+    if (!entries.length) { const c = parseCoordStr(line); if (c) set.add(`${c.x}|${c.y}`); }
+    for (const e of entries) set.add(`${e.x}|${e.y}`);
+  }
+  return set;
+}
 function distXY(a, b) { return Math.sqrt((b.x-a.x)**2 + (b.y-a.y)**2); }
 
 // Travel time in minutes for a given distance and unit base speed

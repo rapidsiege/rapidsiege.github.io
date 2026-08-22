@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.12.3', date: '2026-08-22',
+    en: [
+      `<b>📍 Force Coords (Offensive Targets).</b> The coordinate twin of Force Players: paste the coordinates of the ONLY villages allowed to send in this offensive, and every other village in the loaded troop file is left out completely — no offs, no snob trains, no escorts, no fakes, no catapult attacks, and dropped from Export Unused Offs. Any separator works, just like the other coordinate boxes. Empty = every village may send, exactly as before. It combines with Force Players (a village must pass both whitelists) and the ignore lists still apply on top; the offs summary counts the villages left out.`,
+    ],
+    es: [
+      `<b>📍 Forzar Coordenadas (Objetivos Ofensivos).</b> El gemelo por coordenadas de Forzar Jugadores: pega las coordenadas de las ÚNICAS aldeas que pueden enviar en esta ofensiva, y todas las demás aldeas del archivo de tropas quedan fuera por completo — ni offs, ni trenes de nobles, ni escoltas, ni fakes, ni ataques de catapulta, y fuera de Exportar Offs Sin Usar. Vale cualquier separador, como en las demás cajas de coordenadas. Vacío = puede enviar cualquier aldea, exactamente como antes. Se combina con Forzar Jugadores (una aldea debe pasar ambas listas blancas) y las listas de ignorados se aplican igualmente encima; el resumen de offs cuenta las aldeas que quedan fuera.`,
+    ],
+  },
   { ver: 'v5.12.2', date: '2026-08-22',
     en: [
       `<b>✅ Force Players (Offensive Targets).</b> A whitelist next to Ignore Players: pick the ONLY players who take part in this offensive, and everyone else in the loaded troop file is left out completely — no offs, no snob trains, no escorts, no fakes, no catapult attacks, hidden from every sender picker, and dropped from Export Unused Offs. Perfect for small player-specific operations without ignoring the rest of the tribe one by one. Empty list = everyone participates, exactly as before; the ignore lists still apply on top of the whitelist.`,

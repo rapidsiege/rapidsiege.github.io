@@ -16,6 +16,7 @@ let offTargets   = [];
 let offIgnore        = ''; // raw "Ignore Coordinates" textarea (Offensive Targets) — these villages never send anything
 let offIgnorePlayers = []; // raw player names excluded from the whole plan (no off, no snob, no escort)
 let offForcePlayers = [];  // v5.12.2: non-empty → ONLY these players participate in the offensive plan (whitelist)
+let offForceCoords = '';   // v5.12.3: raw coord list — non-empty → ONLY these villages may send (origin whitelist)
 // "Enemy Tribes" (v5.10.0, offensive side): ally IDs whose villages bar nearby SENDERS from
 // launching offs — the front line keeps its offs at home. Deliberately INDEPENDENT of the
 // defensive `defEnemyIds`/`defEnemyDist` (defensive-targets.js): the two plans are run at
@@ -259,7 +260,7 @@ function otMultiGroup() { return otGroups().length > 1; }
 
 function saveOffensive() {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
-    cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, forcePlayers: offForcePlayers, mvPairs,
+    cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, forcePlayers: offForcePlayers, forceCoords: offForceCoords, mvPairs,
     enemyIds: offEnemyIds, enemyDist: offEnemyDist,
     coordFilters: planCoordFilters, coordPolygon: planCoordPolygon, coordPolygonInv: planCoordPolygonInv,
     plan: planRows, warnings: planWarnings, reserved: planReserved, stats: planStats, nextId: otNextId,
@@ -278,6 +279,7 @@ function loadOffensive() {
       offIgnore        = typeof d.ignore === 'string' ? d.ignore : '';
       offIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
       offForcePlayers  = Array.isArray(d.forcePlayers) ? d.forcePlayers : [];
+      offForceCoords   = typeof d.forceCoords === 'string' ? d.forceCoords : '';
       offEnemyIds      = Array.isArray(d.enemyIds) ? d.enemyIds.map(String) : [];
       offEnemyDist     = Math.max(0, parseInt(d.enemyDist, 10) || 0);
       mvPairs          = Array.isArray(d.mvPairs) ? d.mvPairs.filter(p => Array.isArray(p) && p.length === 2 && p[0] && p[1] && p[0] !== p[1]) : [];
@@ -313,6 +315,8 @@ function loadOffensive() {
   if (dsm) dsm.value = otCfg.defSnobMode || 'solo';
   const ign = document.getElementById('ot-ignore-input');
   if (ign) ign.value = offIgnore;
+  const fci = document.getElementById('ot-force-input');
+  if (fci) fci.value = offForceCoords;
   const oed = document.getElementById('ot-enemy-dist');
   if (oed) oed.value = offEnemyDist || 0;
   renderOffIgnorePlayers();
@@ -331,17 +335,7 @@ function updOTCfgInt(k, v) { otCfg[k] = parseInt(v, 10) || 0; saveOffensive(); }
 // are dropped from the sender pool in generatePlan() — so they're never assigned an
 // off, a snob train, or a split-off escort. (Ignore = senders held out, mirroring
 // Plan Defense; targets are entered separately in the table and are unaffected.)
-function parseOffIgnoreSet() {
-  const set = new Set();
-  for (const line of String(offIgnore || '').split('\n')) {
-    // several x|y coords per line allowed (any separator); a line without an explicit
-    // pipe coord keeps the old tolerant single-coord parse ("500 500", "500:500")
-    const entries = lineCoordEntries(line);
-    if (!entries.length) { const c = parseCoordStr(line); if (c) set.add(`${c.x}|${c.y}`); }
-    for (const e of entries) set.add(`${e.x}|${e.y}`);
-  }
-  return set;
-}
+function parseOffIgnoreSet() { return coordSetOf(offIgnore); }
 function updOffIgnore() {
   const el = document.getElementById('ot-ignore-input');
   offIgnore = el ? el.value : '';
@@ -350,6 +344,23 @@ function updOffIgnore() {
 }
 function toggleOffIgnore() {
   const el = document.getElementById('ot-ignore-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+// ── Force Coords (v5.12.3): a WHITELIST of ORIGIN villages ───────────────────────────────
+// The coordinate twin of Force Players. Empty = every village may send (normal). Non-empty =
+// ONLY the listed villages exist as senders for the whole offensive plan — offs, snob trains,
+// escorts, fakes and catapult attacks must all launch from one of them. Combines with Force
+// Players (a village must pass BOTH whitelists) and the ignore lists still apply on top.
+function parseOffForceSet() { return coordSetOf(offForceCoords); }
+function updOffForce() {
+  const el = document.getElementById('ot-force-input');
+  offForceCoords = el ? el.value : '';
+  saveOffensive();
+  renderOtOffsSummary(); // non-forced villages shrink the summary's available pool
+}
+function toggleOffForce() {
+  const el = document.getElementById('ot-force-wrap');
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
@@ -1572,16 +1583,18 @@ function renderOtOffsSummary() {
   // will not assign. Same set generatePlan uses, so the two can't disagree. A village that is
   // BOTH ignored and enemy-adjacent counts once, under `ign` (the order plan.js's stats use).
   const enemyExcl = offEnemyExcludedCoords();
-  // Force Players (v5.12.2): with a non-empty whitelist, everyone else's off villages are
-  // unavailable exactly like ignored ones — counted in their own bucket so the note can say so.
+  // Force Players (v5.12.2) / Force Coords (v5.12.3): with a non-empty whitelist, every
+  // village outside it is unavailable exactly like ignored ones — counted in their own
+  // bucket so the note can say so. A village must pass BOTH whitelists.
   const forcePl = offForceSet();
+  const forceCo = parseOffForceSet();
   const stat = { complete: { total: 0, ign: 0, forced: 0, enemy: 0 }, tq: { total: 0, ign: 0, forced: 0, enemy: 0 }, half: { total: 0, ign: 0, forced: 0, enemy: 0 } };
   for (const v of villages) {
     const s = stat[getOffTier(v.offPow)];
     if (!s) continue;
     s.total++;
     if (ignoreCoords.has(v.coord) || ignorePl.has(v.player)) s.ign++;
-    else if (forcePl.size && !forcePl.has(v.player)) s.forced++;
+    else if ((forcePl.size && !forcePl.has(v.player)) || (forceCo.size && !forceCo.has(v.coord))) s.forced++;
     else if (enemyExcl.has(v.coord)) s.enemy++;
   }
   const tierMeta = [['complete', 'badge-complete', 'th_complete'], ['tq', 'badge-tq', 'th_tq'], ['half', 'badge-half', 'th_half']];

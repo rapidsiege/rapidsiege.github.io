@@ -50,17 +50,7 @@ function apportionCapped(n, items) {
   return alloc;
 }
 
-function parseDefIgnoreSet() {
-  const set = new Set();
-  for (const line of String(defIgnore || '').split('\n')) {
-    // several x|y coords per line allowed (any separator); a line without an explicit
-    // pipe coord keeps the old tolerant single-coord parse ("500 500", "500:500")
-    const entries = lineCoordEntries(line);
-    if (!entries.length) { const c = parseCoordStr(line); if (c) set.add(`${c.x}|${c.y}`); }
-    for (const e of entries) set.add(`${e.x}|${e.y}`);
-  }
-  return set;
-}
+function parseDefIgnoreSet() { return coordSetOf(defIgnore); }
 function updDefIgnore() {
   const el = document.getElementById('dp-ignore-input');
   defIgnore = el ? el.value : '';
