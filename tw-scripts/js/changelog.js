@@ -18,6 +18,16 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.12.4', date: '2026-08-23',
+    en: [
+      `<b>🖱 Shift+click range selection (Offensive Targets).</b> Click one row checkbox, then Shift+click another: every row between them is selected — or deselected — in one go, file-manager style. It follows the on-screen row order, works upwards or downwards, and the anchor survives mass edits.`,
+      `<b>📅 The group date box no longer throws you out mid-typing (Window Groups).</b> Typing a day like 18 into a group's arrival date used to kick focus out of the box after the first digit, because the row rebuilt itself on every valid keystroke. The box now stays put while you type — only the "Wednesday 18" preview and the group pickers refresh.`,
+    ],
+    es: [
+      `<b>🖱 Selección por rango con Mayús+clic (Objetivos Ofensivos).</b> Marca la casilla de una fila y luego haz Mayús+clic en otra: todas las filas entre ambas se seleccionan — o deseleccionan — de golpe, como en un explorador de archivos. Sigue el orden de filas en pantalla, funciona hacia arriba o hacia abajo, y el ancla sobrevive a las ediciones masivas.`,
+      `<b>📅 La caja de fecha del grupo ya no te expulsa a mitad de escribir (Grupos de Ventanas).</b> Al teclear un día como 18 en la fecha de llegada de un grupo, la caja te sacaba el foco tras el primer dígito, porque la fila se reconstruía con cada pulsación válida. Ahora la caja se queda quieta mientras escribes — solo se refrescan la vista previa «Miércoles 18» y los selectores de grupo.`,
+    ],
+  },
   { ver: 'v5.12.3', date: '2026-08-22',
     en: [
       `<b>📍 Force Coords (Offensive Targets).</b> The coordinate twin of Force Players: paste the coordinates of the ONLY villages allowed to send in this offensive, and every other village in the loaded troop file is left out completely — no offs, no snob trains, no escorts, no fakes, no catapult attacks, and dropped from Export Unused Offs. Any separator works, just like the other coordinate boxes. Empty = every village may send, exactly as before. It combines with Force Players (a village must pass both whitelists) and the ignore lists still apply on top; the offs summary counts the villages left out.`,

@@ -234,11 +234,19 @@ function removeOffWindowGroup(gid) {
   saveOffensive(); renderOffWindowGroups(); renderOffTargets();
   if (typeof renderPlanTable === 'function') renderPlanTable();
 }
+// Date edits do NOT re-render the group rows either (same rule as updGroupWin below):
+// Chrome fires change on a <input type="date"> after EVERY keystroke that yields a valid
+// date, so a rebuild mid-edit would kick focus out after the first digit of the day.
+// Only the inline "Miércoles 10" preview and the default-group picker refresh in place.
 function updGroupDate(gid, v) {
   const g = otGroups().find(x => x.id === gid);
   if (!g) return;
   g.dateISO = String(v || '').trim();
-  saveOffensive(); renderOffWindowGroups(); renderOffTargets();
+  const lbl = document.getElementById(`otg-${gid}-datelbl`);
+  if (lbl) lbl.textContent = groupDateLabel(g);
+  const sel = document.getElementById('ot-def-group');
+  if (sel) sel.innerHTML = otGroupOptionsHtml(otDefGroupId());
+  saveOffensive(); renderOffTargets();
 }
 // Window edits do NOT re-render the group rows: rebuilding the <input type="time"> mid-edit
 // would drop focus after each keystroke (same rule as the coordinate-filter rows).
@@ -1036,12 +1044,30 @@ function syncOtSelAll() {
   el.checked = offTargets.length > 0 && otSelected.size === offTargets.length;
   el.indeterminate = otSelected.size > 0 && otSelected.size < offTargets.length;
 }
-// Checkbox change: flip the id + restyle just that row — no tbody rebuild, ticking
-// a box must stay instant on a big target list.
-function toggleOTSelect(id, on, cb) {
-  if (on) otSelected.add(id); else otSelected.delete(id);
-  const tr = cb && cb.closest ? cb.closest('tr') : null;
-  if (tr) tr.classList.toggle('ot-row-sel', !!on);
+// Checkbox click: flip the id + restyle just that row — no tbody rebuild, ticking a box
+// must stay instant on a big target list. Shift+click extends: every box between this one
+// and the previously clicked one (on-screen DOM order) is set to the clicked box's new
+// state, file-manager style. The anchor is remembered by target id, not by element, so it
+// survives the full re-renders a mass apply triggers (a vanished anchor falls back to a
+// plain single toggle).
+let otLastSelId = null; // shift+click range anchor
+function otSelClick(ev, cb) {
+  const id = parseInt(cb.dataset.id, 10);
+  let hit = [cb];
+  if (ev && ev.shiftKey && otLastSelId != null && otLastSelId !== id) {
+    const boxes = [...document.querySelectorAll('#offtargets-tbody input.ot-sel')];
+    const a = boxes.findIndex(b => parseInt(b.dataset.id, 10) === otLastSelId);
+    const b = boxes.indexOf(cb);
+    if (a >= 0 && b >= 0) hit = boxes.slice(Math.min(a, b), Math.max(a, b) + 1);
+  }
+  for (const box of hit) {
+    box.checked = cb.checked;
+    if (cb.checked) otSelected.add(parseInt(box.dataset.id, 10));
+    else otSelected.delete(parseInt(box.dataset.id, 10));
+    const tr = box.closest ? box.closest('tr') : null;
+    if (tr) tr.classList.toggle('ot-row-sel', cb.checked);
+  }
+  otLastSelId = id;
   syncOtSelAll();
 }
 function toggleOTSelectAll(on) {
@@ -1519,8 +1545,8 @@ function renderOtColVis() {
 // One row per group: its letter, arrival date (+ the localized "Miércoles 10" preview the BB
 // exports use), off window and snob window, and a ✕ that is only offered from the second group
 // on. Below the rows, the picker that says which group the "Default offs" inputs write to.
-// Time inputs deliberately do NOT re-render this block on change (updGroupWin) — rebuilding an
-// <input type="time"> mid-edit drops focus after every keystroke.
+// Time AND date inputs deliberately do NOT re-render this block on change (updGroupWin /
+// updGroupDate) — rebuilding an <input> mid-edit drops focus after every keystroke.
 function renderOffWindowGroups() {
   const host = document.getElementById('ot-groups-host');
   if (!host) return; // headless test sandbox / not on this tab
@@ -1539,7 +1565,7 @@ function renderOffWindowGroups() {
       <span class="badge badge-complete" style="min-width:22px;text-align:center;" title="${esc(t('group_label_title'))}">${esc(otGroupLabel(i))}</span>
       <label data-i18n="lbl_date_label">${esc(t('lbl_date_label'))}</label>
       <input type="date" value="${esc(g.dateISO || '')}" onchange="updGroupDate(${g.id},this.value)">
-      <span style="font-size:12px;color:#f0c040;font-weight:600;min-width:90px;">${esc(groupDateLabel(g))}</span>
+      <span id="otg-${g.id}-datelbl" style="font-size:12px;color:#f0c040;font-weight:600;min-width:90px;">${esc(groupDateLabel(g))}</span>
       <label>${esc(t('lbl_group_winoff'))}</label>${winCell(g, 'off')}
       <label>${esc(t('lbl_group_winsnob'))}</label>${winCell(g, 'snob')}
       ${multi ? `<button class="btn btn-ghost btn-sm" title="${esc(t('del_group_title'))}" onclick="removeOffWindowGroup(${g.id})">✕</button>` : ''}
@@ -1732,7 +1758,7 @@ function renderOffTargets() {
     const dash = '<span class="num-zero">—</span>';
     return `
     <tr${sel ? ' class="ot-row-sel"' : ''}>
-      <td><input type="checkbox" class="ot-sel"${sel ? ' checked' : ''} onchange="toggleOTSelect(${tg.id},this.checked,this)"></td>
+      <td><input type="checkbox" class="ot-sel" data-id="${tg.id}"${sel ? ' checked' : ''} title="${esc(t('sel_row_title'))}" onclick="otSelClick(event,this)"></td>
       <td style="color:#806030;">${i + 1}</td>
       <td><span class="badge ttype-${tg.type}" title="${esc(t('ttype_title'))}">${t('ttype_' + tg.type)}</span></td>
       <td class="left"><input class="cell-input mono" style="width:74px;${isUnknown ? 'border-color:#b02010;' : ''}" value="${esc(tg.coord)}" title="${dbTitle}" onchange="updOT(${tg.id},'coord',this.value)"></td>
