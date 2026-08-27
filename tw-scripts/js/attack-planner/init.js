@@ -1,5 +1,5 @@
 // attack-planner — render-all + init.
-// Classic script (8/8): no modules, shared global scope, load order matters — must work
+// Classic script (9/9): no modules, shared global scope, load order matters — must work
 // by double-click (file://). See the <script src> order in attack-planner.html.
 'use strict';
 
@@ -11,6 +11,7 @@ function renderAll() {
   renderVillages();
   renderTargets();
   renderAttacks();
+  renderScavenge();
   refreshDropdowns();
 }
 
@@ -25,6 +26,7 @@ function renderAll() {
   bindSettings();
   renderAll();
   initBookmarklet();
+  initScavengeBookmarklet();
   setInterval(updateCountdowns, 1000);
   await tryAutoConnect();
   // Village DB: production (live site) fetches the web mirror,

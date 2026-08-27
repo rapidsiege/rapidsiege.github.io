@@ -1,5 +1,5 @@
 // attack-planner — tabs, utils, villages CRUD, targets CRUD (incl. requirements editor).
-// Classic script (4/8): no modules, shared global scope, load order matters — must work
+// Classic script (4/9): no modules, shared global scope, load order matters — must work
 // by double-click (file://). See the <script src> order in attack-planner.html.
 'use strict';
 
@@ -9,7 +9,7 @@
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t, i) => {
-    const names = ['plan', 'villages', 'targets', 'db', 'guide'];
+    const names = ['plan', 'villages', 'targets', 'scavenge', 'db', 'guide'];
     t.classList.toggle('active', names[i] === name);
   });
   document.querySelectorAll('.tab-content').forEach(tc => {

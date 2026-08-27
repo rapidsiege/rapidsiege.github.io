@@ -1,5 +1,5 @@
 // attack-planner — persistence (localStorage + File System Access) + village DB.
-// Classic script (3/8): no modules, shared global scope, load order matters — must work
+// Classic script (3/9): no modules, shared global scope, load order matters — must work
 // by double-click (file://). See the <script src> order in attack-planner.html.
 'use strict';
 
@@ -21,6 +21,7 @@ function loadData() {
       if (DATA.settings.lang) { currentLang = DATA.settings.lang; }
     }
   } catch(e) { /* ignore */ }
+  if (typeof ensureScavengeState === 'function') ensureScavengeState();
 }
 
 function saveData() {
@@ -112,6 +113,7 @@ async function connectFile() {
       if (!Array.isArray(DATA.villages)) DATA.villages = [];
       if (!Array.isArray(DATA.targets))  DATA.targets  = [];
       if (!Array.isArray(DATA.attacks))  DATA.attacks  = [];
+      if (typeof ensureScavengeState === 'function') ensureScavengeState();
       applySettings();
       renderAll();
     } catch(e) { /* new file, write current data */ }

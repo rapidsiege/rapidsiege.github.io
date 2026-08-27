@@ -1,5 +1,5 @@
 // attack-planner — DATA state + math/formulas.
-// Classic script (2/8): no modules, shared global scope, load order matters — must work
+// Classic script (2/9): no modules, shared global scope, load order matters — must work
 // by double-click (file://). See the <script src> order in attack-planner.html.
 'use strict';
 
@@ -11,7 +11,8 @@ let DATA = {
   settings: { worldSpeed: 2, unitSpeed: 0.5, serverUrl: 'es100.guerrastribales.es', playerName: '', lang: 'en' },
   villages: [],
   targets:  [],
-  attacks:  []
+  attacks:  [],
+  scavenge: { villages: [], settings: null }   // Scavenging tab (see scavenge.js ensureScavengeState)
 };
 
 let villageDb   = [];   // { id, name, x, y, playerId, points }

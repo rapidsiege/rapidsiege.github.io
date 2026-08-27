@@ -55,6 +55,7 @@
   <div class="tab active" onclick="switchTab('plan')" data-i18n="tab_attack_plan">⚔ Attack Plan</div>
   <div class="tab" onclick="switchTab('villages')" data-i18n="tab_my_villages">🏰 My Villages</div>
   <div class="tab" onclick="switchTab('targets')" data-i18n="tab_targets">🎯 Targets</div>
+  <div class="tab" onclick="switchTab('scavenge')" data-i18n="tab_scavenge">🌾 Scavenging</div>
   <div class="tab" onclick="switchTab('db')" data-i18n="tab_village_db">🗃 Village DB</div>
   <div class="tab" onclick="switchTab('guide')" data-i18n="tab_guide">📖 Guide</div>
 </div>
@@ -350,6 +351,81 @@
   </div>
 </div>
 
+<!-- ══════════════════ TAB: SCAVENGING ══════════════════ -->
+<div class="tab-content" id="tab-scavenge">
+  <div class="section-header">
+    <h2 data-i18n="scav_title">🌾 Scavenging</h2>
+    <div class="section-header-actions">
+      <button class="btn btn-file btn-sm" onclick="pasteScavenge()" data-i18n="scav_btn_paste">📋 Paste Scavenge Data</button>
+      <button class="btn btn-file btn-sm" onclick="document.getElementById('scav-file-input').click()" data-i18n="scav_btn_file">📄 Select Saved Page</button>
+      <input type="file" id="scav-file-input" accept=".html,.htm,.mhtml,.mht" style="display:none" onchange="importScavengeFile(event)">
+      <button class="btn btn-danger btn-sm" onclick="clearScavenge()" data-i18n="scav_btn_clear">🗑 Clear</button>
+    </div>
+  </div>
+
+  <div class="bookmarklet-panel">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div>
+        <h4 data-i18n="bm_opt1_title">⚡ Option 1 — Script (automatic)</h4>
+        <div class="bookmarklet-row">
+          <a id="bm-scav-link" class="btn btn-bookmarklet btn-sm" href="#" data-i18n="scav_bm_drag" data-i18n-title="bm_drag_title" title="Drag this to your bookmarks bar">🔖 Scavenging → Planner</a>
+          <button class="btn btn-ghost btn-sm" onclick="copyScavengeBookmarklet()" data-i18n="btn_copy">Copy</button>
+        </div>
+        <p class="bookmarklet-note" data-i18n="scav_bm_note">1. Drag the gold button to your bookmarks bar. 2. Open TW → Rally Point → Scavenging in the village you want to plan. 3. Click the bookmark — units at home and the state of the four options are copied to clipboard. 4. Come back here and click "📋 Paste Scavenge Data". Read-only: it only reads what the page already shows.</p>
+      </div>
+      <div>
+        <h4 data-i18n="bm_opt2_title">📄 Option 2 — Save HTML manually</h4>
+        <p class="bookmarklet-note" data-i18n="scav_bm_opt2_note">1. Open TW → Rally Point → Scavenging. 2. Press Ctrl+S → Save As → "Webpage, HTML Only" or "Webpage, Single File (.mhtml)". 3. Click "📄 Select Saved Page" and pick the file — the village is imported. No script runs on TW at all.</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="note" id="scav-empty" data-i18n="scav_empty">No scavenging data yet — run the bookmark on a village's Scavenging page and paste it here.</p>
+
+  <div id="scav-body" style="display:none">
+    <div class="scav-controls">
+      <div class="scav-control-group">
+        <label data-i18n="scav_lbl_village">Village</label>
+        <select id="scav-village-select" onchange="scavSelectVillage(this.value)"></select>
+        <button class="btn btn-ghost btn-sm" onclick="removeScavengeVillage()" data-i18n="scav_btn_remove" data-i18n-title="scav_btn_remove_title" title="Remove this village from the list">✕</button>
+        <span class="note" id="scav-village-meta"></span>
+      </div>
+      <div class="scav-control-group">
+        <label data-i18n="scav_lbl_mode">Optimize</label>
+        <label class="scav-radio"><input type="radio" name="scav-mode" id="scav-mode-hour" onchange="scavSetMode('hour')"> <span data-i18n="scav_mode_hour">Resources / hour</span></label>
+        <label class="scav-radio"><input type="radio" name="scav-mode" id="scav-mode-run" onchange="scavSetMode('run')"> <span data-i18n="scav_mode_run">Resources / run</span></label>
+      </div>
+      <div class="scav-control-group">
+        <label data-i18n="scav_lbl_max_hours">Max duration (h)</label>
+        <input type="number" id="scav-max-hours" min="0" step="0.5" placeholder="∞" oninput="scavSetMaxHours(this.value)" style="width:80px">
+        <span class="note" data-i18n="scav_max_hours_hint">0 / empty = no limit. Set it to how long you'll be away — every run must be back by then.</span>
+      </div>
+      <div class="scav-control-group">
+        <label data-i18n="scav_lbl_factor">World factor</label>
+        <input type="number" id="scav-factor" min="0.01" step="0.001" placeholder="auto" oninput="scavSetFactorOverride(this.value)" style="width:90px">
+        <span class="note" id="scav-factor-info"></span>
+      </div>
+    </div>
+
+    <div class="scav-units-head">
+      <h3 data-i18n="scav_units_title">Units to send</h3>
+      <div>
+        <button class="btn btn-ghost btn-sm" onclick="scavUseAll(true)" data-i18n="scav_btn_all">All</button>
+        <button class="btn btn-ghost btn-sm" onclick="scavUseAll(false)" data-i18n="scav_btn_none">None</button>
+      </div>
+    </div>
+    <div class="scav-units" id="scav-units"></div>
+
+    <div class="table-wrap">
+      <table class="scav-results">
+        <thead id="scav-results-thead"></thead>
+        <tbody id="scav-results-tbody"></tbody>
+      </table>
+    </div>
+    <div class="scav-summary" id="scav-summary"></div>
+  </div>
+</div>
+
 <!-- ══════════════════ TAB: VILLAGE DB ══════════════════ -->
 <div class="tab-content" id="tab-db">
   <div class="section-header">
@@ -497,6 +573,44 @@
       </div>
     </div>
 
+
+    <!-- ── Scavenging ── -->
+    <div class="faq-col">
+      <div class="lang-en-only">
+        <h2>🌾 Scavenging</h2>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">1</span> Import a village</h3>
+          <p>Drag the gold <strong>🔖 Scavenging → Planner</strong> button to your bookmarks bar. In TW open <strong>Rally Point → Scavenging</strong> for the village, click the bookmark, then click <strong>📋 Paste Scavenge Data</strong> here. Or save the page (Ctrl+S, HTML Only or Single File .mhtml) and use <strong>📄 Select Saved Page</strong>. Repeat per village — each one is kept in the village dropdown.</p>
+          <p>The import reads the units at home, which of the four options are free / running / locked, and the world's scavenging speed (from the page's duration preview). Nothing is sent to the game.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">2</span> Choose what to send</h3>
+          <p>Untick a unit type to keep all of it at home, or type a number in <strong>Keep</strong> to hold back a reserve. The plan recalculates instantly. Only the <strong>carry capacity</strong> matters for scavenging — no troops are ever lost — so send whatever is idle.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">3</span> Pick the goal</h3>
+          <p><strong>Resources / hour</strong> spreads troops across every free option so the combined income is highest — use it when you re-send as soon as runs return. <strong>Resources / run</strong> maximises one trip: everything goes to the best option, spilling down only when a <strong>Max duration</strong> is set — use it with the hours you'll be away (e.g. <code>8</code> overnight) so all runs are back when you are.</p>
+          <p>Why split at all? The same troops take the <em>same</em> time on any option (the higher one just pays more), but duration grows slower than capacity, so four smaller concurrent runs out-earn one big one — often by 50–90 %. The summary line shows the gain versus putting everything in the top option.</p>
+        </div>
+      </div>
+      <div class="lang-es-only">
+        <h2>🌾 Recolección</h2>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">1</span> Importar un pueblo</h3>
+          <p>Arrastra el botón dorado <strong>🔖 Recolección → Planificador</strong> a la barra de marcadores. En GT abre <strong>Plaza de reuniones → Recolección</strong> del pueblo, haz clic en el marcador y luego en <strong>📋 Pegar Recolección</strong> aquí. O guarda la página (Ctrl+S, Sólo HTML o Archivo único .mhtml) y usa <strong>📄 Seleccionar página guardada</strong>. Repite por pueblo — cada uno queda en el desplegable.</p>
+          <p>La importación lee las unidades en el pueblo, qué opciones están libres / en curso / bloqueadas y la velocidad de recolección del mundo (de la duración previa de la página). No se envía nada al juego.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">2</span> Elegir qué enviar</h3>
+          <p>Desmarca un tipo de unidad para dejarlo entero en casa, o escribe un número en <strong>Guardar</strong> para reservar parte. El plan se recalcula al instante. En recolección solo cuenta la <strong>capacidad de carga</strong> — nunca se pierden tropas — así que manda lo que esté parado.</p>
+        </div>
+        <div class="faq-step">
+          <h3><span class="faq-step-num">3</span> Elegir el objetivo</h3>
+          <p><strong>Recursos / hora</strong> reparte las tropas entre todas las opciones libres para que la suma de ingresos sea máxima — úsalo si reenvías en cuanto vuelven. <strong>Recursos / viaje</strong> maximiza un solo envío: todo a la mejor opción, bajando a las demás solo si fijas una <strong>Duración máx.</strong> — úsalo con las horas que vas a estar fuera (p. ej. <code>8</code> por la noche) para que todo haya vuelto cuando regreses.</p>
+          <p>¿Por qué repartir? Las mismas tropas tardan <em>lo mismo</em> en cualquier opción (la superior solo paga más), pero la duración crece más despacio que la capacidad, así que cuatro envíos pequeños simultáneos rinden más que uno grande — a menudo un 50–90 % más. La línea de resumen muestra la ganancia frente a meterlo todo en la opción superior.</p>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -717,9 +831,10 @@
 <script src="js/attack-planner/import.js"></script>
 <script src="js/attack-planner/plan.js"></script>
 <script src="js/attack-planner/attacks.js"></script>
+<script src="js/attack-planner/scavenge.js"></script>
 <script src="js/attack-planner/init.js"></script>
 <div class="footer">
-  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.8.1 &nbsp;·&nbsp; 2026-08-18
+  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.9.0 &nbsp;·&nbsp; 2026-08-27
 </div>
 </body>
 </html>

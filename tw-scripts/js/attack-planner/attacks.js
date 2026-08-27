@@ -1,5 +1,5 @@
 // attack-planner — attacks CRUD, countdowns, dropdowns, settings, village import.
-// Classic script (7/8): no modules, shared global scope, load order matters — must work
+// Classic script (7/9): no modules, shared global scope, load order matters — must work
 // by double-click (file://). See the <script src> order in attack-planner.html.
 'use strict';
 
@@ -483,6 +483,7 @@ function bindSettings() {
     DATA.settings.worldSpeed = parseFloat(e.target.value) || 2;
     saveData();
     renderAttacks();
+    if (typeof renderScavenge === 'function') renderScavenge(); // auto world factor follows speed
   });
   document.getElementById('cfg-us').addEventListener('change', e => {
     DATA.settings.unitSpeed = parseFloat(e.target.value) || 0.5;

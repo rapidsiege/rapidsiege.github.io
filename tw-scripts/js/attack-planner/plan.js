@@ -1,5 +1,5 @@
 // attack-planner — Auto-Generate attacks (assignment passes, origin pinning).
-// Classic script (6/8): no modules, shared global scope, load order matters — must work
+// Classic script (6/9): no modules, shared global scope, load order matters — must work
 // by double-click (file://). See the <script src> order in attack-planner.html.
 'use strict';
 

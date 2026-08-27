@@ -1,5 +1,5 @@
 // attack-planner — mass target import (BB parsers — see the FORMAT CONTRACT in tribe-calculator js/plan.js).
-// Classic script (5/8): no modules, shared global scope, load order matters — must work
+// Classic script (5/9): no modules, shared global scope, load order matters — must work
 // by double-click (file://). See the <script src> order in attack-planner.html.
 'use strict';
 
