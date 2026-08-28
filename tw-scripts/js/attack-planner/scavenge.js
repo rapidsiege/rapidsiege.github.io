@@ -7,17 +7,20 @@
 // SCAVENGING — model
 // ══════════════════════════════════════════════
 //
-// Game formula (ScavengeScreen constants, verified against the es103 preview
-// "0:20:29" for an empty squad = 1800 s × 2^-0.55):
+// Game formula (ScavengeScreen constants), verified against real es103 runs:
 //   loot_i     = carry_i × LOOT[i]
-//   seconds_i  = ( (loot_i² × 100 × DURF[i]²)^0.45 + 1800 ) × worldFactor
-// LOOT[i] × DURF[i] = 1.5 for every option, so the SAME troops take the SAME time
-// on any option — the higher option is strictly better per troop. Splitting only
-// pays because four runs go concurrently and duration grows ~carry^0.9 (+1800 s
-// fixed), so resources/hour of one run has diminishing returns.
+//   seconds_i  = ( (loot_i² × 100)^0.45 + 1800 ) × worldFactor
+// - empty squad → 1800 s × 2^-0.55 = "0:20:29" on a speed-2 world (page preview)
+// - 271 spear + 28 sword on option 3 (loot 3597) → 2:43:56, observed ≈ 2 h 43 min
+// Duration depends on the LOOT hauled, not on the option: the same troops take
+// LONGER on a higher option because they bring more back (there is no per-option
+// duration factor — an earlier version multiplied by 15/6/3/2² and was ~2.7× too
+// slow on option 3). Equal loot ⇒ equal return time, which is where the classic
+// 15:6:3:2 troop split comes from (carry ∝ 1/LOOT). Higher options still win per
+// troop AND per hour (loot^0.9 grows slower than loot); splitting only pays because
+// four runs go concurrently and each run's resources/hour has diminishing returns.
 
 const SCAV_LOOT = [0.10, 0.25, 0.50, 0.75];
-const SCAV_DURF = [15, 6, 3, 2];
 const SCAV_EXP  = 0.45;
 const SCAV_INIT = 1800;
 
@@ -42,7 +45,7 @@ function scavCarryOf(units) {
 
 function scavSeconds(carry, opt, factor) {
   const loot = carry * SCAV_LOOT[opt];
-  return (Math.pow(loot * loot * 100 * SCAV_DURF[opt] * SCAV_DURF[opt], SCAV_EXP) + SCAV_INIT) * factor;
+  return (Math.pow(loot * loot * 100, SCAV_EXP) + SCAV_INIT) * factor;
 }
 
 // "h:mm:ss" / "mm:ss" → seconds (game countdowns and previews). null when unparsable.
