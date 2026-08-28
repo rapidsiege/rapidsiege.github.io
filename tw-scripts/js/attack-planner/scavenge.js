@@ -257,6 +257,11 @@ function ensureScavengeState() {
   s.keep = { ...def.keep, ...(s.keep || {}) };
   if (s.mode !== 'run') s.mode = 'hour';
   s.maxHours = Math.max(0, parseFloat(s.maxHours) || 0);
+  // v1.9.0 stored the override as a WORLD SPEED (a typed "2" doubled every duration —
+  // 116 spears on option 1 read 1:43:33 instead of the game's 0:35:22); v1.9.1 redefined the
+  // field as a duration factor but left the old value in place. Drop any override saved
+  // before that change; the stamp keeps this a one-time migration.
+  if (s.factorVersion !== 2) { s.factorOverride = null; s.factorVersion = 2; }
   return DATA.scavenge;
 }
 
@@ -554,7 +559,11 @@ function renderScavenge(keepFocus) {
   if (fInfo) {
     const src = plan.factorSource === 'page' ? t('scav_factor_from_page')
       : plan.factorSource === 'override' ? t('scav_factor_override') : t('scav_factor_from_speed');
-    fInfo.textContent = `${plan.factor.toFixed(4)} — ${src}`;
+    // A factor > 1 on a speed > 1 world is almost certainly a world speed typed by mistake.
+    const ws = parseFloat(DATA.settings.worldSpeed) || 1;
+    const suspicious = plan.factorSource === 'override' && ws > 1 && plan.factor > 1;
+    fInfo.textContent = `${plan.factor.toFixed(4)} — ${src}` + (suspicious ? ` ⚠ ${t('scav_factor_looks_speed')}` : '');
+    fInfo.classList.toggle('text-warn', suspicious);
   }
 
   // ── Units panel: one column per unit type the page had ──

@@ -267,6 +267,7 @@
 
     /* ── Misc ── */
     .note { font-size: 12px; color: #806838; font-style: italic; }
+    .note.text-warn { color: #b3261e; font-style: normal; font-weight: 600; }
     .text-dim { color: #5a3a18; }
     select option { background: #1e1408; color: #d4b483; }
     .hidden { display: none !important; }
