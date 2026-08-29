@@ -609,30 +609,117 @@
     });
     return ids;
   }
-  // The in-game script. Plain ES5, no dependencies beyond the game's own UI
-  // helper (falls back to alert). Runs anywhere but only finds rows on the
-  // incomings overview; reports found / total so a paginated overview (rows on
-  // another page) is visible rather than silent. Input = whatever the player
-  // pastes; only digit runs are read (commas, spaces, newlines all fine), an
-  // EMPTY answer clears the remembered list, Cancel does nothing. The game's
-  // localStorage is per world (one origin per world), so the key needs no world.
+  // The in-game script — written as a REAL function here and turned into the
+  // `javascript:` bookmarklet by buildIgnoreScript() via Function#toString, so
+  // the tests run the very same source. Rules for this function's body: plain
+  // ES5, no `//` line comments (the newline collapse would swallow the rest of
+  // the line), no template literals, no `%` (javascript: URLs are percent-
+  // decoded by browsers), nothing from this page's scope (it runs in the game).
+  // Behaviour: on any screen without #incomings_table → error toast. Otherwise
+  // opens a small dialog: IDs textarea (pre-filled from localStorage) + name
+  // field (also remembered) + «Seleccionar» / «Seleccionar y renombrar» /
+  // «Cerrar». Only digit runs are read from the paste (commas, spaces, newlines,
+  // stray text all fine), deduped, order kept. Empty IDs → clears the stored
+  // list. Select = uncheck every #incomings_form box, tick `id_<id>`, toast
+  // `n de N fakes seleccionados` (+ hint when some are on another page or have
+  // landed) — the player then presses the game's own Ignorar. Rename = the same
+  // selection, then each FOUND row is renamed through the game's own QuickEdit
+  // pencil (`span.quickedit[data-id]` → .rename-icon click → input[type=text]
+  // value → input[type=button] click, value set on the NEXT tick because
+  // QuickEdit builds its input asynchronously), 250 ms apart like
+  // renameVillages.js / RedAlert's AS: tagger; the checkboxes stay ticked so
+  // Ignorar can follow. The game's localStorage is per world (one origin per
+  // world), so the keys need no world.
+  function igInGame() {
+    var K = 'twstatsIgnorarFakes', KN = 'twstatsIgnorarFakesNombre', D = document;
+    var tbl = D.getElementById('incomings_table');
+    var say = function (ok, m) {
+      if (window.UI && UI.SuccessMessage) { if (ok) { UI.SuccessMessage(m); } else { UI.ErrorMessage(m); } } else { alert(m); }
+    };
+    if (!tbl) { say(false, 'Abre Resumen → Entrantes (ataques) y vuelve a ejecutar el script.'); return; }
+    var ls = function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+    var st = function (k, v) { try { if (v) { localStorage.setItem(k, v); } else { localStorage.removeItem(k); } } catch (e) {} };
+    var old = D.getElementById('twsIF');
+    if (old) { old.parentNode.removeChild(old); }
+    var box = D.createElement('div');
+    box.id = 'twsIF';
+    box.style.cssText = 'position:fixed;top:70px;left:0;right:0;margin:0 auto;width:440px;max-width:96vw;z-index:99999;background:rgb(244,228,188);border:2px solid rgb(125,81,15);border-radius:4px;padding:10px;font:12px Verdana,Arial,sans-serif;color:rgb(0,0,0);box-shadow:0 0 14px rgba(0,0,0,0.5);text-align:left';
+    box.innerHTML = '<b>Fakes confirmados (twstats)</b>' +
+      '<textarea id="twsIFids" rows="6" style="display:block;width:416px;max-width:calc(96vw - 24px);box-sizing:border-box;margin:6px 0" placeholder="IDs de los fakes: twstats → Entrantes → «Copiar IDs fakes»"></textarea>' +
+      '<label>Nombre: <input id="twsIFname" type="text" maxlength="32" style="width:240px" placeholder="para «Seleccionar y renombrar»"></label>' +
+      '<div style="margin-top:8px;text-align:right">' +
+      '<button type="button" id="twsIFsel">Seleccionar</button> ' +
+      '<button type="button" id="twsIFren">Seleccionar y renombrar</button> ' +
+      '<button type="button" id="twsIFx">Cerrar</button></div>' +
+      '<div style="margin-top:6px;color:rgb(96,48,0)">Se recuerdan los IDs y el nombre (lista paginada: vuelve a ejecutar y pulsa). IDs vacíos = borrar la lista guardada. Tras seleccionar, pulsa el botón Ignorar del juego.</div>';
+    D.body.appendChild(box);
+    var ta = D.getElementById('twsIFids'), nm = D.getElementById('twsIFname');
+    ta.value = ls(K); nm.value = ls(KN);
+    var close = function () { if (box.parentNode) { box.parentNode.removeChild(box); } };
+    var parse = function () {
+      var seen = {}, ids = [], m = ta.value.match(/\d+/g) || [];
+      for (var k = 0; k < m.length; k++) { if (!seen[m[k]]) { seen[m[k]] = true; ids.push(m[k]); } }
+      return ids;
+    };
+    var pick = function (ids) {
+      var all = D.querySelectorAll('#incomings_form input[type=checkbox]'), found = [];
+      for (var i = 0; i < all.length; i++) { all[i].checked = false; }
+      for (var j = 0; j < ids.length; j++) {
+        var c = tbl.querySelector('input[name="id_' + ids[j] + '"]');
+        if (c) { c.checked = true; found.push(ids[j]); }
+      }
+      return found;
+    };
+    var go = function (rename) {
+      var ids = parse();
+      if (!ids.length) { st(K, ''); say(true, 'Lista de fakes borrada.'); return; }
+      st(K, ids.join(','));
+      var name = nm.value.replace(/^\s+|\s+$/g, '');
+      if (rename && !name) { say(false, 'Escribe el nombre para renombrar.'); nm.focus(); return; }
+      var found = pick(ids);
+      var msg = found.length + ' de ' + ids.length + ' fakes seleccionados' +
+        (found.length < ids.length ? ' (el resto no está en esta página o ya llegó)' : '') + '.';
+      if (!rename) { say(found.length > 0, msg); close(); return; }
+      st(KN, name);
+      if (!found.length) { say(false, msg); return; }
+      close();
+      var i = 0, done = 0;
+      var step = function () {
+        var q = tbl.querySelector('span.quickedit[data-id="' + found[i] + '"]');
+        if (q) {
+          var pen = q.querySelector('.rename-icon');
+          if (pen) { pen.click(); }
+          setTimeout(function () {
+            var inp = q.querySelector('input[type=text]'), btn = q.querySelector('input[type=button]');
+            if (inp && btn) { inp.value = name; btn.click(); done++; }
+          }, 0);
+        }
+        i++;
+        if (i < found.length) {
+          if (window.UI && UI.InfoMessage) { UI.InfoMessage(i + '/' + found.length); }
+          setTimeout(step, 250);
+        } else {
+          setTimeout(function () {
+            say(done > 0, done + ' de ' + found.length + ' fakes renombrados' + (done < found.length ? ' (algunas filas no tenían el lápiz de renombrar)' : '') +
+              '; siguen seleccionados: pulsa Ignorar del juego si quieres ignorarlos.');
+          }, 300);
+        }
+      };
+      step();
+    };
+    D.getElementById('twsIFsel').onclick = function () { go(false); };
+    D.getElementById('twsIFren').onclick = function () { go(true); };
+    D.getElementById('twsIFx').onclick = close;
+    nm.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); go(true); } };
+    box.onkeydown = function (e) { if (e.key === 'Escape') { close(); } };
+    ta.focus();
+  }
+  // Bookmarklet = the function above, newlines collapsed to one line (a
+  // quickbar/bookmark URL is single-line). Safe because igInGame has no line
+  // comments and no multi-line literals — the test suite checks both.
   function buildIgnoreScript() {
-    return "javascript:(function(){" +
-      "var K='twstatsIgnorarFakes',n=0,tbl=document.getElementById('incomings_table');" +
-      "var say=function(ok,m){if(window.UI&&UI.SuccessMessage){ok?UI.SuccessMessage(m):UI.ErrorMessage(m);}else{alert(m);}};" +
-      "if(!tbl){say(false,'Abre Resumen \\u2192 Entrantes (ataques) y vuelve a ejecutar el script.');return;}" +
-      "var prev='';try{prev=localStorage.getItem(K)||'';}catch(e){}" +
-      "var raw=prompt('Pega los IDs de los fakes (twstats \\u2192 Entrantes \\u2192 \\u00abCopiar IDs fakes\\u00bb). Vac\\u00edo = borrar la lista guardada.',prev);" +
-      "if(raw==null){return;}" +
-      "var seen={},ids=[],m=String(raw).match(/\\d+/g)||[];" +
-      "for(var k=0;k<m.length;k++){if(!seen[m[k]]){seen[m[k]]=true;ids.push(m[k]);}}" +
-      "if(!ids.length){try{localStorage.removeItem(K);}catch(e){}say(true,'Lista de fakes borrada.');return;}" +
-      "try{localStorage.setItem(K,ids.join(','));}catch(e){}" +
-      "var all=document.querySelectorAll('#incomings_form input[type=checkbox]');" +
-      "for(var i=0;i<all.length;i++){all[i].checked=false;}" +
-      "for(var j=0;j<ids.length;j++){var c=tbl.querySelector('input[name=\"id_'+ids[j]+'\"]');if(c){c.checked=true;n++;}}" +
-      "say(n>0,n+' de '+ids.length+' fakes seleccionados'+(n<ids.length?' (el resto no est\\u00e1 en esta p\\u00e1gina o ya lleg\\u00f3)':'')+'.');" +
-      "})();";
+    var src = igInGame.toString().replace(/\r?\n\s*/g, " ");
+    return "javascript:(" + src + ")();";
   }
   var IGNORE_SCRIPT = buildIgnoreScript();
   // Button state — called from matchOrders() so it follows every analysis,
@@ -648,7 +735,7 @@
     btn.textContent = "Copiar IDs fakes" + (n ? " (" + n + ")" : "");
     btn.title = n
       ? "Copia los IDs de los " + n + " ataques que el .json confirma como fake (≤ " + IGNORE_MAX_UNITS +
-        " unidades, sin noble). En el juego, en Resumen → Entrantes, ejecuta «Script ignorar fakes», pega los IDs y acepta; luego pulsa el botón del juego (Ignorar / Renombrar)."
+        " unidades, sin noble). En el juego, en Resumen → Entrantes, ejecuta «Script ignorar fakes», pega los IDs y pulsa «Seleccionar» o «Seleccionar y renombrar»; luego pulsa el botón Ignorar del juego."
       : "Se activa cuando algún ataque emparejado con el .json tiene ≤ " + IGNORE_MAX_UNITS + " unidades y ningún noble.";
     var note = $("ignoreNote");
     if (note && !n) note.hidden = true;
@@ -687,7 +774,7 @@
     copyText(list, function () {
       ignoreNoteShow("IDs copiados — " + ids.length + " ataque" + (ids.length === 1 ? "" : "s") +
         " fake (≤ " + IGNORE_MAX_UNITS + " unidades según el .json). En el juego abre Resumen → Entrantes, " +
-        "ejecuta «Script ignorar fakes» desde la barra rápida, pega los IDs en la ventana y acepta; luego pulsa el botón del juego (Ignorar / Renombrar).");
+        "ejecuta «Script ignorar fakes» desde la barra rápida, pega los IDs en la ventana y pulsa «Seleccionar» (o «Seleccionar y renombrar»); luego pulsa el botón Ignorar del juego.");
     }, function () {
       // No clipboard (permissions / old browser): show the list so it can be copied by hand.
       ignoreNoteShow("No se pudo copiar automáticamente; copia los IDs a mano: " + list);
