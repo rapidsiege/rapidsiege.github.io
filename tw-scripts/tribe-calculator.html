@@ -531,8 +531,34 @@
     <input type="number" id="ot-enemy-dist" value="0" min="0" style="width:70px;" title="0 = off" oninput="updOffEnemyDist()">
     <button class="btn btn-ghost btn-sm" onclick="toggleOffEnemy()" data-i18n="btn_enemy_tribes">⚔ Enemy Tribes</button>
     <span style="font-size:12px;color:#5a3a18;" data-i18n="ot_defender_note">Defender auto-fills from the village database.</span>
-    <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="toggleOtColVis()" data-i18n="btn_colvis">👁 Columns</button>
+    <button class="btn btn-ghost btn-sm" id="ot-filter-btn" style="margin-left:auto;" onclick="toggleOtFilter()" data-i18n="btn_ot_filter" data-i18n-title="ot_filter_title" title="Show only the rows matching a text search, a points condition and/or a target type. A view filter: the list, exports and the plan are unaffected; select-all and mass edits act on the visible rows only.">🔍 Filter</button>
+    <button class="btn btn-ghost btn-sm" onclick="toggleOtColVis()" data-i18n="btn_colvis">👁 Columns</button>
     <button class="btn btn-ghost btn-sm" onclick="openMassEdit()" data-i18n="btn_mass_edit">✏ Edit Selected Rows</button>
+  </div>
+  <!-- 🔍 Row filter (v5.14.0) — a VIEW filter over the table (see otVisibleRows). Controls live outside
+       the table so typing never loses focus; only the tbody re-renders. -->
+  <div id="ot-filter-wrap" class="filter-row" style="display:none;margin-top:10px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <label data-i18n="lbl_ot_filter_q">Search:</label>
+    <input type="text" id="ot-filter-q" style="width:170px;" placeholder="coord or defender…" data-i18n-placeholder="ot_filter_q_ph" oninput="updOtFilter('q',this.value)">
+    <label data-i18n="lbl_ot_filter_pts">Points:</label>
+    <select id="ot-filter-ptsop" class="cell-input" style="width:auto;" onchange="updOtFilter('ptsOp',this.value)">
+      <option value="">—</option>
+      <option value="<">&lt;</option>
+      <option value="<=">≤</option>
+      <option value=">">&gt;</option>
+      <option value=">=">≥</option>
+      <option value="=">=</option>
+    </select>
+    <input type="number" id="ot-filter-pts" min="0" step="100" style="width:80px;" placeholder="3000" oninput="updOtFilter('pts',this.value)">
+    <label data-i18n="lbl_ot_filter_type">Type:</label>
+    <select id="ot-filter-type" class="cell-input" style="width:auto;" onchange="updOtFilter('type',this.value)">
+      <option value="" data-i18n="ot_filter_any">Any</option>
+      <option value="off" data-i18n="ttype_off">OFF</option>
+      <option value="destroyer" data-i18n="ttype_destroyer">DESTROYER</option>
+      <option value="fake" data-i18n="ttype_fake">FAKE</option>
+    </select>
+    <button class="btn btn-ghost btn-sm" onclick="clearOtFilter()" data-i18n="btn_ot_filter_clear">✕ Clear</button>
+    <span id="ot-filter-count" style="font-size:12px;color:#a08050;font-weight:600;"></span>
   </div>
   <div id="ot-colvis-wrap" style="display:none;margin-top:10px;">
     <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="colvis_hint">Untick a column to hide it from the table (the data is kept and still used by the plan — this only changes what you see).</div>
@@ -581,11 +607,11 @@
       <thead>
         <tr>
           <th style="width:26px;"><input type="checkbox" id="ot-sel-all" title="Select / deselect all rows" data-i18n-title="sel_all_title" onchange="toggleOTSelectAll(this.checked)"></th>
-          <th>#</th>
+          <th data-otsort="idx" onclick="sortOT('idx')" data-i18n-title="ot_sort_title" title="Click to sort (again to flip). The # is the objective number — it stays with its target however the rows are sorted."># <span class="sort-arrow"></span></th>
           <th data-i18n="th_ttype" data-i18n-title="ttype_title" title="Target type — set at add time (bulk-add dropdown), changeable via Edit Selected Rows">Type</th>
-          <th class="left" data-i18n="th_coord">Coord</th>
-          <th class="left" data-i18n="th_def_player">Defender</th>
-          <th data-i18n="th_points">Points</th>
+          <th class="left" data-otsort="coord" onclick="sortOT('coord')" data-i18n-th="th_coord" data-i18n-title="ot_sort_title" title="Click to sort (again to flip).">Coord <span class="sort-arrow"></span></th>
+          <th class="left" data-otsort="defender" onclick="sortOT('defender')" data-i18n-th="th_def_player" data-i18n-title="ot_sort_title" title="Click to sort (again to flip).">Defender <span class="sort-arrow"></span></th>
+          <th data-otsort="points" onclick="sortOT('points')" data-i18n-th="th_points" data-i18n-title="ot_sort_title" title="Click to sort (again to flip).">Points <span class="sort-arrow"></span></th>
           <th><span class="badge badge-complete" data-i18n="th_complete">Complete</span></th>
           <th><span class="badge badge-tq" data-i18n="th_tq">3/4</span></th>
           <th><span class="badge badge-half" data-i18n="th_half">1/2</span></th>
@@ -1209,7 +1235,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.13.1 &nbsp;·&nbsp; 2026-08-29</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.14.0 &nbsp;·&nbsp; 2026-08-29</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

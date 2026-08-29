@@ -243,6 +243,8 @@
     }
     .filter-row input:focus, .filter-row select:focus { outline: none; border-color: #c0900a; }
     .filter-row label { font-size: 12px; color: #806030; }
+    /* Offensive Targets 🔍 Filter button lights up while a filter is active */
+    .ot-filter-on { border-color: #c0900a !important; color: #f0c040 !important; }
     /* Plan Offensive settings panel: stacked rows with a hairline between them */
     .plan-cfg .plan-row { margin-bottom: 0; padding: 6px 0; }
     .plan-cfg .plan-row + .plan-row { border-top: 1px solid #2a1c08; }

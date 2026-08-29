@@ -214,6 +214,9 @@ function saveSettings() {
       // Offensive Targets hidden columns (👁 Columns panel) — a view preference, so it
       // lives here with lang/thresholds, not in the offensive plan export.
       otCols: (typeof otHiddenCols !== 'undefined') ? [...otHiddenCols] : undefined,
+      // Offensive Targets sort + row filter (v5.14.0) — view prefs too.
+      otSort: (typeof otSort !== 'undefined') ? otSort : undefined,
+      otFilter: (typeof otFilter !== 'undefined') ? otFilter : undefined,
     }));
   } catch {}
 }
@@ -242,6 +245,15 @@ function loadSettings() {
   // Offensive Targets hidden columns — drop keys OT_COLS no longer knows (renamed/removed).
   if (Array.isArray(s.otCols) && typeof otHiddenCols !== 'undefined')
     otHiddenCols = new Set(s.otCols.filter(k => OT_COLS.some(([c]) => c === k)));
+  // Offensive Targets sort + filter — validated field by field (a stale/corrupt save falls back to defaults).
+  if (s.otSort && typeof otSort !== 'undefined' && OT_SORT_KEYS.includes(s.otSort.key))
+    otSort = { key: s.otSort.key, dir: s.otSort.dir === -1 ? -1 : 1 };
+  if (s.otFilter && typeof otFilter !== 'undefined') {
+    const f = s.otFilter;
+    otFilter = { q: typeof f.q === 'string' ? f.q : '', ptsOp: OT_FILTER_OPS.includes(f.ptsOp) ? f.ptsOp : '',
+      pts: (typeof f.pts === 'string' || typeof f.pts === 'number') ? String(f.pts) : '', type: TARGET_TYPES.includes(f.type) ? f.type : '' };
+    if (typeof syncOtFilterUi === 'function') syncOtFilterUi();
+  }
   // The init block applies this via changeLang(lang) after loadSettings() sets the global.
   if (s.lang === 'en' || s.lang === 'es') lang = s.lang;
   // Restore the selected world before the init block builds the dropdown / loads the DB,

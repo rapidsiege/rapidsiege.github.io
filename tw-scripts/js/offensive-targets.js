@@ -246,7 +246,10 @@ function updGroupDate(gid, v) {
   if (lbl) lbl.textContent = groupDateLabel(g);
   const sel = document.getElementById('ot-def-group');
   if (sel) sel.innerHTML = otGroupOptionsHtml(otDefGroupId());
-  saveOffensive(); renderOffTargets();
+  // keepGroupRows: the table must refresh (rows print the group dates) but the group rows must
+  // NOT be rebuilt — that would destroy the <input type="date"> being typed into (v5.14.0 fix;
+  // v5.12.4 stopped rebuilding here but renderOffTargets() itself still rebuilt the rows).
+  saveOffensive(); renderOffTargets({ keepGroupRows: true });
 }
 // Window edits do NOT re-render the group rows: rebuilding the <input type="time"> mid-edit
 // would drop focus after each keystroke (same rule as the coordinate-filter rows).
@@ -254,7 +257,7 @@ function updGroupWin(gid, kind) {
   const g = otGroups().find(x => x.id === gid);
   if (!g) return;
   g[kind === 'snob' ? 'winSnob' : 'winOff'] = readWinInputs(`otg-${gid}-${kind}`);
-  saveOffensive(); renderOffTargets();
+  saveOffensive(); renderOffTargets({ keepGroupRows: true });
 }
 function fixGroupWin(gid, kind) {
   const s = document.getElementById(`otg-${gid}-${kind}-s`), e = document.getElementById(`otg-${gid}-${kind}-e`);
@@ -1038,11 +1041,20 @@ function otPruneSelection() {
   for (const id of [...otSelected]) if (!ids.has(id)) otSelected.delete(id);
 }
 // Header select-all checkbox mirrors the set (indeterminate on a partial selection)
+// The ids select-all / the header box reason about: the visible rows while a row filter is
+// active (otVisibleIds, from the last render), every target otherwise (a plain sort hides nothing).
+function otSelScope() {
+  const all = offTargets.map(tg => tg.id);
+  return (otFilterActive() && otVisibleIds) ? all.filter(id => otVisibleIds.has(id)) : all;
+}
 function syncOtSelAll() {
   const el = document.getElementById('ot-sel-all');
   if (!el) return;
-  el.checked = offTargets.length > 0 && otSelected.size === offTargets.length;
-  el.indeterminate = otSelected.size > 0 && otSelected.size < offTargets.length;
+  // Measured against the rows on screen while a filter hides some; the whole list otherwise.
+  const vis = otSelScope();
+  const selVis = vis.filter(id => otSelected.has(id)).length;
+  el.checked = vis.length > 0 && selVis === vis.length;
+  el.indeterminate = selVis > 0 && selVis < vis.length;
 }
 // Checkbox click: flip the id + restyle just that row — no tbody rebuild, ticking a box
 // must stay instant on a big target list. Shift+click extends: every box between this one
@@ -1071,7 +1083,8 @@ function otSelClick(ev, cb) {
   syncOtSelAll();
 }
 function toggleOTSelectAll(on) {
-  otSelected = on ? new Set(offTargets.map(tg => tg.id)) : new Set();
+  // Select-all means "all rows I can see" — with a filter on, hidden rows stay unselected.
+  otSelected = on ? new Set(otSelScope()) : new Set();
   for (const cb of document.querySelectorAll('#offtargets-tbody input.ot-sel')) {
     cb.checked = !!on;
     const tr = cb.closest('tr');
@@ -1647,9 +1660,114 @@ function renderOtOffsSummary() {
     + `<span title="${esc(t('offs_summary_title'))}">${t('offs_assigned_label')} ${parts.join('&nbsp;&nbsp;·&nbsp;&nbsp;')}${note}</span>`;
 }
 
-function renderOffTargets() {
+// ── Sort + filter — VIEW preferences only (v5.14.0) ─────────────────────────
+// Sorting/filtering changes what the table SHOWS, never the list itself: offTargets keeps its
+// order (the objective # column always prints the target's position in that list, so #3 stays
+// #3 however the rows are sorted), exports and the plan read offTargets directly, and mass
+// edits act on the selection. Both are persisted with the other view prefs (tw_tribe_settings).
+const OT_SORT_KEYS  = ['idx', 'coord', 'defender', 'points'];
+const OT_FILTER_OPS = ['<', '<=', '>', '>=', '='];
+let otSort   = { key: 'idx', dir: 1 };                    // dir 1 = ascending, -1 = descending
+let otFilter = { q: '', ptsOp: '', pts: '', type: '' };   // q matches coord OR defender name
+let otVisibleIds = null; // ids rendered by the last renderOffTargets (null = never rendered)
+function otTargetPoints(tg) {
+  const v = coordDb[tg.coord];
+  return v && typeof v.points === 'number' ? v.points : null;
+}
+function otFilterActive(f) {
+  f = f || otFilter;
+  return !!((f.q || '').trim() || f.type || (OT_FILTER_OPS.includes(f.ptsOp) && f.pts !== '' && !isNaN(parseFloat(f.pts))));
+}
+// Pure: the rows to show as [{tg, i}] — i = index in `targets` (the objective #) — after the
+// filter, in sort order. Unknown values (no DB points, blank defender, unparsable coord) always
+// sort LAST whatever the direction; ties keep list order. A points condition drops rows whose
+// points are unknown (no DB / village not in the map).
+function otVisibleRows(targets, filter, sort) {
+  const f = filter || {};
+  const q = (f.q || '').trim().toLowerCase();
+  const ptsVal = parseFloat(f.pts);
+  const ptsOn = OT_FILTER_OPS.includes(f.ptsOp) && f.pts !== '' && f.pts != null && !isNaN(ptsVal);
+  const ptsOk = { '<': p => p < ptsVal, '<=': p => p <= ptsVal, '>': p => p > ptsVal, '>=': p => p >= ptsVal, '=': p => p === ptsVal }[f.ptsOp];
+  const rows = targets.map((tg, i) => ({ tg, i })).filter(({ tg }) => {
+    if (f.type && tg.type !== f.type) return false;
+    if (q && !(String(tg.coord || '').toLowerCase().includes(q) || String(tg.player || '').toLowerCase().includes(q))) return false;
+    if (ptsOn) { const pts = otTargetPoints(tg); if (pts == null || !ptsOk(pts)) return false; }
+    return true;
+  });
+  const key = sort && OT_SORT_KEYS.includes(sort.key) ? sort.key : 'idx';
+  const dir = sort && sort.dir === -1 ? -1 : 1;
+  if (key === 'idx') { if (dir === -1) rows.reverse(); return rows; }
+  const val = ({ tg }) => {
+    if (key === 'points') return otTargetPoints(tg);
+    if (key === 'defender') { const n = String(tg.player || '').trim(); return n ? n.toLowerCase() : null; }
+    const m = /^\s*(\d+)\s*\|\s*(\d+)\s*$/.exec(String(tg.coord || ''));
+    return m ? (+m[1]) * 1000 + (+m[2]) : null; // coord: by X, then Y
+  };
+  return rows.sort((a, b) => {
+    const va = val(a), vb = val(b);
+    if (va == null && vb == null) return a.i - b.i;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    const c = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+    return (c * dir) || (a.i - b.i);
+  });
+}
+// Header click: same key flips the direction; a new key starts ascending (points: descending —
+// the biggest villages are what you look for first). '#' ascending = the plain list order.
+function sortOT(key) {
+  if (!OT_SORT_KEYS.includes(key)) return;
+  otSort = (otSort.key === key) ? { key, dir: -otSort.dir } : { key, dir: key === 'points' ? -1 : 1 };
+  if (typeof saveSettings === 'function') saveSettings();
+  renderOffTargets();
+}
+function applyOtSortArrows() {
+  if (typeof document === 'undefined' || !document.querySelectorAll) return;
+  document.querySelectorAll('#offtargets-table th[data-otsort]').forEach(th => {
+    const on = th.dataset.otsort === otSort.key;
+    th.classList.toggle('sort-asc',  on && otSort.dir === 1);
+    th.classList.toggle('sort-desc', on && otSort.dir === -1);
+  });
+}
+function toggleOtFilter() {
+  const el = document.getElementById('ot-filter-wrap');
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+  syncOtFilterUi();
+}
+// One field at a time so typing in the search box never rebuilds the box itself (the filter
+// controls live outside the table; only the tbody re-renders).
+function updOtFilter(field, value) {
+  if (field === 'q') otFilter.q = String(value ?? '');
+  else if (field === 'ptsOp') otFilter.ptsOp = OT_FILTER_OPS.includes(value) ? value : '';
+  else if (field === 'pts') otFilter.pts = String(value ?? '').trim();
+  else if (field === 'type') otFilter.type = TARGET_TYPES.includes(value) ? value : '';
+  else return;
+  if (typeof saveSettings === 'function') saveSettings();
+  renderOffTargets();
+}
+function clearOtFilter() {
+  otFilter = { q: '', ptsOp: '', pts: '', type: '' };
+  if (typeof saveSettings === 'function') saveSettings();
+  syncOtFilterUi();
+  renderOffTargets();
+}
+// Push the state into the filter controls (after loadSettings / clear / language switch).
+function syncOtFilterUi() {
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+  set('ot-filter-q', otFilter.q); set('ot-filter-ptsop', otFilter.ptsOp); set('ot-filter-pts', otFilter.pts); set('ot-filter-type', otFilter.type);
+  const btn = document.getElementById('ot-filter-btn');
+  if (btn) btn.classList.toggle('ot-filter-on', otFilterActive());
+}
+function renderOtFilterCount(shown, total) {
+  const el = document.getElementById('ot-filter-count');
+  if (el) el.textContent = (otFilterActive() || shown !== total) ? t('ot_filter_count')(shown, total) : '';
+}
+
+// opts.keepGroupRows — skip the Window Groups rebuild (in-place editors of those rows call this
+// so the table follows the edit without destroying the input that has focus).
+function renderOffTargets(opts) {
   offTargets.forEach(normalizeOffTarget);
-  renderOffWindowGroups();
+  if (!(opts && opts.keepGroupRows)) renderOffWindowGroups();
   otPruneSelection();
   const warnEl = document.getElementById('ot-warnings');
   const warns = (villageDb.length ? offTargets.filter(tg => !coordDb[tg.coord]) : [])
@@ -1670,8 +1788,16 @@ function renderOffTargets() {
   renderOtOffsSummary();
 
   const tbody = document.getElementById('offtargets-tbody');
-  if (!offTargets.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="20">${t('empty_no_targets')}</td></tr>`;
+  // View: filter + sort (see otVisibleRows). `i` below stays the target's position in offTargets,
+  // so the # column keeps the objective number whatever the sort. With a filter on, the selection
+  // is trimmed to the visible rows so a mass edit can never touch a row the user cannot see.
+  const rows = otVisibleRows(offTargets, otFilter, otSort);
+  otVisibleIds = new Set(rows.map(r => r.tg.id));
+  if (rows.length !== offTargets.length) for (const id of [...otSelected]) if (!otVisibleIds.has(id)) otSelected.delete(id);
+  renderOtFilterCount(rows.length, offTargets.length);
+  applyOtSortArrows();
+  if (!offTargets.length || !rows.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="20">${t(offTargets.length ? 'ot_filter_empty' : 'empty_no_targets')}</td></tr>`;
     syncOtSelAll();
     return;
   }
@@ -1692,7 +1818,7 @@ function renderOffTargets() {
     otPickerOptsHtml[tier] = opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.count})</option>`).join('');
   }
   const multiGroup = otMultiGroup(); // hoisted: every row asks, and the answer can't change mid-render
-  tbody.innerHTML = offTargets.map((tg, i) => {
+  tbody.innerHTML = rows.map(({ tg, i }) => {
     const isUnknown = villageDb.length && !coordDb[tg.coord];
     const dbTitle = esc(dbOwnerLabel(tg.coord));
     const chips = tg.snobAssignees.map((a, j) =>
