@@ -1820,9 +1820,29 @@ function showPlayerPlanPm() {
 // default. Saving an EMPTY template disables wrapping without losing the default (Reset
 // brings it back). The editor UI (pmTemplateBarHtml + handlers) is shared — pmTplCtx says
 // which side's template it edits, set by the show*Pm opener that built the modal.
-const PM_TPL_KEYS     = { off: 'tw_pm_template', def: 'tw_pm_template_def' };
+// v5.14.1: keys carry the tw_tribe prefix so the templates ride along in the Backup & Debug
+// export, its import AND the hosted cloud snapshot (all three collect tw_tribe* wholesale).
+// Pre-v5.14.1 saves used tw_pm_template / tw_pm_template_def — pmTplMigrateKeys() moves them
+// once at startup (init block), so a customized template is never lost by the rename.
+const PM_TPL_KEYS     = { off: 'tw_tribe_pm_template', def: 'tw_tribe_pm_template_def' };
+const PM_TPL_KEYS_OLD = { off: 'tw_pm_template', def: 'tw_pm_template_def' };
 const PM_TPL_DEFAULTS = { off: 'pm_tpl_default', def: 'pm_tpl_def_default' };
 let pmTplCtx = 'off';
+// One-time move of each old-key template to its new key. A template already under the new key
+// wins (the old copy is just dropped) — an imported backup must not be overwritten by a stale
+// local leftover. Returns the number of templates moved (headless-testable).
+function pmTplMigrateKeys() {
+  let moved = 0;
+  for (const ctx of Object.keys(PM_TPL_KEYS_OLD)) {
+    try {
+      const old = localStorage.getItem(PM_TPL_KEYS_OLD[ctx]);
+      if (old == null) continue;
+      if (localStorage.getItem(PM_TPL_KEYS[ctx]) == null) { localStorage.setItem(PM_TPL_KEYS[ctx], old); moved++; }
+      localStorage.removeItem(PM_TPL_KEYS_OLD[ctx]);
+    } catch (e) {}
+  }
+  return moved;
+}
 function pmTemplateCurrent(ctx) {
   ctx = ctx || pmTplCtx;
   let s = null;

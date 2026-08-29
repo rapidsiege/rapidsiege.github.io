@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.14.1', date: '2026-08-29',
+    en: [
+      `<b>✉ PM templates travel with the backup.</b> The offensive and defensive <b>Export PMs</b> templates were saved on this browser only — the Backup &amp; Debug export (and the hosted site's automatic snapshot) skipped them, so an import on another machine came up with the default text. They are now part of the export and the import. Your current templates are carried over automatically; nothing to redo.`,
+    ],
+    es: [
+      `<b>✉ Las plantillas de MP viajan con la copia de seguridad.</b> Las plantillas de <b>Exportar MPs</b> ofensiva y defensiva se guardaban solo en este navegador — la exportación de Copia y Depuración (y la instantánea automática del sitio alojado) las omitía, así que al importar en otra máquina aparecía el texto por defecto. Ahora forman parte de la exportación y de la importación. Tus plantillas actuales se conservan automáticamente; no hay que rehacer nada.`,
+    ],
+  },
   { ver: 'v5.14.0', date: '2026-08-29',
     en: [
       `<b>↕ Sortable Offensive Targets.</b> Click the <b>#</b>, <b>Coord</b>, <b>Defender</b> or <b>Points</b> header to sort the table (click again to flip; Points starts biggest-first). Sorting only changes the view: the <b>#</b> keeps being each target's objective number — #3 stays #3 wherever its row lands — and the list order behind the plan, the exports and the per-player orders is untouched. Your sort is remembered on this device.`,
