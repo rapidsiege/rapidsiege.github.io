@@ -125,12 +125,14 @@ a:hover, a:active { color: var(--link-hover); text-decoration: none; }
 .conquer-filters input[type="number"] { width: 90px; }
 .conquer-filters .grow { flex: 1 1 220px; }
 .conquer-filters .grow input { width: 100%; }
-button, input[type="submit"] {
+button, input[type="submit"], a.seg {
   padding: 5px 12px; border: 1px solid var(--border-light); border-radius: 3px;
   background: var(--btn-gradient); color: var(--text-primary);
   font-family: Verdana, Arial, sans-serif; font-size: 12px; font-weight: 700; cursor: pointer;
 }
-button:hover, input[type="submit"]:hover { background: var(--btn-gradient-hover); border-color: var(--border-dark); }
+button:hover, input[type="submit"]:hover, a.seg:hover { background: var(--btn-gradient-hover); border-color: var(--border-dark); }
+/* a.seg = a bookmarklet link styled as its neighbouring buttons (drag to install, click to copy) */
+a.seg, a.seg:link, a.seg:visited, a.seg:hover { color: var(--text-primary); text-decoration: none; display: inline-block; line-height: normal; box-sizing: border-box; }
 button:disabled { opacity: .45; cursor: default; }
 .scope { display: inline-flex; }
 .scope .seg { border-radius: 0; }

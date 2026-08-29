@@ -578,17 +578,21 @@
     box.hidden = !boxes;
   }
 
-  // === «Script ignorar fakes» (2026-08-29) ===================================
+  // === «Copiar IDs fakes» + «Script ignorar fakes» (2026-08-29, split 2026-08-30) =====
   // Once a .json is matched we KNOW which incomings are token fakes: a matched
   // command with ≤ 2 units in total and no noble. The exporter's command id is
   // the game's own command id, and the game's incomings overview
   // (screen=overview_villages&mode=incomings) renders one checkbox per row
   // named `id_<commandId>` inside #incomings_form — the same handle RedAlert's
-  // Fake Finder ticks. So the page can hand the player a ready-made
-  // `javascript:` bookmarklet (quickbar entry or console paste) that ticks
-  // exactly those rows; the player then presses the game's own bulk button
-  // (Ignorar / Renombrar). The script carries the ids baked in and is
-  // regenerated on every click, so it always reflects the current upload.
+  // Fake Finder ticks. Two pieces, installed once / used every time:
+  //   • «Script ignorar fakes» — a STATIC `javascript:` bookmarklet (drag the link
+  //     to the bookmarks bar, or click to copy it into a quickbar entry). In the
+  //     game it prompts for the id list, ticks exactly those rows and remembers
+  //     the list in localStorage so the next page of a paginated overview only
+  //     needs OK. The player then presses the game's own bulk button
+  //     (Ignorar / Renombrar). Nothing about the current upload is baked in.
+  //   • «Copiar IDs fakes (N)» — copies the comma-separated ids of the confirmed
+  //     fakes of the current analysis, to paste into that prompt.
   // Strictly the .json verdict — the page's own flags/filters play no part.
   var IGNORE_MAX_UNITS = 2;
   function ignorableOrderIds() {
@@ -608,31 +612,43 @@
   // The in-game script. Plain ES5, no dependencies beyond the game's own UI
   // helper (falls back to alert). Runs anywhere but only finds rows on the
   // incomings overview; reports found / total so a paginated overview (rows on
-  // another page) is visible rather than silent.
-  function buildIgnoreScript(ids) {
-    var list = "[" + ids.join(",") + "]";
+  // another page) is visible rather than silent. Input = whatever the player
+  // pastes; only digit runs are read (commas, spaces, newlines all fine), an
+  // EMPTY answer clears the remembered list, Cancel does nothing. The game's
+  // localStorage is per world (one origin per world), so the key needs no world.
+  function buildIgnoreScript() {
     return "javascript:(function(){" +
-      "var ids=" + list + ",n=0,tbl=document.getElementById('incomings_table');" +
+      "var K='twstatsIgnorarFakes',n=0,tbl=document.getElementById('incomings_table');" +
       "var say=function(ok,m){if(window.UI&&UI.SuccessMessage){ok?UI.SuccessMessage(m):UI.ErrorMessage(m);}else{alert(m);}};" +
       "if(!tbl){say(false,'Abre Resumen \\u2192 Entrantes (ataques) y vuelve a ejecutar el script.');return;}" +
+      "var prev='';try{prev=localStorage.getItem(K)||'';}catch(e){}" +
+      "var raw=prompt('Pega los IDs de los fakes (twstats \\u2192 Entrantes \\u2192 \\u00abCopiar IDs fakes\\u00bb). Vac\\u00edo = borrar la lista guardada.',prev);" +
+      "if(raw==null){return;}" +
+      "var seen={},ids=[],m=String(raw).match(/\\d+/g)||[];" +
+      "for(var k=0;k<m.length;k++){if(!seen[m[k]]){seen[m[k]]=true;ids.push(m[k]);}}" +
+      "if(!ids.length){try{localStorage.removeItem(K);}catch(e){}say(true,'Lista de fakes borrada.');return;}" +
+      "try{localStorage.setItem(K,ids.join(','));}catch(e){}" +
       "var all=document.querySelectorAll('#incomings_form input[type=checkbox]');" +
       "for(var i=0;i<all.length;i++){all[i].checked=false;}" +
       "for(var j=0;j<ids.length;j++){var c=tbl.querySelector('input[name=\"id_'+ids[j]+'\"]');if(c){c.checked=true;n++;}}" +
       "say(n>0,n+' de '+ids.length+' fakes seleccionados'+(n<ids.length?' (el resto no est\\u00e1 en esta p\\u00e1gina o ya lleg\\u00f3)':'')+'.');" +
       "})();";
   }
+  var IGNORE_SCRIPT = buildIgnoreScript();
   // Button state — called from matchOrders() so it follows every analysis,
-  // upload, filter rebuild and Limpiar.
+  // upload, filter rebuild and Limpiar. The script link is static: visible
+  // whenever the feature is, never disabled.
   function refreshIgnoreBtn() {
-    var btn = $("ignoreBtn");
+    var btn = $("ignoreBtn"), link = $("ignoreScript");
     if (!btn) return;
-    if (!ordersFeatureEnabled()) { btn.hidden = true; return; }
+    if (!ordersFeatureEnabled()) { btn.hidden = true; if (link) link.hidden = true; return; }
+    if (link && link.getAttribute("href") !== IGNORE_SCRIPT) link.setAttribute("href", IGNORE_SCRIPT);
     var n = ignorableOrderIds().length;
     btn.disabled = !n;
-    btn.textContent = "Script ignorar fakes" + (n ? " (" + n + ")" : "");
+    btn.textContent = "Copiar IDs fakes" + (n ? " (" + n + ")" : "");
     btn.title = n
-      ? "Copia un script para la barra rápida o la consola del juego: en Resumen → Entrantes marca los " +
-        n + " ataques que el .json confirma como fake (≤ " + IGNORE_MAX_UNITS + " unidades, sin noble); luego pulsa el botón del juego (Ignorar / Renombrar)."
+      ? "Copia los IDs de los " + n + " ataques que el .json confirma como fake (≤ " + IGNORE_MAX_UNITS +
+        " unidades, sin noble). En el juego, en Resumen → Entrantes, ejecuta «Script ignorar fakes», pega los IDs y acepta; luego pulsa el botón del juego (Ignorar / Renombrar)."
       : "Se activa cuando algún ataque emparejado con el .json tiene ≤ " + IGNORE_MAX_UNITS + " unidades y ningún noble.";
     var note = $("ignoreNote");
     if (note && !n) note.hidden = true;
@@ -658,19 +674,34 @@
     } catch (e) { ok = false; }
     if (ok) done(); else failed();
   }
+  function ignoreNoteShow(msg) {
+    var note = $("ignoreNote");
+    if (note) { note.textContent = msg; note.hidden = false; }
+  }
+  // «Copiar IDs fakes» → the comma-separated id list of the current analysis.
   function onIgnoreClick() {
     var ids = ignorableOrderIds();
     var note = $("ignoreNote");
     if (!ids.length) { if (note) note.hidden = true; return; }
-    var script = buildIgnoreScript(ids);
-    var show = function (msg) { if (note) { note.textContent = msg; note.hidden = false; } };
-    copyText(script, function () {
-      show("Script copiado — selecciona " + ids.length + " ataque" + (ids.length === 1 ? "" : "s") +
+    var list = ids.join(",");
+    copyText(list, function () {
+      ignoreNoteShow("IDs copiados — " + ids.length + " ataque" + (ids.length === 1 ? "" : "s") +
         " fake (≤ " + IGNORE_MAX_UNITS + " unidades según el .json). En el juego abre Resumen → Entrantes, " +
-        "ejecútalo desde la barra rápida (o pégalo en la consola) y pulsa el botón del juego (Ignorar / Renombrar).");
+        "ejecuta «Script ignorar fakes» desde la barra rápida, pega los IDs en la ventana y acepta; luego pulsa el botón del juego (Ignorar / Renombrar).");
     }, function () {
-      // No clipboard (permissions / old browser): show the script so it can be copied by hand.
-      show("No se pudo copiar automáticamente; copia el script a mano: " + script);
+      // No clipboard (permissions / old browser): show the list so it can be copied by hand.
+      ignoreNoteShow("No se pudo copiar automáticamente; copia los IDs a mano: " + list);
+    });
+  }
+  // «Script ignorar fakes» link: dragging it to the bookmarks bar installs it
+  // as a bookmarklet; a CLICK must not run it here (it would only complain that
+  // this is not the incomings screen) — it copies the script for a quickbar entry.
+  function onIgnoreScriptClick(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    copyText(IGNORE_SCRIPT, function () {
+      ignoreNoteShow("Script copiado — en el juego: Ajustes → Barra rápida → Añadir nuevo enlace, pega el script en el campo del enlace (o arrastra este botón a la barra de marcadores del navegador). Se instala una sola vez; cada vez que lo ejecutes en Resumen → Entrantes te pedirá los IDs.");
+    }, function () {
+      ignoreNoteShow("No se pudo copiar automáticamente; arrastra el botón a la barra de marcadores o copia el script a mano: " + IGNORE_SCRIPT);
     });
   }
 
@@ -2120,7 +2151,7 @@
     // Sites without the feature (ordersFeatureEnabled false) hide its UI here
     // instead of editing the HTML, so the markup stays shared too.
     if (!ordersFeatureEnabled()) {
-      ["ordersBtn", "ordersFile", "ordersNote", "ordersHelp", "ignoreBtn", "ignoreNote"].forEach(function (id) {
+      ["ordersBtn", "ordersFile", "ordersNote", "ordersHelp", "ignoreBtn", "ignoreScript", "ignoreNote"].forEach(function (id) {
         var el = $(id);
         if (el) el.hidden = true;
       });
@@ -2151,8 +2182,10 @@
       };
       reader.readAsText(f);
     });
-    // «Script ignorar fakes» — copies the in-game selector bookmarklet.
+    // «Copiar IDs fakes» copies the id list; «Script ignorar fakes» is the static
+    // bookmarklet (drag = install, click = copy for the quickbar).
     $("ignoreBtn").addEventListener("click", onIgnoreClick);
+    if ($("ignoreScript")) $("ignoreScript").addEventListener("click", onIgnoreScriptClick);
     refreshIgnoreBtn();
     $("onlyflagged").addEventListener("change", function () {
       if (state.rows.length) render();
