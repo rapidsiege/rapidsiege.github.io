@@ -630,7 +630,9 @@
       <button class="btn btn-ghost btn-sm" onclick="clearPlan()" data-i18n="btn_clear_targets">✕ Clear All</button>
     </div>
   </div>
-  <div class="filter-row" style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+  <!-- Plan Offensive settings: 4 rows — (1) send/range, (2) morale, (3) toggles, (4) generate -->
+  <div class="plan-cfg" style="padding:4px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+  <div class="filter-row plan-row">
     <label data-i18n="lbl_earliest_send">Earliest send:</label>
     <input type="datetime-local" id="plan-earliest-send" style="width:200px;" data-i18n-title="earliest_send_title" title="Optional. The earliest server time you could actually launch. A village is only in range if it can still arrive within the target window when launched no earlier than this — so max travel = window end − earliest send. Applies to snob trains too. Leave blank to allow launching from now." onchange="updOTCfg('earliestSendISO', this.value)">
     <label data-i18n="lbl_min_dist">Off min distance:</label>
@@ -639,12 +641,40 @@
     <input type="number" id="plan-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited" oninput="saveSettings()">
     <label data-i18n="lbl_snob_max">Snob max distance:</label>
     <input type="number" id="plan-snob-max" value="70" min="0" style="width:70px;" title="0 = unlimited" oninput="saveSettings()">
+    <label data-i18n="lbl_cat_count"><img class="tw-ic" src="icons/units/catapult.png" alt="">Number of catapults:</label>
+    <input type="number" id="plan-cat-count" value="20" min="1" style="width:70px;" data-i18n-title="cat_count_title" title="Catapults per catapult attack. Each catapult target's wanted attacks are sourced from your defensive villages that own catapults; a source village provides floor(catapults / this) attacks." oninput="saveSettings()">
+  </div>
+  <div class="filter-row plan-row">
     <label data-i18n="lbl_min_morale_off">Min. morale (off):</label>
     <input type="number" id="plan-min-morale-off" value="100" min="0" max="100" style="width:70px;" data-i18n-title="min_morale_off_title" title="Clearing offs — POWER targets included — are only sent at or above this morale %; below it the engine falls back to the best available sender. A noble sender's own off uses the snob-off gate instead. 0 = no morale limit." oninput="saveSettings()">
     <label data-i18n="lbl_min_morale">Min. morale (snob off):</label>
     <input type="number" id="plan-min-morale" value="90" min="0" max="100" style="width:70px;" data-i18n-title="min_morale_title" title="A noble sender keeps their own clearing off only at or above this morale %; below it the off goes to a higher-morale player. 0 = always keep." oninput="saveSettings()">
-    <label data-i18n="lbl_cat_count"><img class="tw-ic" src="icons/units/catapult.png" alt="">Number of catapults:</label>
-    <input type="number" id="plan-cat-count" value="20" min="1" style="width:70px;" data-i18n-title="cat_count_title" title="Catapults per catapult attack. Each catapult target's wanted attacks are sourced from your defensive villages that own catapults; a source village provides floor(catapults / this) attacks." oninput="saveSettings()">
+    <button class="btn btn-ghost btn-sm" onclick="toggleMoraleMode()" data-i18n="btn_morale_mode" data-i18n-title="mm_title" title="How the limited pool of high-morale offs is shared between targets: highest morale first (fill targets in list order), balanced (spread over all targets), or by target points (big targets get first pick, small ones take the best morale left).">🎭 Morale strategy</button>
+    <span id="pmm-chip" style="font-size:12px;color:#a08050;font-weight:600;"></span>
+  </div>
+  <!-- 🎭 Morale strategy panel (v5.13.0). #plan-morale-mode (hidden) is the source of truth: it is
+       what saveSettings/loadSettings persist and what generatePlan reads; the radios mirror it. -->
+  <div id="pmm-wrap" class="plan-row" style="display:none;">
+    <input type="hidden" id="plan-morale-mode" value="priority">
+    <div style="font-weight:600;color:#c0900a;margin-bottom:6px;" data-i18n="mm_heading">🎭 Morale strategy — how the high-morale offs are shared between targets</div>
+    <div class="pmm-opt">
+      <label><input type="radio" name="pmm-mode" value="priority" onchange="setMoraleMode(this.value)"> <b data-i18n="mm_priority">Highest morale first</b></label>
+      <div class="pmm-desc" data-i18n="mm_priority_desc">Targets are filled in list order. Every off prefers senders at or above Min. morale (off); once those run out, the remaining targets get whatever is left — the first targets land at 100%, the last ones at 30–40%.</div>
+    </div>
+    <div class="pmm-opt">
+      <label><input type="radio" name="pmm-mode" value="balanced" onchange="setMoraleMode(this.value)"> <b data-i18n="mm_balanced">Balanced</b></label>
+      <div class="pmm-desc" data-i18n="mm_balanced_desc">Each off goes to the target whose assigned offs currently have the lowest average morale, so the high-morale offs are spread across all targets — every target gets a comparable mix instead of a few at 100% and the rest at 30%.</div>
+    </div>
+    <div class="pmm-opt">
+      <label><input type="radio" name="pmm-mode" value="points" onchange="setMoraleMode(this.value)"> <b data-i18n="mm_points">By target points</b></label>
+      <div class="pmm-desc">
+        <span data-i18n="mm_points_desc1">Targets of at least</span>
+        <input type="number" id="plan-morale-pts" value="5000" min="0" step="100" style="width:80px;" oninput="saveSettings();syncMoraleModeUi()">
+        <span data-i18n="mm_points_desc2">points are filled first, so they get first pick of the high-morale offs; smaller targets are filled afterwards with the best morale still available.</span>
+      </div>
+    </div>
+  </div>
+  <div class="filter-row plan-row">
     <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" data-i18n-title="cluster_title" title="Keeps each player's offs at similar distances, so their launches group into a few tight bursts and no attack strays needlessly far — offs return sooner. Lowest priority: never overrides morale or off power, only breaks near-ties within the ± tolerance.">
       <input type="checkbox" id="plan-cluster" onchange="saveSettings()"><span data-i18n="lbl_cluster">Cluster launch times</span>&nbsp;±
     </label>
@@ -652,8 +682,14 @@
     <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" data-i18n-title="no_reserve_title" title="Normally each noble sender's two villages closest to their objective are held OUT of the off passes, kept free to launch the nobles. Tick to skip that hold: every off in range is sent, and players keep a few units at home themselves to send their solo snob trains. Split-off escort reservations still apply (that off rides with the noble).">
       <input type="checkbox" id="plan-no-reserve" onchange="saveSettings()"><span data-i18n="lbl_no_reserve">Don't reserve villages</span>
     </label>
+    <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" data-i18n-title="snob_own_off_title" title="Every noble sender is handed one of their own clearing offs to time right before their train — regardless of their morale on the target. Off by default: then Min. morale (snob off) decides, and a low-morale sender's off goes to a higher-morale player instead.">
+      <input type="checkbox" id="plan-snob-own-off" onchange="saveSettings()"><img class="tw-ic" src="icons/units/snob.png" alt=""><span data-i18n="lbl_snob_own_off">Assign 1 off to snob sender</span>
+    </label>
+  </div>
+  <div class="filter-row plan-row">
     <span style="font-size:12px;color:#5a3a18;" data-i18n="plan_optimize_note">Auto-optimizes by morale × off power vs. distance. Pin senders per target or tag a target POWER in Offensive Targets.</span>
     <button class="btn btn-primary btn-sm" onclick="generatePlan()" data-i18n="btn_generate">⚡ Generate Plan</button>
+  </div>
   </div>
   <div style="margin-top:8px;">
     <button class="btn btn-ghost btn-sm" onclick="toggleCoordFilter()" data-i18n="btn_coord_filter">🎯 Coordinate Filter</button>
@@ -1173,7 +1209,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.12.4 &nbsp;·&nbsp; 2026-08-23</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.13.0 &nbsp;·&nbsp; 2026-08-29</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

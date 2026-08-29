@@ -192,6 +192,23 @@ function generatePlan() {
   const minMoraleOffRaw = parseFloat((document.getElementById('plan-min-morale-off') || {}).value);
   const minMoraleOff = (isNaN(minMoraleOffRaw) ? 100 : minMoraleOffRaw) / 100;
 
+  // ── Morale strategy (v5.13.0, 🎭 Morale strategy panel) ─────────────────────
+  // How the finite pool of HIGH-morale offs is shared between targets:
+  //  'priority' — legacy: targets are filled in list order, each pick preferring senders that
+  //               clear the off gate; once the high-morale offs are used up, later targets get
+  //               whatever is left (100/100/… then 30/40/…).
+  //  'balanced' — every off slot goes to the target whose already-assigned offs have the LOWEST
+  //               average morale, so the high-morale offs are spread over all targets instead of
+  //               exhausted on the first ones (each target ends up hit by a comparable mix).
+  //  'points'   — targets of at least `moralePts` village points are filled FIRST (list order
+  //               within each band), so they get first pick of the high-morale offs; the smaller
+  //               targets follow and take the best morale the optimizer can still find. The gates
+  //               themselves are the same everywhere — this mode only changes the ORDER.
+  const moraleModeRaw = (document.getElementById('plan-morale-mode') || {}).value;
+  const moraleMode = ['priority', 'balanced', 'points'].includes(moraleModeRaw) ? moraleModeRaw : 'priority';
+  const moralePtsRaw = parseFloat((document.getElementById('plan-morale-pts') || {}).value);
+  const moralePts = isNaN(moralePtsRaw) ? 5000 : Math.max(0, moralePtsRaw);
+
   // ── Launch-distance clustering (opt-in, LOWEST priority) ────────────────────
   // When on, the off passes add a soft tiebreaker that keeps each player's off distances tight
   // (fewer, closer launch bursts + a lower max distance → offs return sooner → faster tribe
@@ -208,6 +225,10 @@ function generatePlan() {
   // to keep a token escort at home for their solo trains. Escort (split-off) reservations
   // are NOT affected: an escorted train's off really rides with the noble, so that hold stays.
   const noReserve = !!(document.getElementById('plan-no-reserve') || {}).checked;
+  // "Assign 1 off to snob sender" (v5.13.0): every noble sender keeps one of their OWN clearing
+  // offs regardless of morale — the snob-off gate is forced to 0 for every target (equivalent to
+  // Min. morale (snob off) = 0, but explicit).
+  const snobOwnOff = !!(document.getElementById('plan-snob-own-off') || {}).checked;
 
   // Ignore lists (Offensive Targets). Ignored COORDINATES are dropped from the pool entirely
   // (those villages never send anything). Ignored PLAYERS stay IN the pool but are barred from
@@ -434,8 +455,28 @@ function generatePlan() {
   // none qualify (a low-morale clear still beats an uncleared target). Inert when there is no
   // morale signal (no DB / barbarian target — moraleUsable) or the field is 0. A candidate whose
   // own morale can't be resolved counts as 1.0 so it's never gated out.
+  // Per-target gates. Both are inert (0) without a morale signal; the snob-off gate is also
+  // forced to 0 by the 👑 "Assign 1 off to snob sender" checkbox.
+  const offGateFor  = T => moraleUsable(T) ? minMoraleOff : 0;
+  const snobGateFor = T => (snobOwnOff || !moraleUsable(T)) ? 0 : minMorale;
+  // Off-pass target order: 'points' mode serves the big targets (≥ moralePts village points, from
+  // the world-DB record — not the owner's total) first so they get first pick of the high-morale
+  // offs, list order kept within each band; other modes keep the list order ('balanced' then
+  // re-orders dynamically per slot — see the auto pass).
+  const targetPoints = T => { const v = coordDb[T.tg.coord]; return v ? (parseInt(v.points, 10) || 0) : 0; };
+  const bigTarget = T => moraleMode !== 'points' || targetPoints(T) >= moralePts;
+  const orderedTargets = moraleMode === 'points'
+    ? [...targets.filter(T => bigTarget(T)), ...targets.filter(T => !bigTarget(T))]
+    : targets;
+  // Average morale of a target's assigned offs so far (rows from every pass); -1 = none yet, so
+  // an untouched target is always served before one that already has an off ('balanced' mode).
+  const targetAvgMorale = T => {
+    const ms = T.offRows.filter(r => !r.unassigned && r.srcCoord)
+      .map(r => { const m = planAttackMorale(r.srcCoord, T.tg.coord); return m == null ? 1 : m; });
+    return ms.length ? ms.reduce((a, x) => a + x, 0) / ms.length : -1;
+  };
   const moraleFirst = (T, cands) => {
-    const gate = moraleUsable(T) ? minMoraleOff : 0;
+    const gate = offGateFor(T);
     if (!gate) return cands;
     const hi = cands.filter(p => { const m = planAttackMorale(p.v.coord, T.tg.coord); return (m == null ? 1 : m) >= gate; });
     return hi.length ? hi : cands;
@@ -849,7 +890,7 @@ function generatePlan() {
   // the noble, but still wants a separate clearing off in hand). POWER targets are skipped —
   // they take the strongest nukes regardless of who conquers. Runs after the named pins, so
   // an explicit pin still wins (and a pin that already gave the conqueror an off ends it).
-  for (const T of targets) {
+  for (const T of orderedTargets) {
     if (!T.c || T.tg.power || isFake(T)) continue;
     const conq = conquerorByTarget[T.i];
     if (!conq) continue;
@@ -865,7 +906,8 @@ function generatePlan() {
     // Morale is per-PLAYER (aggregated points), so resolve it once per player via any village.
     // The gate is inert when morale is unresolvable (no DB / barbarian target → moraleUsable
     // false) and when the field is 0 — both keep the pre-v3.12 conqueror-always-keeps behaviour.
-    const gate = moraleUsable(T) ? minMorale : 0;
+    // (The 👑 "Assign 1 off to snob sender" checkbox forces it to 0 — see snobGateFor.)
+    const gate = snobGateFor(T);
     const playerMorale = name => {
       const rep = pool.find(p => decode(p.v.player) === name);
       const m = rep ? planAttackMorale(rep.v.coord, T.tg.coord) : null;
@@ -911,7 +953,7 @@ function generatePlan() {
       //    auto pass (morale × off power ÷ distance, damped by roster balance) — so a close 100%
       //    beats a far 100%. Reserving it (usedOff) keeps a closer sub-bar village from reclaiming
       //    the slot in the auto pass. (Inert when morale is unresolvable — see offGate below.)
-      const repGate = moraleUsable(T) ? minMoraleOff : 0;
+      const repGate = offGateFor(T);
       const repCands = bump(p => playerMorale(decode(p.v.player)) >= repGate);
       if (repCands.length) {
         reserve(repCands.sort(byOptimize(T))[0], tier);
@@ -987,17 +1029,34 @@ function generatePlan() {
   // and the row is relabeled to what is actually sent, with a warning. Slots already
   // reserved by named senders + the conqueror reservation above are subtracted so each
   // tier isn't double-filled.
+  // Slot order (morale strategy, v5.13.0): each tier's open (target, group) slots form a queue in
+  // `orderedTargets` order. 'priority'/'points' drain it front-to-back (identical to the old nested
+  // target → group → slot loops); 'balanced' instead hands EVERY slot to the target whose assigned
+  // offs currently average the lowest morale (untouched targets first, list order on ties), so the
+  // high-morale offs are spread across the targets rather than exhausted on the first ones.
   for (const tier of ['complete', 'tq', 'half']) {
-    for (const T of targets) {
+    const queue = [];
+    for (const T of orderedTargets) {
       if (!T.c || T.tg.power || isFake(T)) continue; // POWER targets are filled by the balanced pass above; fakes by their own pass below
       for (const g of otActiveGroups(T.tg)) {
-      const autoNeed = Math.max(0, otTierCount(T.tg, g.id, tier) - (namedOffReserved[resKey(T, tier, g)] || 0));
+        const autoNeed = Math.max(0, otTierCount(T.tg, g.id, tier) - (namedOffReserved[resKey(T, tier, g)] || 0));
+        if (autoNeed > 0) queue.push({ T, g, left: autoNeed });
+      }
+    }
+    for (;;) {
+      const open = queue.filter(sl => sl.left > 0);
+      if (!open.length) break;
+      const slot = moraleMode === 'balanced'
+        ? open.slice().sort((a, b) => targetAvgMorale(a.T) - targetAvgMorale(b.T))[0]
+        : open[0];
+      slot.left--;
+      const { T, g } = slot;
       // Min. Morale (off) gate — once the TIER is resolved (the tier-bump below still fires only
       // when a tier is empty, never for morale), PREFER candidates whose morale on this target
       // clears minMoraleOff (default 100%), and fall back to the best below-gate village only when
       // none qualify (soft — a low-morale clear beats an uncleared target; see moraleFirst).
       // Per-PLAYER morale via the source village.
-      for (let k = 0; k < autoNeed; k++) {
+      {
         const tierCands = tt => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
         let sent = tier, cands = tierCands(tier);
         for (const up of TIER_UP[tier]) {
@@ -1027,7 +1086,6 @@ function generatePlan() {
           type: sent, group: g.id, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
           dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us),
         });
-      }
       }
     }
   }
@@ -2061,4 +2119,38 @@ function showUnusedOffsBB() {
   bb += '[/table]';
   document.getElementById('bb-output').value = bb;
   document.getElementById('bb-modal').classList.add('open');
+}
+
+// ── 🎭 Morale strategy panel (Plan Offensive, v5.13.0) ──────────────────────
+// The hidden #plan-morale-mode input is the source of truth (persisted by saveSettings via
+// PLAN_SETTING_IDS, read by generatePlan); the radios, points inputs and the chip next to the
+// button mirror it. See the "Morale strategy" block in generatePlan for what each mode does.
+const MORALE_MODES = ['priority', 'balanced', 'points'];
+function currentMoraleMode() {
+  const v = (document.getElementById('plan-morale-mode') || {}).value;
+  return MORALE_MODES.includes(v) ? v : 'priority';
+}
+function toggleMoraleMode() {
+  const el = document.getElementById('pmm-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+function setMoraleMode(mode) {
+  const el = document.getElementById('plan-morale-mode');
+  if (el) el.value = MORALE_MODES.includes(mode) ? mode : 'priority';
+  if (typeof saveSettings === 'function') saveSettings();
+  syncMoraleModeUi();
+}
+function syncMoraleModeUi() {
+  const mode = currentMoraleMode();
+  if (document.querySelectorAll) {
+    document.querySelectorAll('input[name="pmm-mode"]').forEach(r => { r.checked = r.value === mode; });
+  }
+  const chip = document.getElementById('pmm-chip');
+  if (!chip) return;
+  if (mode === 'points') {
+    const pts = (document.getElementById('plan-morale-pts') || {}).value;
+    chip.textContent = t('mm_chip_points')(pts === '' || pts == null ? 5000 : pts);
+  } else {
+    chip.textContent = t('mm_chip_' + mode);
+  }
 }

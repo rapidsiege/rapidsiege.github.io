@@ -31,6 +31,7 @@ function changeLang(l) {
   if (typeof renderEnemyVillagesTable === 'function') renderEnemyVillagesTable();
   updateDbConnectBtn();
   if (typeof updWorldSpeedNote === 'function') updWorldSpeedNote(); // header speeds note
+  if (typeof syncMoraleModeUi === 'function') syncMoraleModeUi();   // 🎭 Morale strategy chip
   if (typeof renderChangelog === 'function') renderChangelog();
   if (typeof saveSettings === 'function') saveSettings(); // persist the language choice
 }

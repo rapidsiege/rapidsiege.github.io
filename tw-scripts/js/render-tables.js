@@ -191,7 +191,8 @@ function getOffTier(offPow) {
 const TRIBE_SETTINGS_KEY = 'tw_tribe_settings';
 // Plan Offensive controls that should survive a refresh (keyed by element id).
 const PLAN_SETTING_IDS = ['plan-min-dist', 'plan-max-dist',
-  'plan-snob-max', 'plan-min-morale-off', 'plan-min-morale', 'plan-cat-count', 'plan-cluster-tol'];
+  'plan-snob-max', 'plan-min-morale-off', 'plan-min-morale', 'plan-cat-count', 'plan-cluster-tol',
+  'plan-morale-mode', 'plan-morale-pts']; // 🎭 Morale strategy (v5.13.0)
 function saveSettings() {
   const v = id => document.getElementById(id)?.value;
   const plan = {};
@@ -201,6 +202,8 @@ function saveSettings() {
   if (clusterEl) plan['plan-cluster'] = !!clusterEl.checked;
   const noResEl = document.getElementById('plan-no-reserve');
   if (noResEl) plan['plan-no-reserve'] = !!noResEl.checked;
+  const snobOwnEl = document.getElementById('plan-snob-own-off');
+  if (snobOwnEl) plan['plan-snob-own-off'] = !!snobOwnEl.checked;
   try {
     localStorage.setItem(TRIBE_SETTINGS_KEY, JSON.stringify({
       lang: (typeof lang === 'string') ? lang : undefined,
@@ -221,6 +224,8 @@ function loadSettings() {
   const set = (id, val) => { const e = document.getElementById(id); if (e && val != null && val !== '') e.value = val; };
   if (s.thresholds) { set('thresh-complete', s.thresholds.complete); set('thresh-tq', s.thresholds.tq); set('thresh-half', s.thresholds.half); }
   if (s.plan) for (const id of PLAN_SETTING_IDS) set(id, s.plan[id]);
+  // 🎭 Morale strategy radios/chip mirror the restored hidden #plan-morale-mode value.
+  if (typeof syncMoraleModeUi === 'function') syncMoraleModeUi();
   // Cluster launch times / Don't reserve villages checkboxes (stored as booleans, restored via .checked).
   if (s.plan && 'plan-cluster' in s.plan) {
     const clusterEl = document.getElementById('plan-cluster');
@@ -229,6 +234,10 @@ function loadSettings() {
   if (s.plan && 'plan-no-reserve' in s.plan) {
     const noResEl = document.getElementById('plan-no-reserve');
     if (noResEl) noResEl.checked = !!s.plan['plan-no-reserve'];
+  }
+  if (s.plan && 'plan-snob-own-off' in s.plan) {
+    const snobOwnEl = document.getElementById('plan-snob-own-off');
+    if (snobOwnEl) snobOwnEl.checked = !!s.plan['plan-snob-own-off'];
   }
   // Offensive Targets hidden columns — drop keys OT_COLS no longer knows (renamed/removed).
   if (Array.isArray(s.otCols) && typeof otHiddenCols !== 'undefined')

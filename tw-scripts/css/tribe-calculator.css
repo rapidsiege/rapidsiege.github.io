@@ -243,6 +243,14 @@
     }
     .filter-row input:focus, .filter-row select:focus { outline: none; border-color: #c0900a; }
     .filter-row label { font-size: 12px; color: #806030; }
+    /* Plan Offensive settings panel: stacked rows with a hairline between them */
+    .plan-cfg .plan-row { margin-bottom: 0; padding: 6px 0; }
+    .plan-cfg .plan-row + .plan-row { border-top: 1px solid #2a1c08; }
+    /* 🎭 Morale strategy panel (Plan Offensive) */
+    .pmm-opt { padding: 4px 0; }
+    .pmm-opt label { font-size: 13px; color: #e0c080; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .pmm-desc { font-size: 12px; color: #a08050; margin: 2px 0 0 24px; line-height: 1.5; }
+    .pmm-desc input { background: #0f0a02; color: #f0d090; border: 1px solid #3a2808; border-radius: 3px; padding: 2px 4px; font-size: 12px; }
 
     /* ── Drop zone ── */
     .drop-zone {

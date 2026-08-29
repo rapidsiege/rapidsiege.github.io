@@ -94,7 +94,9 @@ function buildDebugDump(opts) {
               minMorale: val('plan-min-morale'), minMoraleOff: val('plan-min-morale-off'),
               catCount: val('plan-cat-count'),
               cluster: !!document.getElementById('plan-cluster')?.checked, clusterTol: val('plan-cluster-tol'),
-              noReserve: !!document.getElementById('plan-no-reserve')?.checked },
+              noReserve: !!document.getElementById('plan-no-reserve')?.checked,
+              snobOwnOff: !!document.getElementById('plan-snob-own-off')?.checked,
+              moraleMode: val('plan-morale-mode'), moralePts: val('plan-morale-pts') },
       lang,
     },
     troops: villages.length ? { villages } : null,
@@ -165,7 +167,8 @@ function applyDebugImport(dump) {
     if (!(dump.storage && dump.storage.tw_tribe_settings) && dump.settings) {
       const s = dump.settings, p = s.plan || {}, plan = {};
       const map = { 'plan-min-dist': p.minDist, 'plan-max-dist': p.maxDist, 'plan-snob-max': p.snobMax,
-        'plan-min-morale-off': p.minMoraleOff, 'plan-min-morale': p.minMorale, 'plan-cat-count': p.catCount };
+        'plan-min-morale-off': p.minMoraleOff, 'plan-min-morale': p.minMorale, 'plan-cat-count': p.catCount,
+        'plan-morale-mode': p.moraleMode, 'plan-morale-pts': p.moralePts };
       for (const k in map) if (map[k] != null) plan[k] = map[k];
       localStorage.setItem('tw_tribe_settings', JSON.stringify({
         lang: s.lang, speeds: { world: p.worldSpeed, unit: p.unitSpeed },
