@@ -649,7 +649,7 @@
     <input type="number" id="plan-min-morale-off" value="100" min="0" max="100" style="width:70px;" data-i18n-title="min_morale_off_title" title="Clearing offs — POWER targets included — are only sent at or above this morale %; below it the engine falls back to the best available sender. A noble sender's own off uses the snob-off gate instead. 0 = no morale limit." oninput="saveSettings()">
     <label data-i18n="lbl_min_morale">Min. morale (snob off):</label>
     <input type="number" id="plan-min-morale" value="90" min="0" max="100" style="width:70px;" data-i18n-title="min_morale_title" title="A noble sender keeps their own clearing off only at or above this morale %; below it the off goes to a higher-morale player. 0 = always keep." oninput="saveSettings()">
-    <button class="btn btn-ghost btn-sm" onclick="toggleMoraleMode()" data-i18n="btn_morale_mode" data-i18n-title="mm_title" title="How the limited pool of high-morale offs is shared between targets: highest morale first (fill targets in list order), balanced (spread over all targets), or by target points (big targets get first pick, small ones take the best morale left).">🎭 Morale strategy</button>
+    <button class="btn btn-ghost btn-sm" onclick="toggleMoraleMode()" data-i18n="btn_morale_mode" data-i18n-title="mm_title" title="How the limited pool of high-morale offs is shared between targets: highest morale first (fill targets in list order), balanced (spread over all targets), or by target points (big targets share the high-morale offs first, small ones share what is left).">🎭 Morale strategy</button>
     <span id="pmm-chip" style="font-size:12px;color:#a08050;font-weight:600;"></span>
   </div>
   <!-- 🎭 Morale strategy panel (v5.13.0). #plan-morale-mode (hidden) is the source of truth: it is
@@ -670,7 +670,7 @@
       <div class="pmm-desc">
         <span data-i18n="mm_points_desc1">Targets of at least</span>
         <input type="number" id="plan-morale-pts" value="5000" min="0" step="100" style="width:80px;" oninput="saveSettings();syncMoraleModeUi()">
-        <span data-i18n="mm_points_desc2">points are filled first, so they get first pick of the high-morale offs; smaller targets are filled afterwards with the best morale still available.</span>
+        <span data-i18n="mm_points_desc2">points are filled first and share the high-morale offs evenly among themselves (balanced); smaller targets follow, sharing the best morale still available.</span>
       </div>
     </div>
   </div>
@@ -1209,7 +1209,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.13.0 &nbsp;·&nbsp; 2026-08-29</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.13.1 &nbsp;·&nbsp; 2026-08-29</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

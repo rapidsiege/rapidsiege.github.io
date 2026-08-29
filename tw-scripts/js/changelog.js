@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.13.1', date: '2026-08-29',
+    en: [
+      `<b>🎭 "By target points" now balances inside each band.</b> The big targets (at or above the points threshold) used to be filled in list order, so the first of them still hoarded every 100% off and the later big ones dropped to 30–40% — the exact problem the strategy was meant to fix, one level down. Now the big targets <b>share the high-morale offs evenly among themselves</b> (each off goes to the big target whose assigned offs currently average the lowest morale, exactly like Balanced), and only then do the smaller targets get filled, again balanced among themselves with whatever morale is left.`,
+    ],
+    es: [
+      `<b>🎭 «Por puntos del objetivo» ahora equilibra dentro de cada banda.</b> Los objetivos grandes (con el umbral de puntos o más) se rellenaban en el orden de la lista, así que el primero seguía acaparando todos los offs al 100 % y los grandes posteriores caían al 30–40 % — el mismo problema que la estrategia debía resolver, un nivel más abajo. Ahora los objetivos grandes <b>se reparten equilibradamente los offs de moral alta entre ellos</b> (cada off va al objetivo grande cuyos offs asignados tienen la media de moral más baja, exactamente como Equilibrado), y solo después se rellenan los objetivos pequeños, también equilibrados entre sí con la moral que quede.`,
+    ],
+  },
   { ver: 'v5.13.0', date: '2026-08-29',
     en: [
       `<b>🎭 Morale strategy (Plan Offensive).</b> A new <b>🎭 Morale strategy</b> button next to the morale fields opens a panel with three ways of sharing the tribe's limited <b>high-morale offs</b> between targets. <b>Highest morale first</b> is what the planner did until now: targets are filled in list order, each off preferring senders at or above Min. morale (off) — so the first targets land at 100% and, once those offs run out, the last ones get 30–40%. <b>Balanced</b> hands every off to the target whose assigned offs currently average the <b>lowest</b> morale, so the 100% offs are spread across all targets and every one of them gets a comparable mix. <b>By target points</b> fills targets of at least <b>N points</b> (default 5000) first, so they get first pick of the high-morale offs; the smaller targets follow and take the best morale still available. The choice and the points threshold are remembered on this device and travel with the Backup &amp; Debug export.`,

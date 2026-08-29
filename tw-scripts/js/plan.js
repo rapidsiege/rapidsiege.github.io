@@ -200,10 +200,11 @@ function generatePlan() {
   //  'balanced' — every off slot goes to the target whose already-assigned offs have the LOWEST
   //               average morale, so the high-morale offs are spread over all targets instead of
   //               exhausted on the first ones (each target ends up hit by a comparable mix).
-  //  'points'   — targets of at least `moralePts` village points are filled FIRST (list order
-  //               within each band), so they get first pick of the high-morale offs; the smaller
-  //               targets follow and take the best morale the optimizer can still find. The gates
-  //               themselves are the same everywhere — this mode only changes the ORDER.
+  //  'points'   — targets of at least `moralePts` village points are filled FIRST, BALANCED among
+  //               themselves (lowest average morale first, like 'balanced'), so the high-morale
+  //               offs are shared evenly across the big targets; the smaller targets follow, again
+  //               balanced among themselves, taking the best morale the optimizer can still find.
+  //               The gates are the same everywhere — this mode only changes the ORDER.
   const moraleModeRaw = (document.getElementById('plan-morale-mode') || {}).value;
   const moraleMode = ['priority', 'balanced', 'points'].includes(moraleModeRaw) ? moraleModeRaw : 'priority';
   const moralePtsRaw = parseFloat((document.getElementById('plan-morale-pts') || {}).value);
@@ -1029,11 +1030,13 @@ function generatePlan() {
   // and the row is relabeled to what is actually sent, with a warning. Slots already
   // reserved by named senders + the conqueror reservation above are subtracted so each
   // tier isn't double-filled.
-  // Slot order (morale strategy, v5.13.0): each tier's open (target, group) slots form a queue in
-  // `orderedTargets` order. 'priority'/'points' drain it front-to-back (identical to the old nested
-  // target → group → slot loops); 'balanced' instead hands EVERY slot to the target whose assigned
-  // offs currently average the lowest morale (untouched targets first, list order on ties), so the
-  // high-morale offs are spread across the targets rather than exhausted on the first ones.
+  // Slot order (morale strategy, v5.13.0/v5.13.1): each tier's open (target, group) slots form a
+  // queue in `orderedTargets` order. 'priority' drains it front-to-back (identical to the old nested
+  // target → group → slot loops); 'balanced' hands EVERY slot to the target whose assigned offs
+  // currently average the lowest morale (untouched targets first, list order on ties), so the
+  // high-morale offs are spread across the targets rather than exhausted on the first ones;
+  // 'points' does the same but within the big band first (band rank, then lowest average) — so the
+  // big targets share the high-morale offs evenly and the small ones share what is left.
   for (const tier of ['complete', 'tq', 'half']) {
     const queue = [];
     for (const T of orderedTargets) {
@@ -1046,9 +1049,10 @@ function generatePlan() {
     for (;;) {
       const open = queue.filter(sl => sl.left > 0);
       if (!open.length) break;
-      const slot = moraleMode === 'balanced'
-        ? open.slice().sort((a, b) => targetAvgMorale(a.T) - targetAvgMorale(b.T))[0]
-        : open[0];
+      const bandRank = sl => bigTarget(sl.T) ? 0 : 1; // 0 for every target outside 'points' mode
+      const slot = moraleMode === 'priority'
+        ? open[0]
+        : open.slice().sort((a, b) => (bandRank(a) - bandRank(b)) || (targetAvgMorale(a.T) - targetAvgMorale(b.T)))[0];
       slot.left--;
       const { T, g } = slot;
       // Min. Morale (off) gate — once the TIER is resolved (the tier-bump below still fires only
