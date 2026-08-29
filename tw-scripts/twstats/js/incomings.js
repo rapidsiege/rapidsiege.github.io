@@ -483,7 +483,7 @@
   function matchOrders() {
     if (!ordersFeatureEnabled()) return;   // nothing to match, nothing to show
     var el = $("ordersNote");
-    if (!state.orders) { el.hidden = true; buildOrdersFilters(); return; }
+    if (!state.orders) { el.hidden = true; buildOrdersFilters(); refreshIgnoreBtn(); return; }
     var total = 0, matched = 0;
     state.rows.forEach(function (r) {
       if (!r.attack) return;
@@ -498,6 +498,7 @@
              : " — se emparejarán al analizar tus entrantes");
     el.hidden = false;
     buildOrdersFilters();
+    refreshIgnoreBtn();
   }
 
   // Units of a matched command: the game's size icon + one chip per nonzero
@@ -575,6 +576,102 @@
       }).join(" ");
     box.innerHTML = boxes ? '<span class="fflags-h">Filtros de órdenes:</span> ' + boxes : "";
     box.hidden = !boxes;
+  }
+
+  // === «Script ignorar fakes» (2026-08-29) ===================================
+  // Once a .json is matched we KNOW which incomings are token fakes: a matched
+  // command with ≤ 2 units in total and no noble. The exporter's command id is
+  // the game's own command id, and the game's incomings overview
+  // (screen=overview_villages&mode=incomings) renders one checkbox per row
+  // named `id_<commandId>` inside #incomings_form — the same handle RedAlert's
+  // Fake Finder ticks. So the page can hand the player a ready-made
+  // `javascript:` bookmarklet (quickbar entry or console paste) that ticks
+  // exactly those rows; the player then presses the game's own bulk button
+  // (Ignorar / Renombrar). The script carries the ids baked in and is
+  // regenerated on every click, so it always reflects the current upload.
+  // Strictly the .json verdict — the page's own flags/filters play no part.
+  var IGNORE_MAX_UNITS = 2;
+  function ignorableOrderIds() {
+    var seen = {}, ids = [];
+    if (!ordersFeatureEnabled() || state.mode !== "attacks") return ids;
+    state.rows.forEach(function (r) {
+      var o = r.attack && r.attack.order;
+      if (!o || o.id == null || o.id === "" || o.contains_snob) return;
+      if ((o.units.snob || 0) > 0 || ordUnitTotal(o) > IGNORE_MAX_UNITS) return;
+      var id = String(o.id);
+      if (!/^\d+$/.test(id) || seen[id]) return;   // ids are numeric in-game; never inject text
+      seen[id] = true;
+      ids.push(id);
+    });
+    return ids;
+  }
+  // The in-game script. Plain ES5, no dependencies beyond the game's own UI
+  // helper (falls back to alert). Runs anywhere but only finds rows on the
+  // incomings overview; reports found / total so a paginated overview (rows on
+  // another page) is visible rather than silent.
+  function buildIgnoreScript(ids) {
+    var list = "[" + ids.join(",") + "]";
+    return "javascript:(function(){" +
+      "var ids=" + list + ",n=0,tbl=document.getElementById('incomings_table');" +
+      "var say=function(ok,m){if(window.UI&&UI.SuccessMessage){ok?UI.SuccessMessage(m):UI.ErrorMessage(m);}else{alert(m);}};" +
+      "if(!tbl){say(false,'Abre Resumen \\u2192 Entrantes (ataques) y vuelve a ejecutar el script.');return;}" +
+      "var all=document.querySelectorAll('#incomings_form input[type=checkbox]');" +
+      "for(var i=0;i<all.length;i++){all[i].checked=false;}" +
+      "for(var j=0;j<ids.length;j++){var c=tbl.querySelector('input[name=\"id_'+ids[j]+'\"]');if(c){c.checked=true;n++;}}" +
+      "say(n>0,n+' de '+ids.length+' fakes seleccionados'+(n<ids.length?' (el resto no est\\u00e1 en esta p\\u00e1gina o ya lleg\\u00f3)':'')+'.');" +
+      "})();";
+  }
+  // Button state — called from matchOrders() so it follows every analysis,
+  // upload, filter rebuild and Limpiar.
+  function refreshIgnoreBtn() {
+    var btn = $("ignoreBtn");
+    if (!btn) return;
+    if (!ordersFeatureEnabled()) { btn.hidden = true; return; }
+    var n = ignorableOrderIds().length;
+    btn.disabled = !n;
+    btn.textContent = "Script ignorar fakes" + (n ? " (" + n + ")" : "");
+    btn.title = n
+      ? "Copia un script para la barra rápida o la consola del juego: en Resumen → Entrantes marca los " +
+        n + " ataques que el .json confirma como fake (≤ " + IGNORE_MAX_UNITS + " unidades, sin noble); luego pulsa el botón del juego (Ignorar / Renombrar)."
+      : "Se activa cuando algún ataque emparejado con el .json tiene ≤ " + IGNORE_MAX_UNITS + " unidades y ningún noble.";
+    var note = $("ignoreNote");
+    if (note && !n) note.hidden = true;
+  }
+  function copyText(text, done, failed) {
+    if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { copyTextFallback(text, done, failed); });
+    } else {
+      copyTextFallback(text, done, failed);
+    }
+  }
+  function copyTextFallback(text, done, failed) {
+    var ok = false;
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed"; ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      ok = !!(document.execCommand && document.execCommand("copy"));
+      document.body.removeChild(ta);
+    } catch (e) { ok = false; }
+    if (ok) done(); else failed();
+  }
+  function onIgnoreClick() {
+    var ids = ignorableOrderIds();
+    var note = $("ignoreNote");
+    if (!ids.length) { if (note) note.hidden = true; return; }
+    var script = buildIgnoreScript(ids);
+    var show = function (msg) { if (note) { note.textContent = msg; note.hidden = false; } };
+    copyText(script, function () {
+      show("Script copiado — selecciona " + ids.length + " ataque" + (ids.length === 1 ? "" : "s") +
+        " fake (≤ " + IGNORE_MAX_UNITS + " unidades según el .json). En el juego abre Resumen → Entrantes, " +
+        "ejecútalo desde la barra rápida (o pégalo en la consola) y pulsa el botón del juego (Ignorar / Renombrar).");
+    }, function () {
+      // No clipboard (permissions / old browser): show the script so it can be copied by hand.
+      show("No se pudo copiar automáticamente; copia el script a mano: " + script);
+    });
   }
 
   // === your attacked villages: Blindado / Esquivar =========================
@@ -2023,7 +2120,7 @@
     // Sites without the feature (ordersFeatureEnabled false) hide its UI here
     // instead of editing the HTML, so the markup stays shared too.
     if (!ordersFeatureEnabled()) {
-      ["ordersBtn", "ordersFile", "ordersNote", "ordersHelp"].forEach(function (id) {
+      ["ordersBtn", "ordersFile", "ordersNote", "ordersHelp", "ignoreBtn", "ignoreNote"].forEach(function (id) {
         var el = $(id);
         if (el) el.hidden = true;
       });
@@ -2054,6 +2151,9 @@
       };
       reader.readAsText(f);
     });
+    // «Script ignorar fakes» — copies the in-game selector bookmarklet.
+    $("ignoreBtn").addEventListener("click", onIgnoreClick);
+    refreshIgnoreBtn();
     $("onlyflagged").addEventListener("change", function () {
       if (state.rows.length) render();
     });

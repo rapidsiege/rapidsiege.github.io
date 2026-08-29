@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>es100 · Entrantes</title>
-  <link rel="stylesheet" href="css/twstats.css?v=20260829.2">
+  <link rel="stylesheet" href="css/twstats.css?v=20260829.3">
 </head>
 <body>
   <div id="main">
@@ -41,7 +41,9 @@
       <span id="ordersHelp"><br><b>Opcional:</b> con «.json Órdenes» puedes subir el
       <code>incoming_orders*.json</code> del script exportador de órdenes — cada ataque
       que coincida (objetivo + origen + hora de llegada exacta) muestra además las
-      <b>unidades reales</b> del comando y su <b>tamaño</b> (el icono del juego).</span>
+      <b>unidades reales</b> del comando y su <b>tamaño</b> (el icono del juego); «Script ignorar fakes»
+      copia entonces un script para la barra rápida del juego que, en Resumen → Entrantes, marca los
+      ataques confirmados como fake (≤ 2 unidades, sin noble) para ignorarlos de un golpe.</span>
     </div>
 
     <form class="conquer-filters" id="filters" onsubmit="return false">
@@ -84,6 +86,8 @@
           <button type="button" id="clear" class="seg">Limpiar</button>
           <button type="button" id="ordersBtn" class="seg"
             title="Opcional: sube el incoming_orders*.json del exportador de órdenes para ver las unidades reales de cada ataque emparejado">.json Órdenes</button>
+          <button type="button" id="ignoreBtn" class="seg" disabled
+            title="Se activa cuando algún ataque emparejado con el .json tiene ≤ 2 unidades y ningún noble.">Script ignorar fakes</button>
         </div>
         <input type="file" id="ordersFile" accept=".json,application/json" hidden>
       </div>
@@ -94,6 +98,7 @@
     <p class="meta-line" id="summary" hidden>—</p>
     <p class="tz-note" id="modeNote" hidden>—</p>
     <p class="tz-note" id="ordersNote" hidden>—</p>
+    <p class="tz-note" id="ignoreNote" hidden>—</p>
     <p class="status" id="warnLine" hidden>—</p>
 
     <div id="panels" hidden>
@@ -136,11 +141,11 @@
        predates TW.srvEpoch broke this page outright) or a stale stylesheet that
        lacks the newer badge styles. Bump ?v= on EVERY asset change, site-wide;
        the token is shared by all twstats pages. -->
-  <script src="js/common.js?v=20260829.2"></script>
+  <script src="js/common.js?v=20260829.3"></script>
   <!-- The calculator's pure reports-intel module (riClassify/riStale/riAge) —
        the SAME file tribe-calculator ships, so twstats verdicts can't drift. -->
-  <script src="../js/reports-intel.js?v=20260829.2"></script>
-  <script src="../js/report-render.js?v=20260829.2"></script>
-  <script src="js/incomings.js?v=20260829.2"></script>
+  <script src="../js/reports-intel.js?v=20260829.3"></script>
+  <script src="../js/report-render.js?v=20260829.3"></script>
+  <script src="js/incomings.js?v=20260829.3"></script>
 </body>
 </html>
