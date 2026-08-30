@@ -626,8 +626,9 @@
   // selection, then each FOUND row is renamed through the game's own QuickEdit
   // pencil (`span.quickedit[data-id]` → .rename-icon click → input[type=text]
   // value → input[type=button] click, value set on the NEXT tick because
-  // QuickEdit builds its input asynchronously), 150 ms apart — RedAlert's AS:
-  // tagger runs at 160 ms in the wild; the game's request limiter is the ceiling; the checkboxes stay ticked so
+  // QuickEdit builds its input asynchronously), 160 ms apart — the pacing
+  // RedAlert's AS: tagger has used in the wild for years (user's choice); the
+  // game's request limiter is the real ceiling; the checkboxes stay ticked so
   // Ignorar can follow. The game's localStorage is per world (one origin per
   // world), so the keys need no world.
   function igInGame() {
@@ -697,7 +698,7 @@
         i++;
         if (i < found.length) {
           if (window.UI && UI.InfoMessage) { UI.InfoMessage(i + '/' + found.length); }
-          setTimeout(step, 150);
+          setTimeout(step, 160);
         } else {
           setTimeout(function () {
             say(done > 0, done + ' de ' + found.length + ' fakes renombrados' + (done < found.length ? ' (algunas filas no tenían el lápiz de renombrar)' : '') +
