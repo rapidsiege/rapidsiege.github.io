@@ -40,6 +40,7 @@ let mapDrawCursor = null;            // world {x,y} under the cursor in draw mod
 let mapExtractSub = 'pick';          // Extract sub-mode: 'pick' = click villages, 'area' = draw a shape (v5.15.0)
 let mapExtractPoly = [];             // Extract-area vertices, WORLD-space (session-only — not persisted)
 let mapExtractGroups = [];           // extractAreaGroups() of the villages inside mapExtractPoly (panel model)
+let mapCopySep = 'nl';               // Extract → Copy separator: 'nl' (one coord per line) | 'space' (v5.15.1, persisted)
 let mapPrefsLoaded = false;
 let mapMineSeeded = false;           // have we auto-created the "My tribe" group yet?
 const MINE_GROUP_ID = '__mine__';    // stable id of the auto-seeded "My tribe" group
@@ -307,6 +308,7 @@ function loadMapPrefs() {
     mapShowBarbs = p.showBarbs !== false; // default ON
     mapShowReports = p.showReports !== false; // default ON
     mapNightMode = p.nightMode !== false; // default ON
+    mapCopySep = p.copySep === 'space' ? 'space' : 'nl'; // default line break
     // Per-key colour load: keep a default for any missing/malformed entry (never NaN rgb).
     mapColors = { ...MAP_COLOR_DEFAULTS };
     if (p.colors && typeof p.colors === 'object')
@@ -346,7 +348,7 @@ function loadMapPrefs() {
 function saveMapPrefs() {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ showIncoming: mapShowIncoming, showOffPlan: mapShowOffPlan, showDefPlan: mapShowDefPlan, showOffLines: mapShowOffLines, showDefLines: mapShowDefLines, showSnobRes: mapShowSnobRes, showUnusedOff: mapShowUnusedOff, showSupSenders: mapShowSupSenders, showOffSenders: mapShowOffSenders, showDefOnly: mapShowDefVillagesOnly, showOffOnly: mapShowOffVillagesOnly, showBarbs: mapShowBarbs, showReports: mapShowReports, nightMode: mapNightMode, showTierComplete: mapShowTierComplete, showTierTq: mapShowTierTq, showTierHalf: mapShowTierHalf, colors: mapColors, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds, owMode: mapOverwatchMode, owCfg }));
+    localStorage.setItem(MAP_PREFS_KEY, JSON.stringify({ showIncoming: mapShowIncoming, showOffPlan: mapShowOffPlan, showDefPlan: mapShowDefPlan, showOffLines: mapShowOffLines, showDefLines: mapShowDefLines, showSnobRes: mapShowSnobRes, showUnusedOff: mapShowUnusedOff, showSupSenders: mapShowSupSenders, showOffSenders: mapShowOffSenders, showDefOnly: mapShowDefVillagesOnly, showOffOnly: mapShowOffVillagesOnly, showBarbs: mapShowBarbs, showReports: mapShowReports, nightMode: mapNightMode, showTierComplete: mapShowTierComplete, showTierTq: mapShowTierTq, showTierHalf: mapShowTierHalf, copySep: mapCopySep, colors: mapColors, mineSeeded: mapMineSeeded, groups: mapGroups, incomingThresholds: mapIncomingThresholds, owMode: mapOverwatchMode, owCfg }));
   } catch (e) { /* ignore quota/serialization errors */ }
 }
 
@@ -1262,7 +1264,14 @@ function syncExtractSubUi() {
   if (ctl) ctl.style.display = area ? '' : 'none';
   const cnt = document.getElementById('map-extract-area-count');
   if (cnt) cnt.textContent = t('map_drawfilter_count')(mapExtractPoly.length);
+  const sep = document.getElementById('map-extract-sep');
+  if (sep) sep.value = mapCopySep;
   renderExtractPanel();
+}
+// Copy separator picker (the <select> next to Copy). Persisted with the map prefs.
+function setExtractCopySep(v) {
+  mapCopySep = v === 'space' ? 'space' : 'nl';
+  saveMapPrefs();
 }
 // Append a vertex, then re-derive the selection from the shape. Villages that were ALREADY
 // inside keep their checkbox state (so adding a 4th point does not undo a tribe you unticked);
@@ -1494,7 +1503,7 @@ function clearMapExtract() {
   paintMap();
 }
 function copyMapExtract() {
-  const txt = extractCoords([...mapSelection]);
+  const txt = extractCoords([...mapSelection], extractSepChar(mapCopySep));
   if (!txt) { alert(t('map_no_sel')); return; }
   const done = () => alert(t('map_copied')(mapSelection.size));
   if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText)

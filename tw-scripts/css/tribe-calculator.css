@@ -631,6 +631,8 @@
     /* Extract sub-modes (v5.15.0) + the right-dock "Villages in area" panel (same chrome as Tribe Colors,
        body reuses .map-barb-body / .map-heatcfg-sect for the two collapsible sections). */
     .map-ex-sub.active { background: #4a1828; color: #ff8fab; border-color: #a0304f; }
+    .map-ex-sep { background: #1a1008; border: 1px solid #4a3010; color: #d4b483; padding: 2px 5px; border-radius: 4px; font-size: 12px; }
+    .map-ex-sep:focus { outline: none; border-color: #c0900a; }
     #map-extract-area-ctl { display: flex; }
     #map-extract-panel { position: absolute; top: 8px; right: 8px; z-index: 4; width: 260px; max-height: calc(100% - 16px); display: flex; flex-direction: column; background: rgba(14,10,3,.93); border: 1px solid #6a2838; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }
     #map-extract-panel .map-barb-head { color: #ff8fab; }

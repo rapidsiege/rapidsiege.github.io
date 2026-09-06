@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.15.1', date: '2026-09-06',
+    en: [
+      `<b>📋 Choose the separator when copying extracted coordinates.</b> The Map's Extract Coordinates bar has a small picker next to <b>Copy</b>: <b>Line break</b> (one coordinate per line — what Offensive Targets and most in-game inputs take) or <b>Space</b> (a single space-separated line, which some scripts require). The choice is remembered on this browser.`,
+    ],
+    es: [
+      `<b>📋 Elige el separador al copiar las coordenadas extraídas.</b> La barra Extraer Coordenadas del Mapa tiene un pequeño selector junto a <b>Copiar</b>: <b>Salto de línea</b> (una coordenada por línea — lo que aceptan Objetivos Ofensivos y la mayoría de campos del juego) o <b>Espacio</b> (una sola línea separada por espacios, que exigen algunos scripts). La elección se recuerda en este navegador.`,
+    ],
+  },
   { ver: 'v5.15.0', date: '2026-09-06',
     en: [
       `<b>✏ Extract Coordinates can now draw an area.</b> The Map's <b>Extract Coordinates</b> bar has two sub-modes: <b>👆 Select individually</b> (the usual click-a-village toggle) and <b>✏ Draw area</b> — click to drop points and trace a shape (3+ points enclose it, with the same Undo point / Clear area controls as the coordinate filter). Every village inside is selected at once, and a <b>Villages in area</b> panel opens on the right listing them in two sections: <b>Tribes</b> (one checkbox per tribe, toggling all its players) and <b>Players</b> (grouped under their tribe). Untick a whole tribe or single players as you see fit — the rings on the map follow, a partly-selected tribe shows a half-checked box, and barbarians and tribeless players get their own rows so they can be excluded too. <b>Copy</b> returns the same sorted X|Y list as before. Adding a point keeps what you already unticked; the shape is a selection tool only and never touches the plan's 🎯 Draw Coordinate Filter.`,

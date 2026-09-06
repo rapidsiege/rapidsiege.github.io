@@ -743,16 +743,19 @@ function villageTroopBadge(coord) {
   return { offdef, snob: (tt.snob || 0) > 0 };
 }
 
-// Selected map coords → newline-joined 'x|y' string (row-major sorted, stable) for the
-// Extract Coordinates button. Output pastes straight into Offensive Targets / the planner.
-function extractCoords(coords) {
+// Selected map coords → 'x|y' list (row-major sorted, stable) for the Extract Coordinates
+// button. `sep` (v5.15.1) defaults to a line break — what Offensive Targets / the planner and
+// most in-game inputs take; some scripts want one space-separated line instead.
+function extractCoords(coords, sep) {
   const arr = Array.from(coords || []);
   arr.sort((a, b) => {
     const pa = String(a).split('|').map(Number), pb = String(b).split('|').map(Number);
     return (pa[1] - pb[1]) || (pa[0] - pb[0]);
   });
-  return arr.join('\n');
+  return arr.join(sep === undefined ? '\n' : sep);
 }
+// The Extract bar's separator choice ('nl' | 'space') → the actual join string.
+function extractSepChar(mode) { return mode === 'space' ? ' ' : '\n'; }
 
 // ── Barb Finder (pure, harness-tested) ───────────────────────────────────────
 // Pick a loaded tribe-troop player who owns snobs, then rank barbarian villages by how
