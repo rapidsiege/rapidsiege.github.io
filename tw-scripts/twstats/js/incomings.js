@@ -766,6 +766,49 @@
     var note = $("ignoreNote");
     if (note) { note.textContent = msg; note.hidden = false; }
   }
+
+  // «Copiar IDs ataques filtrados» (2026-09-06, filter panel): the order ids of
+  // every row that passes the filters CURRENTLY APPLIED — the table's own
+  // predicate — so any combination («Ataque real en otro pueblo», one player, a
+  // target, a time window…) can feed «Script ignorar fakes» or anything else.
+  // Ids exist only for rows matched to the .json de órdenes (the BBCode dump has
+  // none); unmatched rows are counted and reported, never invented.
+  function filteredOrderIds() {
+    var seen = {}, ids = [], unmatched = 0;
+    if (state.mode !== "attacks") return { ids: ids, unmatched: 0 };
+    state.rows.forEach(function (r) {
+      if (!passesFilters(r)) return;
+      var o = r.attack && r.attack.order;
+      var id = (o && o.id != null) ? String(o.id) : "";
+      if (!/^\d+$/.test(id)) { unmatched++; return; }   // numeric in-game ids only
+      if (seen[id]) return;
+      seen[id] = true;
+      ids.push(id);
+    });
+    return { ids: ids, unmatched: unmatched };
+  }
+  function fCopyNoteShow(msg) {
+    var note = $("fCopyNote");
+    if (note) { note.textContent = msg; note.hidden = false; }
+  }
+  function onCopyFilteredIds() {
+    var res = filteredOrderIds();
+    if (!res.ids.length) {
+      fCopyNoteShow(res.unmatched
+        ? "Ningún ataque filtrado tiene ID: los IDs vienen del .json de órdenes (" + res.unmatched + " sin emparejar)."
+        : "Ningún ataque pasa los filtros aplicados.");
+      return;
+    }
+    var list = res.ids.join(",");
+    copyText(list, function () {
+      fCopyNoteShow("IDs copiados — " + res.ids.length + " ataque" + (res.ids.length === 1 ? "" : "s") +
+        " que pasan los filtros aplicados" +
+        (res.unmatched ? " (" + res.unmatched + " más sin ID: no emparejados con el .json)" : "") +
+        ". Pégalos en «Script ignorar fakes» o donde los necesites.");
+    }, function () {
+      fCopyNoteShow("No se pudo copiar automáticamente; copia los IDs a mano: " + list);
+    });
+  }
   // «Copiar IDs fakes» → the comma-separated id list of the current analysis.
   function onIgnoreClick() {
     var ids = ignorableOrderIds();
@@ -1122,7 +1165,8 @@
     var bg = document.createElement("div");
     bg.id = "reportModalBg";
     bg.className = "twrr-modal-bg";
-    var title = focus === "landed" ? "🎯 Ataque real en otro pueblo — " + TW.esc(coord) : "📄 Informes de " + TW.esc(coord);
+    var title = focus === "landed" ? "🎯 Ataque real en otro pueblo — " + TW.esc(coord)
+      : focus === "dead" ? "💀 Tropas muertas — " + TW.esc(coord) : "📄 Informes de " + TW.esc(coord);
     bg.innerHTML = '<div class="twrr-modal"><div class="twrr-modal-title"><span>' + title + '</span><button type="button" class="twrr-modal-close" id="reportModalClose">✕</button></div>' +
       '<div id="reportModalBody" class="tz-note">Cargando informe…</div></div>';
     bg.addEventListener("click", function (e) { if (e.target === bg) closeReportModal(); });
@@ -1133,7 +1177,7 @@
       if (!body) return; // modal already closed
       if (!villages) { body.textContent = "No se pudo cargar la BD de informes completos."; return; }
       var v = villages[coord];
-      if (!v || (!v.rep && !v.sentRep && !v.lastRealRep) || typeof TWRR === "undefined") {
+      if (!v || (!v.rep && !v.sentRep && !v.lastRealRep && !v.deadRep) || typeof TWRR === "undefined") {
         body.textContent = "Sin informe completo guardado para este pueblo.";
         return;
       }
@@ -1149,6 +1193,11 @@
       var rep = (v.rep && fresh(v.rep.defenderPlayerId)) ? v.rep : null;
       var sentRep = (v.sentRep && fresh(v.sentRep.attackerPlayerId)) ? v.sentRep : null;
       var lastRealRep = (v.lastRealRep && fresh(v.lastRealRep.attackerPlayerId)) ? v.lastRealRep : null;
+      // deadRep: this village's troops died in it — as defender (its coord on the
+      // defender side) or as attacker; ownership-checked on that side's player.
+      var deadSidePid = v.deadRep ? (((v.deadRep.defenderX + "|" + v.deadRep.defenderY) === coord)
+        ? v.deadRep.defenderPlayerId : v.deadRep.attackerPlayerId) : null;
+      var deadRep = (v.deadRep && fresh(deadSidePid)) ? v.deadRep : null;
       // Each stored record renders once even when two slots hold the same report.
       var h = "", shown = {};
       var add = function (rec, head) {
@@ -1158,10 +1207,13 @@
       };
       var landedHead = "🎯 Último ataque real enviado por este pueblo" +
         (focus === "landed" ? " — la prueba del FAKE" : "") + ":";
+      var deadHead = "💀 El informe en que murieron sus tropas" + (focus === "dead" ? " — la prueba" : "") + ":";
       if (focus === "landed") add(lastRealRep, landedHead);
+      if (focus === "dead") add(deadRep, deadHead);
       add(rep, "Último informe sobre este pueblo:");
       add(sentRep, "Mayor ataque enviado por este pueblo:");
       if (focus !== "landed") add(lastRealRep, landedHead);
+      if (focus !== "dead") add(deadRep, deadHead);
       if (!h) {
         body.textContent = "Sin informe del dueño actual — el pueblo cambió de dueño y todo se resetea.";
         return;
@@ -1897,7 +1949,12 @@
       // always exist here even when no file is loaded yet.
       '<div class="fflags" id="fOrders" hidden></div>' +
       '<div class="filter-actions"><button type="button" id="fApply">Aplicar filtros</button>' +
-      '<button type="button" id="fReset">Quitar filtros</button></div>';
+      '<button type="button" id="fReset">Quitar filtros</button>' +
+      // Ids come from the .json de órdenes — the button only exists where that feature does.
+      (ordersFeatureEnabled()
+        ? '<button type="button" id="fCopyIds" title="Copia los IDs (según el .json de órdenes) de los ataques que pasan los filtros aplicados — para «Script ignorar fakes» o cualquier otro uso">Copiar IDs ataques filtrados</button>'
+        : "") +
+      '</div><div id="fCopyNote" class="tz-note" hidden></div>';
 
     function checkedVals(sel) {
       var out = [];
@@ -1914,6 +1971,7 @@
       };
       render();
     });
+    if ($("fCopyIds")) $("fCopyIds").addEventListener("click", onCopyFilteredIds);
     $("fReset").addEventListener("click", function () {
       ["fPlayer", "fType", "fOrigin", "fDest"].forEach(function (id) { $(id).value = ""; });
       $("fFrom").value = from; $("fTo").value = to;
@@ -2168,6 +2226,7 @@
           if (deadInfo) {
             row.flags.push({
               cls: "dead",
+              rc: a.origin.key, // clickable → the report of the death (deadRep)
               text: "💀 Tropas muertas " + (deadInfo.kind === "def"
                 ? "(arrasado defendiendo)" : "(su ejército aniquilado atacando)") +
                 " — " + deadVsSentTxt(deadInfo.t, a),

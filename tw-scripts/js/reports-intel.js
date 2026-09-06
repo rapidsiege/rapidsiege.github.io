@@ -148,7 +148,8 @@ function riMergeReports(store, reports) {
       const dFought = Object.keys(dq).length > 0;
       const dAllDied = dFought && Object.keys(dq).every((u) => (+dl[u] || 0) >= dq[u]);
       if (dAllDied && !r.defenderTroopsAway && spied && riSpiesIntact(r)) {
-        if (!v.dead || t >= v.dead.t) v.dead = { t, kind: 'def', pop: riPop(dq) };
+        // `rid` = the report of the death (2026-09-06) — twstats links the 💀 flag to it.
+        if (!v.dead || t >= v.dead.t) v.dead = { t, kind: 'def', pop: riPop(dq), ...(r.reportId != null ? { rid: String(r.reportId) } : {}) };
       }
       if ((dFought && !dAllDied) || riTotal(riUnits(r.defenderTroopsAway)) > 0) {
         if (!v.alive || t >= v.alive.t) v.alive = { t };
@@ -205,7 +206,11 @@ function riMergeReports(store, reports) {
       const surv = {};
       for (const k in units) { const s = units[k] - (+aLost[k] || 0); if (s > 0) surv[k] = s; }
       if (!Object.keys(surv).length) {
-        if (pop >= RI_DEAD_MIN && (!v.dead || t >= v.dead.t)) v.dead = { t, kind: 'off', pop };
+        if (pop >= RI_DEAD_MIN && (!v.dead || t >= v.dead.t)) {
+          v.dead = { t, kind: 'off', pop, ...(r.reportId != null ? { rid: String(r.reportId) } : {}),
+            ...(typeof r.defenderX === 'number' && typeof r.defenderY === 'number'
+              ? { tgt: r.defenderX + '|' + r.defenderY } : {}) };
+        }
       } else if (riPop(surv) >= RI_ALIVE_MIN) {
         if (!v.alive || t >= v.alive.t) v.alive = { t };
       }
