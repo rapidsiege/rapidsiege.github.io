@@ -901,7 +901,7 @@
     var cv = state.byCoord[coord];
     var conqT = (cv && state.lastConquer[cv.id]) ? state.lastConquer[cv.id].t * 1000 : 0;
     var out = null;
-    ["home", "away", "bld", "sent", "sentBig", "sentCat", "dead", "alive"].forEach(function (k) {
+    ["home", "away", "bld", "sent", "sentBig", "sentCat", "dead", "alive", "lastReal"].forEach(function (k) {
       if (v[k] && (+v[k].t || 0) >= conqT) {
         if (!out) out = { lastT: v.lastT, id: v.id, name: v.name, playerId: v.playerId, playerName: v.playerName, maxT: 0 };
         out[k] = v[k];
@@ -930,6 +930,42 @@
 
   function reportAgeTxt(t) {
     return (t && typeof riAge === "function") ? riAge(Date.now(), t) : "";
+  }
+
+  // 💀 badge age (2026-09-06): measured against the COMMAND's departure, not
+  // against now. "Died 3d 5h before this was sent" is the fact that decides
+  // the row — an army annihilated AFTER the launch was still alive to be
+  // inside it, so the direction is spelled out too. Under 7 days the hours
+  // are kept (a 2-day-old death vs a 2.9-day-old one is a different story
+  // for recruiting); from 7 days on whole days suffice. `deadT` is ms (DB
+  // convention, see riAge), the attack's sent times are unix seconds.
+  function gapTxt(seconds) {
+    var s = Math.max(0, Math.round(seconds));
+    if (s < 3600) return Math.max(1, Math.floor(s / 60)) + "m";
+    if (s < 86400) return Math.floor(s / 3600) + "h";
+    var d = Math.floor(s / 86400);
+    if (d >= 7) return d + "d";
+    var h = Math.floor((s % 86400) / 3600);
+    return h ? d + "d " + h + "h" : d + "d";
+  }
+  function deadVsSentTxt(deadT, a) {
+    var t = deadT / 1000;
+    if (a.sent != null) {
+      var gap = a.sent - t;
+      if (Math.abs(gap) < 60) return "en el momento del envío";
+      return gapTxt(Math.abs(gap)) + (gap > 0 ? " antes del envío" : " después del envío");
+    }
+    if (a.sentMin != null) {
+      // Only a departure bracket (slowest … fastest unit, see the "range"
+      // rung of the sent ladder): state the bound that holds for EVERY
+      // possible speed, never a single invented number.
+      if (t <= a.sentMin) return "≥ " + gapTxt(a.sentMin - t) + " antes del envío";
+      if (t >= a.sentMax) return "≥ " + gapTxt(t - a.sentMax) + " después del envío";
+      return "en torno al envío (hora de envío estimada)";
+    }
+    // No departure at all (the row already carries the "Sin hora de envío"
+    // flag): the now-relative age is the only honest number left.
+    return "hace " + reportAgeTxt(deadT);
   }
 
   // === report hover card ===================================================
@@ -1038,6 +1074,13 @@
         rcAgeTag(v.dead.t) + "</span>") + "</div>";
     }
 
+    // 🎯 newest REAL attack this village sent — where its army last landed.
+    if (v.lastReal) {
+      h += '<div class="rc-sec">' + rcRow("Último real",
+        '<span class="rc-landed">🎯 ' + TW.commas(v.lastReal.pop) + " pop" +
+        (v.lastReal.tgt ? " → " + TW.esc(v.lastReal.tgt) : "") + rcAgeTag(v.lastReal.t) + "</span>") + "</div>";
+    }
+
     // Always all five spied buildings — 0 = unbuilt/destroyed (muted).
     if (v.bld) {
       h += '<div class="rc-sec"><div class="rc-h">Edificios' + rcAgeTag(v.bld.t) + '</div><div class="rc-units">' +
@@ -1071,14 +1114,16 @@
     var bg = $("reportModalBg");
     if (bg) bg.parentNode.removeChild(bg);
   }
-  function openReportModal(coord) {
+  // `focus` (optional) names the flag that opened the modal: "landed" puts the
+  // proving report (lastRealRep — newest REAL attack this village sent) first.
+  function openReportModal(coord, focus) {
     rcHide();
     closeReportModal();
     var bg = document.createElement("div");
     bg.id = "reportModalBg";
     bg.className = "twrr-modal-bg";
-    bg.innerHTML = '<div class="twrr-modal"><div class="twrr-modal-title"><span>📄 Informes de ' +
-      TW.esc(coord) + '</span><button type="button" class="twrr-modal-close" id="reportModalClose">✕</button></div>' +
+    var title = focus === "landed" ? "🎯 Ataque real en otro pueblo — " + TW.esc(coord) : "📄 Informes de " + TW.esc(coord);
+    bg.innerHTML = '<div class="twrr-modal"><div class="twrr-modal-title"><span>' + title + '</span><button type="button" class="twrr-modal-close" id="reportModalClose">✕</button></div>' +
       '<div id="reportModalBody" class="tz-note">Cargando informe…</div></div>';
     bg.addEventListener("click", function (e) { if (e.target === bg) closeReportModal(); });
     document.body.appendChild(bg);
@@ -1088,7 +1133,7 @@
       if (!body) return; // modal already closed
       if (!villages) { body.textContent = "No se pudo cargar la BD de informes completos."; return; }
       var v = villages[coord];
-      if (!v || (!v.rep && !v.sentRep) || typeof TWRR === "undefined") {
+      if (!v || (!v.rep && !v.sentRep && !v.lastRealRep) || typeof TWRR === "undefined") {
         body.textContent = "Sin informe completo guardado para este pueblo.";
         return;
       }
@@ -1103,13 +1148,20 @@
       var fresh = function (pid) { return curId == null || pid == null || String(pid) === curId; };
       var rep = (v.rep && fresh(v.rep.defenderPlayerId)) ? v.rep : null;
       var sentRep = (v.sentRep && fresh(v.sentRep.attackerPlayerId)) ? v.sentRep : null;
-      var h = "";
-      if (rep) {
-        h += '<div class="twrr-srchead">Último informe sobre este pueblo:</div>' + TWRR.reportHtml(rep);
-      }
-      if (sentRep && !(rep && sentRep.reportId === rep.reportId)) {
-        h += '<div class="twrr-srchead">Mayor ataque enviado por este pueblo:</div>' + TWRR.reportHtml(sentRep);
-      }
+      var lastRealRep = (v.lastRealRep && fresh(v.lastRealRep.attackerPlayerId)) ? v.lastRealRep : null;
+      // Each stored record renders once even when two slots hold the same report.
+      var h = "", shown = {};
+      var add = function (rec, head) {
+        if (!rec || (rec.reportId != null && shown[rec.reportId])) return;
+        if (rec.reportId != null) shown[rec.reportId] = 1;
+        h += '<div class="twrr-srchead">' + head + "</div>" + TWRR.reportHtml(rec);
+      };
+      var landedHead = "🎯 Último ataque real enviado por este pueblo" +
+        (focus === "landed" ? " — la prueba del FAKE" : "") + ":";
+      if (focus === "landed") add(lastRealRep, landedHead);
+      add(rep, "Último informe sobre este pueblo:");
+      add(sentRep, "Mayor ataque enviado por este pueblo:");
+      if (focus !== "landed") add(lastRealRep, landedHead);
       if (!h) {
         body.textContent = "Sin informe del dueño actual — el pueblo cambió de dueño y todo se resetea.";
         return;
@@ -1285,7 +1337,11 @@
     var out = [];
     if (row.unknown) out.push("<span class='flag flag-unknown'>Desconocido</span>");
     row.flags.forEach(function (f) {
-      out.push("<span class='flag flag-" + f.cls + "'>" + TW.esc(f.text) + "</span>");
+      // A flag with `rc` is backed by a stored report: rendered clickable
+      // (delegated click on .flag-link[data-rc]) → report modal focused on it.
+      var link = f.rc ? " flag-link' data-rc='" + TW.esc(f.rc) + "' data-focus='" + f.cls +
+        "' role='button' title='Ver el informe que lo demuestra" : "";
+      out.push("<span class='flag flag-" + f.cls + link + "'>" + TW.esc(f.text) + "</span>");
     });
     if (!out.length) out.push("<span class='flag flag-ok'>Sin señales</span>");
     return out.join(" ");
@@ -1384,6 +1440,7 @@
   // the row, count as "marcado", or survive the «Solo marcados» filter.
   var ALERT_FLAGS = {
     low: 1, "new": 1, after: 1, maybe: 1, stale: 1, nosent: 1, esquivar: 1, nuke: 1, notedef: 1, catas: 1, dead: 1,
+    landed: 1,
   };
   function isAlert(r) {
     if (r.unknown) return true;
@@ -1392,7 +1449,7 @@
   }
 
   var SEVERITY = {
-    nuke: 8, esquivar: 7, dead: 6.9, catas: 6.8, notedef: 6.5, after: 6, "new": 5, maybe: 4, low: 3,
+    landed: 8.5, nuke: 8, esquivar: 7, dead: 6.9, catas: 6.8, notedef: 6.5, after: 6, "new": 5, maybe: 4, low: 3,
     nosent: 2, stale: 2, unknown: 1, media: 0.5, blindado: 0,
   };
   var SORTERS = {
@@ -1811,6 +1868,7 @@
       Object.keys(seen).forEach(function (c) { flagCounts[c] = (flagCounts[c] || 0) + 1; });
     });
     var FLAG_LABELS = {
+      landed: "Ataque real en otro pueblo (🎯)",
       nuke: "Posible nuke/tren real", esquivar: "Esquivar", dead: "Tropas muertas (💀)", catas: "Catas (💥)",
       notedef: "Fake probable (pueblo DEF/vacío)", after: "Conquistado tras el envío",
       "new": "Conquista reciente", maybe: "Posible conquista reciente", low: "Pocos puntos",
@@ -1876,7 +1934,7 @@
   // === summary / warnings ==================================================
   function summarize() {
     var total = state.rows.length, flagged = 0, unknown = 0;
-    var n = { low: 0, "new": 0, after: 0, maybe: 0, stale: 0, nosent: 0, blindado: 0, esquivar: 0, media: 0, nuke: 0, notedef: 0, catas: 0, dead: 0 };
+    var n = { low: 0, "new": 0, after: 0, maybe: 0, stale: 0, nosent: 0, blindado: 0, esquivar: 0, media: 0, nuke: 0, notedef: 0, catas: 0, dead: 0, landed: 0 };
     for (var i = 0; i < total; i++) {
       var r = state.rows[i];
       if (r.unknown) { unknown++; continue; }
@@ -1906,6 +1964,7 @@
     if (n.after) parts.push(n.after + " conquistad" + (state.mode === "attacks" ? "o" : "a") +
       (n.after === 1 ? "" : "s") + " tras el envío");
     if (n.notedef) parts.push(n.notedef + " desde pueblo DEF/vacío");
+    if (n.landed) parts.push(n.landed + " con su ataque real ya en otro pueblo");
     if (n.dead) parts.push(n.dead + " con tropas muertas");
     if (n.catas) parts.push(n.catas + " de lanzadores de catas");
     if (n.nuke) parts.push(n.nuke + " posible" + (n.nuke === 1 ? "" : "s") + " real" + (n.nuke === 1 ? "" : "es"));
@@ -2104,13 +2163,39 @@
           // whole real army annihilated; a dead 1-ram fake never qualifies —
           // the merge applies the pop floor). Any NEWER living-troops
           // observation retracts it; facts stay pure, the comparison is here.
+          // The age is battle time vs THIS command's departure (deadVsSentTxt).
           var deadInfo = (fvA && fvA.dead && (!fvA.alive || fvA.dead.t >= fvA.alive.t)) ? fvA.dead : null;
           if (deadInfo) {
             row.flags.push({
               cls: "dead",
               text: "💀 Tropas muertas " + (deadInfo.kind === "def"
                 ? "(arrasado defendiendo)" : "(su ejército aniquilado atacando)") +
-                " — hace " + reportAgeTxt(deadInfo.t),
+                " — " + deadVsSentTxt(deadInfo.t, a),
+            });
+          }
+          // 🎯 Ataque real en otro pueblo (2026-09-06): the newest REAL attack
+          // this village sent (`lastReal`, farm pop ≥ 5000 — reports-intel)
+          // LANDED somewhere else at t, and t falls between this command's
+          // departure and its arrival. One village fields one real army: if
+          // it hit someone else after this command left, this command cannot
+          // be it → FAKE, proven by a report. The flag carries `rc` so it
+          // renders clickable and opens that report (openReportModal focus).
+          // Departure = exact `sent`, or the LATEST possible one when only a
+          // bracket is known (landing after even the latest departure is
+          // still proof); no departure at all → no flag. fvA is already
+          // conquest-cut and never stale.
+          var dep = a.sent != null ? a.sent : (a.sentMin != null ? a.sentMax : null);
+          var landedT = (fvA && fvA.lastReal) ? fvA.lastReal.t / 1000 : null;
+          var landed = (landedT != null && dep != null && landedT > dep &&
+            (a.arrival == null || landedT < a.arrival)) ? fvA.lastReal : null;
+          if (landed) {
+            row.flags.push({
+              cls: "landed",
+              rc: a.origin.key,
+              text: "🎯 Ataque real en otro pueblo — FAKE: " + TW.commas(landed.pop) + " pop" +
+                (landed.tgt ? " sobre " + landed.tgt : "") + " hace " + reportAgeTxt(landed.t) +
+                ", " + gapTxt(landedT - dep) + " después del envío" +
+                (a.sent == null ? " más tardío posible" : "") + " · ver informe",
             });
           }
           // notedef is SUPPRESSED by catas: "fake probable" and "known cata
@@ -2124,9 +2209,10 @@
             });
           }
           // Dead troops count as a fake signal: a village whose army just
-          // died can't be sending the real thing (suppresses the nuke flag).
+          // died can't be sending the real thing (suppresses the nuke flag);
+          // so does its real army having landed elsewhere after the launch.
           var looksFake = row.flags.some(function (f) {
-            return f.cls === "low" || f.cls === "new" || f.cls === "notedef" || f.cls === "dead";
+            return f.cls === "low" || f.cls === "new" || f.cls === "notedef" || f.cls === "dead" || f.cls === "landed";
           });
           var heavy = a.speed && a.speed.isHeavy;
           var armoured = a.target && a.target.status === "blindado";
@@ -2295,10 +2381,11 @@
       var b = e.target && e.target.closest ? e.target.closest(".note-badge[data-rc]") : null;
       if (b) rcShowFor(b); else rcHide();
     });
-    // 📄 badge click → full report modal (lazy-fetches db-full.json once).
+    // 📄 badge click / 🎯 flag click → full report modal (lazy-fetches
+    // db-full.json once); a flag names the report to put first (data-focus).
     document.addEventListener("click", function (e) {
-      var b = e.target && e.target.closest ? e.target.closest(".note-badge[data-rc]") : null;
-      if (b) openReportModal(b.getAttribute("data-rc"));
+      var b = e.target && e.target.closest ? e.target.closest(".note-badge[data-rc], .flag-link[data-rc]") : null;
+      if (b) openReportModal(b.getAttribute("data-rc"), b.getAttribute("data-focus"));
     });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") closeReportModal();

@@ -53,6 +53,12 @@ const RI_CAT_RAM_OFF = 200;
 // Facts stay observations: the client compares dead.t vs alive.t at render time.
 const RI_DEAD_MIN = 5000;  // farm pop — only a half-nuke-or-bigger wipe flags a village
 const RI_ALIVE_MIN = 1000; // farm pop — survivors above this retract a dead claim
+// 🎯 `lastReal` (2026-09-06, twstats "Ataque real en otro pueblo"): the NEWEST attack a
+// village sent with a REAL army — farm pop ≥ RI_REAL_MIN, the same half-nuke floor as
+// `dead`. sent/sentBig keep the LARGEST army ever; this slot answers "when and where did
+// its real army last land?", which the incoming-attack page compares with a command's
+// departure (landed elsewhere after the launch ⇒ that command cannot be the real one).
+const RI_REAL_MIN = 5000;  // farm pop — a real attack, never a token fake or a farm run
 
 function riSum(units, pool) {
   if (!units) return 0;
@@ -182,6 +188,16 @@ function riMergeReports(store, reports) {
           v.sentCat.n = n;
         }
       }
+      // 🎯 lastReal: newest REAL attack sent (pop ≥ RI_REAL_MIN), newest wins
+      // regardless of size — a 1-ram fake never touches it. Carries `pid` (the
+      // protected-tribe strip judges it like sent/sentBig), the reportId (`rid`,
+      // the UI links to the proof) and the target coord (`tgt`).
+      if (pop >= RI_REAL_MIN && (!v.lastReal || t >= v.lastReal.t)) {
+        v.lastReal = { t, pop, ...(pid ? { pid } : {}),
+          ...(r.reportId != null ? { rid: String(r.reportId) } : {}),
+          ...(typeof r.defenderX === 'number' && typeof r.defenderY === 'number'
+            ? { tgt: r.defenderX + '|' + r.defenderY } : {}) };
+      }
       // 💀 dead (attacker side): the defender won — the whole sent army died.
       // Only a real army (pop floor) proves anything; substantial survivors
       // coming home are living troops (`alive`), a surviving token fake is not.
@@ -285,6 +301,7 @@ function riCombineVillages(a, b) {
   const bld = newer(a.bld, b.bld); if (bld) out.bld = bld;
   const dead = newer(a.dead, b.dead); if (dead) out.dead = dead;
   const alive = newer(a.alive, b.alive); if (alive) out.alive = alive;
+  const lastReal = newer(a.lastReal, b.lastReal); if (lastReal) out.lastReal = lastReal;
   if (a.sent || b.sent) {
     out.sent = !a.sent ? b.sent : !b.sent ? a.sent
       : ((b.sent.off > a.sent.off || (b.sent.off === a.sent.off && (b.sent.t || 0) > (a.sent.t || 0))) ? b.sent : a.sent);

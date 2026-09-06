@@ -432,6 +432,11 @@ table.vis.own-villages td.zero { color: var(--text-muted); opacity: .5; }
 .flag-catas { color: #fff; background: #6d3f8e; border-color: #6d3f8e; }
 /* Troops confirmed dead in battle (💀) — dark blood-red, distinct from nuke's red. */
 .flag-dead { color: #fff; background: #7a1f1f; border-color: #7a1f1f; }
+/* 🎯 Its real army already landed elsewhere after this command left — proof-grade fake (teal). */
+.flag-landed { color: #fff; background: #0b6e4f; border-color: #0b6e4f; }
+/* A flag backed by a stored report: clickable → report modal. */
+.flag-link { cursor: pointer; text-decoration: underline dotted; }
+.rc-landed { color: #0b6e4f; font-weight: 700; }
 /* Bonus-village icon (barracks/stable/workshop/farm), inline after the name. */
 .bonus-ic { width: 14px; height: 14px; vertical-align: -2px; }
 .note-badge {
