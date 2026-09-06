@@ -18,6 +18,16 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.15.2', date: '2026-09-06',
+    en: [
+      `<b>🎭 Copy a ready-to-run fake script from the map.</b> The Extract Coordinates picker next to <b>Copy</b> has a third option, <b>Fake script</b>: instead of a bare coordinate list, Copy puts the complete quickbar fake script on the clipboard with the selected villages already filled into its <code>coords</code> list (space-separated, as the script expects). Paste it into a quickbar entry and it picks a random target from the list with 1 spy + 1 ram, topping up to the fake minimum. Draw an area, untick the tribes you do not want to fake, Copy — done. The script itself is unchanged; only the list is replaced.`,
+      `<b>🎭 Fake script respects the 10,000-character quickbar limit.</b> The copy confirmation now states the script's character count. When the selected coordinates would not fit one script (about 760 seven-character coordinates), Copy opens a small dialog that splits them <b>evenly</b> into as many scripts as needed — 900 coordinates become two scripts of 450, not 761 + 139 — each with its own Copy button and a ✓ once copied, so you can paste each into its own quickbar entry without losing track.`,
+    ],
+    es: [
+      `<b>🎭 Copia un script de fakes listo para usar desde el mapa.</b> El selector junto a <b>Copiar</b> de Extraer Coordenadas tiene una tercera opción, <b>Script de fakes</b>: en vez de una lista de coordenadas, Copiar pone en el portapapeles el script de fakes completo para la barra rápida con los pueblos seleccionados ya metidos en su lista <code>coords</code> (separados por espacios, como espera el script). Pégalo en una entrada de la barra rápida y elegirá un objetivo al azar de la lista con 1 explorador + 1 ariete, completando hasta el mínimo de fake. Dibuja un área, desmarca las tribus que no quieras fakear, Copiar — listo. El script en sí no cambia; solo se sustituye la lista.`,
+      `<b>🎭 El script de fakes respeta el límite de 10.000 caracteres de la barra rápida.</b> La confirmación de copia indica ahora los caracteres del script. Cuando las coordenadas seleccionadas no caben en un solo script (unas 760 coordenadas de siete caracteres), Copiar abre un pequeño diálogo que las divide <b>a partes iguales</b> en tantos scripts como haga falta — 900 coordenadas son dos scripts de 450, no 761 + 139 — cada uno con su botón Copiar y un ✓ al copiarlo, para pegar cada uno en su propia entrada de la barra rápida sin perder la cuenta.`,
+    ],
+  },
   { ver: 'v5.15.1', date: '2026-09-06',
     en: [
       `<b>📋 Choose the separator when copying extracted coordinates.</b> The Map's Extract Coordinates bar has a small picker next to <b>Copy</b>: <b>Line break</b> (one coordinate per line — what Offensive Targets and most in-game inputs take) or <b>Space</b> (a single space-separated line, which some scripts require). The choice is remembered on this browser.`,

@@ -40,7 +40,8 @@ let mapDrawCursor = null;            // world {x,y} under the cursor in draw mod
 let mapExtractSub = 'pick';          // Extract sub-mode: 'pick' = click villages, 'area' = draw a shape (v5.15.0)
 let mapExtractPoly = [];             // Extract-area vertices, WORLD-space (session-only — not persisted)
 let mapExtractGroups = [];           // extractAreaGroups() of the villages inside mapExtractPoly (panel model)
-let mapCopySep = 'nl';               // Extract → Copy separator: 'nl' (one coord per line) | 'space' (v5.15.1, persisted)
+let mapCopySep = 'nl';               // Extract → Copy format: 'nl' (one coord per line) | 'space' (v5.15.1) | 'fake' (whole quickbar fake script, v5.15.2); persisted
+const MAP_COPY_MODES = ['nl', 'space', 'fake'];
 let mapPrefsLoaded = false;
 let mapMineSeeded = false;           // have we auto-created the "My tribe" group yet?
 const MINE_GROUP_ID = '__mine__';    // stable id of the auto-seeded "My tribe" group
@@ -308,7 +309,7 @@ function loadMapPrefs() {
     mapShowBarbs = p.showBarbs !== false; // default ON
     mapShowReports = p.showReports !== false; // default ON
     mapNightMode = p.nightMode !== false; // default ON
-    mapCopySep = p.copySep === 'space' ? 'space' : 'nl'; // default line break
+    mapCopySep = MAP_COPY_MODES.includes(p.copySep) ? p.copySep : 'nl'; // default line break
     // Per-key colour load: keep a default for any missing/malformed entry (never NaN rgb).
     mapColors = { ...MAP_COLOR_DEFAULTS };
     if (p.colors && typeof p.colors === 'object')
@@ -1270,8 +1271,13 @@ function syncExtractSubUi() {
 }
 // Copy separator picker (the <select> next to Copy). Persisted with the map prefs.
 function setExtractCopySep(v) {
-  mapCopySep = v === 'space' ? 'space' : 'nl';
+  mapCopySep = MAP_COPY_MODES.includes(v) ? v : 'nl';
   saveMapPrefs();
+}
+// What Copy puts on the clipboard for the current mode: the coord list (nl / space) or the
+// complete quickbar fake script with the coords inlined (fake, js/fake-script.js).
+function extractCopyText(coords) {
+  return mapCopySep === 'fake' ? buildFakeScript(coords) : extractCoords(coords, extractSepChar(mapCopySep));
 }
 // Append a vertex, then re-derive the selection from the shape. Villages that were ALREADY
 // inside keep their checkbox state (so adding a 4th point does not undo a tribe you unticked);
@@ -1503,12 +1509,56 @@ function clearMapExtract() {
   paintMap();
 }
 function copyMapExtract() {
-  const txt = extractCoords([...mapSelection], extractSepChar(mapCopySep));
-  if (!txt) { alert(t('map_no_sel')); return; }
-  const done = () => alert(t('map_copied')(mapSelection.size));
+  if (!mapSelection.size) { alert(t('map_no_sel')); return; }
+  if (mapCopySep === 'fake') {
+    // v5.15.2: one script when it fits the quickbar limit; otherwise an even split, one Copy
+    // button per script (the clipboard holds one text — the user pastes each into its own entry).
+    const parts = splitFakeScripts([...mapSelection]);
+    if (parts.length === 1) { mapCopyText(parts[0].script, () => alert(t('map_copied_fake')(mapSelection.size, parts[0].chars))); return; }
+    openFakeSplitModal(parts);
+    return;
+  }
+  const txt = extractCopyText([...mapSelection]);
+  mapCopyText(txt, () => alert(t('map_copied')(mapSelection.size)));
+}
+function mapCopyText(txt, done) {
   if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText)
     navigator.clipboard.writeText(txt).then(done).catch(() => mapFallbackCopy(txt, done));
   else mapFallbackCopy(txt, done);
+}
+// Fake-script split modal: intro + one row per script (coords · chars · Copy). Parts are kept in
+// mapFakeParts so the row buttons can copy by index; a copied row shows ✓ so the user can tell
+// which quickbar entries are done.
+let mapFakeParts = [];
+function openFakeSplitModal(parts) {
+  mapFakeParts = parts;
+  const body = document.getElementById('fake-split-body');
+  if (!body) return;
+  const total = parts.reduce((n, p) => n + p.coords.length, 0);
+  let h = `<p class="fake-split-intro">${t('map_fake_split_intro')(total, parts.length, FAKE_SCRIPT_MAX_CHARS.toLocaleString())}</p>`;
+  parts.forEach((p, i) => {
+    h += `<div class="fake-part-row" id="fake-part-${i}"><span class="fake-part-name">${t('map_fake_part')(i + 1, parts.length)}</span>`
+      + `<span class="fake-part-meta">${t('map_fake_part_meta')(p.coords.length, p.chars.toLocaleString())}</span>`
+      + `<button class="btn btn-primary btn-sm" onclick="copyFakePart(${i})">${t('map_copy_coords')}</button>`
+      + `<span class="fake-part-done" id="fake-part-done-${i}"></span></div>`;
+  });
+  body.innerHTML = h;
+  const m = document.getElementById('fake-split-modal');
+  if (m) m.classList.add('open');
+}
+function copyFakePart(i) {
+  const p = mapFakeParts[i];
+  if (!p) return;
+  mapCopyText(p.script, () => {
+    const d = document.getElementById('fake-part-done-' + i);
+    if (d) d.textContent = t('map_fake_copied_part');
+    const row = document.getElementById('fake-part-' + i);
+    if (row) row.classList.add('done');
+  });
+}
+function closeFakeSplitModal() {
+  const m = document.getElementById('fake-split-modal');
+  if (m) m.classList.remove('open');
 }
 function mapFallbackCopy(txt, done) {
   try {

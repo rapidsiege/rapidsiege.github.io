@@ -191,6 +191,7 @@
       <select id="map-extract-sep" class="map-ex-sep" onchange="setExtractCopySep(this.value)" data-i18n-title="map_extract_sep_t" title="How the copied coordinates are separated.">
         <option value="nl" data-i18n="map_extract_sep_nl">Line break</option>
         <option value="space" data-i18n="map_extract_sep_space">Space</option>
+        <option value="fake" data-i18n="map_extract_sep_fake">Fake script</option>
       </select>
       <button class="btn btn-ghost btn-sm" onclick="copyMapExtract()" data-i18n="map_copy_coords">Copy</button>
       <button class="btn btn-ghost btn-sm" onclick="clearMapExtract()" data-i18n="map_clear_sel">Clear</button>
@@ -1159,6 +1160,7 @@
 <script src="js/changelog-archive.js"></script>
 <script src="js/changelog.js"></script>
 <script src="js/map.js"></script>
+<script src="js/fake-script.js"></script>
 <script src="js/map-render.js"></script>
 <script src="js/core.js"></script>
 <script src="js/data-load.js"></script>
@@ -1259,7 +1261,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.15.1 &nbsp;·&nbsp; 2026-09-06</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.15.2 &nbsp;·&nbsp; 2026-09-06</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
@@ -1287,6 +1289,22 @@ document.addEventListener('drop', e => {
     <div class="modal-footer">
       <button class="btn btn-ghost btn-sm" onclick="closeBBModal()" data-i18n="btn_close">Close</button>
       <button class="btn btn-primary btn-sm" id="bb-copy-btn" onclick="copyBBTable()" data-i18n="bb_copy_btn">Copy to Clipboard</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ FAKE SCRIPT SPLIT MODAL (v5.15.2) ═══════════════════════
+     Opened by the Map's Extract → Copy in "Fake script" mode when one script would exceed the
+     quickbar's 10,000-character limit: one row + Copy button per evenly-split script. -->
+<div class="modal-overlay" id="fake-split-modal" onclick="if(event.target===this)closeFakeSplitModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 data-i18n="map_fake_split_title">Fake script — split into several quickbar entries</h3>
+      <button class="modal-close" onclick="closeFakeSplitModal()">✕</button>
+    </div>
+    <div class="modal-body" id="fake-split-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeFakeSplitModal()" data-i18n="btn_close">Close</button>
     </div>
   </div>
 </div>
