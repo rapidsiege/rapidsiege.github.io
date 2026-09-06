@@ -174,10 +174,29 @@
   <div id="map-wrap">
     <canvas id="map-canvas"></canvas>
     <div id="map-tooltip"></div>
+    <!-- Extract Coordinates bar (v5.15.0: two sub-modes). 'pick' = click villages one by one; 'area' = draw a
+         shape → every village inside is selected and #map-extract-panel (right dock) lists them by tribe/player.
+         Both feed the same selection set, so Copy / Clear / the count are shared. -->
     <div id="map-extract-bar" style="display:none;">
+      <button class="btn btn-ghost btn-sm map-ex-sub" id="map-extract-pick" onclick="setExtractSub('pick')" data-i18n="map_extract_pick" data-i18n-title="map_extract_pick_t" title="Click villages on the map one by one.">👆 Select individually</button>
+      <button class="btn btn-ghost btn-sm map-ex-sub" id="map-extract-area" onclick="setExtractSub('area')" data-i18n="map_extract_area" data-i18n-title="map_extract_area_t" title="Click to trace an area; every village inside is selected, then untick tribes or players.">✏ Draw area</button>
+      <span class="map-tb-sep"></span>
+      <span id="map-extract-area-ctl" style="display:none;align-items:center;gap:8px;">
+        <span id="map-extract-area-count" class="map-extract-count">0</span>
+        <button class="btn btn-ghost btn-sm" onclick="undoExtractPoint()" data-i18n="map_drawfilter_undo">↶ Undo point</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearExtractArea()" data-i18n="map_drawfilter_clear">✕ Clear area</button>
+        <span class="map-tb-sep"></span>
+      </span>
       <span id="map-extract-count" class="map-extract-count">0</span>
       <button class="btn btn-ghost btn-sm" onclick="copyMapExtract()" data-i18n="map_copy_coords">Copy</button>
       <button class="btn btn-ghost btn-sm" onclick="clearMapExtract()" data-i18n="map_clear_sel">Clear</button>
+    </div>
+    <div id="map-extract-panel" style="display:none;">
+      <div class="map-barb-head">
+        <span><span data-i18n="map_extract_panel">Villages in area</span> <span id="map-extract-panel-count" class="map-grp-cnt"></span></span>
+        <button class="map-barb-close" onclick="setExtractSub('pick')" title="Close">✕</button>
+      </div>
+      <div id="map-extract-panel-body" class="map-barb-body"></div>
     </div>
     <div id="map-drawfilter-bar" style="display:none;">
       <span class="map-extract-count" data-i18n="map_drawfilter_label">Filter area:</span>
@@ -1236,7 +1255,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.14.1 &nbsp;·&nbsp; 2026-08-29</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.15.0 &nbsp;·&nbsp; 2026-09-06</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

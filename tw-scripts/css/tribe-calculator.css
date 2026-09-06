@@ -628,6 +628,20 @@
     #map-extract-btn.active { background: #3a2808; color: #f0c040; border-color: #7a5018; }
     #map-extract-bar { position: absolute; left: 8px; bottom: 8px; z-index: 4; display: flex; align-items: center; gap: 8px; background: rgba(14,10,3,.93); border: 1px solid #3a2808; border-radius: 6px; padding: 6px 9px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }
     .map-extract-count { font-size: 12px; color: #f0c040; font-weight: 600; }
+    /* Extract sub-modes (v5.15.0) + the right-dock "Villages in area" panel (same chrome as Tribe Colors,
+       body reuses .map-barb-body / .map-heatcfg-sect for the two collapsible sections). */
+    .map-ex-sub.active { background: #4a1828; color: #ff8fab; border-color: #a0304f; }
+    #map-extract-area-ctl { display: flex; }
+    #map-extract-panel { position: absolute; top: 8px; right: 8px; z-index: 4; width: 260px; max-height: calc(100% - 16px); display: flex; flex-direction: column; background: rgba(14,10,3,.93); border: 1px solid #6a2838; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }
+    #map-extract-panel .map-barb-head { color: #ff8fab; }
+    .map-ex-actions { display: inline-flex; gap: 4px; margin-left: auto; }
+    .map-ex-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #d4b483; padding: 2px 4px; border-radius: 4px; cursor: pointer; }
+    .map-ex-row:hover { background: #241803; }
+    .map-ex-row input { margin: 0; flex: 0 0 auto; }
+    .map-ex-player { padding-left: 14px; }
+    .map-ex-tag { color: #f0c040; font-weight: 600; flex: 0 0 auto; }
+    .map-ex-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .map-ex-cap { font-size: 11px; color: #a07810; margin: 5px 0 1px; font-weight: 600; }
     /* Draw Coordinate Filter: same dock/bar as Extract (they never show at once — one click-tool at a time) */
     #map-drawfilter-btn.active { background: #123a36; color: #4fd0c0; border-color: #2a7a70; }
     #map-drawfilter-bar { position: absolute; left: 8px; bottom: 8px; z-index: 4; display: flex; align-items: center; gap: 8px; background: rgba(14,10,3,.93); border: 1px solid #2a5a54; border-radius: 6px; padding: 6px 9px; box-shadow: 0 4px 14px rgba(0,0,0,.55); }

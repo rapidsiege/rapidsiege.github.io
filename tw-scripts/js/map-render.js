@@ -37,6 +37,9 @@ let mapExtractMode = false;          // "Extract Coordinates": click villages to
 let mapSelection = new Set();        // selected 'x|y' coords (rings on the map)
 let mapDrawFilterMode = false;       // "Draw Coordinate Filter": click to place polygon vertices
 let mapDrawCursor = null;            // world {x,y} under the cursor in draw mode (rubber-band preview)
+let mapExtractSub = 'pick';          // Extract sub-mode: 'pick' = click villages, 'area' = draw a shape (v5.15.0)
+let mapExtractPoly = [];             // Extract-area vertices, WORLD-space (session-only — not persisted)
+let mapExtractGroups = [];           // extractAreaGroups() of the villages inside mapExtractPoly (panel model)
 let mapPrefsLoaded = false;
 let mapMineSeeded = false;           // have we auto-created the "My tribe" group yet?
 const MINE_GROUP_ID = '__mine__';    // stable id of the auto-seeded "My tribe" group
@@ -816,6 +819,13 @@ function paintMap() {
   }
   // Draw-Coordinate-Filter polygon overlay (drawn whenever it has points, editable in draw mode).
   drawFilterPolygon(w, h);
+  // Extract-area shape (only while Extract mode is on — it is a selection tool, not plan state).
+  if (mapExtractMode && mapExtractPoly.length) {
+    drawPolygonOverlay(mapExtractPoly, w, h, {
+      stroke: '#ff3b6b', fill: 'rgba(255,59,107,0.10)', dash: 'rgba(255,59,107,0.75)',
+      rubber: mapExtractSub === 'area' ? mapDrawCursor : null,
+    });
+  }
   // Barb Finder overlay: orange rings on candidate barbs, blue rings on the snob origins.
   if (barbFinderActive) {
     for (const r of barbResults) drawMapRing(r.coord, w, h, '#ff9d2e', 2);
@@ -910,8 +920,9 @@ function onMapMouseMove(e) {
     paintMap();
     return;
   }
-  // Draw-filter mode: track the world point under the cursor for the rubber-band line; no tooltip.
-  if (mapDrawFilterMode) {
+  // Draw-filter mode (and Extract → Draw area): track the world point under the cursor for the
+  // rubber-band line; no tooltip.
+  if (mapDrawFilterMode || (mapExtractMode && mapExtractSub === 'area')) {
     mapDrawCursor = screenToWorld(p.x, p.y);
     hideMapTip();
     paintMap();
@@ -925,7 +936,12 @@ function onMapMouseMove(e) {
 function onMapMouseUp() {
   // A click (mousedown→up without panning) acts on the active click-tool.
   if (mapDrag && !mapDrag.moved) {
-    if (mapExtractMode) {
+    if (mapExtractMode && mapExtractSub === 'area') {
+      const wld = screenToWorld(mapDrag.x, mapDrag.y);
+      addExtractVertex(
+        Math.max(0, Math.min(MAP_WORLD - 1, Math.round(wld.x))),
+        Math.max(0, Math.min(MAP_WORLD - 1, Math.round(wld.y))));
+    } else if (mapExtractMode) {
       const coord = villageAtPixel(mapDrag.x, mapDrag.y);
       if (coord) toggleExtractCoord(coord);
     } else if (mapDrawFilterMode) {
@@ -1207,19 +1223,141 @@ function resetOwConfig() {
 }
 
 // ── Extract Coordinates: click villages to collect coords, then copy them ──
+// v5.15.0: two sub-modes share the one selection set (mapSelection). 'pick' = the original
+// click-a-village toggle; 'area' = draw a shape (mapExtractPoly) → every village inside is
+// selected and a right-dock panel lists them by tribe → player with checkboxes. Copy is the
+// same sorted X|Y list either way. The shape and the panel live only while Extract is on.
 function toggleExtractMode() {
   mapExtractMode = !mapExtractMode;
   if (mapExtractMode) {
     if (barbFinderActive) closeBarbFinder();          // one click-tool at a time
     if (mapDrawFilterMode) toggleDrawFilterMode();
+  } else {
+    mapDrawCursor = null;
   }
   const btn = document.getElementById('map-extract-btn');
   if (btn) btn.classList.toggle('active', mapExtractMode);
   const bar = document.getElementById('map-extract-bar');
   if (bar) bar.style.display = mapExtractMode ? '' : 'none';
   if (mapCanvas) mapCanvas.style.cursor = mapExtractMode ? 'crosshair' : '';
+  syncExtractSubUi();
   updateExtractBar();
   repaintMapData(); // closing the barb finder here must clear its isolation dimming
+}
+// Sub-mode switch (the two buttons in the Extract bar). Switching keeps the selection AND the
+// drawn shape; only the click behavior, the area controls, and the panel visibility change.
+function setExtractSub(sub) {
+  mapExtractSub = sub === 'area' ? 'area' : 'pick';
+  if (mapExtractSub === 'pick') mapDrawCursor = null;
+  syncExtractSubUi();
+  paintMap();
+}
+function syncExtractSubUi() {
+  const area = mapExtractMode && mapExtractSub === 'area';
+  const bp = document.getElementById('map-extract-pick');
+  if (bp) bp.classList.toggle('active', mapExtractMode && mapExtractSub === 'pick');
+  const ba = document.getElementById('map-extract-area');
+  if (ba) ba.classList.toggle('active', area);
+  const ctl = document.getElementById('map-extract-area-ctl');
+  if (ctl) ctl.style.display = area ? '' : 'none';
+  const cnt = document.getElementById('map-extract-area-count');
+  if (cnt) cnt.textContent = t('map_drawfilter_count')(mapExtractPoly.length);
+  renderExtractPanel();
+}
+// Append a vertex, then re-derive the selection from the shape. Villages that were ALREADY
+// inside keep their checkbox state (so adding a 4th point does not undo a tribe you unticked);
+// villages newly inside are selected; anything outside the new shape drops out — the shape
+// replaces hand-picked coords rather than merging with them.
+function addExtractVertex(x, y) {
+  const prevInside = new Set(extractAreaVillages(mapExtractPoly));
+  mapExtractPoly.push({ x, y });
+  recomputeExtractArea(prevInside);
+}
+function undoExtractPoint() {
+  if (!mapExtractPoly.length) return;
+  const prevInside = new Set(extractAreaVillages(mapExtractPoly));
+  mapExtractPoly.pop();
+  recomputeExtractArea(prevInside);
+}
+// Clear area = the shape, its panel AND the selection (the bar's plain Clear only empties the selection).
+function clearExtractArea() {
+  mapExtractPoly = [];
+  mapExtractGroups = [];
+  mapSelection.clear();
+  syncExtractSubUi();
+  updateExtractBar();
+  paintMap();
+}
+function recomputeExtractArea(prevInside) {
+  const inside = extractAreaVillages(mapExtractPoly);
+  const next = new Set();
+  for (const c of inside) if (!prevInside.has(c) || mapSelection.has(c)) next.add(c);
+  mapSelection = next;
+  mapExtractGroups = extractAreaGroups(inside);
+  syncExtractSubUi();
+  updateExtractBar();
+  paintMap();
+}
+// The right-dock panel: Tribes (one checkbox per tribe → toggles all its players) and Players
+// (grouped under a tribe caption). Checkbox state is DERIVED from mapSelection every render —
+// mapSelection is the single truth, so hand-picking a village in the same shape stays consistent
+// (a partly-selected tribe/player shows indeterminate). Shown only in 'area' sub-mode with a
+// usable shape; the ✕ switches back to 'pick'.
+function renderExtractPanel() {
+  const panel = document.getElementById('map-extract-panel');
+  if (!panel) return;
+  const show = mapExtractMode && mapExtractSub === 'area' && mapExtractPoly.length >= 3;
+  panel.style.display = show ? '' : 'none';
+  if (!show) return;
+  if (mapGroupsOpen) toggleMapGroups();   // one right-dock panel at a time (Tribe Colors shares the corner)
+  const body = document.getElementById('map-extract-panel-body');
+  if (!body) return;
+  const total = mapExtractGroups.reduce((n, tr) => n + tr.count, 0);
+  const head = document.getElementById('map-extract-panel-count');
+  if (head) head.textContent = t('map_extract_sel_of')(mapSelection.size, total);
+  if (!total) { body.innerHTML = `<div class="map-grp-empty">${t('map_extract_area_empty')}</div>`; return; }
+  const selOf = coords => { let n = 0; for (const c of coords) if (mapSelection.has(c)) n++; return n; };
+  const cb = (kind, key, sel, cnt) =>
+    `<input type="checkbox" ${sel === cnt ? 'checked' : ''} data-ind="${sel > 0 && sel < cnt ? 1 : 0}" onchange="extractToggle${kind}('${esc(key)}', this.checked)">`;
+  const tagHtml = tr => tr.tag ? `<span class="map-ex-tag">[${esc(tr.tag)}]</span>` : '';
+  let h = `<details class="map-heatcfg-sect" open><summary class="map-heatcfg-shead">${t('map_extract_tribes')}`
+    + `<span class="map-ex-actions"><button class="map-cat-all" onclick="event.preventDefault(); event.stopPropagation(); extractSelectAll(true)">${t('map_all')}</button>`
+    + `<button class="map-cat-all" onclick="event.preventDefault(); event.stopPropagation(); extractSelectAll(false)">${t('map_extract_none')}</button></span></summary><div class="map-heatcfg-sbody">`;
+  for (const tr of mapExtractGroups) {
+    const coords = tr.players.flatMap(p => p.coords);
+    h += `<label class="map-ex-row">${cb('Tribe', tr.key, selOf(coords), tr.count)}${tagHtml(tr)}<span class="map-ex-name" title="${esc(tr.name)}">${esc(tr.name)}</span><span class="map-grp-cnt">${t('map_extract_vil')(tr.count)}</span></label>`;
+  }
+  h += `</div></details><div class="map-heatcfg-sep"></div><details class="map-heatcfg-sect" open><summary class="map-heatcfg-shead">${t('map_extract_players')}</summary><div class="map-heatcfg-sbody">`;
+  for (const tr of mapExtractGroups) {
+    h += `<div class="map-ex-cap">${tr.tag ? `[${esc(tr.tag)}] ` : ''}${esc(tr.name)}</div>`;
+    for (const p of tr.players)
+      h += `<label class="map-ex-row map-ex-player">${cb('Player', p.pid, selOf(p.coords), p.count)}<span class="map-ex-name" title="${esc(p.name)}">${esc(p.name)}</span><span class="map-grp-cnt">${t('map_extract_vil')(p.count)}</span></label>`;
+  }
+  h += `</div></details>`;
+  body.innerHTML = h;
+  // `indeterminate` is a DOM property, not an attribute — set it after the innerHTML parse.
+  if (body.querySelectorAll) body.querySelectorAll('input[data-ind="1"]').forEach(i => { i.indeterminate = true; });
+}
+function extractPlayerRow(pid) {
+  for (const tr of mapExtractGroups) for (const p of tr.players) if (p.pid === pid) return p;
+  return null;
+}
+function extractSetCoords(coords, on) {
+  for (const c of coords) { if (on) mapSelection.add(c); else mapSelection.delete(c); }
+  renderExtractPanel();
+  updateExtractBar();
+  paintMap();
+}
+function extractToggleTribe(key, on) {
+  const tr = mapExtractGroups.find(x => x.key === key);
+  if (tr) extractSetCoords(tr.players.flatMap(p => p.coords), on);
+}
+function extractTogglePlayer(pid, on) {
+  const p = extractPlayerRow(pid);
+  if (p) extractSetCoords(p.coords, on);
+}
+function extractSelectAll(on) {
+  extractSetCoords(mapExtractGroups.flatMap(tr => tr.players.flatMap(p => p.coords)), on);
 }
 
 // ── Draw Coordinate Filter: click to place polygon vertices; the plan then only sends offs
@@ -1283,25 +1421,33 @@ function toggleDrawFilterReverse() {
 // vertex to the cursor (and on to the first vertex) while in draw mode. Cheap top-layer draw.
 function drawFilterPolygon(w, h) {
   const poly = (typeof planCoordPolygon !== 'undefined') ? planCoordPolygon : [];
+  if (!poly.length) return;
+  drawPolygonOverlay(poly, w, h, {
+    stroke: '#4fd0c0', fill: 'rgba(79,208,192,0.13)', dash: 'rgba(79,208,192,0.75)',
+    inv: typeof planCoordPolygonInv !== 'undefined' && planCoordPolygonInv,
+    rubber: mapDrawFilterMode ? mapDrawCursor : null,
+  });
+}
+// Shared polygon painter (plan filter = teal, extract area = pink). `inv` fills the OUTSIDE
+// instead: full-canvas rect + polygon subpaths under the even-odd rule shade everything but
+// the shape, so the tint always covers the region senders are drawn from. `rubber` = world
+// point of the cursor → dashed preview from the last vertex to it (and on to the first).
+function drawPolygonOverlay(poly, w, h, o) {
   if (!poly.length || !mapCtx) return;
   const ctx = mapCtx;
   const pts = poly.map(v => worldToScreen(v.x, v.y));
   ctx.save();
   if (pts.length >= 3) {
-    // Select Reverse fills the OUTSIDE instead: full-canvas rect + polygon subpaths under
-    // the even-odd rule shade everything but the shape, so the tint always covers the
-    // region senders are drawn from.
-    const inv = typeof planCoordPolygonInv !== 'undefined' && planCoordPolygonInv;
     ctx.beginPath();
-    if (inv) ctx.rect(0, 0, w, h);
+    if (o.inv) ctx.rect(0, 0, w, h);
     ctx.moveTo(pts[0].px, pts[0].py);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].px, pts[i].py);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(79,208,192,0.13)';
+    ctx.fillStyle = o.fill;
     ctx.fill('evenodd');
   }
   if (pts.length >= 2) {
-    ctx.strokeStyle = '#4fd0c0';
+    ctx.strokeStyle = o.stroke;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(pts[0].px, pts[0].py);
@@ -1309,11 +1455,11 @@ function drawFilterPolygon(w, h) {
     if (pts.length >= 3) ctx.closePath();
     ctx.stroke();
   }
-  if (mapDrawFilterMode && mapDrawCursor && pts.length) {
-    const c = worldToScreen(mapDrawCursor.x, mapDrawCursor.y);
+  if (o.rubber && pts.length) {
+    const c = worldToScreen(o.rubber.x, o.rubber.y);
     const last = pts[pts.length - 1];
     ctx.setLineDash([5, 4]);
-    ctx.strokeStyle = 'rgba(79,208,192,0.75)';
+    ctx.strokeStyle = o.dash;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(last.px, last.py);
@@ -1322,7 +1468,7 @@ function drawFilterPolygon(w, h) {
     ctx.stroke();
     ctx.setLineDash([]);
   }
-  ctx.fillStyle = '#4fd0c0';
+  ctx.fillStyle = o.stroke;
   for (const s of pts) {
     ctx.beginPath();
     ctx.arc(s.px, s.py, 4, 0, Math.PI * 2);
@@ -1333,6 +1479,7 @@ function drawFilterPolygon(w, h) {
 function toggleExtractCoord(coord) {
   if (mapSelection.has(coord)) mapSelection.delete(coord); else mapSelection.add(coord);
   updateExtractBar();
+  renderExtractPanel();
   paintMap();
 }
 function updateExtractBar() {
@@ -1343,6 +1490,7 @@ function clearMapExtract() {
   if (!mapSelection.size) return;
   mapSelection.clear();
   updateExtractBar();
+  renderExtractPanel();
   paintMap();
 }
 function copyMapExtract() {

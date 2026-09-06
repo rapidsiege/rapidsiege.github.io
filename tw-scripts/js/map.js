@@ -118,6 +118,64 @@ function passesCoordPolygon(x, y) {
   return (typeof planCoordPolygonInv !== 'undefined' && planCoordPolygonInv) ? !inside : inside;
 }
 
+// ── Extract Coordinates → Draw area (v5.15.0): the villages inside a drawn shape, grouped ──
+// Pure, WORLD-space, reads the loaded DB only. `extractAreaVillages(poly)` = every 'x|y' whose
+// village sits inside `poly` (same PNPOLY gate as the plan filter: fewer than 3 vertices → none;
+// on-edge villages are not guaranteed inside — draw slightly wider). Row-major sorted so the
+// panel and the copied list agree.
+function extractAreaVillages(poly) {
+  if (!Array.isArray(poly) || poly.length < 3 || typeof villageDb === 'undefined') return [];
+  const out = [];
+  for (const v of villageDb) if (pointInPolygon(v.x, v.y, poly)) out.push(v.x + '|' + v.y);
+  out.sort((a, b) => {
+    const pa = a.split('|').map(Number), pb = b.split('|').map(Number);
+    return (pa[1] - pb[1]) || (pa[0] - pb[0]);
+  });
+  return out;
+}
+// Tribe → player grouping of a coord list for the area panel. Pseudo-tribes keep the special
+// cases selectable like any other row: EXTRACT_BARB_KEY (barbarian villages, one pseudo-player
+// '0') and EXTRACT_NOTRIBE_KEY (players without a tribe). Tribes sort by village count desc
+// (ties: tag), then the two pseudo-tribes last (no-tribe, then barbs); players inside a tribe
+// by count desc (ties: name). Every player row carries its coords, so a checkbox toggle is
+// a plain set add/delete over them.
+const EXTRACT_BARB_KEY = '__barb__';
+const EXTRACT_NOTRIBE_KEY = '__none__';
+function extractAreaGroups(coords) {
+  const tribes = new Map(); // key → {key, tag, name, count, players: Map(pid → {pid, name, count, coords})}
+  for (const c of coords || []) {
+    const v = (typeof coordDb !== 'undefined') ? coordDb[c] : null;
+    if (!v) continue;
+    const barb = !v.playerId || v.playerId === '0';
+    const pid = barb ? '0' : v.playerId;
+    let key, tag, name;
+    if (barb) { key = EXTRACT_BARB_KEY; tag = ''; name = t('map_barbarian'); }
+    else {
+      const aid = (typeof playerAllyDb !== 'undefined') ? playerAllyDb[pid] : undefined;
+      const a = (aid && aid !== '0' && typeof allyDb !== 'undefined') ? allyDb[aid] : null;
+      if (a) { key = String(aid); tag = a.tag || ('#' + aid); name = a.name || ''; }
+      else { key = EXTRACT_NOTRIBE_KEY; tag = ''; name = t('map_extract_notribe'); }
+    }
+    let tr = tribes.get(key);
+    if (!tr) { tr = { key, tag, name, count: 0, players: new Map() }; tribes.set(key, tr); }
+    tr.count++;
+    let pl = tr.players.get(pid);
+    if (!pl) {
+      pl = { pid, name: barb ? t('map_barbarian') : ((typeof playerDb !== 'undefined' && playerDb[pid]) || '—'), tribeKey: key, tag, count: 0, coords: [] };
+      tr.players.set(pid, pl);
+    }
+    pl.count++;
+    pl.coords.push(c);
+  }
+  const rank = k => k === EXTRACT_BARB_KEY ? 2 : k === EXTRACT_NOTRIBE_KEY ? 1 : 0;
+  const out = [...tribes.values()].map(tr => ({
+    key: tr.key, tag: tr.tag, name: tr.name, count: tr.count,
+    players: [...tr.players.values()].sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name)),
+  }));
+  out.sort((a, b) => (rank(a.key) - rank(b.key)) || (b.count - a.count) || a.tag.localeCompare(b.tag));
+  return out;
+}
+
 // Constant screen-pixel dot size by points (stays visible when zoomed out).
 function mapDotSize(points) {
   if (points >= 1000000) return 5;

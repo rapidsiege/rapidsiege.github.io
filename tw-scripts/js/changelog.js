@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.15.0', date: '2026-09-06',
+    en: [
+      `<b>✏ Extract Coordinates can now draw an area.</b> The Map's <b>Extract Coordinates</b> bar has two sub-modes: <b>👆 Select individually</b> (the usual click-a-village toggle) and <b>✏ Draw area</b> — click to drop points and trace a shape (3+ points enclose it, with the same Undo point / Clear area controls as the coordinate filter). Every village inside is selected at once, and a <b>Villages in area</b> panel opens on the right listing them in two sections: <b>Tribes</b> (one checkbox per tribe, toggling all its players) and <b>Players</b> (grouped under their tribe). Untick a whole tribe or single players as you see fit — the rings on the map follow, a partly-selected tribe shows a half-checked box, and barbarians and tribeless players get their own rows so they can be excluded too. <b>Copy</b> returns the same sorted X|Y list as before. Adding a point keeps what you already unticked; the shape is a selection tool only and never touches the plan's 🎯 Draw Coordinate Filter.`,
+    ],
+    es: [
+      `<b>✏ Extraer Coordenadas ahora puede dibujar un área.</b> La barra <b>Extraer Coordenadas</b> del Mapa tiene dos submodos: <b>👆 Seleccionar uno a uno</b> (el clic por pueblo de siempre) y <b>✏ Dibujar área</b> — haz clic para poner puntos y trazar una forma (3+ puntos la cierran, con los mismos controles Deshacer punto / Borrar área que el filtro de coordenadas). Todos los pueblos de dentro se seleccionan de golpe y se abre a la derecha el panel <b>Pueblos en el área</b> con dos secciones: <b>Tribus</b> (una casilla por tribu, que cambia a todos sus jugadores) y <b>Jugadores</b> (agrupados bajo su tribu). Desmarca una tribu entera o jugadores sueltos a tu gusto — los anillos del mapa lo reflejan, una tribu parcialmente seleccionada muestra la casilla a medias, y los bárbaros y los jugadores sin tribu tienen sus propias filas para poder excluirlos también. <b>Copiar</b> devuelve la misma lista X|Y ordenada de siempre. Añadir un punto conserva lo que ya habías desmarcado; la forma es solo una herramienta de selección y nunca toca el 🎯 Filtro de Coordenadas dibujado del plan.`,
+    ],
+  },
   { ver: 'v5.14.1', date: '2026-08-29',
     en: [
       `<b>✉ PM templates travel with the backup.</b> The offensive and defensive <b>Export PMs</b> templates were saved on this browser only — the Backup &amp; Debug export (and the hosted site's automatic snapshot) skipped them, so an import on another machine came up with the default text. They are now part of the export and the import. Your current templates are carried over automatically; nothing to redo.`,
