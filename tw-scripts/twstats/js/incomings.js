@@ -445,11 +445,13 @@
     var m = /^(\d{1,3})\|(\d{1,3})$/.exec(String(s || "").trim());
     return m ? Number(m[1]) + "|" + Number(m[2]) : null;
   }
+  // One export → its readable attack commands, each keyed by target + origin
+  // + exact arrival (kSec) and by that plus the arrival milliseconds (k).
   function parseOrders(json) {
     if (!json || !Array.isArray(json.targets)) {
       throw new Error("no parece un incoming_orders*.json (falta la lista targets)");
     }
-    var exact = {}, bySec = {}, n = 0;
+    var cmds = [];
     json.targets.forEach(function (t) {
       var tKey = ordCoord(t.coords);
       (t.commands || []).forEach(function (c) {
@@ -457,14 +459,37 @@
         var oKey = ordCoord(c.origin_coords);
         var arr = ordArrival(c.arrival);
         if (!tKey || !oKey || !arr || !c.units) return;
-        n++;
         var kSec = tKey + ">" + oKey + "@" + arr.t;
-        exact[kSec + ":" + arr.ms] = c;
-        (bySec[kSec] = bySec[kSec] || []).push(c);
+        cmds.push({ k: kSec + ":" + arr.ms, kSec: kSec, c: c });
       });
     });
-    if (!n) throw new Error("el archivo no contiene ningún comando de ataque legible");
-    return { exact: exact, bySec: bySec, commands: n, file: "" };
+    if (!cmds.length) throw new Error("el archivo no contiene ningún comando de ataque legible");
+    return { cmds: cmds, exportedAt: Number(json.exported_at) || 0 };
+  }
+  // Several exports (one per batch, or overlapping ones taken at different
+  // moments) become ONE command set. Across files, exact key + command id is
+  // the command's identity: a command present in two files counts once (the
+  // newer export wins), so an overlap can never manufacture a false
+  // second-level ambiguity. Within one file nothing is collapsed — two ms-less
+  // commands in the same second there ARE a train, and stay ambiguous.
+  function buildOrders(parsed) {
+    var sorted = parsed.slice().sort(function (a, b) { return a.exportedAt - b.exportedAt; });
+    var list = [], seen = {};
+    sorted.forEach(function (p, fi) {
+      p.cmds.forEach(function (x) {
+        var dk = x.k + "#" + (x.c.id != null ? String(x.c.id) : "");
+        var slot = seen[dk];
+        if (slot && slot.file !== fi) { list[slot.i] = x; seen[dk] = { file: fi, i: slot.i }; return; }
+        seen[dk] = { file: fi, i: list.length };
+        list.push(x);
+      });
+    });
+    var exact = {}, bySec = {};
+    list.forEach(function (x) {
+      exact[x.k] = x.c;
+      (bySec[x.kSec] = bySec[x.kSec] || []).push(x.c);
+    });
+    return { exact: exact, bySec: bySec, commands: list.length, files: [], errors: [] };
   }
   function orderFor(a) {
     if (!state.orders || !a.target) return null;
@@ -491,11 +516,15 @@
       r.attack.order = orderFor(r.attack);
       if (r.attack.order) matched++;
     });
-    el.textContent = "Órdenes .json" + (state.orders.file ? " (" + state.orders.file + ")" : "") +
+    var files = state.orders.files || [];
+    el.textContent = "Órdenes .json" +
+      (files.length ? " (" + (files.length > 1 ? files.length + " archivos: " : "") + files.join(", ") + ")" : "") +
       ": " + state.orders.commands + " comandos cargados" +
       (total ? " · " + matched + " de " + total +
         " ataques emparejados (objetivo + origen + hora de llegada exacta)"
-             : " — se emparejarán al analizar tus entrantes");
+             : " — se emparejarán al analizar tus entrantes") +
+      (state.orders.errors && state.orders.errors.length
+        ? " · No se pudo leer " + state.orders.errors.join(" · ") : "");
     el.hidden = false;
     buildOrdersFilters();
     refreshIgnoreBtn();
@@ -2379,41 +2408,52 @@
       matchOrders();   // a loaded .json survives Limpiar — back to "se emparejarán"
       $("coords").focus();
     });
-    // «.json Órdenes» — optional incoming_orders*.json upload. The file never
-    // leaves the browser; parse errors report themselves in the note line.
-    // Sites without the feature (ordersFeatureEnabled false) hide its UI here
-    // instead of editing the HTML, so the markup stays shared too.
+    // «.json Órdenes» — optional incoming_orders*.json upload, one file or
+    // several chosen together (exports come in batches; they merge into one
+    // command set, see buildOrders). A later choice replaces the whole set.
+    // Files never leave the browser; parse errors report themselves in the
+    // note line. Sites without the feature (ordersFeatureEnabled false) hide
+    // its UI here instead of editing the HTML, so the markup stays shared too.
     if (!ordersFeatureEnabled()) {
       ["ordersBtn", "ordersFile", "ordersNote", "ordersHelp", "ignoreBtn", "ignoreScript", "ignoreNote"].forEach(function (id) {
         var el = $(id);
         if (el) el.hidden = true;
       });
     }
+    function readFileText(f) {
+      return new Promise(function (resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function () { resolve(reader.result); };
+        reader.onerror = function () { reject(new Error("no se pudo leer el archivo")); };
+        reader.readAsText(f);
+      });
+    }
     $("ordersBtn").addEventListener("click", function () { $("ordersFile").click(); });
     $("ordersFile").addEventListener("change", function () {
-      var f = this.files && this.files[0];
+      var files = this.files ? [].slice.call(this.files) : [];
       this.value = "";   // re-choosing the same file must fire change again
-      if (!f) return;
-      var reader = new FileReader();
-      reader.onload = function () {
-        try {
-          state.orders = parseOrders(JSON.parse(reader.result));
-          state.orders.file = f.name;
-          matchOrders();
-          if (state.rows.length) render();
-        } catch (e) {
-          // A bad file must not wipe a good one already loaded — report and keep.
-          var el = $("ordersNote");
-          el.textContent = "No se pudo leer el .json de órdenes: " + (e && e.message ? e.message : e);
-          el.hidden = false;
-        }
-      };
-      reader.onerror = function () {
+      if (!files.length) return;
+      Promise.all(files.map(function (f) {
+        return readFileText(f)
+          .then(function (text) { return { name: f.name, parsed: parseOrders(JSON.parse(text)) }; })
+          .catch(function (e) { return { name: f.name, error: (e && e.message ? e.message : String(e)) }; });
+      })).then(function (results) {
+        var good = results.filter(function (r) { return r.parsed; });
+        var bad = results.filter(function (r) { return r.error; });
         var el = $("ordersNote");
-        el.textContent = "No se pudo leer el archivo .json de órdenes.";
-        el.hidden = false;
-      };
-      reader.readAsText(f);
+        if (!good.length) {
+          // Nothing readable must not wipe a good set already loaded — report and keep.
+          el.textContent = "No se pudo leer " + (files.length > 1 ? "ningún .json de órdenes: " : "el .json de órdenes: ") +
+            bad.map(function (r) { return (files.length > 1 ? r.name + ": " : "") + r.error; }).join(" · ");
+          el.hidden = false;
+          return;
+        }
+        state.orders = buildOrders(good.map(function (r) { return r.parsed; }));
+        state.orders.files = good.map(function (r) { return r.name; });
+        state.orders.errors = bad.map(function (r) { return r.name + " (" + r.error + ")"; });
+        matchOrders();
+        if (state.rows.length) render();
+      });
     });
     // «Copiar IDs fakes» copies the id list; «Script ignorar fakes» is the static
     // bookmarklet (drag = install, click = copy for the quickbar).
