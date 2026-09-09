@@ -274,7 +274,19 @@ function generatePlan() {
   }
   const mvClaims = new Map(); // defending player -> Set of raw sender names committed against them
   const mvDef = T => { const d = T && T.tg && T.tg.player; return d && String(d).trim() ? d : null; };
+  // ── Block Pairs (v5.17) ──────────────────────────────────────────────────
+  // [rawOwnPlayer, defenderName]: that player never attacks that defender — no off, escort, noble
+  // train, fake or catapult attack. Unconditional (unlike MV, which is a claim between partners),
+  // so it is folded into mvBlocked (every pass already asks it) and asked separately where a
+  // pinned sender needs its own warning. Same namespaces as MV: raw sender, display defender.
+  const blockDefs = new Map(); // raw player -> Set of defender names they never attack
+  for (const pair of (typeof blockPairs !== 'undefined' ? blockPairs : [])) {
+    if (!Array.isArray(pair) || pair.length !== 2 || !pair[0] || !pair[1]) continue;
+    let s = blockDefs.get(pair[0]); if (!s) blockDefs.set(pair[0], s = new Set()); s.add(pair[1]);
+  }
+  const pairBlocked = (rawName, T) => { const s = blockDefs.get(rawName); const def = mvDef(T); return !!(s && def && s.has(def)); };
   const mvBlocked = (p, T) => {
+    if (pairBlocked(p.v.player, T)) return true;
     const def = mvDef(T); if (!def) return false;
     const partners = mvPartners.get(p.v.player); if (!partners) return false;
     const claimed = mvClaims.get(def); if (!claimed) return false;
@@ -561,7 +573,7 @@ function generatePlan() {
       if (otSnobMode(T.tg, g.id) !== 'escorted') continue;
       const picks = T.escortPicks[g.id] = [];
       for (const { name: want } of targetTrainSpec(T.tg, g.id)) {
-        const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !tooClose.has(p)
+        const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !tooClose.has(p) && !pairBlocked(p.v.player, T)
           && tiers.includes(p.tier) && okSnobDist(p, T.c) && okSnobTime(p, T, g) && smithOkOrUnknown(p)
           && (want ? p.v.player === want : !ignorePlayers.has(p.v.player)))
           .sort((a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (b.v.offPow - a.v.offPow))[0];
@@ -694,7 +706,9 @@ function generatePlan() {
         // pinpoint the blocker: out of noble range / launch in the past /
         // off already split / no snobs
         let msg, needNobles = false;
-        if (want && mvWouldBlockPin(want, T)) {
+        if (want && pairBlocked(want, T)) {
+          msg = t('warn_block_pair')(decode(want), T.tg.coord, mvDef(T)); // a Block Pair forbids this sender → defender outright
+        } else if (want && mvWouldBlockPin(want, T)) {
           // an MV-paired partner already attacks this defender → this sender can't (game limit).
           // If this is a manual-vs-manual snob conflict we already reported explicitly up front,
           // don't warn again here — the row still shows unassigned.
@@ -860,7 +874,8 @@ function generatePlan() {
           const inRange = owned.filter(p => okOffDist(p, T.c));
           const inRangeTime = inRange.filter(p => okOffTime(p, T, g) && !p.usedOff && !offBlocked(p));
           planWarnings.push(
-            owned.length && !inRange.length ? t('warn_off_range')(decode(a.name), t('tier_' + tier), T.tg.coord)
+            pairBlocked(a.name, T) ? t('warn_block_pair')(decode(a.name), T.tg.coord, mvDef(T))
+            : owned.length && !inRange.length ? t('warn_off_range')(decode(a.name), t('tier_' + tier), T.tg.coord)
             : inRange.length && !inRange.some(p => okOffTime(p, T, g)) ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
             // all otherwise-usable villages blocked by an MV pair conflict → say so
             : inRangeTime.length && inRangeTime.every(p => mvBlocked(p, T)) ? t('warn_mv')(decode(a.name), T.tg.coord)
@@ -1194,7 +1209,7 @@ function generatePlan() {
     let placed = 0;
     while (placed < want) {
       const cand = catPool
-        .filter(s => s.budget > 0 && (perTarget[s.v.coord] || 0) < 2 && distXY(s.c, T.c) <= maxCatDist)
+        .filter(s => s.budget > 0 && (perTarget[s.v.coord] || 0) < 2 && distXY(s.c, T.c) <= maxCatDist && !pairBlocked(s.v.player, T))
         .sort((a, b) => (perPlayer[decode(a.v.player)] || 0) - (perPlayer[decode(b.v.player)] || 0)
           || distXY(a.c, T.c) - distXY(b.c, T.c))[0];
       if (!cand) break; // no eligible cat source left (budget/cap hit or none within the distance lead)

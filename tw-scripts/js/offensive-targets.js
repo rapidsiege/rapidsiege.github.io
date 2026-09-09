@@ -32,6 +32,7 @@ let offForceCoords = '';   // v5.12.3: raw coord list — non-empty → ONLY the
 // free-text form to migrate here — the offensive filter never had one.
 let offEnemyIds      = []; // ally ids (strings) whose villages bar nearby senders
 let offEnemyDist     = 0;  // "Distance from enemy tribes" (fields); 0 = filter off
+let blockPairs       = []; // [[rawOwnPlayer, defenderName], …] Block Pairs (v5.17): that player never attacks that defender (shared IPs, personal pacts, zones…) — offensive only
 let mvPairs          = []; // [[rawA, rawB], …] vacation-mode pairs — SHARED by Plan Offensive AND Plan Defense (edited from either the Offensive-Targets or Defensive-Targets picker; persisted here in tw_tribe_offensive). Offensive rule: two paired players can't both attack the SAME enemy player. Defensive rule: they can't both support the SAME target, nor support a village their partner owns.
 // Coordinate Filter (Plan Offensive): layered X|Y bounds that a village must ALL satisfy to be
 // used as a sender (off OR snob train). [{axis:'x'|'y', op:'>'|'>='|'<'|'<='|'=', val:'<number>'}].
@@ -321,7 +322,7 @@ function otMultiGroup() { return otGroups().length > 1; }
 
 function saveOffensive() {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
-    cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, forcePlayers: offForcePlayers, forceCoords: offForceCoords, mvPairs,
+    cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, forcePlayers: offForcePlayers, forceCoords: offForceCoords, mvPairs, blockPairs,
     enemyIds: offEnemyIds, enemyDist: offEnemyDist,
     coordFilters: planCoordFilters, coordPolygon: planCoordPolygon, coordPolygonInv: planCoordPolygonInv,
     plan: planRows, warnings: planWarnings, reserved: planReserved, stats: planStats, nextId: otNextId,
@@ -344,6 +345,7 @@ function loadOffensive() {
       offEnemyIds      = Array.isArray(d.enemyIds) ? d.enemyIds.map(String) : [];
       offEnemyDist     = Math.max(0, parseInt(d.enemyDist, 10) || 0);
       mvPairs          = Array.isArray(d.mvPairs) ? d.mvPairs.filter(p => Array.isArray(p) && p.length === 2 && p[0] && p[1] && p[0] !== p[1]) : [];
+      blockPairs       = Array.isArray(d.blockPairs) ? d.blockPairs.filter(p => Array.isArray(p) && p.length === 2 && p[0] && p[1]) : [];
       planCoordFilters = Array.isArray(d.coordFilters) ? d.coordFilters.filter(f => f && (f.axis === 'x' || f.axis === 'y')) : [];
       planCoordPolygonInv = d.coordPolygonInv === true;
       planCoordPolygon = Array.isArray(d.coordPolygon)
@@ -383,6 +385,7 @@ function loadOffensive() {
   renderOffIgnorePlayers();
   renderOffForcePlayers();
   renderOffMvPlayers();
+  renderOffBlockPairs();
   renderOffEnemyTribes();
 }
 
@@ -774,6 +777,57 @@ function renderOffMvPlayers() {
   host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}`
     + `${sel('ot-mv-a')}<span style="color:#806030;">↔</span>${sel('ot-mv-b')}`
     + `<button class="btn btn-ghost btn-sm" onclick="addMvPairFromSelects()">${t('btn_add_mv_pair')}</button></div>`;
+}
+
+// ── Block Pairs (v5.17): one of OUR players never attacks one DEFENDER ─────────
+// [rawOwnPlayer, defenderName]: the plan never sends anything from that player — no off, escort,
+// noble train, fake or catapult attack — at a target owned by that defender (shared IPs, personal
+// pacts, agreed zones…). Left side = a player from the troop file (raw name, like mvPairs); right
+// side = a defender as it appears in the Offensive Targets table (tg.player, the display string
+// the MV claims are keyed on too). Offensive only, persisted in the offensive blob.
+function toggleOffBlockPairs() {
+  const el = document.getElementById('ot-block-pairs-wrap');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+// Distinct defenders of the current targets (non-blank), alphabetical, with how many targets each owns.
+function blockDefenderOptions() {
+  const n = {};
+  for (const tg of offTargets) { const d = tg && tg.player && String(tg.player).trim(); if (d) n[d] = (n[d] || 0) + 1; }
+  return Object.keys(n).map(name => ({ name, targets: n[name] }))
+    .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+}
+function blockPairExists(a, d) { return blockPairs.some(p => p[0] === a && p[1] === d); }
+function addBlockPairFromSelects() {
+  const a = (document.getElementById('ot-block-a') || {}).value;
+  const d = (document.getElementById('ot-block-d') || {}).value;
+  if (!a || !d || blockPairExists(a, d)) return;
+  blockPairs.push([a, d]);
+  saveOffensive(); renderOffBlockPairs();
+}
+function removeBlockPair(idx) {
+  blockPairs.splice(idx, 1);
+  saveOffensive(); renderOffBlockPairs();
+}
+// Chip list ("Alice ⛔ Defender") + own-player picker, defender picker and an Add Pair button. The
+// defender list follows the targets table (renderOffTargets re-renders this), so a pair can be
+// added the moment its defender shows up in a row. A pair whose defender / player is no longer
+// present stays listed (and enforced) until removed.
+function renderOffBlockPairs() {
+  const host = document.getElementById('ot-block-pairs-host');
+  if (!host) return;
+  if (!Object.keys(players).length && !blockPairs.length) {
+    host.innerHTML = `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+    return;
+  }
+  const chips = blockPairs.map((pr, i) =>
+    `<span class="chip">${esc(decode(pr[0]))} ⛔ ${esc(pr[1])}<span class="chip-x" onclick="removeBlockPair(${i})">✕</span></span>`).join('');
+  const optA = mvPlayerOptions().map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('');
+  const optD = blockDefenderOptions().map(s => `<option value="${esc(s.name)}">${esc(s.name)} (${s.targets})</option>`).join('');
+  host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}`
+    + `<select id="ot-block-a" class="cell-input" style="width:150px;"><option value="">${t('opt_pick_mv_player')}</option>${optA}</select>`
+    + `<span style="color:#806030;">⛔</span>`
+    + `<select id="ot-block-d" class="cell-input" style="width:150px;"><option value="">${t('opt_pick_defender')}</option>${optD}</select>`
+    + `<button class="btn btn-ghost btn-sm" onclick="addBlockPairFromSelects()">${t('btn_add_mv_pair')}</button></div>`;
 }
 
 // ── Time-window helpers (windows stored as 'HH:MM/HH:MM'; start === end = fixed time) ──
@@ -1902,6 +1956,7 @@ function renderOffTargets(opts) {
       + `<div class="warn-list">${warns.map(esc).join('<br>')}</div></details>` : '';
 
   renderOtOffsSummary();
+  renderOffBlockPairs(); // its defender picker lists the defenders of the current rows
 
   const tbody = document.getElementById('offtargets-tbody');
   // View: filter + sort (see otVisibleRows). `i` below stays the target's position in offTargets,

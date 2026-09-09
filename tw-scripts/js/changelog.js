@@ -18,6 +18,14 @@
 // into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v5.17.0', date: '2026-09-10',
+    en: [
+      `<b>⛔ Block Pairs.</b> Next to <b>🏖 MV Players</b> on the Offensive Targets tab, a new <b>⛔ Block Pairs</b> panel pairs one of <i>your</i> players (left, from the troop file) with a <i>defender</i> of the targets table (right). The plan then never sends anything from that player at that defender, whatever the target: no clearing off, no split-off escort, no noble train, no fake, no catapult attack. Meant for shared IPs, personal pacts, agreed zones and the like. The player stays fully pickable against everyone else; a sender you pinned by hand against a blocked defender is left unassigned with a warning that names the pair. The defender list follows the targets table, and the pairs are saved with the offensive plan.`,
+    ],
+    es: [
+      `<b>⛔ Parejas Bloqueadas.</b> Junto a <b>🏖 Jugadores MV</b> en la pestaña Objetivos Ofensivos, un nuevo panel <b>⛔ Parejas Bloqueadas</b> empareja a uno de <i>tus</i> jugadores (izquierda, del archivo de tropas) con un <i>defensor</i> de la tabla de objetivos (derecha). El plan nunca envía nada de ese jugador contra ese defensor, sea cual sea el objetivo: ni off de limpieza, ni escolta de partir off, ni tren de nobles, ni fake, ni ataque de catapultas. Pensado para IPs compartidas, pactos personales, zonas acordadas y similares. El jugador sigue siendo elegible contra todos los demás; un remitente fijado a mano contra un defensor bloqueado queda sin asignar con un aviso que nombra la pareja. La lista de defensores sigue a la tabla de objetivos y las parejas se guardan con el plan ofensivo.`,
+    ],
+  },
   { ver: 'v5.16.0', date: '2026-09-09',
     en: [
       `<b>👑 Noble trains per window group.</b> Until now a target had one noble train and picked the wave it landed in; the <b>Snob Players</b>, <b>Nobles</b>, <b>Senders</b> and <b>Snob Mode</b> cells now work exactly like the Complete / 3-4 / 1-2 cells — one entry per group (A, B, C…), so a target can take 4 nobles in wave A's snob window <i>and</i> 2 more in wave B's, each with its own senders and its own Solo / Split Off / Fake mode. Every train is planned against its own group's snob window and arrival date, the conqueror's coordination off rides in the same wave as the train it clears for (one per wave), and the exports section the trains under their wave's ARRIVAL DATE like the offs. The <b>Snob Windows</b> column is a read-out of the waves the target is nobled in. Single-group plans look and behave exactly as before; existing targets keep their train in the wave it was assigned to.`,
