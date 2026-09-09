@@ -320,7 +320,7 @@ function generatePlan() {
   // A destroyer is for flattening, not conquering — snob trains assigned to one are almost
   // certainly a configuration slip. Warn, but still plan the nobles as configured.
   for (const T of targets) {
-    if (T.c && isDestroyer(T) && targetTrainSpec(T.tg).length)
+    if (T.c && isDestroyer(T) && otSnobGroups(T.tg).some(g => targetTrainSpec(T.tg, g.id).length))
       planWarnings.push(t('warn_destroyer_snobs')(T.tg.coord));
   }
 
@@ -381,10 +381,11 @@ function generatePlan() {
   // villages within noble range AND still launchable in time (okSnobTime — honours the Earliest
   // send floor / now), academy-plausible. Closest first. Time-gated so we never suggest recruiting
   // a noble somewhere the train couldn't leave early enough to arrive. okSnobTime is defined below
-  // but this closure only runs during the snob loop, after it's initialised.
-  const snobRangeVills = (rawName, T) =>
+  // but this closure only runs during the snob loop, after it's initialised. `g` = the wave the
+  // train lands in (its snob window + date gate the launch).
+  const snobRangeVills = (rawName, T, g) =>
     (!rawName || !T || !T.c) ? []
-      : pool.filter(p => p.v.player === rawName && okSnobDist(p, T.c) && okSnobTime(p, T) && snobAcademyOk(p))
+      : pool.filter(p => p.v.player === rawName && okSnobDist(p, T.c) && okSnobTime(p, T, g) && snobAcademyOk(p))
             .sort((a, b) => distXY(a.c, T.c) - distXY(b.c, T.c))
             .map(p => p.v.coord);
 
@@ -394,19 +395,20 @@ function generatePlan() {
   // window may still be earlier — those rows get flagged late after assignment.
   // Each window group is an independent wave with its own arrival DATE and landing window, so
   // "can this village still launch in time?" is answered per (target, group), not per target.
-  // T.gEnd[gid] = the latest landing minute for that group's off window; T.snobEnd carries the
-  // same for the target's noble train, which lands in its primary group's snob window.
+  // T.gEnd[gid] = the latest landing minute for that group's off window; T.snobEnd[gid] the same
+  // for its SNOB window — a target's noble trains land in whichever waves it nobles in (v5.16),
+  // each gated by its own group's window and date.
   for (const T of targets) {
     if (!T.c) continue;
-    T.gEnd = {};
+    T.gEnd = {}; T.snobEnd = {};
     for (const g of otActiveGroups(T.tg)) {
       const pw = parseWindowStr(g.winOff || g.winSnob || '');
       T.gEnd[g.id] = pw ? pw.to : null;
     }
-    const pg = otGroupById(otPrimaryGroupId(T.tg));
-    T.snobGroup = pg;
-    const sw = parseWindowStr(pg.winSnob || pg.winOff || '');
-    T.snobEndMin = sw ? sw.to : null;
+    for (const g of otGroups()) {
+      const sw = parseWindowStr(g.winSnob || g.winOff || '');
+      T.snobEnd[g.id] = sw ? sw.to : null;
+    }
   }
   // Earliest send floor. A launch can never be scheduled before "now", nor (when the user set
   // an Earliest send time) before that time. The gate below vets each village's latest possible
@@ -436,7 +438,7 @@ function generatePlan() {
     return landMs - travelTimeMin(distXY(p.c, T.c), baseMin, ws, us) * 60000 >= sendFloorMs;
   };
   const okOffTime  = (p, T, g) => okTime(p, T, T.gEnd[g.id], PLAN_BASE_MIN.off, g.dateISO);
-  const okSnobTime = (p, T) => okTime(p, T, T.snobEndMin, PLAN_BASE_MIN.snob, T.snobGroup ? T.snobGroup.dateISO : '');
+  const okSnobTime = (p, T, g) => okTime(p, T, T.snobEnd[g.id], PLAN_BASE_MIN.snob, g.dateISO);
 
   // ── Sorting: named pins go by distance, auto picks "optimize" ──────────────
   // Morale only helps when the target's defender points are actually known (world
@@ -549,19 +551,24 @@ function generatePlan() {
   // passes (smithOkOrUnknown — escorts never had a points gate, don't introduce one).
   const escortReserved = new Set();
   for (const T of targets) {
-    // One reserved escort village per train, in spec order (null = none in range).
-    // The snob loop reads these by the SAME train index to tell a needNobles sender
-    // WHERE to recruit (a split-off launches off + noble from one village).
-    T.escortPicks = [];
-    if (!T.c || isFake(T) || (T.tg.snobMode || 'solo') !== 'escorted') continue;
-    for (const { name: want } of targetTrainSpec(T.tg)) {
-      const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !tooClose.has(p)
-        && tiers.includes(p.tier) && okSnobDist(p, T.c) && okSnobTime(p, T) && smithOkOrUnknown(p)
-        && (want ? p.v.player === want : !ignorePlayers.has(p.v.player)))
-        .sort((a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (b.v.offPow - a.v.offPow))[0];
-      const p = pick(['complete', 'tq']) || pick(['half']);
-      if (p) escortReserved.add(p);
-      T.escortPicks.push(p || null);
+    // One reserved escort village per (wave, train), in spec order (null = none in range).
+    // The snob loop reads these by the SAME group id + train index to tell a needNobles sender
+    // WHERE to recruit (a split-off launches off + noble from one village). Escort mode is a
+    // per-wave setting since v5.16: a target can be Split Off on Friday and Solo on Saturday.
+    T.escortPicks = {}; // gid → [village | null] per train of that wave
+    if (!T.c || isFake(T)) continue;
+    for (const g of otSnobGroups(T.tg)) {
+      if (otSnobMode(T.tg, g.id) !== 'escorted') continue;
+      const picks = T.escortPicks[g.id] = [];
+      for (const { name: want } of targetTrainSpec(T.tg, g.id)) {
+        const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !tooClose.has(p)
+          && tiers.includes(p.tier) && okSnobDist(p, T.c) && okSnobTime(p, T, g) && smithOkOrUnknown(p)
+          && (want ? p.v.player === want : !ignorePlayers.has(p.v.player)))
+          .sort((a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (b.v.offPow - a.v.offPow))[0];
+        const p = pick(['complete', 'tq']) || pick(['half']);
+        if (p) escortReserved.add(p);
+        picks.push(p || null);
+      }
     }
   }
 
@@ -582,11 +589,15 @@ function generatePlan() {
   // their own last offensive. A pinned sender kept on the plan without a noble yet
   // (needNobles) still counts — they are intended to send.
   const snobSenderTargets = {};  // raw player -> Set of target index (solo + escorted)
-  const conquerorByTarget = {};  // target index -> Set of decoded sender (solo + escorted)
-  const noteSnobSender = (rawName, T) => {
+  // Conquerors are keyed per (target, WAVE) since v5.16: the coordination off must ride in the
+  // wave the conqueror's train lands in, and a target nobled in two waves gets one such clear
+  // per wave (the launch-village reservation above stays per target — the villages are the same).
+  const conquerorByTarget = {};  // `${target index}|${group id}` -> Set of decoded sender (solo + escorted)
+  const conqKey = (T, g) => `${T.i}|${g.id}`;
+  const noteSnobSender = (rawName, T, g) => {
     if (!rawName) return;
     (snobSenderTargets[rawName] || (snobSenderTargets[rawName] = new Set())).add(T.i);
-    (conquerorByTarget[T.i] || (conquerorByTarget[T.i] = new Set())).add(decode(rawName));
+    (conquerorByTarget[conqKey(T, g)] || (conquerorByTarget[conqKey(T, g)] = new Set())).add(decode(rawName));
   };
 
   // ── Manual snob MV conflict (explicit, up front) ──────────────────────────
@@ -600,7 +611,7 @@ function generatePlan() {
     for (const T of targets) {
       if (isFake(T)) continue; // fake targets never field a snob train
       const def = mvDef(T); if (!def) continue;
-      for (const { name } of targetTrainSpec(T.tg)) {
+      for (const g of otSnobGroups(T.tg)) for (const { name } of targetTrainSpec(T.tg, g.id)) {
         if (!name) continue; // auto-picked train, not a manual assignment
         let s = snobPinsByDef.get(def); if (!s) snobPinsByDef.set(def, s = new Set());
         s.add(name);
@@ -621,21 +632,28 @@ function generatePlan() {
   }
 
   // Snob trains: pre-assigned senders fill the first trains, the rest are
-  // auto-picked from distinct players; escort mode is a per-target setting.
+  // auto-picked from distinct players; escort mode is a per-(target, wave) setting.
   // FAKE-type targets ARE included now (no isFake skip): a fake target can field a
   // FAKE noble train (snobMode 'fake') as a bare decoy — see the fake branch below.
+  // Since v5.16 a target may field a train in SEVERAL waves — each (target, group) is planned
+  // on its own: its own nobles / senders / mode, its own snob window and date (okSnobTime), its
+  // own escort picks; the rows carry `group` from birth. Auto-picked senders are distinct
+  // WITHIN a wave (`chosen`); the same player may well noble the target on both days.
   for (const T of targets) {
-    if (!T.c || !T.tg.nobles) continue;
-    const spec = targetTrainSpec(T.tg);
+    if (!T.c) continue;
+    for (const g of otSnobGroups(T.tg)) {
+    const nobles = otSnobCount(T.tg, g.id, 'nobles');
+    if (!nobles) continue;
+    const spec = targetTrainSpec(T.tg, g.id);
     if (!spec.length) continue;
     const specSum = spec.reduce((s, x) => s + x.count, 0);
-    if (specSum !== T.tg.nobles) planWarnings.push(t('warn_nobles_mismatch')(T.tg.coord, specSum, T.tg.nobles));
-    const mode = T.tg.snobMode || 'solo';
+    if (specSum !== nobles) planWarnings.push(t('warn_nobles_mismatch')(T.tg.coord, specSum, nobles));
+    const mode = otSnobMode(T.tg, g.id);
     const chosen = new Set();
     spec.forEach(({ name: want, count: nc }, trainIdx) => {
-      // For escorted trains, the off held back at reservation time (same train index)
-      // is exactly where a needNobles sender should recruit — surface its coord.
-      const reservedV = mode === 'escorted' && T.escortPicks ? T.escortPicks[trainIdx] : null;
+      // For escorted trains, the off held back at reservation time (same wave, same train
+      // index) is exactly where a needNobles sender should recruit — surface its coord.
+      const reservedV = mode === 'escorted' && T.escortPicks[g.id] ? T.escortPicks[g.id][trainIdx] : null;
       const recruitCoord = reservedV ? reservedV.v.coord : undefined;
       // Distance/travel from that reserved off to the target (snob pace) so a needNobles row
       // can still show WHEN to launch the split-off once the noble is recruited.
@@ -644,7 +662,7 @@ function generatePlan() {
       // A village may host several trains while it has snobs left; in split-off
       // mode its off can only be split once (solo trains from it stay fine)
       let cands = pool.filter(p =>
-        p.snobLeft > 0 && okSnobDist(p, T.c) && okSnobTime(p, T) && !mvBlocked(p, T) &&
+        p.snobLeft > 0 && okSnobDist(p, T.c) && okSnobTime(p, T, g) && !mvBlocked(p, T) &&
         // a pinned (want) sender may be an ignored player; auto-picks never use ignored players
         (want ? p.v.player === want : (!chosen.has(p.v.player) && !ignorePlayers.has(p.v.player))) &&
         (mode !== 'escorted' || !p.usedOff));
@@ -659,13 +677,13 @@ function generatePlan() {
       // UNASSIGNED, never assigned a short village. No "recruit nobles" warning (assigning snobs
       // before recruiting is the normal workflow); the row's "Prepare Snob Train" call-out is the cue.
       if (want && cands.length && !enough.length) {
-        T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', fake: mode === 'fake', unassigned: true,
+        T.snobRows.push({ type: 'snob', group: g.id, count: nc, escorted: mode === 'escorted', fake: mode === 'fake', unassigned: true,
           srcPlayer: decode(want), needNobles: true, recruitCoord, dist: recruitDist, travel: recruitTravel,
-          rangeVills: snobRangeVills(want, T) });
+          rangeVills: snobRangeVills(want, T, g) });
         // A FAKE train never reserves launch villages or forces a clearing off (it's a bare
         // decoy), so it stays out of snobSenderTargets/conquerorByTarget — but it still CLAIMS
         // the defender for MV (a fake noble is a real in-game attack).
-        if (mode !== 'fake') noteSnobSender(want, T);
+        if (mode !== 'fake') noteSnobSender(want, T, g);
         noteMvClaimName(want, T); // pinned intent claims the defender even before nobles exist
         return;
       }
@@ -691,7 +709,7 @@ function generatePlan() {
             // put a train in range. By this branch's premise none of these hold snobs yet.
             // smithOkOrUnknown: never recommend recruiting at a village whose KNOWN Smithy
             // can't take an Academy (mirrors the rangeVills/snobAcademyOk gate).
-            const recruit = pool.filter(p => p.v.player === want && okSnobDist(p, T.c) && okSnobTime(p, T) && smithOkOrUnknown(p))
+            const recruit = pool.filter(p => p.v.player === want && okSnobDist(p, T.c) && okSnobTime(p, T, g) && smithOkOrUnknown(p))
               .sort((a, b) => distXY(a.c, T.c) - distXY(b.c, T.c));
             if (recruit.length) {
               const CAP = 6;
@@ -700,7 +718,7 @@ function generatePlan() {
               msg += '. ' + t('warn_snob_range_hint')(decode(want), coords);
             }
           }
-          else if (inRange.length && !inRange.some(p => okSnobTime(p, T)))
+          else if (inRange.length && !inRange.some(p => okSnobTime(p, T, g)))
             msg = t('warn_snob_too_late')(T.tg.coord);
           else if (mode === 'escorted' && inRange.length) {
             // The sender has noble(s) in range but no village can launch the split-off. Two
@@ -720,7 +738,7 @@ function generatePlan() {
           }
         } else {
           const any = pool.filter(p => p.snobLeft > 0 && okSnobDist(p, T.c));
-          msg = any.length && !any.some(p => okSnobTime(p, T))
+          msg = any.length && !any.some(p => okSnobTime(p, T, g))
             ? t('warn_snob_too_late')(T.tg.coord)
             : t('warn_missed_snob')(T.tg.coord);
         }
@@ -729,11 +747,11 @@ function generatePlan() {
         if (msg && !needNobles) planWarnings.push(msg);
         // A manually-pinned sender stays named on the plan even when unplaced (so they
         // see their assignment); an auto train that couldn't be filled has no name.
-        T.snobRows.push({ type: 'snob', count: nc, escorted: mode === 'escorted', fake: mode === 'fake', unassigned: true,
+        T.snobRows.push({ type: 'snob', group: g.id, count: nc, escorted: mode === 'escorted', fake: mode === 'fake', unassigned: true,
           srcPlayer: want ? decode(want) : undefined, needNobles, recruitCoord: needNobles ? recruitCoord : undefined,
           dist: needNobles ? recruitDist : undefined, travel: needNobles ? recruitTravel : undefined,
-          rangeVills: snobRangeVills(want, T) });
-        if (want) { if (mode !== 'fake') noteSnobSender(want, T); noteMvClaimName(want, T); } // pinned intent claims the defender
+          rangeVills: snobRangeVills(want, T, g) });
+        if (want) { if (mode !== 'fake') noteSnobSender(want, T, g); noteMvClaimName(want, T); } // pinned intent claims the defender
         return;
       }
       // escorted: strongest escort wins; solo: nearest village, weakest off stays home
@@ -751,15 +769,16 @@ function generatePlan() {
       if (mode === 'escorted') { p.usedOff = true; p.isEscort = true; } // its off rides as the split-off
       // A FAKE train sends bare nobles (real ones, so snobLeft is spent above) but NO escort
       // and consumes no off — so it never reserves launch villages or forces a clearing off.
-      if (mode !== 'fake') noteSnobSender(p.v.player, T);
+      if (mode !== 'fake') noteSnobSender(p.v.player, T, g);
       const d = distXY(p.c, T.c);
       T.snobRows.push({
-        type: 'snob', count: nc, escorted: mode === 'escorted', fake: mode === 'fake',
+        type: 'snob', group: g.id, count: nc, escorted: mode === 'escorted', fake: mode === 'fake',
         srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.snob, ws, us),
-        rangeVills: snobRangeVills(p.v.player, T),
+        rangeVills: snobRangeVills(p.v.player, T, g),
       });
     });
+    }
   }
 
   // ── Launch-village reservation ──────────────────────────────────────────
@@ -893,9 +912,11 @@ function generatePlan() {
   // an explicit pin still wins (and a pin that already gave the conqueror an off ends it).
   for (const T of orderedTargets) {
     if (!T.c || T.tg.power || isFake(T)) continue;
-    const conq = conquerorByTarget[T.i];
+    for (const cg of otSnobGroups(T.tg)) {
+    const conq = conquerorByTarget[conqKey(T, cg)];
     if (!conq) continue;
-    if (T.offRows.some(r => !r.unassigned && r.srcPlayer && conq.has(r.srcPlayer))) continue;
+    // a pin that already gave a conqueror an off IN THIS WAVE ends it
+    if (T.offRows.some(r => r.group === cg.id && !r.unassigned && r.srcPlayer && conq.has(r.srcPlayer))) continue;
 
     // ── Min. Morale gate ────────────────────────────────────────────────────
     // A conqueror only KEEPS their own coordination off if their morale on THIS objective
@@ -917,9 +938,8 @@ function generatePlan() {
     const conqOk = new Set([...conq].filter(name => playerMorale(name) >= gate));
 
     // candidate villages for a tier, restricted by a sender predicate (decoded names)
-    // The coordination off rides in the SAME wave as the noble it clears for — the target's
-    // primary group — so the clear and the train can't end up on different days.
-    const cg = T.snobGroup || otGroupById(otPrimaryGroupId(T.tg));
+    // The coordination off rides in the SAME wave (`cg`) as the noble it clears for, so the
+    // clear and the train can't end up on different days.
     const candsFor = (allow, tt) => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt
       && allow(p) && okOffDist(p, T.c) && okOffTime(p, T, cg) && !mvBlocked(p, T));
     const reserve = (p, tier) => {
@@ -965,6 +985,7 @@ function generatePlan() {
       if (!fallback.length) continue;
       reserve(fallback.sort(byDist(T))[0], tier);
       break;
+    }
     }
   }
 
@@ -1197,24 +1218,24 @@ function generatePlan() {
     if (!T.c) continue;
     // Group order first (wave A's offs before wave B's), then strongest-first within a wave.
     // 'fake' has no tier rank → 0, so fakes land last inside their group.
+    // The conqueror's own off lands LAST among ITS WAVE's offs (immediately before that wave's
+    // noble row), so the snob sender owns the final clear→noble handoff — a sort key rather
+    // than a splice since v5.16, because a target nobled in two waves has one such off per
+    // wave. (At most one conqueror off per (target, wave) — see the reservation pass.) The sort
+    // is stable, so the strongest-first order of the rest is untouched.
     T.offRows.sort((a, b) => (otGroupIndex(a.group) - otGroupIndex(b.group))
+      || ((a.conqueror ? 1 : 0) - (b.conqueror ? 1 : 0))
       || ((TIER_RANK[b.type] || 0) - (TIER_RANK[a.type] || 0)));
-    // The conqueror's own off lands LAST among this target's offs (immediately before its
-    // noble row), so the snob sender owns the final clear→noble handoff. Done after the
-    // tier sort and as a single splice so it doesn't disturb the strongest-first order of
-    // the rest. (At most one conqueror off per target — see the reservation pass.)
-    const ci = T.offRows.findIndex(r => r.conqueror);
-    if (ci !== -1) T.offRows.push(T.offRows.splice(ci, 1)[0]);
     // Every off row already knows its window group (the group WAS the request), so its landing
     // window and arrival date come straight off that group — no post-hoc splitting.
-    const snobG = T.snobGroup || otGroupById(otPrimaryGroupId(T.tg));
     const stamp = (r, g) => { r.group = g.id; r.window = g.winOff || g.winSnob || ''; r.dateISO = g.dateISO || ''; };
     for (const r of T.offRows) stamp(r, otGroupById(r.group));
-    // The noble train lands in its target's primary group, in that group's SNOB window.
+    // A noble train lands in the wave it was planned for, in that group's SNOB window.
     T.snobRows.forEach(r => {
-      r.group = snobG.id;
-      r.window = snobG.winSnob || snobG.winOff || '';
-      r.dateISO = snobG.dateISO || '';
+      const sg = otGroupById(r.group);
+      r.group = sg.id;
+      r.window = sg.winSnob || sg.winOff || '';
+      r.dateISO = sg.dateISO || '';
     });
     // Catapult attacks are extra demolition alongside the offs, so they follow the offs: dealt
     // round-robin across the groups this target actually attacks in (a target with no offs
@@ -1562,7 +1583,7 @@ function planRowForumBB(r, multiSnob, bare) {
 function showPlanBB() {
   if (!planRows.length) { alert(t('empty_no_plan')); return; }
 
-  const nobleCounts = [...new Set(offTargets.map(x => x.nobles).filter(Boolean))].sort((a, b) => a - b);
+  const nobleCounts = [...new Set(offTargets.flatMap(x => otGroups().map(g => otSnobCount(x, g.id, 'nobles'))).filter(Boolean))].sort((a, b) => a - b);
   const noblesLabel = nobleCounts.length ? nobleCounts.join(' ó ') : '4';
 
   // With several window groups the objective list is repeated once per wave, each under its own

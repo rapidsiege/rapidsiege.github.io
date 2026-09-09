@@ -185,7 +185,8 @@ function moCmdScore(cmd, r) {
 //   1 exact  — an off/catapult row with a prescribed source claims a non-noble
 //              attack launched from EXACTLY that village
 //   2 snob   — a snob row soaks up to `count` noble attacks from its assigned
-//              player (named trains first, engine-unassigned trains take leftovers)
+//              player (named trains first, engine-unassigned trains take leftovers);
+//              each noble goes to the row whose landing window it is closest to
 //   3 player — an unmatched off/catapult row claims a non-noble attack from its
 //              player's OTHER villages (off-switching for better timings is fine)
 // Returns:
@@ -222,14 +223,32 @@ function moMatchPlan(rows, commands) {
       if (r.type === 'snob' || !r.srcCoord) continue;
       claim(i, free().filter(k => !atk[k].snob && atk[k].originCoord === r.srcCoord), 'exact');
     }
-    for (const named of [true, false]) { // pass 2 — noble trains
-      for (const i of ri) {
+    // pass 2 — noble trains. Since v5.16 a player can noble the same target in SEVERAL waves (one
+    // snob row per wave), so a noble must go to the row whose landing window + date it is closest
+    // to — Saturday's nobles must not fill Friday's train just because Friday's row comes first.
+    // Named trains still go first and engine-unassigned ones take the leftovers; within each tier
+    // every (row, noble) pair is ranked by timing distance (unknown = last), then arrival, and
+    // dealt greedily while the row has capacity. With one row per player per target (a single
+    // wave) every pair ties on distance, so this degrades to the old earliest-arrivals split.
+    for (const named of [true, false]) {
+      const snobRows = ri.filter(i => rows[i].type === 'snob' && !!rows[i].srcPlayer === named);
+      if (!snobRows.length) continue;
+      const pairs = [];
+      for (const i of snobRows) {
         const r = rows[i];
-        if (r.type !== 'snob' || !!r.srcPlayer !== named) continue;
-        const cand = free().filter(k => atk[k].snob && (!named || moNorm(atk[k].originPlayer) === moNorm(r.srcPlayer)));
-        cand.sort((a, b) => (atk[a].arrivalMs || 0) - (atk[b].arrivalMs || 0));
-        for (const k of cand.slice(0, r.count || 1)) { used[k] = true; rowMatch[i].cmds.push(atk[k]); }
+        for (const k of free()) {
+          if (!atk[k].snob || (named && moNorm(atk[k].originPlayer) !== moNorm(r.srcPlayer))) continue;
+          const v = moTimingVerdict(r.window, atk[k].arrivalMs, planRowDateISO(r));
+          pairs.push({ i, k, d: v.status === 'unknown' ? Infinity : v.deltaMin, t: atk[k].arrivalMs || 0 });
+        }
       }
+      pairs.sort((a, b) => (a.d - b.d) || (a.t - b.t) || (a.i - b.i));
+      const taken = {};
+      for (const { i, k } of pairs) {
+        if (used[k] || (taken[i] || 0) >= (rows[i].count || 1)) continue;
+        used[k] = true; taken[i] = (taken[i] || 0) + 1; rowMatch[i].cmds.push(atk[k]);
+      }
+      for (const i of snobRows) rowMatch[i].cmds.sort((a, b) => (a.arrivalMs || 0) - (b.arrivalMs || 0));
     }
     for (const i of ri) { // pass 3 — same player, another of their villages
       const r = rows[i];

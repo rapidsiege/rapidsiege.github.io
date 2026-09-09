@@ -648,7 +648,7 @@
           <th data-i18n="th_escort">Snob Mode</th>
           <th data-i18n="th_catmode" data-i18n-title="catmode_title" title="Building objective for this target's off senders. POWER forces Wall.">Catapult Mode</th>
           <th data-i18n="th_win_off">Off Windows</th>
-          <th data-i18n="th_win_snob">Snob Window</th>
+          <th data-i18n="th_win_snob">Snob Windows</th>
           <th></th>
         </tr>
       </thead>
@@ -1261,7 +1261,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.15.2 &nbsp;·&nbsp; 2026-09-06</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.16.0 &nbsp;·&nbsp; 2026-09-09</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
@@ -1375,6 +1375,21 @@ document.addEventListener('drop', e => {
         <input type="number" id="ot-mass-half" min="0" max="99" class="cell-input num" style="width:52px;">
         <button class="btn btn-primary btn-sm" onclick="massSetOffs()" data-i18n="mass_apply">Apply</button>
       </div>
+      <!-- Noble train, per window group (v5.16): the picker says which wave the two rows below
+           write into; hidden while there is only one group. -->
+      <div class="mass-row" id="ot-mass-snobgroup-row" style="display:none;">
+        <span class="mass-lbl">🅰 <span data-i18n="lbl_window_group">Window group</span></span>
+        <select id="ot-mass-snobgroup" class="cell-input" style="width:auto;" data-i18n-title="mass_snobgroup_title"></select>
+        <span style="font-size:12px;color:#806030;" data-i18n="mass_snobgroup_hint">The Nobles and Snob Mode rows below write into this group only.</span>
+      </div>
+      <div class="mass-row">
+        <span class="mass-lbl"><img class="tw-ic" src="icons/units/snob.png" alt=""> <span data-i18n="mass_lbl_snobs">Nobles:</span></span>
+        <span style="font-size:12px;color:#d4b483;" data-i18n="th_snob_players">Snob Players</span>
+        <input type="number" id="ot-mass-snobplayers" min="0" max="99" class="cell-input num" style="width:52px;">
+        <span style="font-size:12px;color:#d4b483;" data-i18n="th_nobles">Nobles</span>
+        <input type="number" id="ot-mass-nobles" min="0" max="99" class="cell-input num" style="width:52px;">
+        <button class="btn btn-primary btn-sm" onclick="massSetSnobs()" data-i18n="mass_apply">Apply</button>
+      </div>
       <div class="mass-row">
         <span class="mass-lbl"><img class="tw-ic" src="icons/units/snob.png" alt=""> <span data-i18n="th_escort">Snob Mode</span></span>
         <button class="btn btn-ghost btn-sm" onclick="massSetSnobMode('solo')" data-i18n="opt_escort_no">👑 Solo</button>
@@ -1386,11 +1401,6 @@ document.addEventListener('drop', e => {
         <button class="btn btn-ghost btn-sm" onclick="massSetCatMode('smith')" data-i18n="catb_smith">Smithy</button>
         <button class="btn btn-ghost btn-sm" onclick="massSetCatMode('farm')" data-i18n="catb_farm">Farm</button>
         <button class="btn btn-ghost btn-sm" onclick="massSetCatMode('wall')" data-i18n="catb_wall">Wall</button>
-      </div>
-      <div class="mass-row" id="ot-mass-snobgroup-row" style="display:none;">
-        <span class="mass-lbl"><img class="tw-ic" src="icons/units/snob.png" alt=""> <span data-i18n="th_win_snob">Snob Window</span></span>
-        <select id="ot-mass-snobgroup" class="cell-input" style="width:auto;" data-i18n-title="mass_snobgroup_title"></select>
-        <button class="btn btn-primary btn-sm" onclick="massSetSnobGroup()" data-i18n="mass_apply" data-i18n-title="mass_snobgroup_title">Apply</button>
       </div>
       <div class="mass-row">
         <span class="mass-lbl"></span>

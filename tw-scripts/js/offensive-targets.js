@@ -8,10 +8,16 @@ const PLAN_BASE_MIN = { off: 30, snob: 35 };
 const TIER_FIELD = { complete: 'nComplete', tq: 'nTq', half: 'nHalf' };
 
 let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30', serverUrl: 'es100.guerrastribales.es', serverUtcOffset: 2, defComplete: 1, defTq: 0, defHalf: 0, defSnobMode: 'solo', groups: [], nextGroupId: 1 };
-// [{id, coord, player, groupOffs:{<groupId>:{nComplete,nTq,nHalf}}, group, snobPlayers, nobles,
-//   snobMode, snobAssignees:[{name,count}], offAssignees:[{tier,name,count,group}]}]
-// `group` = the target's PRIMARY window group (its noble train's wave); `groupOffs` says how
-// many offs of each tier it wants in each window group.
+// [{id, coord, player, groupOffs:{<groupId>:{nComplete,nTq,nHalf,nobles,snobPlayers,snobMode}},
+//   snobAssignees:[{name,count,group}], offAssignees:[{tier,name,count,group}]}]
+// Everything a target asks for is PER WINDOW GROUP: `groupOffs[gid]` holds the off counts of
+// each tier AND the noble train that wave carries (nobles, how many players send them, the
+// Solo / Split Off / Fake mode) — since v5.16 a target can be nobled in several waves. Pinned
+// senders of both kinds name the group they send in. `group` is only the target's ANCHOR wave
+// now — where a target that requests neither offs nor nobles anywhere (catapults only) lands;
+// kept in step with otPrimaryGroupId by normalizeOffTarget. (Pre-v5.16 saves kept the train per
+// target — `nobles`/`snobPlayers`/`snobMode`, landing in `group`; otMigrateSnobs moves them into
+// that group's entry.)
 let offTargets   = [];
 let offIgnore        = ''; // raw "Ignore Coordinates" textarea (Offensive Targets) — these villages never send anything
 let offIgnorePlayers = []; // raw player names excluded from the whole plan (no off, no snob, no escort)
@@ -112,22 +118,64 @@ function otGroupIndex(gid) { return otGroups().findIndex(g => g.id === gid); }
 function otGroupById(gid) { const i = otGroupIndex(gid); return i < 0 ? otGroups()[0] : otGroups()[i]; }
 // Label of the group a row/plan-row belongs to ('A', 'B', …); '?' for an unknown id.
 function otLabelOf(gid) { const i = otGroupIndex(gid); return i < 0 ? '?' : otGroupLabel(i); }
-// The target's PRIMARY group: the one its noble train uses (snob window + arrival date),
-// and the anchor its catapult attacks fall back to. Defaults to the first group.
+// The target's PRIMARY group: the first wave it nobles in, else the first wave it sends offs
+// in, else its stored anchor (tg.group — the only wave a catapult-only target has, picked in its
+// Off Windows cell), else group A. Since v5.16 every noble train names its own group, so this is
+// just the anchor for the catapults of a target requesting nothing anywhere and the fallback for
+// a pinned sender whose group was deleted.
 function otPrimaryGroupId(tg) {
+  const sg = otSnobGroups(tg);
+  if (sg.length) return sg[0].id;
+  const ag = otGroups().filter(g => ['complete', 'tq', 'half'].some(tr => otTierCount(tg, g.id, tr) > 0));
+  if (ag.length) return ag[0].id;
   return (tg && otGroupIndex(tg.group) >= 0) ? tg.group : otGroups()[0].id;
 }
-// Per-group off request. tg.groupOffs is keyed by String(groupId) — JSON object keys are
-// strings, so every read/write goes through these two so the key type can never drift.
+const SNOB_MODES = ['solo', 'escorted', 'fake'];
+// Snob mode a group entry starts with: a FAKE target's train defaults to a bare fake decoy,
+// everything else to the configured default.
+function otDefaultSnobMode(tg) { return (tg && tg.type === 'fake') ? 'fake' : (otCfg.defSnobMode || 'solo'); }
+function otNewGroupEntry(tg) { return { nComplete: 0, nTq: 0, nHalf: 0, nobles: 0, snobPlayers: 0, snobMode: otDefaultSnobMode(tg) }; }
+// Per-group request. tg.groupOffs is keyed by String(groupId) — JSON object keys are strings,
+// so every read/write goes through these accessors so the key type can never drift. Reads
+// never create an entry; writes create a zeroed one on demand.
+function otGroupEntry(tg, gid) {
+  if (!tg.groupOffs) tg.groupOffs = {};
+  const k = String(gid);
+  if (!tg.groupOffs[k]) tg.groupOffs[k] = otNewGroupEntry(tg);
+  return tg.groupOffs[k];
+}
 function otTierCount(tg, gid, tier) {
   const e = tg && tg.groupOffs && tg.groupOffs[String(gid)];
   return e ? (e[TIER_FIELD[tier]] || 0) : 0;
 }
 function otSetTierCount(tg, gid, tier, n) {
-  if (!tg.groupOffs) tg.groupOffs = {};
-  const k = String(gid);
-  if (!tg.groupOffs[k]) tg.groupOffs[k] = { nComplete: 0, nTq: 0, nHalf: 0 };
-  tg.groupOffs[k][TIER_FIELD[tier]] = Math.max(0, parseInt(n) || 0);
+  otGroupEntry(tg, gid)[TIER_FIELD[tier]] = Math.max(0, parseInt(n) || 0);
+}
+// The noble train of ONE wave: `nobles` (how many nobles land there), `snobPlayers` (how many
+// players / trains carry them) and its mode (Solo / Split Off / Fake).
+function otSnobCount(tg, gid, field) { // field: 'nobles' | 'snobPlayers'
+  const e = tg && tg.groupOffs && tg.groupOffs[String(gid)];
+  return e ? (e[field] || 0) : 0;
+}
+function otSetSnobCount(tg, gid, field, n) {
+  if (field !== 'nobles' && field !== 'snobPlayers') return;
+  otGroupEntry(tg, gid)[field] = Math.max(0, parseInt(n) || 0);
+}
+function otSnobMode(tg, gid) {
+  const e = tg && tg.groupOffs && tg.groupOffs[String(gid)];
+  return (e && SNOB_MODES.includes(e.snobMode)) ? e.snobMode : otDefaultSnobMode(tg);
+}
+function otSetSnobMode(tg, gid, mode) {
+  otGroupEntry(tg, gid).snobMode = SNOB_MODES.includes(mode) ? mode : 'solo';
+}
+// Nobles / snob players this target asks for across ALL groups.
+function otSnobTotal(tg, field) { return otGroups().reduce((s, g) => s + otSnobCount(tg, g.id, field), 0); }
+// Groups this target fields a noble train in (nobles or snob players > 0, or a sender pinned
+// there), in group order. Empty when it nobles nowhere — unlike otActiveGroups there is no
+// fallback, because "no train" is a real answer the plan engine relies on.
+function otSnobGroups(tg) {
+  return otGroups().filter(g => otSnobCount(tg, g.id, 'nobles') > 0 || otSnobCount(tg, g.id, 'snobPlayers') > 0
+    || (Array.isArray(tg && tg.snobAssignees) && tg.snobAssignees.some(a => a && a.group === g.id)));
 }
 // Offs of `tier` this target wants across ALL groups (the summary line, capacity warnings
 // and any "how many offs does this row cost" question use this, never a single group).
@@ -137,8 +185,8 @@ function otTierTotal(tg, tier) {
 function otAllTiersTotal(tg) {
   return ['complete', 'tq', 'half'].reduce((s, tr) => s + otTierTotal(tg, tr), 0);
 }
-// Groups this target actually attacks in (any tier > 0), in group order. A target with no
-// offs anywhere still reports its primary group so its catapults/nobles have a window.
+// Groups this target actually attacks in with OFFS (any tier > 0), in group order. A target
+// with no offs anywhere still reports its primary group so its catapults have a window.
 function otActiveGroups(tg) {
   const act = otGroups().filter(g => ['complete', 'tq', 'half'].some(tr => otTierCount(tg, g.id, tr) > 0));
   return act.length ? act : [otGroupById(otPrimaryGroupId(tg))];
@@ -212,21 +260,23 @@ function addOffWindowGroup() {
   gs.push({ id: otCfg.nextGroupId++, dateISO: '', winOff: last.winOff || '', winSnob: last.winSnob || '' });
   saveOffensive(); renderOffWindowGroups(); renderOffTargets();
 }
-// Removing a group drops every target's offs in it (they have nowhere to land) and re-points
-// any target whose primary group it was. The last group can never be removed.
+// Removing a group drops every target's offs AND noble train in it (they have nowhere to
+// land), pinned senders included. The last group can never be removed.
 function removeOffWindowGroup(gid) {
   const gs = otGroups();
   if (gs.length <= 1) return;
   const idx = otGroupIndex(gid);
   if (idx < 0) return;
   const offs = offTargets.reduce((s, tg) => s + ['complete', 'tq', 'half'].reduce((x, tr) => x + otTierCount(tg, gid, tr), 0), 0);
-  if (!confirm(t('confirm_del_group')(otGroupLabel(idx), offs))) return;
+  const nobles = offTargets.reduce((s, tg) => s + otSnobCount(tg, gid, 'nobles'), 0);
+  if (!confirm(t('confirm_del_group')(otGroupLabel(idx), offs, nobles))) return;
   otCfg.groups.splice(idx, 1);
   const fallback = otCfg.groups[0].id;
   for (const tg of offTargets) {
     if (tg.groupOffs) delete tg.groupOffs[String(gid)];
     if (tg.group === gid) tg.group = fallback;
     if (Array.isArray(tg.offAssignees)) tg.offAssignees = tg.offAssignees.filter(a => a.group !== gid);
+    if (Array.isArray(tg.snobAssignees)) tg.snobAssignees = tg.snobAssignees.filter(a => a.group !== gid);
   }
   // Orders already generated for that wave describe attacks that no longer exist — drop them so
   // the plan table, the exports and Manage Offensive can't disagree about what is still planned.
@@ -761,8 +811,8 @@ function updDefGroup(v) {
   if (otGroupIndex(gid) >= 0) otCfg.defGroup = gid;
   saveOffensive(); renderOffWindowGroups();
 }
-// Overwrites the picked group's Complete / 3-4 / 1-2 counts AND the snob mode on every target.
-// Other groups' counts are untouched — that's the point of groups being independent.
+// Overwrites the picked group's Complete / 3-4 / 1-2 counts AND its snob mode on every target.
+// Other groups are untouched — that's the point of groups being independent.
 function applyDefOffsSnobToAll() {
   if (!offTargets.length) return;
   const gid = otDefGroupId();
@@ -771,7 +821,7 @@ function applyDefOffsSnobToAll() {
     otSetTierCount(tg, gid, 'complete', otCfg.defComplete ?? 1);
     otSetTierCount(tg, gid, 'tq', otCfg.defTq ?? 0);
     otSetTierCount(tg, gid, 'half', otCfg.defHalf ?? 0);
-    tg.snobMode = otCfg.defSnobMode || 'solo';
+    otSetSnobMode(tg, gid, otCfg.defSnobMode || 'solo');
   }
   saveOffensive(); renderOffTargets();
 }
@@ -791,36 +841,72 @@ function normalizeOffTarget(tg) {
     .filter(b => b && CAT_BUILDING_KEYS.includes(b.building))
     .map(b => ({ building: b.building, count: Math.max(0, parseInt(b.count) || 0) }));
   if (!CAT_MODE_KEYS.includes(tg.catMode)) tg.catMode = 'smith'; // Catapult Mode (off-sender building objective)
-  if (!tg.snobMode) tg.snobMode = 'solo';
   if (!Array.isArray(tg.snobAssignees)) tg.snobAssignees = [];
   tg.snobAssignees = tg.snobAssignees.filter(Boolean).map(a => typeof a === 'string'
     ? { name: a, count: 0 }
-    : { name: a.name, count: Math.max(0, parseInt(a.count) || 0) });
-  if (!Array.isArray(tg.offAssignees)) tg.offAssignees = [];
-  // A pinned off sender names a (group, tier) pair. Entries from a deleted group would pin
-  // offs nowhere, so they fall back to the primary group rather than silently disappearing.
-  tg.offAssignees = tg.offAssignees
-    .filter(a => a && a.name && ['complete', 'tq', 'half'].includes(a.tier))
-    .map(a => ({ tier: a.tier, name: a.name, count: Math.max(0, parseInt(a.count) || 0),
-      group: otGroupIndex(a.group) >= 0 ? a.group : otPrimaryGroupId(tg) }));
-  // Per-group off requests, keyed by String(groupId); drop entries for groups that no longer
-  // exist and coerce every count to a non-negative integer.
+    : { name: a.name, count: Math.max(0, parseInt(a.count) || 0), group: a.group });
+  // Pre-v5.16 per-target noble train → the entry of the wave it landed in (must run before the
+  // entries are normalized below, and before any group fallback reads otPrimaryGroupId).
+  otMigrateSnobs(tg);
+  // Per-group requests, keyed by String(groupId); drop entries for groups that no longer exist,
+  // coerce every count to a non-negative integer and every snob mode to a known one.
   if (!tg.groupOffs || typeof tg.groupOffs !== 'object') tg.groupOffs = {};
   for (const k of Object.keys(tg.groupOffs)) {
     if (otGroupIndex(Number(k)) < 0) { delete tg.groupOffs[k]; continue; }
     const e = tg.groupOffs[k] || {};
     tg.groupOffs[k] = { nComplete: Math.max(0, parseInt(e.nComplete) || 0),
-      nTq: Math.max(0, parseInt(e.nTq) || 0), nHalf: Math.max(0, parseInt(e.nHalf) || 0) };
+      nTq: Math.max(0, parseInt(e.nTq) || 0), nHalf: Math.max(0, parseInt(e.nHalf) || 0),
+      nobles: Math.max(0, parseInt(e.nobles) || 0), snobPlayers: Math.max(0, parseInt(e.snobPlayers) || 0),
+      snobMode: SNOB_MODES.includes(e.snobMode) ? e.snobMode : otDefaultSnobMode(tg) };
   }
-  tg.group = otPrimaryGroupId(tg);
+  // A pinned sender — noble OR off — names a group (an off pin a (group, tier) pair). Entries
+  // from a deleted group would pin nowhere, so they fall back to the primary group rather than
+  // silently disappearing.
+  tg.snobAssignees = tg.snobAssignees.filter(a => a && a.name)
+    .map(a => ({ name: a.name, count: a.count, group: otGroupIndex(a.group) >= 0 ? a.group : otPrimaryGroupId(tg) }));
+  if (!Array.isArray(tg.offAssignees)) tg.offAssignees = [];
+  tg.offAssignees = tg.offAssignees
+    .filter(a => a && a.name && ['complete', 'tq', 'half'].includes(a.tier))
+    .map(a => ({ tier: a.tier, name: a.name, count: Math.max(0, parseInt(a.count) || 0),
+      group: otGroupIndex(a.group) >= 0 ? a.group : otPrimaryGroupId(tg) }));
+  tg.group = otPrimaryGroupId(tg); // the anchor follows the request (see otPrimaryGroupId)
   return tg;
+}
+
+// ── Legacy → per-group noble train migration (v5.16) ─────────────────────────
+// Pre-v5.16 targets kept ONE noble train per target (tg.nobles / tg.snobPlayers / tg.snobMode,
+// pinned senders without a group) landing in tg.group, the "primary" wave. Move all of it into
+// that wave's groupOffs entry and drop the three target-level fields (tg.group itself stays, as
+// the anchor — see otPrimaryGroupId). Also the compatibility path for
+// anything that still writes those fields on a migrated target: they land in the primary group
+// (the first wave with nobles). The mode was a target-wide choice, so EVERY wave inherits it —
+// entries that exist and have no mode take it, and waves with no entry yet get a zeroed one
+// carrying it — so the user's Solo / Split Off sticks if they later add nobles to wave B (a
+// lazily created entry would otherwise start from otCfg.defSnobMode).
+function otMigrateSnobs(tg) {
+  const legacy = tg.nobles !== undefined || tg.snobPlayers !== undefined || tg.snobMode !== undefined;
+  if (!legacy) return;
+  const gid = otGroupIndex(tg.group) >= 0 ? tg.group : otPrimaryGroupId(tg);
+  const e = otGroupEntry(tg, gid);
+  if (tg.nobles !== undefined) e.nobles = Math.max(0, parseInt(tg.nobles) || 0);
+  if (tg.snobPlayers !== undefined) e.snobPlayers = Math.max(0, parseInt(tg.snobPlayers) || 0);
+  if (SNOB_MODES.includes(tg.snobMode)) {
+    e.snobMode = tg.snobMode;
+    for (const g of otGroups()) {
+      const x = otGroupEntry(tg, g.id);
+      if (!SNOB_MODES.includes(x.snobMode) || g.id !== gid) x.snobMode = tg.snobMode;
+    }
+  }
+  if (Array.isArray(tg.snobAssignees)) tg.snobAssignees.forEach(a => { if (a && otGroupIndex(a.group) < 0) a.group = gid; });
+  delete tg.nobles; delete tg.snobPlayers; delete tg.snobMode;
 }
 
 // `type` ∈ TARGET_TYPES (default 'off'); only the bulk-add dropdown and the mass edit set
 // anything else. A DESTROYER starts with the catapult toggle ON at the default attack count.
-// The default off counts seed ONE group — the one picked in the "Default offs" row. A fresh
-// target that silently requested offs in every group would quietly multiply the whole plan, so
-// later waves are always something you opt into per row.
+// The default off counts AND the noble train (4 nobles, no senders yet, the default snob mode)
+// seed ONE group — the one picked in the "Default offs" row. A fresh target that silently
+// requested offs or nobles in every group would quietly multiply the whole plan, so later waves
+// are always something you opt into per row.
 function newOffTarget(coord, player, type) {
   if (!TARGET_TYPES.includes(type)) type = 'off';
   const destroyer = type === 'destroyer';
@@ -828,11 +914,11 @@ function newOffTarget(coord, player, type) {
   return {
     id: otNextId++, coord, player, type, power: false,
     catEnabled: destroyer, catapult: destroyer ? CAT_ATTACKS_DEFAULT : 0, catBuildings: [], catMode: 'smith',
-    groupOffs: { [String(g0)]: { nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0 } },
-    group: g0, snobPlayers: 0, nobles: 4,
     // A FAKE target's noble train, if any, defaults to a bare fake decoy; everything else uses
     // the configured default snob mode. (Bulk-add as FAKE therefore lands on 'fake' automatically.)
-    snobMode: type === 'fake' ? 'fake' : (otCfg.defSnobMode || 'solo'), snobAssignees: [], offAssignees: [],
+    groupOffs: { [String(g0)]: { nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0,
+      nobles: 4, snobPlayers: 0, snobMode: type === 'fake' ? 'fake' : (otCfg.defSnobMode || 'solo') } },
+    group: g0, snobAssignees: [], offAssignees: [],
   };
 }
 
@@ -878,8 +964,8 @@ function updOTGroupCount(id, gid, tier, val) {
   saveOffensive();
   renderOtOffsSummary();
 }
-// The target's primary group — the one its noble train (and, when it requests offs nowhere,
-// its catapults) lands in. Changing it re-renders: the row's snob window text follows.
+// The anchor wave of a target that requests neither offs nor nobles anywhere (catapults only):
+// the Off Windows cell offers this picker in that one case. Changing it re-renders.
 function updOTGroup(id, val) {
   const tg = offTargets.find(x => x.id === id);
   const gid = parseInt(val, 10);
@@ -887,10 +973,28 @@ function updOTGroup(id, val) {
   tg.group = gid;
   saveOffensive(); renderOffTargets();
 }
+// Per-group noble-train count cells (Snob Players / Nobles × window group). Same no-re-render
+// rule as the off counts: a number input commits on every spinner click, and rebuilding the row
+// would drop focus after the first one; the summary line is refreshed on its own.
+function updOTSnob(id, gid, field, val) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg || otGroupIndex(gid) < 0) return;
+  otSetSnobCount(tg, gid, field, val);
+  saveOffensive();
+  renderOtOffsSummary();
+}
+// Per-group Snob Mode select (the summary's escort-off count follows).
+function updOTSnobMode(id, gid, val) {
+  const tg = offTargets.find(x => x.id === id);
+  if (!tg || otGroupIndex(gid) < 0) return;
+  otSetSnobMode(tg, gid, val);
+  saveOffensive();
+  renderOtOffsSummary();
+}
 function updOT(id, field, val) {
   const tg = offTargets.find(x => x.id === id);
   if (!tg) return;
-  if (['snobPlayers','nobles','catapult'].includes(field)) tg[field] = Math.max(0, parseInt(val) || 0);
+  if (field === 'catapult') tg[field] = Math.max(0, parseInt(val) || 0);
   else tg[field] = val.trim();
   if (field === 'coord') {
     // defender is DB-derived; refresh it (clear if the DB doesn't know the new coord)
@@ -1101,6 +1205,8 @@ function openMassEdit() {
   document.getElementById('ot-mass-complete').value = otCfg.defComplete ?? 1;
   document.getElementById('ot-mass-tq').value       = otCfg.defTq ?? 0;
   document.getElementById('ot-mass-half').value     = otCfg.defHalf ?? 0;
+  document.getElementById('ot-mass-snobplayers').value = 0; // same seeds a new target gets
+  document.getElementById('ot-mass-nobles').value      = 4;
   document.getElementById('ot-mass-cat-count').value = 5;
   massCatBuildings = [];
   renderMassCatBuildings();
@@ -1212,13 +1318,17 @@ function massSetOffs() {
     otSetTierCount(tg, gid, 'half', h);
   });
 }
-function massSetSnobMode(v) { massApply(tg => { tg.snobMode = (v === 'escorted' || v === 'fake') ? v : 'solo'; }); }
-function massSetCatMode(v)  { if (CAT_MODE_KEYS.includes(v)) massApply(tg => { tg.catMode = v; }); }
-// Moves every selected row's noble train to one window group (its snob window + arrival date).
-function massSetSnobGroup() {
+// Snob Players + Nobles written into ONE window group on every selected row (the modal's snob
+// group picker; the other groups' trains are left alone) — the noble twin of massSetOffs.
+function massSetSnobs() {
+  const n = id => Math.max(0, parseInt(document.getElementById(id).value) || 0);
+  const sp = n('ot-mass-snobplayers'), nb = n('ot-mass-nobles');
   const gid = massGroupId('ot-mass-snobgroup');
-  massApply(tg => { tg.group = gid; });
+  massApply(tg => { otSetSnobCount(tg, gid, 'snobPlayers', sp); otSetSnobCount(tg, gid, 'nobles', nb); });
 }
+// Snob mode of that same group on every selected row.
+function massSetSnobMode(v) { const gid = massGroupId('ot-mass-snobgroup'); massApply(tg => { otSetSnobMode(tg, gid, v); }); }
+function massSetCatMode(v)  { if (CAT_MODE_KEYS.includes(v)) massApply(tg => { tg.catMode = v; }); }
 function massDeleteSelected() {
   otPruneSelection();
   if (!otSelected.size) return;
@@ -1281,22 +1391,26 @@ function snobSenderOptionsForTarget(tg) {
   return out;
 }
 
-function addSnobAssignee(id, name) {
+// A noble sender is pinned to ONE wave (gid): the pin implies at least that many trains there.
+function addSnobAssignee(id, gid, name) {
   if (!name) return;
   const tg = offTargets.find(x => x.id === id);
-  if (!tg) return;
-  tg.snobAssignees.push({ name, count: 0 });
-  if (tg.snobAssignees.length > (tg.snobPlayers || 0)) tg.snobPlayers = tg.snobAssignees.length;
+  if (!tg || otGroupIndex(gid) < 0) return;
+  tg.snobAssignees.push({ name, count: 0, group: gid });
+  const cnt = tg.snobAssignees.filter(a => a.group === gid).length;
+  if (cnt > otSnobCount(tg, gid, 'snobPlayers')) otSetSnobCount(tg, gid, 'snobPlayers', cnt);
   saveOffensive(); renderOffTargets();
 }
 
 function removeSnobAssignee(id, idx) {
   const tg = offTargets.find(x => x.id === id);
-  if (!tg) return;
+  if (!tg || !tg.snobAssignees[idx]) return;
+  const gid = tg.snobAssignees[idx].group;
   tg.snobAssignees.splice(idx, 1);
-  // mirror the +1-per-sender bump: removing a sender drops the train count by one
-  // (floored at the remaining assignee count, and at 0), so the count tracks senders
-  tg.snobPlayers = Math.max(tg.snobAssignees.length, (tg.snobPlayers || 0) - 1);
+  // mirror the +1-per-sender bump: removing a sender drops THAT wave's train count by one
+  // (floored at the assignees remaining there, and at 0), so the count tracks senders
+  const left = tg.snobAssignees.filter(a => a.group === gid).length;
+  otSetSnobCount(tg, gid, 'snobPlayers', Math.max(left, otSnobCount(tg, gid, 'snobPlayers') - 1));
   saveOffensive(); renderOffTargets();
 }
 
@@ -1366,15 +1480,17 @@ function updOffCount(id, idx, val) {
   saveOffensive(); renderOffTargets();
 }
 
-// Effective noble count per train: explicit sender counts are honored, the
-// remaining nobles are split evenly across the trains without a fixed count
-function targetTrainSpec(tg) {
-  const assignees = (tg.snobAssignees || []).filter(a => a && a.name);
-  const nTrains = Math.max(tg.snobPlayers || 0, assignees.length);
-  if (!nTrains || !tg.nobles) return [];
+// Effective noble count per train of ONE wave (gid): explicit sender counts are honored, the
+// remaining nobles of that group are split evenly across the trains without a fixed count. A
+// pin belongs to exactly one group, so Alice ×3 in wave A leaves wave B's nobles to B's senders.
+function targetTrainSpec(tg, gid) {
+  const assignees = (tg.snobAssignees || []).filter(a => a && a.name && a.group === gid);
+  const nobles = otSnobCount(tg, gid, 'nobles');
+  const nTrains = Math.max(otSnobCount(tg, gid, 'snobPlayers'), assignees.length);
+  if (!nTrains || !nobles) return [];
   const explicitSum = assignees.reduce((s, a) => s + (a.count > 0 ? a.count : 0), 0);
   const nAuto = nTrains - assignees.filter(a => a.count > 0).length;
-  const auto = nAuto > 0 ? splitNobles(Math.max(0, tg.nobles - explicitSum), nAuto) : [];
+  const auto = nAuto > 0 ? splitNobles(Math.max(0, nobles - explicitSum), nAuto) : [];
   let ai = 0;
   const spec = [];
   for (let ti = 0; ti < nTrains; ti++) {
@@ -1385,11 +1501,11 @@ function targetTrainSpec(tg) {
   return spec.filter(x => x.count > 0);
 }
 
-// player name → nobles assigned across all targets (named senders only)
+// player name → nobles assigned across all targets AND waves (named senders only)
 function senderNobleTotals() {
   const agg = {};
-  for (const tg of offTargets) {
-    for (const s of targetTrainSpec(tg)) {
+  for (const tg of offTargets) for (const g of otSnobGroups(tg)) {
+    for (const s of targetTrainSpec(tg, g.id)) {
       if (s.name) agg[s.name] = (agg[s.name] || 0) + s.count;
     }
   }
@@ -1613,8 +1729,8 @@ function renderOtOffsSummary() {
   // FAKE targets are excluded throughout: their Complete column is a REUSE count (1-ram fakes
   // from villages already sending a real off), so they consume no offs and send no escorts.
   const realTargets = offTargets.filter(tg => tg.type !== 'fake');
-  const escortOffs = realTargets.reduce((s, tg) =>
-    s + (tg.snobMode === 'escorted' ? targetTrainSpec(tg).length : 0), 0);
+  const escortOffs = realTargets.reduce((s, tg) => s + otSnobGroups(tg).reduce((x, g) =>
+    x + (otSnobMode(tg, g.id) === 'escorted' ? targetTrainSpec(tg, g.id).length : 0), 0), 0);
   const ignoreCoords = parseOffIgnoreSet();
   const ignorePl = new Set(offIgnorePlayers);
   // Villages the Enemy Tribes filter holds home are unavailable exactly like ignored ones, so
@@ -1821,13 +1937,22 @@ function renderOffTargets(opts) {
   tbody.innerHTML = rows.map(({ tg, i }) => {
     const isUnknown = villageDb.length && !coordDb[tg.coord];
     const dbTitle = esc(dbOwnerLabel(tg.coord));
-    const chips = tg.snobAssignees.map((a, j) =>
-      `<span class="chip">${esc(decode(a.name))} ×<input type="number" min="0" value="${a.count || 0}" title="${esc(t('snob_count_title'))}" style="width:32px;background:transparent;border:none;border-bottom:1px solid #7a5c10;color:inherit;font-size:11px;text-align:center;" onchange="updSnobCount(${tg.id},${j},this.value)"><span class="chip-x" onclick="removeSnobAssignee(${tg.id},${j})">✕</span></span>`).join('');
-    const senderPicker = senders.length
-      ? `<select class="cell-input" style="width:118px;" onfocus="otFillPicker(this,'snob',${tg.id})" onmousedown="otFillPicker(this,'snob',${tg.id})" onchange="addSnobAssignee(${tg.id}, this.value)">
-           <option value="">${t('opt_pick_sender')}</option>
-         </select>`
-      : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+    // Wave letter tag for the per-group cells — only when there is more than one group, so a
+    // single-wave plan looks exactly as it always did.
+    const gTagOf = g => multiGroup ? `<span class="badge" style="font-size:9px;padding:0 4px;background:#2a1e08;color:#c8a060;" title="${esc(groupDateLabel(g))}">${esc(otLabelOf(g.id))}</span>` : '';
+    // Snob senders: one picker row per window group (a pin names the wave it sends in); the
+    // chips are the senders pinned to that wave. Every group gets a row — the counts don't
+    // re-render, so a wave the user has just typed nobles into must already have its picker.
+    const snobSenderCell = otGroups().map(g => {
+      const chips = tg.snobAssignees.map((a, j) => a.group !== g.id ? '' :
+        `<span class="chip">${esc(decode(a.name))} ×<input type="number" min="0" value="${a.count || 0}" title="${esc(t('snob_count_title'))}" style="width:32px;background:transparent;border:none;border-bottom:1px solid #7a5c10;color:inherit;font-size:11px;text-align:center;" onchange="updSnobCount(${tg.id},${j},this.value)"><span class="chip-x" onclick="removeSnobAssignee(${tg.id},${j})">✕</span></span>`).join('');
+      const picker = senders.length
+        ? `<select class="cell-input" style="width:118px;" onfocus="otFillPicker(this,'snob',${tg.id})" onmousedown="otFillPicker(this,'snob',${tg.id})" onchange="addSnobAssignee(${tg.id},${g.id},this.value)">
+             <option value="">${t('opt_pick_sender')}</option>
+           </select>`
+        : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
+      return `<div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;margin:1px 0;">${gTagOf(g)}${chips}${picker}</div>`;
+    }).join('');
     // Off senders: one labeled picker per tier (Complete / 3-4 / 1-2); option labels show
     // how many offs of THAT tier the player owns. Chips = assignees of that tier (editable count).
     const TIER_BADGE_CLS = { complete: 'badge-complete', tq: 'badge-tq', half: 'badge-half' };
@@ -1854,20 +1979,30 @@ function renderOffTargets(opts) {
       : `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
     const isFakeTg = tg.type === 'fake';
     // Off Windows column: read-only, one line per group this target attacks in — the windows
-    // themselves are edited once, up in the Window Groups editor, not per row.
-    const offWinCell = otActiveGroups(tg).map(g =>
+    // themselves are edited once, up in the Window Groups editor, not per row. A target with
+    // no offs AND no nobles anywhere (catapults only) has nothing to anchor its wave to, so it
+    // gets a picker for that anchor instead (multi-group only).
+    const catOnly = multiGroup && otAllTiersTotal(tg) === 0 && !otSnobGroups(tg).length;
+    const offWinCell = catOnly
+      ? `<select class="cell-input" style="width:150px;" title="${esc(t('cat_group_title'))}" onchange="updOTGroup(${tg.id},this.value)">${otGroupOptionsHtml(otPrimaryGroupId(tg))}</select>`
+      : otActiveGroups(tg).map(g =>
       `<div style="display:flex;gap:4px;align-items:center;justify-content:center;margin:1px 0;white-space:nowrap;">
         ${multiGroup ? `<span class="badge" style="font-size:9px;padding:0 4px;background:#2a1e08;color:#c8a060;">${esc(otLabelOf(g.id))}</span>` : ''}
         <span class="mono" style="font-size:11px;color:#c8a060;">${esc(fmtWindow(g.winOff) || '—')}</span>
         ${multiGroup ? `<span style="font-size:10px;color:#806030;">${esc(groupDateLabel(g))}</span>` : ''}
       </div>`).join('');
-    // Snob Window column: the picker for this target's PRIMARY group — the wave its noble train
-    // lands in. Shown as a plain window read-out while there is only one group to choose from.
-    const primary = otGroupById(otPrimaryGroupId(tg));
-    const snobWinCell = multiGroup
-      ? `<select class="cell-input" style="width:150px;" title="${esc(t('snob_group_title'))}" onchange="updOTGroup(${tg.id},this.value)">${otGroupOptionsHtml(primary.id)}</select>
-         <div class="mono" style="font-size:11px;color:#c8a060;margin-top:2px;">${esc(fmtWindow(primary.winSnob) || '—')}</div>`
-      : `<span class="mono" style="font-size:11px;color:#c8a060;">${esc(fmtWindow(primary.winSnob) || '—')}</span>`;
+    // Snob Windows column: read-only like Off Windows — one line per wave this target nobles in
+    // (snob window + date), a dash when it nobles nowhere. The windows themselves are edited
+    // once, up in the Window Groups editor. Single group → the plain window read-out.
+    const snobGroups = otSnobGroups(tg);
+    const snobWinCell = !multiGroup
+      ? `<span class="mono" style="font-size:11px;color:#c8a060;">${esc(fmtWindow(otGroups()[0].winSnob) || '—')}</span>`
+      : !snobGroups.length ? '<span class="num-zero">—</span>'
+      : snobGroups.map(g =>
+        `<div style="display:flex;gap:4px;align-items:center;justify-content:center;margin:1px 0;white-space:nowrap;">
+          ${gTagOf(g)}<span class="mono" style="font-size:11px;color:#c8a060;">${esc(fmtWindow(g.winSnob) || '—')}</span>
+          <span style="font-size:10px;color:#806030;">${esc(groupDateLabel(g))}</span>
+        </div>`).join('');
     // One number input per group in each tier cell. Single group → a bare input, exactly the
     // pre-v5.9 cell; several → a letter-tagged input per group, stacked.
     const tierCell = (tier) => otGroups().map(g =>
@@ -1875,6 +2010,21 @@ function renderOffTargets(opts) {
         ${multiGroup ? `<span class="badge" style="font-size:9px;padding:0 4px;background:#2a1e08;color:#c8a060;" title="${esc(groupDateLabel(g))}">${esc(otLabelOf(g.id))}</span>` : ''}
         <input type="number" min="0" class="cell-input num" value="${otTierCount(tg, g.id, tier)}"${isFakeTg && tier === 'complete' ? ` title="${esc(t('fake_count_title'))}"` : ''} onchange="updOTGroupCount(${tg.id},${g.id},'${tier}',this.value)">
       </div>`).join('');
+    // Same shape for the noble train: Snob Players / Nobles inputs and the Snob Mode select, one
+    // per group, letter-tagged only when there are several.
+    const snobCell = field => otGroups().map(g =>
+      `<div style="display:flex;gap:3px;align-items:center;justify-content:center;">
+        ${gTagOf(g)}<input type="number" min="0" class="cell-input num" value="${otSnobCount(tg, g.id, field)}" onchange="updOTSnob(${tg.id},${g.id},'${field}',this.value)">
+      </div>`).join('');
+    const snobModeCell = otGroups().map(g => {
+      const m = otSnobMode(tg, g.id);
+      return `<div style="display:flex;gap:3px;align-items:center;justify-content:center;margin:1px 0;">
+        ${gTagOf(g)}<select class="cell-input" onchange="updOTSnobMode(${tg.id},${g.id},this.value)">
+          <option value="escorted"${m === 'escorted' ? ' selected' : ''}>${t('opt_escort_yes')}</option>
+          <option value="solo"${m === 'solo' ? ' selected' : ''}>${t('opt_escort_no')}</option>
+          <option value="fake"${m === 'fake' ? ' selected' : ''}>${t('opt_escort_fake')}</option>
+        </select>
+      </div>`; }).join('');
     const sel = otSelected.has(tg.id);
     // FAKE rows use the type, coord, Complete (= number of 1-ram fakes) and Off Windows cells,
     // PLUS the noble-train cells (Snob Players / Nobles / Senders / Snob Mode / Snob Window) so a
@@ -1918,16 +2068,10 @@ function renderOffTargets(opts) {
         })() : ''}
       </div></td>
       <td class="left">${isFakeTg ? dash : `<div style="max-width:280px;">${offSenderCell}</div>`}</td>
-      <td><input type="number" min="0" class="cell-input num" value="${tg.snobPlayers}" onchange="updOT(${tg.id},'snobPlayers',this.value)"></td>
-      <td><input type="number" min="0" class="cell-input num" value="${tg.nobles}" onchange="updOT(${tg.id},'nobles',this.value)"></td>
-      <td class="left"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;max-width:250px;">${chips}${senderPicker}</div></td>
-      <td>
-        <select class="cell-input" onchange="updOT(${tg.id},'snobMode',this.value)">
-          <option value="escorted"${tg.snobMode === 'escorted' ? ' selected' : ''}>${t('opt_escort_yes')}</option>
-          <option value="solo"${tg.snobMode === 'solo' ? ' selected' : ''}>${t('opt_escort_no')}</option>
-          <option value="fake"${tg.snobMode === 'fake' ? ' selected' : ''}>${t('opt_escort_fake')}</option>
-        </select>
-      </td>
+      <td>${snobCell('snobPlayers')}</td>
+      <td>${snobCell('nobles')}</td>
+      <td class="left"><div style="max-width:250px;">${snobSenderCell}</div></td>
+      <td>${snobModeCell}</td>
       <td title="${esc(t('catmode_title'))}">${isFakeTg ? dash : `
         <select class="cell-input" ${tg.power ? 'disabled' : ''} onchange="updCatMode(${tg.id},this.value)">
           ${CAT_MODE_KEYS.map(k => `<option value="${k}"${effectiveCatMode(tg) === k ? ' selected' : ''}>${esc(t('catb_' + k))}</option>`).join('')}
@@ -1946,13 +2090,13 @@ function renderOffTargets(opts) {
 }
 
 // ── Export Objectives: plain X|Y coords (one per line), in table order ──
-// Three kinds: 'snob' = targets with a noble (snobPlayers > 0), 'off' = targets
-// without (snobPlayers === 0), 'all' = every target. Snob+off partition the list,
+// Three kinds: 'snob' = targets with a noble (snob players > 0 in any wave), 'off' = targets
+// without (0 everywhere), 'all' = every target. Snob+off partition the list,
 // so 'all' is their union. Pure logic (no DOM) so it's headless-testable.
 function objectiveCoords(kind) {
   return offTargets
     .filter(tg => {
-      const hasSnob = (tg.snobPlayers || 0) > 0;
+      const hasSnob = otSnobTotal(tg, 'snobPlayers') > 0;
       if (kind === 'snob') return hasSnob;
       if (kind === 'off')  return !hasSnob;
       return true; // 'all'
