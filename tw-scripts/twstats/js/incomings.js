@@ -536,12 +536,33 @@
   var ORD_UNIT_ORDER = ["spear", "sword", "axe", "archer", "spy", "light",
                         "marcher", "heavy", "ram", "catapult", "knight", "snob"];
   var ORD_SIZE_ES = { small: "pequeño", medium: "mediano", large: "grande" };
+  // Catapult target (exporter v2.1+: catapult_target = the game's building key,
+  // catapult_target_name = its name in the exporter's game language). Shown as
+  // "200 🏹 (Granja)" right after the catapult chip — the Spanish name from this
+  // map first (the site is Spanish whatever world language exported the file),
+  // the exported name as fallback, the bare key as a last resort. Every building
+  // the confirm screen offers (game order), not just the 5 the hover card lists.
+  var ORD_BLD_ES = { main: "Edificio Principal", barracks: "Cuartel", stable: "Cuadra", garage: "Taller",
+                     snob: "Academia", smith: "Herrería", place: "Plaza de reuniones", statue: "Estatua",
+                     market: "Mercado", wood: "Leñador", stone: "Barrera", iron: "Mina de hierro",
+                     farm: "Granja", storage: "Almacén", hide: "Escondrijo", wall: "Muralla" };
+  function ordCatTarget(c) {
+    var key = c.catapult_target != null ? String(c.catapult_target) : "";
+    var name = c.catapult_target_name != null ? String(c.catapult_target_name) : "";
+    return ORD_BLD_ES[key] || name || key;
+  }
   function ordersCellHtml(c) {
+    var bld = ordCatTarget(c);
     var chips = ORD_UNIT_ORDER.filter(function (u) { return (c.units[u] || 0) > 0; })
       .map(function (u) {
+        var tail = (u === "catapult" && bld)
+          ? ' <span class="ord-bld" title="Edificio objetivo de las catapultas (según el .json de órdenes)">(' +
+            TW.esc(bld) + ")</span>"
+          : "";
         return '<span class="ord-unit" title="' + TW.esc(UNIT_ES[u] || u) +
+          (u === "catapult" && bld ? " → " + TW.esc(bld) : "") +
           '"><img class="ord-ic" src="../icons/units/' + u + '.png" alt="' +
-          TW.esc(UNIT_ES[u] || u) + '">' + TW.commas(c.units[u]) + "</span>";
+          TW.esc(UNIT_ES[u] || u) + '">' + TW.commas(c.units[u]) + tail + "</span>";
       });
     var size = ORD_SIZE_ES[c.size]
       ? '<img class="ord-ic ord-size" src="../icons/units/attack_' + c.size +

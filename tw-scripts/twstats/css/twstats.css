@@ -472,6 +472,7 @@ table.vis th.col-verdict { white-space: normal; }
 .ord-unit { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; white-space: nowrap; }
 .ord-ic { width: 15px; height: 15px; vertical-align: middle; }
 .ord-size { width: 14px; height: 14px; }
+.ord-bld { opacity: .8; white-space: nowrap; }
 
 /* CATAS village tag — purple, sits next to the 📄OFF/DEF badge. */
 .note-catas { color: #fff; background: #6d3f8e; border-color: #6d3f8e; }
