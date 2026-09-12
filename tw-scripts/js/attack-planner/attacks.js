@@ -103,6 +103,8 @@ function clearAllAttacks() {
 // off attack consumes a complete/half (ram/axe) requirement's village, a snob its noble
 // train, a fake only one ram + one spy (so a fake never makes its village "busy").
 const REPLACE_REQ_UNITS = { off: ['ram', 'axe'], snob: ['snob'], fake: ['fake'] };
+// An off replacement must be a real off: weaker villages are never offered.
+const REPLACE_MIN_OFF_POW = 300000;
 
 // The My-Villages entry a pinned requirement names (rally-URL village ID first, coords second).
 function pinnedVillage(req) {
@@ -145,7 +147,7 @@ function assignedSenders(excludeId) {
 }
 
 // Every village that could take over `atk`: it holds the troops the attack type needs (a noble
-// for a snob, a ram for a fake, any off power otherwise), it isn't the current origin, and its
+// for a snob, a ram for a fake, ≥ REPLACE_MIN_OFF_POW off power for an off), it isn't the current origin, and its
 // send window is still open — sending NOW or LATER still lands inside the landing window
 // (sendEndMs ≥ now). Free (🏠) villages come first, strongest first within each group.
 // `late` counts the villages hidden because their send window has already closed.
@@ -159,7 +161,7 @@ function replaceCandidates(atk, now = Date.now()) {
   const busy   = assignedSenders(atk.id);
   const holds = v => atk.type === 'snob' ? (v.nobles || 0) > 0
                    : atk.type === 'fake' ? (v.rams || 0) > 0
-                   : calcOffPow(v) > 0;
+                   : calcOffPow(v) >= REPLACE_MIN_OFF_POW;
   const rows = [];
   let late = 0;
   DATA.villages.forEach(v => {

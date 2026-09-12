@@ -618,6 +618,7 @@
 <!-- ══════════════════ MODAL: EDIT VILLAGE ══════════════════ -->
 <div class="modal-backdrop" id="modal-village">
   <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-village')" data-i18n-title="btn_close" title="Close" aria-label="Close">✕</button>
     <h3 data-i18n="modal_edit_village">Edit Village</h3>
     <input type="hidden" id="mv-id">
     <div class="form-grid">
@@ -668,6 +669,7 @@
 <!-- ══════════════════ MODAL: EDIT TARGET ══════════════════ -->
 <div class="modal-backdrop" id="modal-target">
   <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-target')" data-i18n-title="btn_close" title="Close" aria-label="Close">✕</button>
     <h3 data-i18n="modal_edit_target">Edit Target</h3>
     <input type="hidden" id="mt-id">
     <div class="form-grid">
@@ -711,6 +713,7 @@
 <!-- ══════════════════ MODAL: AUTO-GENERATE ══════════════════ -->
 <div class="modal-backdrop" id="modal-autogen">
   <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-autogen')" data-i18n-title="btn_close" title="Close" aria-label="Close">✕</button>
     <h3 data-i18n="modal_autogen">⚡ Auto-Generate Attacks</h3>
     <div class="form-grid">
       <div class="form-group" style="grid-column:span 2">
@@ -768,6 +771,7 @@
 <!-- ══════════════════ MODAL: EXPORT ══════════════════ -->
 <div class="modal-backdrop" id="modal-export">
   <div class="modal" style="max-width:860px">
+    <button class="modal-close" onclick="closeModal('modal-export')" data-i18n-title="btn_close" title="Close" aria-label="Close">✕</button>
     <h3 data-i18n="modal_export">📋 Export to Notepad</h3>
     <textarea id="export-text" readonly style="width:100%;height:320px;background:#111008;border:1px solid #4a3010;color:#d4b483;padding:8px;border-radius:4px;font-family:monospace;font-size:11px;resize:vertical"></textarea>
     <div class="modal-actions">
@@ -780,6 +784,7 @@
 <!-- ══════════════════ MODAL: EDIT ATTACK ══════════════════ -->
 <div class="modal-backdrop" id="modal-attack">
   <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-attack')" data-i18n-title="btn_close" title="Close" aria-label="Close">✕</button>
     <h3 data-i18n="modal_edit_attack">Edit Attack</h3>
     <input type="hidden" id="ma-id">
     <div class="form-grid wide">
@@ -827,10 +832,11 @@
 <!-- ══════════════════ MODAL: REPLACE SENDER ══════════════════ -->
 <div class="modal-backdrop" id="modal-replace">
   <div class="modal" style="max-width:980px">
+    <button class="modal-close" onclick="closeModal('modal-replace')" data-i18n-title="btn_close" title="Close" aria-label="Close">✕</button>
     <h3 data-i18n="modal_replace">♻ Replace Sender</h3>
     <input type="hidden" id="mr-id">
     <p id="mr-head" style="font-size:13px;color:#d4b483;margin-bottom:8px;line-height:1.7"></p>
-    <p class="note" style="margin-bottom:10px" data-i18n="rp_hint">🏠 = free village: not the sender of any other off / noble attack in this plan and not pinned as a sender by the Offensive Plan. Only villages whose send window is still open — right now or later — are listed.</p>
+    <p class="note" style="margin-bottom:10px" data-i18n="rp_hint">🏠 = free village: not the sender of any other off / noble attack in this plan and not pinned as a sender by the Offensive Plan. Only villages whose send window is still open — right now or later — are listed; for an off, only villages with at least 300,000 off power.</p>
     <div class="table-wrap">
       <table id="replace-table">
         <thead>
@@ -866,7 +872,7 @@
 <script src="js/attack-planner/scavenge.js"></script>
 <script src="js/attack-planner/init.js"></script>
 <div class="footer">
-  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.10.0 &nbsp;·&nbsp; 2026-09-12
+  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.10.1 &nbsp;·&nbsp; 2026-09-12
 </div>
 </body>
 </html>

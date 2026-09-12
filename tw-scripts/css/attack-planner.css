@@ -262,7 +262,16 @@
     .modal {
       background: #1e1408; border: 1px solid #7a5c10; border-radius: 8px;
       padding: 22px 24px; width: 95%; max-width: 620px; max-height: 90vh; overflow-y: auto;
+      position: relative;
     }
+    /* top-right ✕ on every modal (Escape closes too — see ui.js) */
+    .modal-close {
+      position: absolute; top: 10px; right: 12px; width: 28px; height: 28px; line-height: 26px;
+      padding: 0; border: 1px solid #4a3010; border-radius: 4px; background: transparent;
+      color: #908060; font-size: 14px; cursor: pointer; text-align: center;
+    }
+    .modal-close:hover { background: #2e1e08; color: #e06060; border-color: #801818; }
+    .modal h3 { padding-right: 36px; }
     .modal h3 { color: #f0c040; margin-bottom: 16px; font-size: 15px; }
     .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
 

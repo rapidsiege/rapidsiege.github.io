@@ -66,6 +66,12 @@ function openModal(id) {
   document.getElementById(id).classList.add('open');
 }
 
+// Escape closes whatever modal is open (same effect as its ✕ / Close button).
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  document.querySelectorAll('.modal-backdrop.open').forEach(m => m.classList.remove('open'));
+});
+
 // ══════════════════════════════════════════════
 // VILLAGES CRUD
 // ══════════════════════════════════════════════
