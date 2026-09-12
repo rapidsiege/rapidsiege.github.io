@@ -198,6 +198,12 @@
     .btn-copy:hover { background: #221448; }
     .btn-sent { background: #0e3018; color: #50d890; border-color: #208050; }
     .btn-sent:hover { background: #123828; }
+    .btn-replace { background: #0a2a30; color: #50c8d0; border-color: #208090; }
+    .btn-replace:hover { background: #0e3640; }
+    /* Replace Sender modal: 🏠 free villages vs. villages already sending in this plan */
+    .rp-free { color: #50d870; font-weight: 700; white-space: nowrap; }
+    .rp-busy { display: inline-block; color: #a08050; font-size: 11px; font-family: monospace; white-space: nowrap; margin-right: 4px; }
+    .rp-row-busy td { opacity: 0.7; }
 
     /* ── Badges ── */
     .badge { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; }

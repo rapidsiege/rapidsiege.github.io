@@ -532,7 +532,7 @@
         </div>
         <div class="faq-step">
           <h3><span class="faq-step-num">3</span> Send your attacks</h3>
-          <p>Click <strong>⚔ Enviar</strong> on each row to open the TW rally point pre-filled with the correct troops and target. After sending, click <strong>✓ Sent</strong> to mark it — the row moves to the bottom and greys out.</p>
+          <p>Click <strong>⚔ Enviar</strong> on each row to open the TW rally point pre-filled with the correct troops and target. After sending, click <strong>✓ Sent</strong> to mark it — the row moves to the bottom and greys out. If a village can no longer make it, click <strong>♻</strong> on its row to pick a replacement sender: every village that could still land inside the window is listed, and the free ones (not sending anything else in the plan) are marked <strong>🏠</strong>.</p>
         </div>
         <div class="faq-step">
           <h3><span class="faq-step-num">4</span> Add attacks manually</h3>
@@ -560,7 +560,7 @@
         </div>
         <div class="faq-step">
           <h3><span class="faq-step-num">3</span> Enviar los ataques</h3>
-          <p>Haz clic en <strong>⚔ Enviar</strong> en cada fila para abrir la plaza de reuniones pre-rellenada con las tropas y el objetivo correctos. Tras enviar, haz clic en <strong>✓ Enviado</strong> — la fila baja al fondo y se oscurece.</p>
+          <p>Haz clic en <strong>⚔ Enviar</strong> en cada fila para abrir la plaza de reuniones pre-rellenada con las tropas y el objetivo correctos. Tras enviar, haz clic en <strong>✓ Enviado</strong> — la fila baja al fondo y se oscurece. Si un pueblo ya no llega a tiempo, haz clic en <strong>♻</strong> en su fila para elegir otro origen: se listan todos los pueblos que aún llegarían dentro de la ventana, y los libres (que no envían nada más en el plan) llevan <strong>🏠</strong>.</p>
         </div>
         <div class="faq-step">
           <h3><span class="faq-step-num">4</span> Añadir ataques manualmente</h3>
@@ -824,6 +824,37 @@
   </div>
 </div>
 
+<!-- ══════════════════ MODAL: REPLACE SENDER ══════════════════ -->
+<div class="modal-backdrop" id="modal-replace">
+  <div class="modal" style="max-width:980px">
+    <h3 data-i18n="modal_replace">♻ Replace Sender</h3>
+    <input type="hidden" id="mr-id">
+    <p id="mr-head" style="font-size:13px;color:#d4b483;margin-bottom:8px;line-height:1.7"></p>
+    <p class="note" style="margin-bottom:10px" data-i18n="rp_hint">🏠 = free village: not the sender of any other off / noble attack in this plan and not pinned as a sender by the Offensive Plan. Only villages whose send window is still open — right now or later — are listed.</p>
+    <div class="table-wrap">
+      <table id="replace-table">
+        <thead>
+          <tr>
+            <th data-i18n="lbl_village">Village</th>
+            <th data-i18n="rp_status">Status</th>
+            <th data-i18n="lbl_off_power">Off Power</th>
+            <th data-i18n="lbl_dist">Dist</th>
+            <th data-i18n="lbl_travel">Travel</th>
+            <th data-i18n="lbl_send_at">Send At</th>
+            <th data-i18n="lbl_countdown">Countdown</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="mr-tbody"></tbody>
+      </table>
+    </div>
+    <p class="note" id="mr-note" style="margin-top:8px"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-replace')" data-i18n="btn_close">Close</button>
+    </div>
+  </div>
+</div>
+
 <script src="js/attack-planner/i18n.js"></script>
 <script src="js/attack-planner/core.js"></script>
 <script src="js/attack-planner/storage.js"></script>
@@ -835,7 +866,7 @@
 <script src="js/attack-planner/scavenge.js"></script>
 <script src="js/attack-planner/init.js"></script>
 <div class="footer">
-  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.9.2 &nbsp;·&nbsp; 2026-08-28
+  Developed by <span>Vanquished</span> &nbsp;·&nbsp; v1.10.0 &nbsp;·&nbsp; 2026-09-12
 </div>
 </body>
 </html>

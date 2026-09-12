@@ -95,6 +95,201 @@ function clearAllAttacks() {
   renderAttacks();
 }
 
+// ══════════════════════════════════════════════
+// REPLACE SENDER — swap an attack's origin for another village that can still make it
+// ══════════════════════════════════════════════
+
+// Offensive-Plan requirement kinds that spend the same troops as an attack of each type: an
+// off attack consumes a complete/half (ram/axe) requirement's village, a snob its noble
+// train, a fake only one ram + one spy (so a fake never makes its village "busy").
+const REPLACE_REQ_UNITS = { off: ['ram', 'axe'], snob: ['snob'], fake: ['fake'] };
+
+// The My-Villages entry a pinned requirement names (rally-URL village ID first, coords second).
+function pinnedVillage(req) {
+  if (!req) return null;
+  const vid = req.srcVillageId ? String(req.srcVillageId) : '';
+  return (vid && DATA.villages.find(v => String(v.villageId) === vid))
+      || (req.srcCoord && DATA.villages.find(v => `${v.x}|${v.y}` === req.srcCoord))
+      || null;
+}
+
+// villageId → [{ targetId, kind }] for every village already committed as a SENDER: the origin
+// of another off/snob attack in the Attack Plan (sent or not — its troops are spoken for), or
+// pinned by a ram/axe/snob requirement of the Offensive Plan (Targets tab). Fakes never count
+// (one ram + one spy leave the off at home). The attack being replaced (`excludeId`) and the
+// plan requirement that produced it are ignored. A village absent from the map is FREE (🏠).
+function assignedSenders(excludeId) {
+  const map = new Map();
+  const add = (vid, targetId, kind) => {
+    if (!vid) return;
+    if (!map.has(vid)) map.set(vid, []);
+    const list = map.get(vid);
+    if (!list.some(e => e.targetId === targetId && e.kind === kind)) list.push({ targetId, kind });
+  };
+  const excluded = DATA.attacks.find(a => a.id === excludeId) || null;
+  DATA.attacks.forEach(a => {
+    if (a.id === excludeId || !a.fromId || a.type === 'fake' || a.type === 'unassigned') return;
+    add(a.fromId, a.targetId, a.type);
+  });
+  DATA.targets.forEach(tg => (tg.requirements || []).forEach(r => {
+    if (!r.srcCoord && !r.srcVillageId) return;      // unpinned → Auto-Generate picks the village
+    if (r.unitType === 'fake') return;
+    const v = pinnedVillage(r);
+    if (!v) return;
+    // this attack's own plan pin — the village is exactly what we're replacing
+    if (excluded && v.id === excluded.fromId && tg.id === excluded.targetId
+        && (REPLACE_REQ_UNITS[excluded.type] || []).includes(r.unitType)) return;
+    add(v.id, tg.id, r.unitType === 'snob' ? 'snob' : 'off');
+  }));
+  return map;
+}
+
+// Every village that could take over `atk`: it holds the troops the attack type needs (a noble
+// for a snob, a ram for a fake, any off power otherwise), it isn't the current origin, and its
+// send window is still open — sending NOW or LATER still lands inside the landing window
+// (sendEndMs ≥ now). Free (🏠) villages come first, strongest first within each group.
+// `late` counts the villages hidden because their send window has already closed.
+function replaceCandidates(atk, now = Date.now()) {
+  const target = DATA.targets.find(t => t.id === atk.targetId);
+  const speedKey = (atk.speed && BASE_MIN[atk.speed]) ? atk.speed : atk.type;
+  if (!target || !BASE_MIN[speedKey]) return { rows: [], late: 0 };
+  const ws = DATA.settings.worldSpeed, us = DATA.settings.unitSpeed;
+  const landMs = new Date(atk.landingTime).getTime();
+  const span   = windowSpanMs(atk.windowFrom, atk.windowTo);
+  const busy   = assignedSenders(atk.id);
+  const holds = v => atk.type === 'snob' ? (v.nobles || 0) > 0
+                   : atk.type === 'fake' ? (v.rams || 0) > 0
+                   : calcOffPow(v) > 0;
+  const rows = [];
+  let late = 0;
+  DATA.villages.forEach(v => {
+    if (v.id === atk.fromId || !holds(v)) return;
+    const d = dist(v, target);
+    const tMs = travelMs(d, speedKey, ws, us);
+    const sendMs = landMs - tMs;
+    const sendEndMs = sendMs + span;
+    if (sendEndMs < now) { late++; return; }
+    const assignedTo = busy.get(v.id) || [];
+    rows.push({ v, pow: calcOffPow(v), d, tMs, sendMs, sendEndMs, free: assignedTo.length === 0, assignedTo });
+  });
+  rows.sort((a, b) => a.free !== b.free ? (a.free ? -1 : 1) : b.pow - a.pow);
+  return { rows, late };
+}
+
+// Make village `villageId` the sender of attack `attackId`. The Offensive-Plan requirement that
+// pinned the OLD village for this target (same troop kind + landing window) is re-pinned to the
+// new one, so the Targets tab agrees and a later Auto-Generate keeps the swap instead of
+// reverting it. Returns the attack, or null when either side is unknown.
+function applyReplace(attackId, villageId) {
+  const a = DATA.attacks.find(x => x.id === attackId);
+  const v = DATA.villages.find(x => x.id === villageId);
+  if (!a || !v || a.type === 'unassigned') return null;
+  const old    = DATA.villages.find(x => x.id === a.fromId) || null;
+  const target = DATA.targets.find(x => x.id === a.targetId);
+  if (old && target) {
+    const units = REPLACE_REQ_UNITS[a.type] || [];
+    const req = (target.requirements || []).find(r =>
+      units.includes(r.unitType) && pinnedVillage(r) === old && (r.timeFrom || '') === (a.windowFrom || ''));
+    if (req) { req.srcCoord = `${v.x}|${v.y}`; req.srcVillageId = String(v.villageId || ''); }
+  }
+  a.fromId = v.id;
+  return a;
+}
+
+// Countdown cell of a candidate: "opens in …" until its send window opens, then SEND NOW with
+// the time left inside the window — same colour thresholds as the Attack Plan countdown.
+function replaceCountdown(row, now = Date.now()) {
+  if (row.sendEndMs < now) return { cls: 'cd-late', html: t('status_late') };
+  const diff = row.sendMs - now;
+  if (diff <= 0) {
+    return { cls: 'cd-now', html: `${t('status_send_now')} · <span style="color:#d0c030">${fmtDuration(row.sendEndMs - now)}</span> ${t('status_left')}` };
+  }
+  const cls = diff > 30 * 60000 ? 'cd-ok' : diff > 5 * 60000 ? 'cd-soon' : 'cd-urgent';
+  return { cls, html: escHtml(t('rp_opens_in').replace('{t}', fmtDuration(diff))) };
+}
+
+let replaceRows = [];   // candidates shown in the open Replace modal (live countdown ticks)
+
+function openReplace(id) {
+  const a = DATA.attacks.find(a => a.id === id);
+  if (!a || a.type === 'unassigned') return;
+  const target = DATA.targets.find(t => t.id === a.targetId);
+  const cur    = DATA.villages.find(v => v.id === a.fromId);
+  const now    = Date.now();
+  document.getElementById('mr-id').value = a.id;
+
+  const win  = fmtTimeWindow(a.windowFrom, a.windowTo);
+  const tgt  = target
+    ? `<span class="coords">${target.x}|${target.y}</span>${stripBB(target.player) ? ` (${escHtml(stripBB(target.player))})` : ''}`
+    : '—';
+  const from = cur ? `${escHtml(cur.name)} (${cur.x}|${cur.y})` : '—';
+  document.getElementById('mr-head').innerHTML =
+    `<span class="badge badge-${a.type}">${a.type.toUpperCase()}</span> → ${tgt} · ${t('lbl_landing')} ` +
+    `<span style="font-family:monospace">${escHtml(fmtDateLocal(a.landingTime))}</span>` +
+    (win ? ` <span style="color:#6090c0">(${escHtml(win)})</span>` : '') +
+    `<br>${t('rp_current')}: <strong>${from}</strong>`;
+
+  const { rows, late } = replaceCandidates(a, now);
+  replaceRows = rows;
+  document.getElementById('mr-tbody').innerHTML = rows.length
+    ? rows.map(r => replaceRowHtml(a, r, now)).join('')
+    : `<tr class="empty-row"><td colspan="8">${t('rp_none')}</td></tr>`;
+  document.getElementById('mr-note').textContent = late ? t('rp_late_note').replace('{n}', late) : '';
+  openModal('modal-replace');
+}
+
+function replaceRowHtml(atk, r, now) {
+  const v = r.v;
+  const tgtCoord = id => { const tg = DATA.targets.find(t => t.id === id); return tg ? `${tg.x}|${tg.y}` : '?'; };
+  const status = r.free
+    ? `<span class="rp-free">${t('rp_free')}</span>`
+    : r.assignedTo.map(e =>
+        `<span class="rp-busy" title="${escHtml(t('rp_busy_title'))}">${e.kind === 'snob' ? '👑' : '⚔'} → ${tgtCoord(e.targetId)}</span>`
+      ).join(' ');
+  const powCell = `${r.pow.toLocaleString()} ${offTierBadge(r.pow)}`
+    + (atk.type === 'snob' ? ` <small style="color:#d0c040">👑×${v.nobles || 0}</small>` : '');
+  const sp = n => String(n).padStart(2, '0');
+  const fmtSend = ms => { const d = new Date(ms); return `${sp(d.getDate())}/${sp(d.getMonth() + 1)} ${sp(d.getHours())}:${sp(d.getMinutes())}:${sp(d.getSeconds())}`; };
+  let sendCell = fmtSend(r.sendMs);
+  if (r.sendEndMs > r.sendMs) sendCell += `<br><small style="color:#6090c0;font-size:10px">–${fmtSend(r.sendEndMs)}</small>`;
+  const cd = replaceCountdown(r, now);
+  return `<tr class="${r.free ? '' : 'rp-row-busy'}">
+    <td>${escHtml(v.name)} <span class="coords">${v.x}|${v.y}</span></td>
+    <td>${status}</td>
+    <td>${powCell}</td>
+    <td>${fmtDistNum(r.d)}</td>
+    <td style="font-family:monospace;font-size:12px">${fmtMs(r.tMs)}</td>
+    <td style="font-family:monospace;font-size:12px">${sendCell}</td>
+    <td id="mr-cd-${v.id}" class="${cd.cls}">${cd.html}</td>
+    <td><button class="btn btn-replace btn-sm" onclick="pickReplace('${v.id}')">♻ ${t('btn_use')}</button></td>
+  </tr>`;
+}
+
+function pickReplace(villageId) {
+  const id = document.getElementById('mr-id').value;
+  if (!applyReplace(id, villageId)) return;
+  closeModal('modal-replace');
+  replaceRows = [];
+  saveData();
+  renderAttacks();
+  renderTargets();   // the re-pinned requirement now shows its new "from" origin
+}
+
+// Live tick for the open Replace modal (called from updateCountdowns every second).
+function updateReplaceCountdowns() {
+  if (!replaceRows.length) return;
+  const modal = document.getElementById('modal-replace');
+  if (!modal || !modal.classList.contains('open')) return;
+  const now = Date.now();
+  replaceRows.forEach(r => {
+    const el = document.getElementById('mr-cd-' + r.v.id);
+    if (!el) return;
+    const cd = replaceCountdown(r, now);
+    el.className = cd.cls;
+    el.innerHTML = cd.html;
+  });
+}
+
 function fmtDatetimeExport(ms) {
   const d = new Date(ms);
   const p = n => String(n).padStart(2, '0');
@@ -355,6 +550,7 @@ function renderAttacks() {
       <td style="white-space:nowrap">
         <button class="btn ${sentClass} btn-sm" onclick="toggleSent('${a.id}')">${sentLabel}</button>
         <button class="btn btn-edit btn-sm" onclick="editAttack('${a.id}')">✎</button>
+        <button class="btn btn-replace btn-sm" onclick="openReplace('${a.id}')" title="${escHtml(t('btn_replace_title'))}">♻</button>
         <button class="btn btn-danger btn-sm" onclick="deleteAttack('${a.id}')">✕</button>
       </td>
     </tr>`;
@@ -370,6 +566,7 @@ function renderAttacks() {
 
 function updateCountdowns() {
   const now = Date.now();
+  updateReplaceCountdowns();
   DATA.attacks.forEach(a => {
     const cdEl  = document.getElementById('cd-' + a.id);
     const rowEl = document.getElementById('row-' + a.id);

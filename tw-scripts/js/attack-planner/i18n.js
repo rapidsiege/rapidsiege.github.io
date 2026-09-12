@@ -74,6 +74,20 @@ const LANG = {
     btn_mark_sent: '✓ Sent',
     btn_unmark_sent: '↩ Unmark',
 
+    // Replace Sender (♻ on an Attack Plan row)
+    btn_replace_title: 'Replace sender — pick another village that can still make it in time',
+    btn_use: 'Use',
+    modal_replace: '♻ Replace Sender',
+    rp_hint: '🏠 = free village: not the sender of any other off / noble attack in this plan and not pinned as a sender by the Offensive Plan. Only villages whose send window is still open — right now or later — are listed.',
+    rp_current: 'Currently from',
+    lbl_village: 'Village',
+    rp_status: 'Status',
+    rp_free: '🏠 Free',
+    rp_busy_title: 'Already a sender in this plan',
+    rp_opens_in: 'opens in {t}',
+    rp_none: 'No other village can make it in time.',
+    rp_late_note: '{n} village(s) hidden: their send window has already closed.',
+
     // Bookmarklet
     bm_drag: '🔖 Drag to bookmarks bar',
     bm_drag_title: 'Drag this to your bookmarks bar',
@@ -344,6 +358,20 @@ const LANG = {
     btn_copy_url: '⎘ Copiar',
     btn_mark_sent: '✓ Enviado',
     btn_unmark_sent: '↩ Deshacer',
+
+    // Replace Sender (♻ on an Attack Plan row)
+    btn_replace_title: 'Reemplazar origen — elige otro pueblo que aún llegue a tiempo',
+    btn_use: 'Usar',
+    modal_replace: '♻ Reemplazar Origen',
+    rp_hint: '🏠 = pueblo libre: no es origen de ningún otro ataque off / noble de este plan ni está fijado como origen en el Plan Ofensivo. Solo se listan pueblos cuya ventana de envío sigue abierta — ahora o más tarde.',
+    rp_current: 'Actualmente desde',
+    lbl_village: 'Pueblo',
+    rp_status: 'Estado',
+    rp_free: '🏠 Libre',
+    rp_busy_title: 'Ya es origen en este plan',
+    rp_opens_in: 'abre en {t}',
+    rp_none: 'Ningún otro pueblo llega a tiempo.',
+    rp_late_note: '{n} pueblo(s) ocultos: su ventana de envío ya cerró.',
 
     // Bookmarklet
     bm_drag: '🔖 Arrastra a marcadores',
