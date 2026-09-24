@@ -47,8 +47,7 @@ function moParseArrivalMs(str) {
   const m = String(str || '').trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s+(\d{1,2}):(\d{2}):(\d{2})(?::(\d{1,3}))?$/);
   if (!m) return null;
   const y = +m[3] < 100 ? 2000 + +m[3] : +m[3];
-  const off = parseFloat(otCfg.serverUtcOffset);
-  return Date.UTC(y, +m[2] - 1, +m[1], +m[4], +m[5], +m[6], +(m[7] || 0)) - (isNaN(off) ? 2 : off) * 3600000;
+  return Date.UTC(y, +m[2] - 1, +m[1], +m[4], +m[5], +m[6], +(m[7] || 0)) - serverUtcOffset() * 3600000;
 }
 
 // A FAKE: units are visible, no noble aboard, and the army has essentially no
@@ -58,12 +57,12 @@ function moParseArrivalMs(str) {
 // far above, and a planned 20-catapult strike alone scores 2000 — the ≥5-cat
 // exemption keeps small demolition attacks matchable). Hidden units (a tribe
 // mate's command) → can't judge → treated as real.
-const MO_FAKE_MAX_ATT = 1000, MO_FAKE_MIN_CATS = 5;
+// (Both limits are 🎚 parameters: PARAMS.moFakeMaxAtt / PARAMS.moFakeMinCats.)
 function moIsFake(units) {
   if (!units) return false;
   if ((units.snob || 0) > 0) return false;
-  if ((units.catapult || 0) >= MO_FAKE_MIN_CATS) return false;
-  return moCmdPower(units) < MO_FAKE_MAX_ATT;
+  if ((units.catapult || 0) >= PARAMS.moFakeMinCats) return false;
+  return moCmdPower(units) < PARAMS.moFakeMaxAtt;
 }
 
 // Off power of the units travelling in a command (Σ count × ATT). null = hidden.
@@ -162,8 +161,9 @@ function moTimingVerdict(windowStr, arrivalMs, dateISO) {
   if (!w || arrivalMs == null) return { status: 'unknown', deltaMin: 0 };
   const from = serverWallMs(dateISO, w.f), to = serverWallMs(dateISO, w.to);
   if (from === null) return { status: 'unknown', deltaMin: 0 };
-  if (arrivalMs < from) return { status: 'early', deltaMin: (from - arrivalMs) / 60000 };
-  if (arrivalMs > to)   return { status: 'late',  deltaMin: (arrivalMs - to) / 60000 };
+  const tol = PARAMS.moWindowTol * 60000; // 🎚 minutes of slack on either side of the window
+  if (arrivalMs < from - tol) return { status: 'early', deltaMin: (from - arrivalMs) / 60000 };
+  if (arrivalMs > to + tol)   return { status: 'late',  deltaMin: (arrivalMs - to) / 60000 };
   return { status: 'in', deltaMin: 0 };
 }
 
@@ -278,7 +278,7 @@ function moRowPending(r) {
   const w = parseWindowStr(r.window);
   const landMs = w ? serverWallMs(planRowDateISO(r), w.to) : null;
   if (landMs === null) return true;
-  return serverNowMs() < landMs - (typeof r.travel === 'number' ? r.travel : 0) * 60000;
+  return serverNowMs() < landMs - (typeof r.travel === 'number' ? r.travel : 0) * 60000 + PARAMS.moPendingGrace * 60000; // 🎚 moPendingGrace
 }
 
 // ── In-game links ─────────────────────────────────────────────────────────────

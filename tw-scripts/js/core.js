@@ -5,7 +5,7 @@ let villages = [];   // [{coord, player, spear, sword, axe, spy, light, heavy, r
 let troopByCoord = {};  // 'x|y' → owned-troop row (map hover/badges); rebuilt in parseData
 let defenseByCoord = {};  // 'x|y' → stationed-troops row (defense type from tribe_everything.txt)
 let incomingByCoord = {}; // 'x|y' → inbound/returning troops row (incoming type)
-let buildingsByCoord = {}; // 'x|y' → building levels {main,barracks,…,smith,…} from a tribeInfo v3 JSON export (empty unless an "everything"/buildings JSON was loaded). Lives+dies with the upload batch that carried it. Used by the snob-capability gates (smith level ≥ SNOB_SMITH_MIN).
+let buildingsByCoord = {}; // 'x|y' → building levels {main,barracks,…,smith,…} from a tribeInfo v3 JSON export (empty unless an "everything"/buildings JSON was loaded). Lives+dies with the upload batch that carried it. Used by the snob-capability gates (smith level ≥ PARAMS.snobSmithMin).
 let players  = {};   // {playerName: {villages:[], totals:{...}, offPow, defInf, defCav}}
 let sortState = { players: {col:0,dir:1}, villages: {col:14,dir:1}, outbound: {col:12,dir:1} }; // villages: Off Power desc (col 14); outbound: Off desc (col 12)
 let targetSort = { key: 'dist', dir: 1 }; // default: distance asc
@@ -33,6 +33,7 @@ function changeLang(l) {
   if (typeof updWorldSpeedNote === 'function') updWorldSpeedNote(); // header speeds note
   if (typeof syncMoraleModeUi === 'function') syncMoraleModeUi();   // 🎭 Morale strategy chip
   if (typeof renderChangelog === 'function') renderChangelog();
+  if (typeof renderParamPanels === 'function') renderParamPanels(); // 🎚 Parameters labels (central tab + inline panels)
   if (typeof saveSettings === 'function') saveSettings(); // persist the language choice
 }
 

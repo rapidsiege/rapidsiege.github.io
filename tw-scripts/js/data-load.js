@@ -162,8 +162,9 @@ function applyVilDerived(vil) {
   if (totalUnits > 0) {
     const offScore = vil.axe + vil.light + vil.ram;
     const defScore = vil.spear + vil.sword + vil.heavy + vil.knight;
-    if (offScore > defScore * 2)      type = 'off';
-    else if (defScore > offScore * 2) type = 'def';
+    const k = PARAMS.typeRatio; // 🎚 off when off units > k × def units (and the reverse)
+    if (offScore > defScore * k)      type = 'off';
+    else if (defScore > offScore * k) type = 'def';
     else                              type = 'mixed';
   }
   vil.type = type;

@@ -176,14 +176,6 @@ function extractAreaGroups(coords) {
   return out;
 }
 
-// Constant screen-pixel dot size by points (stays visible when zoomed out).
-function mapDotSize(points) {
-  if (points >= 1000000) return 5;
-  if (points >= 500000)  return 4;
-  if (points >= 150000)  return 3;
-  return 2;
-}
-
 // Village graphic tier 1..6 by points → picks the map_new sprite (v1-v6 / b1-b6).
 // Breakpoints = the upper bound of each tier (user-set 2026-06-15):
 //   t1 ≤299 · t2 300-999 · t3 1000-2999 · t4 3000-8999 · t5 9000-10999 · t6 11000+

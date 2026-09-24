@@ -122,7 +122,7 @@ function renderDefIgnorePlayers() {
 // troops: fill order is Complete home → Complete returning → others' home → others'
 // returning; spies are the one exception — they ride the normal chunked spy pool). No
 // equal-drain rationing, no pack sizing,
-// and the DEF_SENDER_MIN_POP small-garrison floor is waived for them. Their villages
+// and the PARAMS.defSenderMinPop small-garrison floor is waived for them. Their villages
 // still respect the sender-level holds (Ignore Coordinates, map-drawn area, Enemy-Tribes
 // distance) — a front-line village of a Complete player stays home. Mirrors the Ignore
 // Players picker; state lives in defensive-targets.js (defCompletePlayers) and is applied
@@ -231,13 +231,13 @@ function renderDefSnipPlayers() {
 function updDefSnipPct() {
   const el = document.getElementById('plan-def-snip-pct');
   const n = el ? parseFloat(el.value) : NaN;
-  defSnipPct = Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : DEF_SNIP_DEFAULTS.pct;
+  defSnipPct = Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : defSnipDefaults().pct;
   saveDefensive();
 }
 function updDefSnipDist() {
   const el = document.getElementById('plan-def-snip-dist');
   const n = el ? parseFloat(el.value) : NaN;
-  defSnipDist = Number.isFinite(n) ? Math.max(0, n) : DEF_SNIP_DEFAULTS.dist;
+  defSnipDist = Number.isFinite(n) ? Math.max(0, n) : defSnipDefaults().dist;
   saveDefensive();
 }
 
@@ -370,7 +370,7 @@ function setDpMode(mode) {
   saveDefensive(); renderDpPackCfg();
 }
 function setDpPackSize(v) {
-  dpPackSize = Math.max(1, parseInt(v, 10) || DP_PACK_DEFAULTS.size);
+  dpPackSize = Math.max(1, parseInt(v, 10) || dpPackDefaults().size);
   saveDefensive();
   const el = document.getElementById('dp-pack-size'); if (el) el.value = dpPackSize;
 }
@@ -386,9 +386,9 @@ function setDpPackWeight(u, v) {
   const el = document.getElementById('dp-pack-w-' + u); if (el) el.value = dpPackWeights[u];
 }
 function resetDpPackWeights() {
-  dpPackSize = DP_PACK_DEFAULTS.size;
-  dpPackMax = DP_PACK_DEFAULTS.max;
-  dpPackWeights = { ...DP_PACK_DEFAULTS.weights };
+  dpPackSize = dpPackDefaults().size;
+  dpPackMax = dpPackDefaults().max;
+  dpPackWeights = { ...dpPackDefaults().weights };
   saveDefensive(); renderDpPackCfg();
 }
 // Sync the config panel inputs + mode radios + Support-Packs body visibility to state.
@@ -437,14 +437,12 @@ function defArrivalMs(tg) {
   const dm = String(tg.arriveDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const tm = String(tg.arriveTime || '').match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (!dm || !tm) return null;
-  const off = parseFloat(otCfg.serverUtcOffset);
-  return Date.UTC(+dm[1], +dm[2] - 1, +dm[3], +tm[1], +tm[2], +(tm[3] || 0)) - (isNaN(off) ? 2 : off) * 3600000;
+  return Date.UTC(+dm[1], +dm[2] - 1, +dm[3], +tm[1], +tm[2], +(tm[3] || 0)) - serverUtcOffset() * 3600000;
 }
 // Format an epoch ms as a server-local "YYYY-MM-DD HH:MM:SS" wall-clock string.
 function fmtServerDT(ms) {
   if (ms === null || ms === undefined) return '';
-  const off = parseFloat(otCfg.serverUtcOffset);
-  const d = new Date(ms + (isNaN(off) ? 2 : off) * 3600000);
+  const d = new Date(ms + serverUtcOffset() * 3600000);
   const p = n => String(n).padStart(2, '0');
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
@@ -510,7 +508,7 @@ function generateDefPlan() {
   // whole ignored players), inside the map-drawn area if one exists (passesCoordPolygon —
   // shared with Plan Offensive, honours "Select Reverse"; typed X|Y filters stay
   // offensive-only), not within the enemy-tribe radius, holding at least
-  // DEF_SENDER_MIN_POP farm pop of AVAILABLE defense (small garrisons are left alone).
+  // PARAMS.defSenderMinPop farm pop of AVAILABLE defense (small garrisons are left alone).
   // v4.5.0: stock AND cap are the AVAILABLE units (defAvailUnits — at home or incoming,
   // capped at own troops), not the player's total troops: defense that is deployed
   // elsewhere is never assigned, so no order ever implies recalling support. Without
@@ -519,7 +517,7 @@ function generateDefPlan() {
   // neither the candidate pool NOR a player's capacity weight.
   // v4.26.0: stock is carried in TWO buckets — stockNow (home) and stockFut (returning) — that
   // sum to the same total as before. `stock` remains the live total and is what `cap`, the
-  // DEF_SENDER_MIN_POP threshold and Pass A's capacity weights read, so eligibility and player
+  // PARAMS.defSenderMinPop threshold and Pass A's capacity weights read, so eligibility and player
   // fairness are byte-for-byte unchanged; only the ORDER the buckets are drained in is new.
   const senders = villages.map(v => {
     const stock = defAvailUnits(v), stockFut = defAvailUnitsFuture(v), stockNow = defAvailUnitsNow(v);
@@ -528,12 +526,12 @@ function generateDefPlan() {
       stock, stockNow, stockFut,
       cap: DEF_OBJ_UNITS.reduce((s, u) => s + stock[u] * POP[u], 0),
     };
-  // v4.27.0: a Complete player's villages skip the DEF_SENDER_MIN_POP floor — 100% means
+  // v4.27.0: a Complete player's villages skip the PARAMS.defSenderMinPop floor — 100% means
   // even their small garrisons ship (but every other hold above still applies to them).
   }).filter(s => s.c && !ignore.has(s.v.coord) && !ignorePl.has(s.v.player)
     && passesCoordPolygon(s.c.x, s.c.y)
     && !nearEnemy(s)
-    && (s.cap >= DEF_SENDER_MIN_POP || (completePl.has(s.v.player) && s.cap > 0)));
+    && (s.cap >= PARAMS.defSenderMinPop || (completePl.has(s.v.player) && s.cap > 0)));
 
   const capByPlayer = {};
   for (const s of senders) capByPlayer[s.v.player] = (capByPlayer[s.v.player] || 0) + s.cap;
@@ -588,7 +586,7 @@ function generateDefPlan() {
   const typeArriveOk = (s, T, u) => {
     const a = arrMs(T);
     if (a === null) return true;
-    return a - travelTimeMin(dist(s, T), UNIT_BASE_MIN[u], ws, us) * 60000 >= serverNowMs();
+    return a - travelTimeMin(dist(s, T), UNIT_BASE_MIN[u], ws, us) * 60000 >= serverNowMs() + PARAMS.departMargin * 60000; // 🎚 departMargin
   };
 
   // Targets are filled deadline-first (earliest arrival), then no-deadline by descending
@@ -634,11 +632,11 @@ function generateDefPlan() {
   const packUnitsOf = u => Math.max(1, Math.ceil(dpPackSize / packWOf(u)));
   // Allocation chunk of a unit type (0 = no chunking, plain capacity-weighted apportion).
   // Packs mode chunks every type by its pack; SPIES are chunked ALWAYS (v5.3.0) — at least
-  // DEF_SPY_MIN_ORDER even in Max Efficiency, and never below it in packs mode. Scouts only
+  // PARAMS.defSpyMinOrder even in Max Efficiency, and never below it in packs mode. Scouts only
   // screen against enemy spying, so instead of riding the equal-drain balancing (which
   // dribbled 1-spy orders across the whole tribe) they concentrate onto few senders.
   const chunkUnitsOf = u => u === 'spy'
-    ? Math.max(packsMode ? packUnitsOf(u) : 0, DEF_SPY_MIN_ORDER)
+    ? Math.max(packsMode ? packUnitsOf(u) : 0, PARAMS.defSpyMinOrder)
     : (packsMode ? packUnitsOf(u) : 0);
 
   const packets = {}; // `${senderIdx}#${T.i}` → {si, T, units, fut}
@@ -751,13 +749,13 @@ function generateDefPlan() {
         // they ride the normal chunked pool for every player (see poolOk).
         if (ph.pool !== 'normal' && u === 'spy') continue;
         // Per-village stock floor for THIS type. Spies (v5.3.0): a village joins the spy pool
-        // only if it alone can ship ≥ DEF_SPY_MIN_ORDER (or the target's whole ORIGINAL ask,
+        // only if it alone can ship ≥ PARAMS.defSpyMinOrder (or the target's whole ORIGINAL ask,
         // when that is smaller — a genuinely tiny ask ships as one small order) — villages
         // left with a spy dribble after the ram reserve keep it home rather than clutter the
         // plan, even if that means a (harmless, silent) spy shortfall. Keyed to the original
         // ask, NOT the residual: a round-2 top-up of a chunky ask must not reopen sliver-land.
         // Filtering HERE keeps Pass A's stock math honest: unshippable slivers never count.
-        const minStock = u === 'spy' ? Math.min(DEF_SPY_MIN_ORDER, T.tg[u] || 0) : 1;
+        const minStock = u === 'spy' ? Math.min(PARAMS.defSpyMinOrder, T.tg[u] || 0) : 1;
         // A sub-chunk spy RESIDUAL isn't worth a new order at all — drop it (silent, by design).
         if (u === 'spy' && n < minStock) continue;
         // The pool gate lives HERE (v5.6.0) rather than on the name list below, because the
@@ -881,7 +879,7 @@ function generateDefPlan() {
       }
 
       // ── Pass B — spread each player's allocation across their villages, keeping every
-      // emitted order ≥ DEF_MIN_PACKET_POP farm pop (fewer, meatier trips). Use only as many
+      // emitted order ≥ PARAMS.defMinPacketPop farm pop (fewer, meatier trips). Use only as many
       // villages as that floor allows — k = ⌊totalPop / minPacket⌋, capped at the count of
       // eligible villages — least-drained first (global per-village evenness). With
       // "Prioritize Sending From Far Villages" (defFarFirst) the pick order is instead
@@ -984,7 +982,7 @@ function generateDefPlan() {
         // (v5.3.0: ⌊give / ≥50⌋ villages, so no village ships a spy sliver). Either way, spill
         // onward if stock-short.
         const kEff = Math.min(cand.length, Math.max(1, Math.floor(
-          DEF_OBJ_UNITS.reduce((s, u) => s + (give[u] || 0) * POP[u], 0) / DEF_MIN_PACKET_POP)));
+          DEF_OBJ_UNITS.reduce((s, u) => s + (give[u] || 0) * POP[u], 0) / PARAMS.defMinPacketPop)));
         for (const u of DEF_OBJ_UNITS) {
           const need = give[u] || 0;
           if (need <= 0) continue;
@@ -1005,12 +1003,12 @@ function generateDefPlan() {
     } // ── end of the four-phase fill (Complete home → Complete returning → home → en route) ──
 
     // Shortfall is what NEITHER round could cover — reported once per type, per target.
-    // Spy shortages under DEF_SPY_MIN_ORDER are silent: sub-chunk spy tails are dropped BY
+    // Spy shortages under PARAMS.defSpyMinOrder are silent: sub-chunk spy tails are dropped BY
     // DESIGN (see the spill guards above), so warning about them would be pure noise.
     for (const u of DEF_OBJ_UNITS) {
       const n = T.tg[u] || 0;
       if (placed[u] >= n) continue;
-      if (u === 'spy' && n - placed[u] < DEF_SPY_MIN_ORDER) continue;
+      if (u === 'spy' && n - placed[u] < PARAMS.defSpyMinOrder) continue;
       defPlanWarnings.push(t('warn_def_short')(t('th_' + u), n - placed[u], T.tg.coord));
     }
   }
@@ -1068,7 +1066,7 @@ function generateDefPlan() {
     const travel = travelTimeMin(d, defPacketBaseMin(pk.units), ws, us);
     const arriveMs = defArrivalMs(T.tg);
     const departMs = arriveMs !== null ? arriveMs - travel * 60000 : null;
-    const late = arriveMs !== null && departMs < serverNowMs();
+    const late = arriveMs !== null && departMs < serverNowMs() + PARAMS.departMargin * 60000; // 🎚 departMargin
     // futUnits: the share of this order that is still EN ROUTE to the sender (round-2 fill).
     // Independent of `late`: `late` = the trip can't reach the deadline even leaving now,
     // futUnits = part of the army isn't home to leave with yet (no ETA exists for it).
@@ -1198,12 +1196,12 @@ function defAvailUnits(v) {
   const avail = {};
   for (const u of DEF_OBJ_UNITS)
     avail[u] = station ? Math.min(v[u] || 0, (de[u] || 0) + (inc[u] || 0)) : (v[u] || 0);
-  // Spy reserve (v5.3.0): a village keeps as many spies as it has rams — they leave together
+  // Spy reserve (v5.3.0): a village keeps PARAMS.spyPerRam spies per ram — they leave together
   // later as [spy+ram] fakes, so they're never available as support. Subtracted HERE, the
   // single source every reader drains from, so the sender pool, the ≥4000-pop floor, the
   // per-player summary and the now/future split (defAvailUnitsFuture caps at this total)
   // all agree the reserved spies don't exist.
-  avail.spy = Math.max(0, avail.spy - (v.ram || 0));
+  avail.spy = Math.max(0, avail.spy - Math.round((v.ram || 0) * PARAMS.spyPerRam));
   return avail;
 }
 
@@ -1407,7 +1405,7 @@ function defSummaryTableBB(rows) {
 
 // Pure seam: [{player, targets, parts:[text], orderCount}] — the renderPmModal() shape, same
 // grouping and A→Z order as the PM/script exports. ALWAYS one single part: a data row costs
-// ~17 brackets, so a player would need ~265 targets to reach PM_MAX_BRACKETS — unreachable,
+// ~17 brackets, so a player would need ~265 targets to reach PARAMS.pmMaxBrackets — unreachable,
 // hence no bracket packing here. `orderCount` overrides the modal's line-count default
 // (these blocks are a [table], not one order per line, so lines would over-count by 3).
 function defSummaryMessagesFrom(rows) {
@@ -1431,7 +1429,7 @@ function showDefSummaryTables() {
 // PMs are not character-limited in practice). Splitting is by whole order lines (BB never
 // breaks mid-tag); a player whose plan exceeds the limit gets "(1/2), (2/2)…" parts, each
 // its own copy button.
-const PM_MAX_BRACKETS = 4500;
+// (The budget itself is 🎚 PARAMS.pmMaxBrackets, default 4500.)
 
 // The limiting bracket count of a text: max of '[' and ']' occurrences. Pure.
 function pmBracketCount(text) {
@@ -1465,7 +1463,7 @@ function pmSplitParts(lines, maxBrackets) {
 // "===== name (N) =====" header opens the FIRST part only (user decision) — glued to the
 // first order line so the packer can never orphan it into a part of its own.
 function defPmMessagesFrom(planRows, maxBrackets) {
-  maxBrackets = maxBrackets || PM_MAX_BRACKETS;
+  maxBrackets = maxBrackets || PARAMS.pmMaxBrackets;
   const byPlayer = {};
   for (const r of (planRows || [])) (byPlayer[r.srcPlayer] || (byPlayer[r.srcPlayer] = [])).push(r);
   return Object.keys(byPlayer).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
@@ -1518,7 +1516,7 @@ function renderPmModal(messages, hint, topHtml) {
 // Each PART is its own in-game PM, so EVERY part gets the full wrapper and {part} numbers
 // the spoiler label ("Órdenes Apoyo 1/2") when a player splits across messages. No date
 // source on this side — a {date} in a custom defense template stays literal. The template's
-// own brackets (~10) ride in the 500-bracket headroom PM_MAX_BRACKETS already leaves.
+// own brackets (~10) ride in the 500-bracket headroom PARAMS.pmMaxBrackets already leaves.
 function defPmWrappedMessages(maxBrackets) {
   const tpl = pmTemplateCurrent('def');
   // {bb_summary_table} (v4.25.0): each player's own Export Summary Tables block, keyed by player.
@@ -1527,8 +1525,8 @@ function defPmWrappedMessages(maxBrackets) {
   // A table is bracket-heavy (~17 per target row) and EVERY split part carries the full wrapper,
   // so when the template actually inserts one, pack the orders under a budget reduced by the
   // biggest table — otherwise a many-target player's finished PM could clear the real ~5,000
-  // limit that PM_MAX_BRACKETS' headroom is meant to absorb. No placeholder ⇒ budget unchanged.
-  const base = maxBrackets || PM_MAX_BRACKETS;
+  // limit that PARAMS.pmMaxBrackets' headroom is meant to absorb. No placeholder ⇒ budget unchanged.
+  const base = maxBrackets || PARAMS.pmMaxBrackets;
   const costs = tpl.includes('{bb_summary_table}') ? Object.keys(tables).map(p => pmBracketCount(tables[p])) : [];
   const budget = costs.length ? Math.max(500, base - Math.max(...costs)) : base;
   return defPmMessages(budget).map(m => ({ ...m,

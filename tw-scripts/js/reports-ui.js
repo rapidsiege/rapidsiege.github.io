@@ -159,7 +159,8 @@ function riSortBy(key) {
 // Without a world DB everything is shown.
 
 // Protected-tribe obscuring (v5.8.0): report intel about villages currently owned
-// by RI_PROTECTED_ALLIES is hidden from every direct lookup — INDEPENDENT of the
+// by the active world's RI_PROTECTED_ALLIES_BY_WORLD list (riProtectedAllies()) is hidden
+// from every direct lookup — INDEPENDENT of the
 // myAllyIds own-tribe filter, which needs a loaded troop file and is therefore
 // empty exactly in the leak scenario (someone opening the bare hosted URL). A
 // village present in the LOCAL reports store stays visible: the operator who
@@ -167,12 +168,13 @@ function riSortBy(key) {
 // shared-DB endpoints are stripped server-side too; this layer keeps the rule
 // even for data that reached the browser some other way.
 function riProtected(coord) {
-  if (typeof RI_PROTECTED_ALLIES === 'undefined' || !RI_PROTECTED_ALLIES.length) return false;
+  const prot = (typeof riProtectedAllies === 'function') ? riProtectedAllies() : [];
+  if (!prot.length) return false;
   if (riStore.villages[coord]) return false; // locally uploaded → the operator's own data
   if (typeof coordDb === 'undefined' || typeof playerAllyDb === 'undefined') return false;
   const cv = coordDb[coord];
   if (!cv || !cv.playerId) return false;
-  return RI_PROTECTED_ALLIES.includes(String(playerAllyDb[cv.playerId] || ''));
+  return prot.includes(String(playerAllyDb[cv.playerId] || ''));
 }
 
 function riHidden(coord, v) {
@@ -389,6 +391,9 @@ function riOpenReportModal(coord) {
     const curId = (cv && cv.playerId != null) ? String(cv.playerId) : null;
     const { rep, sentRep } = riFreshFullReports(v, curId);
     TWRR.setIconBase('icons/'); // calculator sits next to icons/, not one level below
+    // Send/return estimates at the ACTIVE world's pace (report-render.js ships es100's speeds;
+    // es100 is world 2 × unit 0.5 = divisor 1, so this is a no-op there and a fix on es103).
+    TWRR.setSpeeds(Object.fromEntries(UNITS.map(u => [u, UNIT_BASE_MIN[u] / (twWorldSpeed * (twUnitSpeed || 1))])));
     let h = '';
     if (rep) h += `<div class="twrr-srchead">${esc(t('ev_rep_last'))}</div>` + TWRR.reportHtml(rep);
     if (sentRep) h += `<div class="twrr-srchead">${esc(t('ev_rep_sent'))}</div>` + TWRR.reportHtml(sentRep);

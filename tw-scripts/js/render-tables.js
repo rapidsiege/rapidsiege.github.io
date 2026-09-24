@@ -173,16 +173,14 @@ function renderTierTables() {
 }
 
 function getOffTier(offPow) {
-  const tc  = parseInt(document.getElementById('thresh-complete')?.value) || 500000;
-  const ttq = parseInt(document.getElementById('thresh-tq')?.value)       || 350000;
-  const th  = parseInt(document.getElementById('thresh-half')?.value)     || 250000;
+  const tc = PARAMS.tierComplete, ttq = PARAMS.tierTq, th = PARAMS.tierHalf; // 🎚 Parameters tab (v6.0.0)
   if (offPow >= tc)  return 'complete';
   if (offPow >= ttq) return 'tq';
   if (offPow >= th)  return 'half';
   return 'none';
 }
 
-// ── Settings persistence (Settings tab + Plan Offensive inputs + language) ──
+// ── Settings persistence (Parameters + Plan Offensive inputs + language) ──
 // These are plain DOM fields / the language global, so a refresh reset them to the
 // HTML defaults. Persist them under tw_tribe_settings on every edit (saveSettings,
 // wired to each control's oninput/onchange + to changeLang) and restore on load
@@ -209,7 +207,7 @@ function saveSettings() {
       lang: (typeof lang === 'string') ? lang : undefined,
       world: (typeof twWorld === 'string') ? twWorld : undefined,
       speeds: { world: twWorldSpeed, unit: twUnitSpeed }, // cache; worlds.json is authoritative
-      thresholds: { complete: v('thresh-complete'), tq: v('thresh-tq'), half: v('thresh-half') },
+      params: paramsOverrides(), // 🎚 Parameters (v6.0.0): only the values that differ from their default
       plan,
       // Offensive Targets hidden columns (👁 Columns panel) — a view preference, so it
       // lives here with lang/thresholds, not in the offensive plan export.
@@ -223,9 +221,13 @@ function saveSettings() {
 function loadSettings() {
   let s;
   try { s = JSON.parse(localStorage.getItem(TRIBE_SETTINGS_KEY) || 'null'); } catch {}
+  paramsResetAll(); // 🎚 the saved overrides (if any) land on top of the defaults
   if (!s) return;
   const set = (id, val) => { const e = document.getElementById(id); if (e && val != null && val !== '') e.value = val; };
-  if (s.thresholds) { set('thresh-complete', s.thresholds.complete); set('thresh-tq', s.thresholds.tq); set('thresh-half', s.thresholds.half); }
+  // 🎚 Parameters (v6.0.0). A pre-v5.18 save carried the three tier thresholds under
+  // `thresholds` (input strings) — migrate them once; from then on `params` is the only source.
+  if (s.params) paramsApply(s.params);
+  else if (s.thresholds) paramsApply({ tierComplete: s.thresholds.complete, tierTq: s.thresholds.tq, tierHalf: s.thresholds.half });
   if (s.plan) for (const id of PLAN_SETTING_IDS) set(id, s.plan[id]);
   // 🎭 Morale strategy radios/chip mirror the restored hidden #plan-morale-mode value.
   if (typeof syncMoraleModeUi === 'function') syncMoraleModeUi();
@@ -380,11 +382,9 @@ function renderVillagesTable() {
 // tribe_everything export (troops/defense/incoming rows): the "troops" row is the
 // village's own army, "defense" is what's home right now, "incoming" is its own
 // away-troops returning. So outbound = troops − defense − incoming per unit. Mirrors
-// find_outbound_offs.py: list a village when its own axe ≥ OUTBOUND_MIN_AXE and the
-// outbound axe is ≥ OUTBOUND_FRACTION of that axe body. The unit columns show the
-// approximate amounts CURRENTLY OUT (not home, not returning).
-const OUTBOUND_MIN_AXE  = 2000; // village's own axe must be at least this to count as an off
-const OUTBOUND_FRACTION = 0.5;  // outbound axe must be ≥ this share of the village's axe body
+// find_outbound_offs.py: list a village when its own axe ≥ PARAMS.outboundMinAxe and the
+// outbound axe is ≥ PARAMS.outboundFraction of that axe body (🎚 Parameters). The unit
+// columns show the approximate amounts CURRENTLY OUT (not home, not returning).
 // Unit columns shown in the Outbound Offs table — pure defensive units (spear/sword/heavy)
 // and the knight are dropped since this tab is about offs on the move. Column indices below
 // assume this list; keep the <th> order in the HTML and sortState.outbound in sync.
@@ -455,7 +455,7 @@ function renderOutboundTable() {
   // village's identity tier. tgt = the Plan-Offensive target this village's off was
   // assigned to (null when no plan / not a sender in it).
   const tgtBy = outboundOffTargets(typeof planRows !== 'undefined' ? planRows : []);
-  let data = computeOutboundOffs(villages, defenseByCoord, incomingByCoord, OUTBOUND_MIN_AXE, OUTBOUND_FRACTION)
+  let data = computeOutboundOffs(villages, defenseByCoord, incomingByCoord, PARAMS.outboundMinAxe, PARAMS.outboundFraction)
     .map(r => ({ ...r, tier: getOffTier(r.outOffPow), tgt: tgtBy[r.coord] || null }));
   const totalOut = data.length;
 
@@ -523,7 +523,7 @@ function renderOutboundTable() {
 // search box is a find-aid, not an export scoper), in the same order the table renders.
 function exportOutboundCoords() {
   if (!hasStationData()) { alert(t('outbound_need_everything')); return; }
-  const rows = computeOutboundOffs(villages, defenseByCoord, incomingByCoord, OUTBOUND_MIN_AXE, OUTBOUND_FRACTION)
+  const rows = computeOutboundOffs(villages, defenseByCoord, incomingByCoord, PARAMS.outboundMinAxe, PARAMS.outboundFraction)
     .sort((a, b) => a.player.localeCompare(b.player) || a.coord.localeCompare(b.coord));
   if (!rows.length) { alert(t('outbound_none')); return; }
   const txt = rows.map(r => r.coord).join('\n');

@@ -361,6 +361,65 @@
     .threshold-row input[type=number]:focus { outline: none; border-color: #c0900a; }
     .tier-legend { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-left: auto; }
 
+    /* ── 🎚 Parameters tab (v6.0.0) ── */
+    .param-intro { font-size: 12px; color: #806030; margin: -4px 0 14px; line-height: 1.5; }
+    .param-grid { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+    .param-row {
+      display: grid;
+      grid-template-columns: minmax(220px, 300px) auto;
+      grid-template-areas: "label ctl" "tip tip";
+      column-gap: 14px;
+      row-gap: 2px;
+      align-items: center;
+      padding: 7px 14px;
+      background: #160f04;
+      border: 1px solid #3a2808;
+      border-left: 3px solid #3a2808;
+      border-radius: 5px;
+    }
+    .param-row.param-changed { border-left-color: #f0c040; background: #1c1306; }
+    .param-row label { grid-area: label; font-size: 13px; color: #d4b483; }
+    .param-row.param-changed label { color: #f0c040; }
+    .param-ctl { grid-area: ctl; display: flex; align-items: center; gap: 8px; }
+    .param-ctl input[type=number], .param-ctl select {
+      background: #1a1008;
+      border: 1px solid #4a3010;
+      color: #d4b483;
+      padding: 5px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+      width: 120px;
+    }
+    .param-ctl select { width: auto; min-width: 120px; }
+    .param-ctl input[type=number]:focus, .param-ctl select:focus { outline: none; border-color: #c0900a; }
+    .param-ctl input[type=checkbox] { width: 16px; height: 16px; accent-color: #c0900a; }
+    .param-unit { font-size: 11px; color: #806030; }
+    .param-reset {
+      background: transparent; border: 1px solid #4a3010; color: #c0a060; border-radius: 4px;
+      font-size: 13px; line-height: 1; padding: 4px 7px; cursor: pointer;
+    }
+    .param-reset:hover:not(:disabled) { background: #2e1e08; border-color: #c0900a; color: #f0c040; }
+    .param-reset:disabled { opacity: 0.3; cursor: default; }
+    .param-tip { grid-area: tip; font-size: 11px; color: #806030; line-height: 1.4; }
+    /* inline per-tab panels (collapsed by default) */
+    .param-panel-host { margin-bottom: 12px; }
+    .param-panel { background: #120c03; border: 1px solid #3a2808; border-radius: 5px; }
+    .param-panel > summary { cursor: pointer; padding: 8px 14px; font-size: 12px; color: #c0a060; list-style: none; user-select: none; }
+    .param-panel > summary::-webkit-details-marker { display: none; }
+    .param-panel > summary::before { content: '▸ '; color: #806030; }
+    .param-panel[open] > summary::before { content: '▾ '; }
+    .param-panel > summary:hover { color: #f0c040; }
+    .param-changed-badge { font-size: 11px; color: #f0c040; border: 1px solid #7a5a10; border-radius: 10px; padding: 1px 7px; margin-left: 4px; }
+    .param-panel-all { float: right; font-size: 11px; color: #806030; text-decoration: none; }
+    .param-panel-all:hover { color: #f0c040; }
+    .param-panel-body { padding: 4px 10px 10px; }
+    .param-panel-body .param-grid { margin-bottom: 8px; }
+    .param-panel-body .section-header { margin: 8px 0 8px; }
+    .param-panel-body .section-header h2 { font-size: 13px; }
+    @media (max-width: 640px) {
+      .param-row { grid-template-columns: 1fr; grid-template-areas: "label" "ctl" "tip"; }
+    }
+
     /* ── Paste area ── */
     .paste-area {
       margin-top: 0;

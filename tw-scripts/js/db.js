@@ -51,7 +51,14 @@ const TW_ENV = (typeof location !== 'undefined' && /^https?:$/.test(location.pro
 // by the mirror Action: one entry per data/<world>/ folder, speeds pre-parsed from
 // the XML); this constant is the dev/file:// list and the fetch-failed fallback —
 // when a new world starts being mirrored, add it to the Action's worlds list AND here.
-const TW_WORLDS = { es100: { speed: 2, unitSpeed: 0.5 } };
+// Hosted-copy hooks (v5.17.1): a private build of this tool (Tribe-Calculator-Private/build.py)
+// may define `window.TW_WORLDS_OVERRIDE` (its own world list — first key = default world) and
+// `window.TW_DATA_BASE` (absolute URL prefix for the data/<world>/ fetches, so the copy reads a
+// mirror on another site cross-origin). Both are absent in dev and on the public site, where the
+// constants below behave exactly as before.
+const TW_WORLDS = (typeof window !== 'undefined' && window.TW_WORLDS_OVERRIDE && typeof window.TW_WORLDS_OVERRIDE === 'object'
+  && Object.keys(window.TW_WORLDS_OVERRIDE).length) ? window.TW_WORLDS_OVERRIDE : { es100: { speed: 2, unitSpeed: 0.5 } };
+const TW_DATA_BASE = (typeof window !== 'undefined' && typeof window.TW_DATA_BASE === 'string') ? window.TW_DATA_BASE : '';
 let twWorld = Object.keys(TW_WORLDS)[0]; // persisted in tw_tribe_settings (save/loadSettings)
 let twWorldsInfo = { ...TW_WORLDS };
 // The current world's speeds — fixed per world (no manual override since v3.30.0);
@@ -61,7 +68,7 @@ let twWorldsInfo = { ...TW_WORLDS };
 // worlds.json (prod) / the folder's get_config.xml (dev) delivers the authoritative
 // values — so a non-default-world user never actually plans on these initials.
 let twWorldSpeed = TW_WORLDS[twWorld].speed, twUnitSpeed = TW_WORLDS[twWorld].unitSpeed;
-const twDataUrl = () => `data/${twWorld}/`;
+const twDataUrl = () => `${TW_DATA_BASE}data/${twWorld}/`;
 
 // Pure: pull <speed> and <unit_speed> out of a world's get_config.xml (top-level
 // children of <config>; regex is fine on this machine-generated file). Returns
@@ -157,9 +164,9 @@ function fmtUpdatedStamp(raw) {
   const p = n => String(n).padStart(2, '0');
   const utc = `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
   const local = `${p(d.getHours())}:${p(d.getMinutes())} ${t('upd_local')}`;
-  const off = parseFloat(otCfg.serverUtcOffset);
-  const s = new Date(d.getTime() + (isNaN(off) ? 2 : off) * 3600000);
-  const server = `${p(s.getUTCHours())}:${p(s.getUTCMinutes())} ${t('upd_server')} (UTC+${isNaN(off) ? 2 : off})`;
+  const off = serverUtcOffset();
+  const s = new Date(d.getTime() + off * 3600000);
+  const server = `${p(s.getUTCHours())}:${p(s.getUTCMinutes())} ${t('upd_server')} (UTC+${off})`;
   return `${utc} · ${local} · ${server}`;
 }
 

@@ -23,8 +23,8 @@ let defCompletePlayers = []; // raw player names drained to 100% of their availa
 // defCompletePlayers (100% drained vs. reserve kept) — enforced in the pickers AND re-checked
 // in generateDefPlan, where Complete wins a stale contradiction.
 let defSnipPlayers   = [];
-let defSnipPct       = DEF_SNIP_DEFAULTS.pct;  // % of available def pop kept home
-let defSnipDist      = DEF_SNIP_DEFAULTS.dist; // fields; reserve respected for targets within this radius
+let defSnipPct       = defSnipDefaults().pct;  // % of available def pop kept home
+let defSnipDist      = defSnipDefaults().dist; // fields; reserve respected for targets within this radius
 // "Enemy Tribes" (v5.7.0): selected tribes are stored as world-DB ALLY IDs, not tags/names —
 // tribes rename freely and a stored tag would silently stop matching. Labels are resolved live
 // from allyDb at render time (allyLabel), so a rename just shows up.
@@ -38,13 +38,13 @@ let defEnemyTribes   = '';
 let defEnemyDist     = 0;  // "Distance from enemy tribes" (fields); 0 = filter off
 let defFarFirst      = false; // "Prioritize Sending From Far Villages" — source each player's share farthest-from-target first
 // "Config Support Size" — pack sizing mode for the defensive plan.
-//   'eff'   = Max Efficiency (default): the classic DEF_MIN_PACKET_POP / real-POP floor, unchanged.
+//   'eff'   = Max Efficiency (default): the classic PARAMS.defMinPacketPop / real-POP floor, unchanged.
 //   'packs' = Support Packs: cap contributing players per target so each order is ≥ dpPackSize
 //             "farm", weighted by dpPackWeights (Overwatch-style: heavy 4, not 6).
 let dpMode           = 'eff';
-let dpPackSize       = DP_PACK_DEFAULTS.size;
-let dpPackMax        = DP_PACK_DEFAULTS.max; // 0 = unlimited; soft per-order farm ceiling
-let dpPackWeights    = { ...DP_PACK_DEFAULTS.weights };
+let dpPackSize       = dpPackDefaults().size;
+let dpPackMax        = dpPackDefaults().max; // 0 = unlimited; soft per-order farm ceiling
+let dpPackWeights    = { ...dpPackDefaults().weights };
 // NOTE: MV (vacation-mode) pairs are SHARED with Plan Offensive — the single source of truth is
 // `mvPairs` (declared + persisted in offensive-targets.js / tw_tribe_offensive). The Defensive-
 // Targets picker below edits that same list; there is deliberately no separate defensive copy.
@@ -77,16 +77,16 @@ function loadDefensive() {
       defSnipPlayers  = Array.isArray(d.snipPlayers) ? d.snipPlayers : [];
       // 0 is a legitimate reserve (= "no reserve"), so don't let `|| default` swallow it.
       const sPct = parseFloat(d.snipPct), sDist = parseFloat(d.snipDist);
-      defSnipPct  = Number.isFinite(sPct)  ? Math.min(100, Math.max(0, sPct)) : DEF_SNIP_DEFAULTS.pct;
-      defSnipDist = Number.isFinite(sDist) ? Math.max(0, sDist) : DEF_SNIP_DEFAULTS.dist;
+      defSnipPct  = Number.isFinite(sPct)  ? Math.min(100, Math.max(0, sPct)) : defSnipDefaults().pct;
+      defSnipDist = Number.isFinite(sDist) ? Math.max(0, sDist) : defSnipDefaults().dist;
       defEnemyIds     = Array.isArray(d.enemyIds) ? d.enemyIds.map(String) : [];
       defEnemyTribes  = typeof d.enemyTribes === 'string' ? d.enemyTribes : '';
       defEnemyDist    = Math.max(0, parseInt(d.enemyDist, 10) || 0);
       defFarFirst     = d.farFirst === true;
       dpMode          = d.packMode === 'packs' ? 'packs' : 'eff';
-      dpPackSize      = Math.max(1, parseInt(d.packSize, 10) || DP_PACK_DEFAULTS.size);
+      dpPackSize      = Math.max(1, parseInt(d.packSize, 10) || dpPackDefaults().size);
       dpPackMax       = Math.max(0, parseInt(d.packMax, 10) || 0);
-      dpPackWeights   = { ...DP_PACK_DEFAULTS.weights };
+      dpPackWeights   = { ...dpPackDefaults().weights };
       if (d.packWeights) for (const u of DEF_OBJ_UNITS) {
         const n = parseFloat(d.packWeights[u]);
         if (Number.isFinite(n) && n > 0) dpPackWeights[u] = n;

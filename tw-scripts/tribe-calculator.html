@@ -66,6 +66,7 @@
   <div class="tab" data-tab="managedef"   data-group="defense"   onclick="switchTab('managedef')"><img class="tw-ic" src="icons/map/support.webp" alt=""><span data-i18n="tab_managedef">Manage Defense</span></div>
   <!-- Settings -->
   <div class="tab" data-tab="settings"    data-group="settings"  onclick="switchTab('settings')"   data-i18n="tab_settings">⚙ Settings</div>
+  <div class="tab" data-tab="params"      data-group="settings"  onclick="switchTab('params')"     data-i18n="tab_params">🎚 Parameters</div>
   <div class="tab" data-tab="changelog"   data-group="settings"  onclick="switchTab('changelog')"  data-i18n="tab_changelog">📋 Changelog</div>
   <div class="tab" data-tab="db"          data-group="settings"  onclick="switchTab('db')"         data-i18n="tab_db">🗃 Database</div>
 </div>
@@ -321,6 +322,7 @@
 
 <!-- ═══════════════════════════ VILLAGES ═══════════════════════════ -->
 <div class="tab-content" id="tab-villages">
+  <div id="villages-params" class="param-panel-host"></div>
   <div class="section-header">
     <h2 data-i18n="sec_village_detail">Village Detail</h2>
     <button class="btn btn-ghost btn-sm" onclick="exportTable('villages-table','tribe_villages.csv')">⬇ Export CSV</button>
@@ -368,6 +370,7 @@
 
 <!-- ═══════════════════════════ OUTBOUND OFFS (v3.24.0) ═══════════════════════════ -->
 <div class="tab-content" id="tab-outbound">
+  <div id="outbound-params" class="param-panel-host"></div>
   <div class="section-header">
     <h2 data-i18n="sec_outbound">Outbound Offs</h2>
     <button class="btn btn-ghost btn-sm" onclick="exportOutboundCoords()" data-i18n="btn_export_coords">⬇ Export Coords</button>
@@ -461,6 +464,7 @@
 
 <!-- ═══════════════════════════ TARGET VILLAGE ═══════════════════════════ -->
 <div class="tab-content" id="tab-target">
+  <div id="target-params" class="param-panel-host"></div>
   <div class="section-header">
     <h2 data-i18n="sec_target">Distance to Target</h2>
     <div style="display:flex;gap:8px;">
@@ -665,6 +669,7 @@
 
 <!-- ═══════════════════════════ PLAN OFFENSIVE ═══════════════════════════ -->
 <div class="tab-content" id="tab-plan">
+  <div id="plan-params" class="param-panel-host"></div>
   <div class="section-header">
     <h2 data-i18n="sec_plan">Offensive Plan</h2>
     <div style="display:flex;gap:8px;">
@@ -787,6 +792,7 @@
 
 <!-- ═══════════════════════════ MANAGE OFFENSIVE (v4.0.0) ═══════════════════════════ -->
 <div class="tab-content" id="tab-manageoff">
+  <div id="manageoff-params" class="param-panel-host"></div>
   <div class="section-header">
     <h2 data-i18n="sec_manageoff">Manage Offensive</h2>
     <div style="display:flex;gap:8px;align-items:center;">
@@ -925,6 +931,7 @@
 
 <!-- ═══════════════════════════ PLAN DEFENSE (v3.0.0) ═══════════════════════════ -->
 <div class="tab-content" id="tab-defplan">
+  <div id="defplan-params" class="param-panel-host"></div>
   <div class="section-header">
     <h2 data-i18n="sec_defplan">Defensive Plan</h2>
     <div style="display:flex;gap:8px;">
@@ -1019,6 +1026,7 @@
 
 <!-- ═══════════════════════════ MANAGE DEFENSE (v4.9.0) ═══════════════════════════ -->
 <div class="tab-content" id="tab-managedef">
+  <div id="managedef-params" class="param-panel-host"></div>
   <div class="section-header">
     <h2><img class="tw-ic" src="icons/map/support.webp" alt=""> <span data-i18n="sec_managedef">Manage Defense</span></h2>
     <div style="display:flex;gap:8px;align-items:center;">
@@ -1117,16 +1125,6 @@
 
 <!-- ═══════════════════════════ SETTINGS ═══════════════════════════ -->
 <div class="tab-content" id="tab-settings">
-  <div class="section-header"><h2 data-i18n="sec_off_thresholds">Offensive Power Thresholds</h2></div>
-  <div class="threshold-row">
-    <label><span class="badge badge-complete" data-i18n="opt_complete">Complete Off</span> ≥</label>
-    <input type="number" id="thresh-complete" value="500000" oninput="saveSettings(); renderTierTables()">
-    <label><span class="badge badge-tq" data-i18n="opt_tq">3/4</span> ≥</label>
-    <input type="number" id="thresh-tq" value="350000" oninput="saveSettings(); renderTierTables()">
-    <label><span class="badge badge-half" data-i18n="opt_half">1/2</span> ≥</label>
-    <input type="number" id="thresh-half" value="250000" oninput="saveSettings(); renderTierTables()">
-  </div>
-  <p style="font-size:12px;color:#5a3a18;margin-top:10px;" data-i18n="settings_note">Changes apply instantly to By Villages and By Player tabs.</p>
   <div class="section-header"><h2 data-i18n="sec_server">Server</h2></div>
   <div class="threshold-row">
     <label data-i18n="lbl_server_url">Server URL:</label>
@@ -1146,6 +1144,19 @@
     <input type="file" id="debug-import-input" accept=".json,application/json" style="display:none;" onchange="importDebugData(this)">
   </div>
   <p style="font-size:12px;color:#5a3a18;margin-top:10px;" data-i18n="debug_note">Exports everything saved locally — offensive targets, the generated plan, settings, language, PM templates, the loaded troop data and the morale inputs for it — as one JSON file. Share it so a tribemate's exact situation can be reproduced for debugging. Importing REPLACES your current saved targets, plan, settings and map preferences.</p>
+</div>
+
+<!-- ═══════════════════════════ PARAMETERS (v6.0.0) ═══════════════════════════ -->
+<!-- Every tunable number the engines used to hardcode. The rows are rendered from PARAM_DEFS
+     (js/constants.js) by renderParamPanels() (js/params.js), which also fills the inline
+     <div id="<tab>-params"> hosts at the top of the planning tabs; nothing here is static. -->
+<div class="tab-content" id="tab-params">
+  <div class="section-header">
+    <h2 data-i18n="sec_params">🎚 Parameters</h2>
+    <button class="btn btn-ghost btn-sm" onclick="resetAllParams()" data-i18n="btn_params_reset_all">↺ Reset all to defaults</button>
+  </div>
+  <p class="param-intro" data-i18n="params_note">Every threshold, default and limit the planners use, in one place. Values are saved as you edit them and travel with the Export Data backup. Each planning tab also carries a collapsible 🎚 panel with its own subset — the same values, edited from either side. Rows in gold differ from their default; ↺ restores one, the button above restores all. Table-related values apply at once, the rest at the next Generate / import.</p>
+  <div id="params-host"></div>
 </div>
 
 <!-- ═══════════════════════════ CHANGELOG ═══════════════════════════ -->
@@ -1183,17 +1194,20 @@
 <script src="js/db.js"></script>
 <script src="js/cloud-sync.js"></script>
 <script src="js/util.js"></script>
+<script src="js/params.js"></script>
 <script>
 // Prepend unit/stat icons to the static table headers (once)
 injectThIcons();
 
-// Restore saved settings (Offensive Power Thresholds + Plan Offensive inputs + language)
+// Restore saved settings (🎚 Parameters + Plan Offensive inputs + language)
 // before any render reads them; the saved language is applied by changeLang(lang) at the end.
 loadSettings();
 pmTplMigrateKeys(); // v5.14.1: old tw_pm_template* keys → tw_tribe_pm_template* (export/import/cloud pick them up)
 
 // Build the Changelog tab from js/changelog.js (re-rendered by changeLang on switch)
 if (typeof renderChangelog === 'function') renderChangelog();
+// Build the 🎚 Parameters tab + the per-tab panels from PARAM_DEFS (re-rendered by changeLang on switch)
+renderParamPanels();
 
 // Initial render of the Tribe Timings tab (builds its header + empty state)
 renderTargetTable();
@@ -1266,7 +1280,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">5.17.0 &nbsp;·&nbsp; 2026-09-10</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.0.0 &nbsp;·&nbsp; 2026-09-24</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

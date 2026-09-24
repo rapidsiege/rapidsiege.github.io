@@ -70,7 +70,7 @@ function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&qu
 // ── Snob (noble-launch) capability — Smithy-level driven when a tribeInfo v3 buildings/everything
 // JSON is loaded (buildingsByCoord), else the legacy points heuristic. Shared by the per-target
 // snob picker here AND the noble-launch reservations in plan.js. MASTER RULE: smith known → gate on
-// SNOB_SMITH_MIN; smith unknown → legacy points (unknown points pass) → with no buildings JSON the
+// PARAMS.snobSmithMin; smith unknown → legacy points (unknown points pass) → with no buildings JSON the
 // whole plan behaves byte-for-byte as before. ────────────────────────────────────────────────────
 function buildingsLoaded() {
   return typeof buildingsByCoord !== 'undefined' && Object.keys(buildingsByCoord).length > 0;
@@ -81,10 +81,10 @@ function smithLevelAt(coord) {
 }
 function snobCapable(coord) {
   const lv = smithLevelAt(coord);
-  if (lv !== null) return lv >= SNOB_SMITH_MIN;   // smith known → it IS the signal
+  if (lv !== null) return lv >= PARAMS.snobSmithMin;   // smith known → it IS the signal
   const dbv = coordDb[coord];
   const pts = dbv && typeof dbv.points === 'number' ? dbv.points : null;
-  return pts === null || pts > SNOB_RANGE_MIN_POINTS;   // unknown → legacy points heuristic
+  return pts === null || pts > PARAMS.snobRangeMinPoints;   // unknown → legacy points heuristic
 }
 
 // ── OFF WINDOW GROUPS ────────────────────────────────────────────────────────
@@ -330,6 +330,9 @@ function saveOffensive() {
 }
 
 function loadOffensive() {
+  // Fresh install / pre-serverUrl save: the game host follows the default world (a hosted copy may
+  // default to another world via TW_WORLDS_OVERRIDE). A saved cfg.serverUrl below still wins.
+  if (typeof twWorld === 'string' && twWorld) otCfg.serverUrl = `${twWorld}.guerrastribales.es`;
   try {
     const d = JSON.parse(localStorage.getItem(OT_STORE_KEY));
     if (d) {
@@ -367,7 +370,7 @@ function loadOffensive() {
   const su = document.getElementById('setting-server-url');
   if (su) su.value = otCfg.serverUrl || '';
   const so = document.getElementById('setting-server-offset');
-  if (so) so.value = otCfg.serverUtcOffset ?? 2;
+  if (so) so.value = otCfg.serverUtcOffset ?? PARAMS.serverUtcOffsetDefault;
   const dc = document.getElementById('ot-def-complete');
   if (dc) dc.value = otCfg.defComplete ?? 1;
   const dt = document.getElementById('ot-def-tq');
@@ -391,7 +394,7 @@ function loadOffensive() {
 
 function updOTCfg(k, v) { otCfg[k] = v.trim(); saveOffensive(); }
 function updServerUrl(v) { otCfg.serverUrl = v.trim(); saveOffensive(); }
-function updServerOffset(v) { const n = parseFloat(v); otCfg.serverUtcOffset = isNaN(n) ? 2 : n; saveOffensive(); updateServerNow(); }
+function updServerOffset(v) { const n = parseFloat(v); otCfg.serverUtcOffset = isNaN(n) ? PARAMS.serverUtcOffsetDefault : n; saveOffensive(); updateServerNow(); }
 function updOTCfgInt(k, v) { otCfg[k] = parseInt(v, 10) || 0; saveOffensive(); }
 
 // ── Ignore Coordinates / Ignore Players (Offensive Targets) ──────────────────
@@ -967,11 +970,11 @@ function newOffTarget(coord, player, type) {
   const g0 = otDefGroupId();
   return {
     id: otNextId++, coord, player, type, power: false,
-    catEnabled: destroyer, catapult: destroyer ? CAT_ATTACKS_DEFAULT : 0, catBuildings: [], catMode: 'smith',
+    catEnabled: destroyer, catapult: destroyer ? PARAMS.catAttacksDefault : 0, catBuildings: [], catMode: 'smith',
     // A FAKE target's noble train, if any, defaults to a bare fake decoy; everything else uses
     // the configured default snob mode. (Bulk-add as FAKE therefore lands on 'fake' automatically.)
     groupOffs: { [String(g0)]: { nComplete: otCfg.defComplete ?? 1, nTq: otCfg.defTq ?? 0, nHalf: otCfg.defHalf ?? 0,
-      nobles: 4, snobPlayers: 0, snobMode: type === 'fake' ? 'fake' : (otCfg.defSnobMode || 'solo') } },
+      nobles: PARAMS.noblesDefault, snobPlayers: PARAMS.snobPlayersDefault, snobMode: type === 'fake' ? 'fake' : (otCfg.defSnobMode || 'solo') } },
     group: g0, snobAssignees: [], offAssignees: [],
   };
 }
@@ -1074,13 +1077,13 @@ function setOTPower(id, val) {
 }
 
 // CATAPULT toggle (per target): when ticked, reveal the attack-count input (defaulting to
-// CAT_ATTACKS_DEFAULT the first time it's enabled); when unticked, no catapult attacks are
+// PARAMS.catAttacksDefault the first time it's enabled); when unticked, no catapult attacks are
 // planned for this target.
 function setOTCatapult(id, val) {
   const tg = offTargets.find(x => x.id === id);
   if (!tg) return;
   tg.catEnabled = !!val;
-  if (tg.catEnabled && !(tg.catapult > 0)) tg.catapult = CAT_ATTACKS_DEFAULT;
+  if (tg.catEnabled && !(tg.catapult > 0)) tg.catapult = PARAMS.catAttacksDefault;
   saveOffensive(); renderOffTargets();
 }
 
@@ -1259,9 +1262,9 @@ function openMassEdit() {
   document.getElementById('ot-mass-complete').value = otCfg.defComplete ?? 1;
   document.getElementById('ot-mass-tq').value       = otCfg.defTq ?? 0;
   document.getElementById('ot-mass-half').value     = otCfg.defHalf ?? 0;
-  document.getElementById('ot-mass-snobplayers').value = 0; // same seeds a new target gets
-  document.getElementById('ot-mass-nobles').value      = 4;
-  document.getElementById('ot-mass-cat-count').value = 5;
+  document.getElementById('ot-mass-snobplayers').value = PARAMS.snobPlayersDefault; // same seeds a new target gets
+  document.getElementById('ot-mass-nobles').value      = PARAMS.noblesDefault;
+  document.getElementById('ot-mass-cat-count').value = PARAMS.catAttacksDefault; // (v6.0: was a stray 5 while the row toggle used 3)
   massCatBuildings = [];
   renderMassCatBuildings();
   // Both group pickers start on the "Default offs" group, and the whole group row is hidden
@@ -1341,14 +1344,14 @@ function massSetType(type) {
   if (!TARGET_TYPES.includes(type)) return;
   massApply(tg => {
     tg.type = type;
-    if (type === 'destroyer' && !tg.catEnabled) { tg.catEnabled = true; if (!(tg.catapult > 0)) tg.catapult = CAT_ATTACKS_DEFAULT; }
+    if (type === 'destroyer' && !tg.catEnabled) { tg.catEnabled = true; if (!(tg.catapult > 0)) tg.catapult = PARAMS.catAttacksDefault; }
   });
 }
-// The modal's catapult attack count (default CAT_ATTACKS_DEFAULT, like the row toggle's first
+// The modal's catapult attack count (default PARAMS.catAttacksDefault, like the row toggle's first
 // enable). Both Turn ON and the buildings Apply stamp it onto every selected row.
 function massCatCount() {
   const n = parseInt((document.getElementById('ot-mass-cat-count') || {}).value, 10);
-  return n > 0 ? n : CAT_ATTACKS_DEFAULT;
+  return n > 0 ? n : PARAMS.catAttacksDefault;
 }
 function massSetCatapult(v) {
   const cnt = massCatCount();
@@ -1409,7 +1412,7 @@ function snobSenderOptions() {
 }
 
 // Per-target snob senders (buildings JSON loaded): ALL loaded players, A–Z, each annotated with
-// how many villages with a KNOWN Smithy ≥ SNOB_SMITH_MIN they have within noble range (getSnobMax
+// how many villages with a KNOWN Smithy ≥ PARAMS.snobSmithMin they have within noble range (getSnobMax
 // fields, 0 = no distance gate) of `tg`'s coord. Returns [{name, n, minDist, maxDist, unknown}]:
 // n/min/max count ONLY smith-known-capable villages (the label's whole point is real smith data —
 // no points fallback here, unlike the plan engine's snobCapable); `unknown` is true when the player
@@ -1434,7 +1437,7 @@ function snobSenderOptionsForTarget(tg) {
       if (snobMax > 0 && d > snobMax) continue;
       const lv = smithLevelAt(v.coord);
       if (lv === null) { unknownInRange++; continue; }
-      if (lv < SNOB_SMITH_MIN) continue;
+      if (lv < PARAMS.snobSmithMin) continue;
       n++;
       if (d < min) min = d;
       if (d > max) max = d;

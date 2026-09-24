@@ -43,8 +43,7 @@ function fmtTime(minutes) {
 }
 function fmtArrivalTime(travelMinutes) {
   // server-time arrival, consistent with the "Arrive by" deadline and the planner
-  const off = parseFloat(otCfg.serverUtcOffset);
-  const d = new Date(serverNowMs() + travelMinutes * 60000 + (isNaN(off) ? 2 : off) * 3600000);
+  const d = new Date(serverNowMs() + travelMinutes * 60000 + serverUtcOffset() * 3600000);
   const p = n => String(n).padStart(2, '0');
   return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
@@ -171,13 +170,14 @@ function targetTimingData() {
   return { mode, m, pace, target, tgtCoord, tgtPts, tgtBarb, deadlineMs, data };
 }
 
-// A village's unit lands by the deadline: owns the unit, finite travel, arrives in time (launch = now).
+// A village's unit lands by the deadline: owns the unit, finite travel, arrives in time (launch =
+// now + 🎚 PARAMS.departMargin minutes).
 function unitMakesDeadline(row, u, deadlineMs) {
-  return row[u] > 0 && isFinite(row['tt_'+u]) && serverNowMs() + row['tt_'+u] * 60000 <= deadlineMs;
+  return row[u] > 0 && isFinite(row['tt_'+u]) && serverNowMs() + (PARAMS.departMargin + row['tt_'+u]) * 60000 <= deadlineMs;
 }
 // A unit's arrival time only exceeds the deadline (used to grey out a cell; ignores ownership).
 function unitLateForDeadline(row, u, deadlineMs) {
-  return deadlineMs !== null && isFinite(row['tt_'+u]) && serverNowMs() + row['tt_'+u] * 60000 > deadlineMs;
+  return deadlineMs !== null && isFinite(row['tt_'+u]) && serverNowMs() + (PARAMS.departMargin + row['tt_'+u]) * 60000 > deadlineMs;
 }
 // Off-power tier badge (off mode Tribe Timings), matching the By Villages tier styling.
 function offTierBadge(tier) {

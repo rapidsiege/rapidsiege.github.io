@@ -25,8 +25,7 @@ function serverNowMs() { return Date.now(); } // separate so tests can freeze th
 function serverWallMs(dateISO, minutes) {
   const m = String(dateISO || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
-  const off = parseFloat(otCfg.serverUtcOffset);
-  return Date.UTC(+m[1], +m[2] - 1, +m[3]) + minutes * 60000 - (isNaN(off) ? 2 : off) * 3600000;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3]) + minutes * 60000 - serverUtcOffset() * 3600000;
 }
 // Epoch ms of the optional "Earliest send" datetime-local (Plan Offensive), read on the SAME
 // server wall clock as the windows. null when unset/malformed → the plan uses serverNowMs() as
@@ -38,8 +37,7 @@ function earliestSendMs() {
   return serverWallMs(m[1], (+m[2]) * 60 + (+m[3]));
 }
 function serverNowStr() {
-  const off = parseFloat(otCfg.serverUtcOffset);
-  const d = new Date(serverNowMs() + (isNaN(off) ? 2 : off) * 3600000);
+  const d = new Date(serverNowMs() + serverUtcOffset() * 3600000);
   const p = n => String(n).padStart(2, '0');
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
@@ -381,14 +379,14 @@ function generatePlan() {
   const okSnobDist = (p, tc) => snobMax <= 0 || distXY(p.c, tc) <= snobMax;
   // Snob targets are mostly ASSIGNED to a player who then recruits the noble, so every snob
   // row lists that player's own villages within noble range of the objective that can plausibly
-  // hold an Academy. When a buildings JSON is loaded that's a real Smithy ≥ SNOB_SMITH_MIN gate;
-  // otherwise it's the legacy > SNOB_RANGE_MIN_POINTS heuristic (unknown → passes). snobCapable
+  // hold an Academy. When a buildings JSON is loaded that's a real Smithy ≥ PARAMS.snobSmithMin gate;
+  // otherwise it's the legacy > PARAMS.snobRangeMinPoints heuristic (unknown → passes). snobCapable
   // (offensive-targets.js) encapsulates both. Closest first. rawName is the encoded pool key.
   const snobAcademyOk = p => snobCapable(p.v.coord);
   // Weaker smith gate for spots that never had a points heuristic (escort picks, the recruit-here
-  // hint): a KNOWN Smithy below SNOB_SMITH_MIN disqualifies, unknown passes — so without a
+  // hint): a KNOWN Smithy below PARAMS.snobSmithMin disqualifies, unknown passes — so without a
   // buildings JSON these behave exactly as before (no new points gate sneaks in).
-  const smithOkOrUnknown = p => { const lv = smithLevelAt(p.v.coord); return lv === null || lv >= SNOB_SMITH_MIN; };
+  const smithOkOrUnknown = p => { const lv = smithLevelAt(p.v.coord); return lv === null || lv >= PARAMS.snobSmithMin; };
   // Recommended launch villages for a needNobles / out-of-range snob row: the player's own
   // villages within noble range AND still launchable in time (okSnobTime — honours the Earliest
   // send floor / now), academy-plausible. Closest first. Time-gated so we never suggest recruiting
@@ -429,7 +427,9 @@ function generatePlan() {
   // Applies to offs AND snobs (okOffTime/okSnobTime share okTime). max(now, …) keeps a past
   // earliest-send from ever loosening reality.
   const esMs = earliestSendMs();
-  const sendFloorMs = esMs === null ? serverNowMs() : Math.max(serverNowMs(), esMs);
+  // 🎚 departMargin: nothing can launch sooner than this many minutes from now.
+  const nowFloorMs = serverNowMs() + PARAMS.departMargin * 60000;
+  const sendFloorMs = esMs === null ? nowFloorMs : Math.max(nowFloorMs, esMs);
   // If the earliest-send is at/after a target's whole arrival window, nothing can reach it
   // (max travel = window end − floor ≤ 0) — flag it so the target doesn't just silently empty.
   if (esMs !== null) for (const T of targets) {
@@ -507,12 +507,13 @@ function generatePlan() {
   // Auto "optimize" score for a candidate: effective power per field of travel (so a small
   // morale loss for a much closer village wins — 95% @ 7h beats 100% @ 50h), or pure
   // closeness when there's no morale signal. Then DAMPED by the sender's remaining fraction
-  // (0.5–1.0) so already-used players slide down — pulling the split toward equal fractions
+  // ((1−d)–1.0, d = PARAMS.rosterDamping) so already-used players slide down — pulling the split toward equal fractions
   // of each player's roster (≈ proportional balancing) without overriding a real edge.
   const optScore = (p, T) => {
     const d = Math.max(0.1, distXY(p.c, T.c));
     const base = moraleUsable(T) ? effPow(p, T) / d : 1 / d;
-    return base * (0.5 + 0.5 * remOffFrac(p.v.player));
+    const dmp = PARAMS.rosterDamping;
+    return base * ((1 - dmp) + dmp * remOffFrac(p.v.player));
   };
   const byOptimize = T => (a, b) => (optScore(b, T) - optScore(a, T)) || (distXY(a.c, T.c) - distXY(b.c, T.c));
 
@@ -559,7 +560,7 @@ function generatePlan() {
   // off passes leave it free for the split-off. Applies even to pinned senders who don't
   // own the noble yet (needNobles): the slot is held until they recruit one.
   // An escort village launches the noble too, so with a buildings JSON loaded a KNOWN Smithy below
-  // SNOB_SMITH_MIN disqualifies it (the next closest capable off takes the slot); unknown Smithy
+  // PARAMS.snobSmithMin disqualifies it (the next closest capable off takes the slot); unknown Smithy
   // passes (smithOkOrUnknown — escorts never had a points gate, don't introduce one).
   const escortReserved = new Set();
   for (const T of targets) {
@@ -680,7 +681,7 @@ function generatePlan() {
         (mode !== 'escorted' || !p.usedOff));
       if (mode === 'escorted') {
         // train travels with its own off escort → prefer villages with real off power
-        const strong = cands.filter(p => TIER_RANK[p.tier] >= 1);
+        const strong = cands.filter(p => tierAtLeast(p.tier, PARAMS.escortMinTier)); // 🎚 escortMinTier ('none' keeps every candidate)
         if (strong.length) cands = strong;
       }
       const enough = cands.filter(p => p.snobLeft >= nc);
@@ -804,20 +805,20 @@ function generatePlan() {
   // the two is the escort, which still rides to its own target (its off is the split-off);
   // the reservation only stops these villages being flung at OTHER targets as plain offs.
   // Only an established village with a real garrison can be a reserved launch village:
-  // ≥ RESERVE_MIN_POINTS points AND ≥ RESERVE_MIN_POP farm pop used by troops. Points come
+  // ≥ PARAMS.reserveMinPoints points AND ≥ PARAMS.reserveMinPop farm pop used by troops. Points come
   // from the world DB (coordDb[coord].points); when the DB isn't loaded the points are
   // unknown and treated as passing, so the pop gate alone applies. A close but tiny/empty
   // village is skipped, and the next-closest qualifying village takes the slot instead.
   // When a buildings JSON is loaded, Smithy level is the real Academy signal: a village with a
-  // known Smithy < SNOB_SMITH_MIN can't launch a noble and is never reserved (the pop gate still
-  // applies first). Unknown Smithy → the legacy points heuristic (RESERVE_MIN_POINTS, unknown → ok).
+  // known Smithy < PARAMS.snobSmithMin can't launch a noble and is never reserved (the pop gate still
+  // applies first). Unknown Smithy → the legacy points heuristic (PARAMS.reserveMinPoints, unknown → ok).
   const reserveEligible = p => {
-    if ((p.v.popUsed || 0) < RESERVE_MIN_POP) return false;
+    if ((p.v.popUsed || 0) < PARAMS.reserveMinPop) return false;
     const lv = smithLevelAt(p.v.coord);
-    if (lv !== null) return lv >= SNOB_SMITH_MIN;
+    if (lv !== null) return lv >= PARAMS.snobSmithMin;
     const dbv = coordDb[p.v.coord];
     const pts = dbv && typeof dbv.points === 'number' ? dbv.points : null;
-    return pts === null || pts >= RESERVE_MIN_POINTS;
+    return pts === null || pts >= PARAMS.reserveMinPoints;
   };
   const snobReserved = new Set();
   if (!noReserve) for (const [rawName, tset] of Object.entries(snobSenderTargets)) {
@@ -826,7 +827,7 @@ function generatePlan() {
     const mine = pool.filter(p => p.v.player === rawName && reserveEligible(p));
     const dOf = p => Math.min(...tcs.map(tc => distXY(p.c, tc)));
     mine.sort((a, b) => (dOf(a) - dOf(b)) || (b.v.offPow - a.v.offPow) || (a.v.coord < b.v.coord ? -1 : 1));
-    for (const p of mine.slice(0, 2)) snobReserved.add(p);
+    for (const p of mine.slice(0, PARAMS.reserveVillages)) snobReserved.add(p);
   }
   // Ignored players are barred from every regular-off pass here (all four use offBlocked),
   // but NOT from the snob loop / escort pick — so a hand-picked ignored noble sender still sends.
@@ -890,7 +891,8 @@ function generatePlan() {
 
   // Tier bump map (a need bumps UP to the nearest stronger off when its own tier is empty);
   // shared by the conqueror reservation below and the auto pass further down.
-  const TIER_UP = { half: ['tq', 'complete'], tq: ['complete'], complete: [] };
+  // 🎚 tierBump off → no bumping at all (a missing tier stays unassigned).
+  const TIER_UP = PARAMS.tierBump ? { half: ['tq', 'complete'], tq: ['complete'], complete: [] } : { half: [], tq: [], complete: [] };
 
   // ── DESTROYER / VOLADORA targets ──────────────────────────────────────────
   // An explicit per-row type (see isDestroyer above): you flatten the village instead of
@@ -899,8 +901,8 @@ function generatePlan() {
   // normal off only when no cat-off qualifies (range/time/tier still gate first; a target whose
   // offs end up carrying no cats is warned once, see below). Independent of the EXTRA small cat
   // attacks sourced from defensive villages further down (a destroyer also gets those by
-  // default: its catapult toggle starts ON at CAT_ATTACKS_DEFAULT attacks).
-  const CAT_CLEAR_MIN = 101; // an off with ≥ this many catapults can serve as the clearing off
+  // default: its catapult toggle starts ON at PARAMS.catAttacksDefault attacks).
+  const CAT_CLEAR_MIN = PARAMS.catClearMin; // an off with ≥ this many catapults can serve as the clearing off
   // Among already-filtered off candidates, keep only the cat-carriers when this is a destroyer
   // target and at least one qualifies; otherwise leave the set untouched (normal-off fallback).
   const preferCatOffs = (T, cands) => {
@@ -1136,15 +1138,16 @@ function generatePlan() {
   // off). Sources are COMPLETE-tier villages that already send a real off in this plan — the
   // village "attacks twice": once for real, once with 1 ram — preferring non-escorts, then
   // falling back to escort villages (reserved or launched). A village fakes at most ONCE
-  // (usedFake), needs ≥1 ram, and the usual distance/launch-time/MV gates apply (a fake IS an
+  // (usedFake / fakesSent < PARAMS.fakesPerVillage), needs ≥ PARAMS.fakeRams rams, is at least
+  // PARAMS.fakeSourceTier, and the usual distance/launch-time/MV gates apply (a fake IS an
   // in-game attack, so the vacation-mode limit still binds; morale is irrelevant and skipped).
   for (const T of targets) {
     if (!T.c || !isFake(T)) continue;
     for (const g of otActiveGroups(T.tg)) {
     const want = otTierCount(T.tg, g.id, 'complete');
     for (let k = 0; k < want; k++) {
-      const candsOf = filt => pool.filter(p => p.tier === 'complete' && !p.usedFake
-        && (p.v.ram || 0) >= 1 && !ignorePlayers.has(p.v.player) && filt(p)
+      const candsOf = filt => pool.filter(p => tierAtLeast(p.tier, PARAMS.fakeSourceTier) && (p.fakesSent || 0) < PARAMS.fakesPerVillage
+        && (p.v.ram || 0) >= PARAMS.fakeRams && !ignorePlayers.has(p.v.player) && filt(p)
         && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
       let cands = candsOf(p => p.usedOff && !p.isEscort);           // primary: assigned real offs
       if (!cands.length) cands = candsOf(p => p.isEscort || escortReserved.has(p)); // fallback: escorts
@@ -1154,7 +1157,7 @@ function generatePlan() {
         continue;
       }
       const p = cands.sort(byDist(T))[0];
-      p.usedFake = true; noteMvClaim(p, T);
+      p.usedFake = true; p.fakesSent = (p.fakesSent || 0) + 1; noteMvClaim(p, T);
       const d = distXY(p.c, T.c);
       T.offRows.push({ type: 'fake', group: g.id, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
         dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
@@ -1180,7 +1183,7 @@ function generatePlan() {
   // additional demolition attacks, NOT clearing offs. Each target's requested count
   // (`tg.catapult`) is filled from OWN villages classified DEFENSIVE (`type === 'def'`) that
   // own catapults; one attack sends `catsPerAttack` catapults. A source village's budget =
-  // floor(its catapults / catsPerAttack), spent across all targets; at most 2 attacks per
+  // floor(its catapults / catsPerAttack), spent across all targets; at most catPerSourceMax attacks per
   // (source village → the SAME target) — so a player can still send 4 to one target from two
   // villages. Two extra rules:
   //   • Player spread: among eligible sources we pick the player who has sent the FEWEST
@@ -1189,7 +1192,7 @@ function generatePlan() {
   //   • Distance lead: a cat source must be at least CAT_OFF_LEAD fields CLOSER to the target
   //     than the farthest assigned off (cats are slow — keep them inside the off ring). With no
   //     assigned off the gate is inert. This can tighten supply, so shortfalls are warned.
-  const CAT_OFF_LEAD = 8;
+  const CAT_OFF_LEAD = PARAMS.catOffLead;
   const catsPerAttack = Math.max(1, parseInt((document.getElementById('plan-cat-count') || {}).value) || 20);
   const catPool = villages
     .map(v => ({ v, c: parseCoordStr(v.coord), budget: Math.floor((v.catapult || 0) / catsPerAttack) }))
@@ -1204,12 +1207,12 @@ function generatePlan() {
     const catBuildings = catBuildingTargets(T.tg);
     const offDists = T.offRows.filter(r => !r.unassigned && typeof r.dist === 'number').map(r => r.dist);
     const maxCatDist = offDists.length ? Math.max(...offDists) - CAT_OFF_LEAD : Infinity;
-    const perTarget = {}; // source coord → attacks already aimed at THIS target (cap 2)
+    const perTarget = {}; // source coord → attacks already aimed at THIS target (cap PARAMS.catPerSourceMax)
     const perPlayer = {}; // source player → attacks already aimed at THIS target (spread)
     let placed = 0;
     while (placed < want) {
       const cand = catPool
-        .filter(s => s.budget > 0 && (perTarget[s.v.coord] || 0) < 2 && distXY(s.c, T.c) <= maxCatDist && !pairBlocked(s.v.player, T))
+        .filter(s => s.budget > 0 && (perTarget[s.v.coord] || 0) < PARAMS.catPerSourceMax && distXY(s.c, T.c) <= maxCatDist && !pairBlocked(s.v.player, T))
         .sort((a, b) => (perPlayer[decode(a.v.player)] || 0) - (perPlayer[decode(b.v.player)] || 0)
           || distXY(a.c, T.c) - distXY(b.c, T.c))[0];
       if (!cand) break; // no eligible cat source left (budget/cap hit or none within the distance lead)
@@ -1491,7 +1494,7 @@ function catTargetLabel(r) {
 // Shared by the plan table's ⚔ link and both per-player exports.
 function planRowRallyUnits(r) {
   if (r.type === 'catapult') return { catapult: r.cats };
-  if (r.type === 'fake') return { ram: 1 };
+  if (r.type === 'fake') return { ram: PARAMS.fakeRams || 1 };
   return undefined;
 }
 
@@ -1599,7 +1602,7 @@ function showPlanBB() {
   if (!planRows.length) { alert(t('empty_no_plan')); return; }
 
   const nobleCounts = [...new Set(offTargets.flatMap(x => otGroups().map(g => otSnobCount(x, g.id, 'nobles'))).filter(Boolean))].sort((a, b) => a - b);
-  const noblesLabel = nobleCounts.length ? nobleCounts.join(' ó ') : '4';
+  const noblesLabel = nobleCounts.length ? nobleCounts.join(' ó ') : String(PARAMS.noblesDefault);
 
   // With several window groups the objective list is repeated once per wave, each under its own
   // ARRIVAL DATE header — the header is the only place a date is stated, so a wave must never

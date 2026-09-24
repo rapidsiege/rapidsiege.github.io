@@ -252,14 +252,15 @@ function mdSentOrigins(supTargets, orders) {
 //   not_in_plan  — the destination village isn't a plan target at all
 //   extra        — target IS planned, but this order matches no row (unplanned sender)
 //   inbound      — neutral: no Defense Plan loaded to compare against
-// Units match = exact per-type equality (a resend of the same packet is a duplicate).
+// Units match = per-type equality within 🎚 PARAMS.mdUnitTol units (0 = exact; a resend of the
+// same packet is a duplicate).
 // Two passes so exact matches claim their slots before looser matches do; orders are
 // processed target- then arrival-ordered so the earliest of identical orders "matches"
 // and later ones fall to "duplicate".
 function mdClassifyOrders(orders, planRows) {
   const verdicts = (orders || []).map(() => 'inbound');
   if (!orders || !orders.length || !planRows || !planRows.length) return verdicts;
-  const eq = (a, b) => DEF_OBJ_UNITS.every(u => ((a && a[u]) || 0) === ((b && b[u]) || 0));
+  const eq = (a, b) => DEF_OBJ_UNITS.every(u => Math.abs(((a && a[u]) || 0) - ((b && b[u]) || 0)) <= PARAMS.mdUnitTol);
   const slots = planRows.map(r => ({ src: r.srcCoord, tgt: r.tCoord, units: r.units, filled: false }));
   const plannedTgt = new Set(planRows.map(r => r.tCoord));
   const idx = orders.map((_, i) => i).sort((a, b) => {
@@ -400,10 +401,11 @@ function mdCoordLink(coord) {
   const url = (typeof villageInfoUrl === 'function') ? villageInfoUrl(coord) : null;
   return url ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:inherit;">${esc(coord)}</a>` : esc(coord);
 }
-// Inbound-order arrival vs the target's plan deadline (single moment, not a window).
+// Inbound-order arrival vs the target's plan deadline (single moment, not a window); 🎚
+// PARAMS.mdArrivalGrace minutes past it still count as in time.
 function mdTimingCell(arrivalMs, deadlineMs) {
   if (arrivalMs == null || deadlineMs == null) return '—';
-  if (arrivalMs <= deadlineMs) return `<span style="color:#40c060;font-weight:600;">${esc(t('md_tm_in'))}</span>`;
+  if (arrivalMs <= deadlineMs + PARAMS.mdArrivalGrace * 60000) return `<span style="color:#40c060;font-weight:600;">${esc(t('md_tm_in'))}</span>`;
   return `<span style="color:#e06040;font-weight:600;">${esc(t('md_tm_late')(fmtTime(Math.round((arrivalMs - deadlineMs) / 60000))))}</span>`;
 }
 function mdArrivalCell(order) {

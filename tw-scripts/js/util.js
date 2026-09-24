@@ -218,7 +218,7 @@ const TAB_GROUPS = [
   { id: 'timings',   tabs: ['target'] },
   { id: 'offensive', tabs: ['offtargets', 'plan', 'manageoff', 'outbound'] },
   { id: 'defense',   tabs: ['deftargets', 'defplan', 'managedef'] },
-  { id: 'settings',  tabs: ['settings', 'changelog', 'db'] },
+  { id: 'settings',  tabs: ['settings', 'params', 'changelog', 'db'] },
 ];
 function tabGroupOf(id) {
   const g = TAB_GROUPS.find(grp => grp.tabs.indexOf(id) !== -1);
@@ -255,7 +255,7 @@ function fmtM(n) { // format large numbers as K/M
 }
 function numCell(n) {
   if (n === 0) return '<td class="num-zero">0</td>';
-  if (n >= 2000) return `<td class="num-high">${n.toLocaleString()}</td>`;
+  if (n >= PARAMS.numHigh) return `<td class="num-high">${n.toLocaleString()}</td>`;
   return `<td>${n.toLocaleString()}</td>`;
 }
 function decode(s) { // URL-decode player names like "Vitrocer%C3%A1mica"
