@@ -107,20 +107,11 @@
     }).catch(function () { /* best-effort — see above */ });
   }
 
-  // A stalled request (e.g. the workers.dev failover host on an ISP that
-  // blocks it) would otherwise hang forever — the abort turns it into an error
-  // the caller can show and offer to retry.
-  var FETCH_TIMEOUT_MS = 90000;
+  // Timeouts + hostname failover live in TW.apiFetch (common.js).
   function getJson(pathQuery) {
-    var ctl = typeof AbortController === "function" ? new AbortController() : null;
-    var timer = ctl && setTimeout(function () { ctl.abort(); }, FETCH_TIMEOUT_MS);
-    function done() { if (timer) clearTimeout(timer); }
-    return TW.apiFetch(pathQuery, ctl ? { signal: ctl.signal } : undefined).then(function (r) {
+    return TW.apiFetch(pathQuery).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
-    }).then(function (v) { done(); return v; }, function (e) {
-      done();
-      throw (e && e.name === "AbortError") ? new Error("sin respuesta en " + (FETCH_TIMEOUT_MS / 1000) + " s") : e;
     });
   }
 
