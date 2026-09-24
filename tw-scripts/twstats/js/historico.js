@@ -9,6 +9,7 @@
   function $(id) { return document.getElementById(id); }
 
   var HIST_PATH = "/reports-hist?world=es100"; // fetched via TW.apiFetch (hostname failover)
+  var INDEX_PATH = "/reports-hist-index?world=es100"; // segment list (see fetchHist)
   var PAGE = 200; // summaries appended per «Mostrar más»
 
   // Protected allies (es100: 13 = WC.. / 27 = WC) — mirrors the calculator's
@@ -53,6 +54,9 @@
     renderMore();
     var line = TW.commas(all.length) + " informes únicos";
     if (coord) line += " · " + view.length + " de " + coord;
+    if (pending.length && all.length) {
+      line += " · cargados desde el " + TWRR.fmtT(all[all.length - 1].reportTimestamp).slice(0, 8);
+    }
     if (updated && typeof riAge === "function") {
       line += " · BD actualizada hace " + riAge(Date.now(), Date.parse(updated));
     }
@@ -103,15 +107,100 @@
     }).catch(function () { /* best-effort — see above */ });
   }
 
-  function load() {
-    loadProtCoords().then(function () { return TW.apiFetch(HIST_PATH); }).then(function (r) {
+  function getJson(pathQuery) {
+    return TW.apiFetch(pathQuery).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
-    }).then(function (db) {
+    });
+  }
+
+  // The store is cut into half-month segments since 2026-09-24 (one 41 MB file
+  // no longer fit the Worker): read the segment list, then the segments newest
+  // first, SEG_PARALLEL at a time, until INITIAL reports are in — the rest
+  // waits behind «Cargar meses anteriores» (the whole store is ~40 MB; most
+  // lookups want recent battles). Not all at once: concurrent calls can share
+  // one Worker isolate's memory, and ten parallel ~10 MB reads would rebuild
+  // the very peak the split removed. A Worker without the index (older deploy
+  // / pre-migration) answers 404 or no segments → the monolithic
+  // GET /reports-hist, as before, with nothing left to load later.
+  var SEG_PARALLEL = 2;
+  var INITIAL = 10000;   // reports to have loaded before stopping (by index counts)
+  var pending = [];      // older segments not loaded yet ({key, count}), newest first
+
+  // Fetch `segs` (newest first) SEG_PARALLEL at a time → their reports concatenated.
+  function fetchSegs(segs) {
+    var reports = [];
+    function batch(i) {
+      if (i >= segs.length) return reports;
+      return Promise.all(segs.slice(i, i + SEG_PARALLEL).map(function (s) {
+        return getJson(HIST_PATH + "&seg=" + encodeURIComponent(s.key));
+      })).then(function (parts) {
+        parts.forEach(function (p) { if (p && Array.isArray(p.reports)) reports = reports.concat(p.reports); });
+        return batch(i + SEG_PARALLEL);
+      });
+    }
+    return batch(0);
+  }
+
+  // → { updated, reports, pending } (pending = the segments NOT fetched yet).
+  function fetchHist() {
+    return getJson(INDEX_PATH).catch(function () { return null; }).then(function (idx) {
+      var segs = idx && idx.ok && Array.isArray(idx.segments) ? idx.segments : [];
+      if (!segs.length) return getJson(HIST_PATH);
+      var first = [], later = [], n = 0;
+      segs.forEach(function (s) {
+        if (n < INITIAL) { first.push(s); n += +s.count || 0; }
+        else later.push(s);
+      });
+      return fetchSegs(first).then(function (reports) {
+        return { updated: idx.updated || null, reports: reports, pending: later };
+      });
+    });
+  }
+
+  function pendingCount() {
+    return pending.reduce(function (n, s) { return n + (+s.count || 0); }, 0);
+  }
+  function renderOlder() {
+    var wrap = $("histOlderWrap");
+    if (!wrap) return;
+    wrap.hidden = !pending.length;
+    if (pending.length) {
+      $("histOlder").textContent = "Cargar meses anteriores (" + TW.commas(pendingCount()) + " informes)";
+    }
+  }
+  function absorb(reports) {
+    all = all.concat(reports.filter(function (r) { return r && r.reportTimestamp; }));
+    all.sort(function (a, b) { return (b.reportTimestamp || 0) - (a.reportTimestamp || 0); });
+  }
+  function loadOlder() {
+    if (!pending.length) return;
+    var segs = pending; pending = [];
+    $("histOlder").disabled = true;
+    $("histOlder").textContent = "Cargando " + TW.commas(segs.reduce(function (n, s) { return n + (+s.count || 0); }, 0)) + " informes…";
+    fetchSegs(segs).then(function (reports) {
+      absorb(reports);
+      $("histOlder").disabled = false;
+      renderOlder();
+      applyFilter();
+    }).catch(function (e) {
+      pending = segs; // nothing was absorbed — offer them again
+      $("histOlder").disabled = false;
+      renderOlder();
+      $("histStatus").textContent = "No se pudieron cargar los meses anteriores (" + e.message + ").";
+    });
+  }
+
+  var loadGen = 0; // only the LATEST load may write state (absorb appends)
+  function load() {
+    var gen = ++loadGen;
+    loadProtCoords().then(fetchHist).then(function (db) {
+      if (gen !== loadGen) return; // superseded by a newer load
       if (!db || !Array.isArray(db.reports)) throw new Error("respuesta inesperada");
       updated = db.updated || null;
-      all = db.reports.filter(function (r) { return r && r.reportTimestamp; });
-      all.sort(function (a, b) { return (b.reportTimestamp || 0) - (a.reportTimestamp || 0); });
+      all = []; pending = Array.isArray(db.pending) ? db.pending : [];
+      absorb(db.reports);
+      renderOlder();
       applyFilter();
     }).catch(function (e) {
       $("histLine").textContent = "Histórico no disponible ahora mismo (" + e.message + ").";
@@ -130,6 +219,7 @@
       applyFilter();
     });
     $("histMore").addEventListener("click", renderMore);
+    if ($("histOlder")) $("histOlder").addEventListener("click", loadOlder);
     $("histList").addEventListener("toggle", histToggle, true); // toggle doesn't bubble
     load();
   }
