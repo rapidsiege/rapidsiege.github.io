@@ -107,10 +107,20 @@
     }).catch(function () { /* best-effort — see above */ });
   }
 
+  // A stalled request (e.g. the workers.dev failover host on an ISP that
+  // blocks it) would otherwise hang forever — the abort turns it into an error
+  // the caller can show and offer to retry.
+  var FETCH_TIMEOUT_MS = 90000;
   function getJson(pathQuery) {
-    return TW.apiFetch(pathQuery).then(function (r) {
+    var ctl = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = ctl && setTimeout(function () { ctl.abort(); }, FETCH_TIMEOUT_MS);
+    function done() { if (timer) clearTimeout(timer); }
+    return TW.apiFetch(pathQuery, ctl ? { signal: ctl.signal } : undefined).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
+    }).then(function (v) { done(); return v; }, function (e) {
+      done();
+      throw (e && e.name === "AbortError") ? new Error("sin respuesta en " + (FETCH_TIMEOUT_MS / 1000) + " s") : e;
     });
   }
 
@@ -127,16 +137,26 @@
   var INITIAL = 10000;   // reports to have loaded before stopping (by index counts)
   var pending = [];      // older segments not loaded yet ({key, count}), newest first
 
-  // Fetch `segs` (newest first) SEG_PARALLEL at a time → their reports concatenated.
-  function fetchSegs(segs) {
+  // Fetch `segs` (newest first) SEG_PARALLEL at a time → their reports
+  // concatenated. `onBatch(reports, doneSegs, i)` fires as each batch lands so
+  // the caller can absorb progressively; a failing batch rejects with
+  // `err.remaining` = the segments not fetched yet (that batch included).
+  function fetchSegs(segs, onBatch) {
     var reports = [];
     function batch(i) {
       if (i >= segs.length) return reports;
-      return Promise.all(segs.slice(i, i + SEG_PARALLEL).map(function (s) {
+      var slice = segs.slice(i, i + SEG_PARALLEL);
+      return Promise.all(slice.map(function (s) {
         return getJson(HIST_PATH + "&seg=" + encodeURIComponent(s.key));
       })).then(function (parts) {
-        parts.forEach(function (p) { if (p && Array.isArray(p.reports)) reports = reports.concat(p.reports); });
+        var got = [];
+        parts.forEach(function (p) { if (p && Array.isArray(p.reports)) got = got.concat(p.reports); });
+        reports = reports.concat(got);
+        if (onBatch) onBatch(got, slice, i + slice.length);
         return batch(i + SEG_PARALLEL);
+      }, function (e) {
+        e.remaining = segs.slice(i);
+        throw e;
       });
     }
     return batch(0);
@@ -176,18 +196,25 @@
   function loadOlder() {
     if (!pending.length) return;
     var segs = pending; pending = [];
+    var total = segs.reduce(function (n, s) { return n + (+s.count || 0); }, 0);
     $("histOlder").disabled = true;
-    $("histOlder").textContent = "Cargando " + TW.commas(segs.reduce(function (n, s) { return n + (+s.count || 0); }, 0)) + " informes…";
-    fetchSegs(segs).then(function (reports) {
+    $("histOlder").textContent = "Cargando " + TW.commas(total) + " informes… 0/" + segs.length;
+    // Each batch is absorbed as it arrives — what loaded stays loaded even if a
+    // later segment fails or stalls; only the rest is offered again.
+    fetchSegs(segs, function (reports, done, n) {
       absorb(reports);
+      $("histOlder").textContent = "Cargando " + TW.commas(total) + " informes… " + n + "/" + segs.length;
+      applyFilter();
+    }).then(function () {
       $("histOlder").disabled = false;
       renderOlder();
       applyFilter();
     }).catch(function (e) {
-      pending = segs; // nothing was absorbed — offer them again
+      pending = e.remaining || segs;
       $("histOlder").disabled = false;
       renderOlder();
-      $("histStatus").textContent = "No se pudieron cargar los meses anteriores (" + e.message + ").";
+      applyFilter();
+      $("histStatus").textContent = "No se pudieron cargar todos los meses anteriores (" + e.message + ") — vuelve a intentarlo.";
     });
   }
 
