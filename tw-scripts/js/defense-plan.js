@@ -359,6 +359,13 @@ function updDefFarFirst() {
   defFarFirst = !!(el && el.checked);
   saveDefensive();
 }
+// "Ignore Village with Knight" (v6.0.1): a village that OWNS a knight (its own `knight` column
+// in the troop file — not a knight merely stationed there as support) is held home entirely.
+function updDefSkipKnight() {
+  const el = document.getElementById('plan-def-skip-knight');
+  defSkipKnight = !!(el && el.checked);
+  saveDefensive();
+}
 
 // ── "Config Support Size" panel (Max Efficiency vs Support Packs) ──────────────
 function toggleDpPackCfg() {
@@ -528,9 +535,14 @@ function generateDefPlan() {
     };
   // v4.27.0: a Complete player's villages skip the PARAMS.defSenderMinPop floor — 100% means
   // even their small garrisons ship (but every other hold above still applies to them).
+  // v6.0.1: "Ignore Village with Knight" — a village whose OWN troops include a knight is held
+  // home entirely (spies included), like an ignored coordinate: it is dropped here so it
+  // neither sends nor inflates its player's capacity weight. Knight ownership comes from the
+  // village's own troop row (v.knight), never from a knight stationed there as support.
   }).filter(s => s.c && !ignore.has(s.v.coord) && !ignorePl.has(s.v.player)
     && passesCoordPolygon(s.c.x, s.c.y)
     && !nearEnemy(s)
+    && !(defSkipKnight && (s.v.knight || 0) > 0)
     && (s.cap >= PARAMS.defSenderMinPop || (completePl.has(s.v.player) && s.cap > 0)));
 
   const capByPlayer = {};
@@ -1145,6 +1157,7 @@ function renderDefPlanTable() {
   if (!defPlanRows.length) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="11">${t('empty_no_def_plan')}</td></tr>`;
     renderDefPlayerSummary(); // clears the per-player summary too
+    renderDefLeftoverSummary();
     updDefPolyNote();
     if (typeof renderManageDefTable === 'function') renderManageDefTable(); // Manage Defense reads the plan
     return;
@@ -1178,6 +1191,7 @@ function renderDefPlanTable() {
     </tr>`;
   }).join('');
   renderDefPlayerSummary();
+  renderDefLeftoverSummary();
   updDefPolyNote();
   if (typeof renderManageDefTable === 'function') renderManageDefTable(); // Manage Defense reads the plan
 }
@@ -1286,6 +1300,47 @@ function renderDefPlayerSummary() {
       <tbody>
         ${data.map(e => `<tr><td class="left"><span class="player-tag">${esc(e.player)}</span></td>${cells(e)}</tr>`).join('')}
         <tr style="font-weight:600;"><td class="left" style="border-top:2px solid #7a5c10;">${esc(totals.player)}</td>${cells(totals).replace(/<td>/g, '<td style="border-top:2px solid #7a5c10;">')}</tr>
+      </tbody>
+    </table></div>`;
+}
+
+// ── Available Defense (v6.0.1): what is left UNASSIGNED after the plan, per player ────────
+// Pure seam over computeDefPlayerSummary: leftover = available − sending per unit (clamped at
+// 0 — an over-ask simply reads as nothing left), plus its def-pop total. Same availability
+// rules as the table above (home or incoming only, capped at own troops; raw troops without
+// station data). Every player with any available defense is listed, biggest leftover first,
+// so a fully drained player still shows up — as a row of zeros.
+function computeDefLeftover(rows, vils) {
+  const pop = tally => DEF_OBJ_UNITS.reduce((s, u) => s + (tally[u] || 0) * POP[u], 0);
+  return computeDefPlayerSummary(rows, vils)
+    .filter(e => pop(e.avail) > 0)
+    .map(e => {
+      const left = {};
+      for (const u of DEF_OBJ_UNITS) left[u] = Math.max(0, e.avail[u] - e.sending[u]);
+      return { player: e.player, left, pop: pop(left) };
+    })
+    .sort((a, b) => (b.pop - a.pop) || a.player.toLowerCase().localeCompare(b.player.toLowerCase()));
+}
+
+// Rendered right under the Support per Player table (same callers, same empty rules).
+function renderDefLeftoverSummary() {
+  const host = document.getElementById('defplan-leftover-summary');
+  if (!host) return;
+  if (!defPlanRows.length || !villages.length) { host.innerHTML = ''; return; }
+  const data = computeDefLeftover(defPlanRows, villages);
+  if (!data.length) { host.innerHTML = ''; return; }
+  const totals = { player: t('def_sum_total'), left: { spear: 0, sword: 0, spy: 0, heavy: 0 }, pop: 0 };
+  for (const e of data) { for (const u of DEF_OBJ_UNITS) totals.left[u] += e.left[u]; totals.pop += e.pop; }
+  const num = n => n > 0 ? n.toLocaleString() : `<span class="num-zero">0</span>`;
+  const cells = e => DEF_OBJ_UNITS.map(u => `<td>${num(e.left[u])}</td>`).join('') + `<td style="color:#f0c040;">${num(e.pop)}</td>`;
+  host.innerHTML = `
+    <div style="font-size:13px;color:#a08050;font-weight:600;margin:16px 0 4px;">${esc(t('def_left_title'))}</div>
+    <div style="font-size:12px;color:#5a3a18;margin-bottom:8px;">${esc(t(hasStationData() ? 'def_left_note' : 'def_left_note_nostation'))}</div>
+    <div class="table-wrap"><table>
+      <thead><tr><th class="left">${t('th_player')}</th>${DEF_OBJ_UNITS.map(u => `<th>${twIcon(u)}</th>`).join('')}<th>${t('th_def_left_pop')}</th></tr></thead>
+      <tbody>
+        ${data.map(e => `<tr><td class="left"><span class="player-tag">${esc(e.player)}</span></td>${cells(e)}</tr>`).join('')}
+        <tr style="font-weight:600;"><td class="left" style="border-top:2px solid #7a5c10;">${esc(totals.player)}</td>${cells(totals).replace(/<td( style="[^"]*")?>/g, (m0, st) => `<td style="border-top:2px solid #7a5c10;${st ? st.slice(8, -1) : ''}">`)}</tr>
       </tbody>
     </table></div>`;
 }

@@ -957,6 +957,10 @@
       <input type="checkbox" id="plan-def-far-first" onchange="updDefFarFirst()">
       <span data-i18n="lbl_def_far_first">Prioritize Sending From Far Villages</span>
     </label>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;" data-i18n-title="def_skip_knight_t" title="Any of your villages that OWNS a knight (paladin) sends nothing — it leaves the sender pool entirely, whether the knight is home or away. Villages only hosting another player's knight are not affected.">
+      <input type="checkbox" id="plan-def-skip-knight" onchange="updDefSkipKnight()">
+      <span data-i18n="lbl_def_skip_knight">Ignore Village with Knight</span>
+    </label>
     <label data-i18n="lbl_def_snip_pct" data-i18n-title="def_snip_pct_t" title="Share of a Snip Player's available defense (spears/swords/heavy — scouts don't count) that must stay home as free defense. 0 = no reserve.">Snip reserve %:</label>
     <input type="number" id="plan-def-snip-pct" value="35" min="0" max="100" style="width:70px;" oninput="updDefSnipPct()">
     <label data-i18n="lbl_def_snip_dist" data-i18n-title="def_snip_dist_t" title="How many fields away the Snip reserve is respected. A Snip Player's village keeps its reserve for targets within this radius; a target farther away may drain it fully.">Snip max distance:</label>
@@ -1021,6 +1025,7 @@
     </table>
   </div>
   <div id="defplan-player-summary"></div>
+  <div id="defplan-leftover-summary"></div>
   <p style="font-size:12px;color:#5a3a18;margin-top:12px;" data-i18n="defplan_note">Intra-tribe support only, from villages with ≥4,000 def pop AVAILABLE (at home or incoming — defense deployed elsewhere is never recalled). Bigger defenders send more; troops are spread evenly across a player's villages, ≥400 pop per order.</p>
 </div>
 
@@ -1280,7 +1285,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.0.0 &nbsp;·&nbsp; 2026-09-24</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.0.1 &nbsp;·&nbsp; 2026-10-03</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

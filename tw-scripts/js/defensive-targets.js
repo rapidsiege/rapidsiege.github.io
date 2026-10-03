@@ -37,6 +37,7 @@ let defEnemyIds      = []; // ally ids (strings) whose villages bar nearby sende
 let defEnemyTribes   = '';
 let defEnemyDist     = 0;  // "Distance from enemy tribes" (fields); 0 = filter off
 let defFarFirst      = false; // "Prioritize Sending From Far Villages" — source each player's share farthest-from-target first
+let defSkipKnight    = false; // "Ignore Village with Knight" (v6.0.1) — a village that OWNS a knight never sends support
 // "Config Support Size" — pack sizing mode for the defensive plan.
 //   'eff'   = Max Efficiency (default): the classic PARAMS.defMinPacketPop / real-POP floor, unchanged.
 //   'packs' = Support Packs: cap contributing players per target so each order is ≥ dpPackSize
@@ -58,7 +59,7 @@ function saveDefensive() {
   // well under the ~5 MB quota. The plan is KEPT verbatim (not regenerated) so a distributed
   // plan stays byte-stable across reloads.
   lsSaveC(DT_STORE_KEY, {
-    cfg: dtCfg, targets: defTargets, ignore: defIgnore, ignorePlayers: defIgnorePlayers, completePlayers: defCompletePlayers, enemyIds: defEnemyIds, enemyTribes: defEnemyTribes, enemyDist: defEnemyDist, farFirst: defFarFirst,
+    cfg: dtCfg, targets: defTargets, ignore: defIgnore, ignorePlayers: defIgnorePlayers, completePlayers: defCompletePlayers, enemyIds: defEnemyIds, enemyTribes: defEnemyTribes, enemyDist: defEnemyDist, farFirst: defFarFirst, skipKnight: defSkipKnight,
     snipPlayers: defSnipPlayers, snipPct: defSnipPct, snipDist: defSnipDist,
     packMode: dpMode, packSize: dpPackSize, packMax: dpPackMax, packWeights: dpPackWeights,
     plan: defPlanRows, warnings: defPlanWarnings, nextId: dtNextId,
@@ -83,6 +84,7 @@ function loadDefensive() {
       defEnemyTribes  = typeof d.enemyTribes === 'string' ? d.enemyTribes : '';
       defEnemyDist    = Math.max(0, parseInt(d.enemyDist, 10) || 0);
       defFarFirst     = d.farFirst === true;
+      defSkipKnight   = d.skipKnight === true;
       dpMode          = d.packMode === 'packs' ? 'packs' : 'eff';
       dpPackSize      = Math.max(1, parseInt(d.packSize, 10) || dpPackDefaults().size);
       dpPackMax       = Math.max(0, parseInt(d.packMax, 10) || 0);
@@ -109,6 +111,8 @@ function loadDefensive() {
   setVal('plan-def-snip-dist', defSnipDist);
   const ff = document.getElementById('plan-def-far-first');
   if (ff) ff.checked = defFarFirst;
+  const sk = document.getElementById('plan-def-skip-knight');
+  if (sk) sk.checked = defSkipKnight;
   renderDpPackCfg();
   renderDefIgnorePlayers();
   renderDefCompletePlayers();
