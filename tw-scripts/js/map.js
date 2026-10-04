@@ -75,11 +75,9 @@ function mapDotRectSize(scaleX) {
   return { dw: s, dh: s };
 }
 
-// Continent label, e.g. (523,487) → "K45".
-function continentOf(x, y) {
-  const k = Math.floor(y / 100) * 10 + Math.floor(x / 100);
-  return 'K' + String(k).padStart(2, '0');
-}
+// Continent label, e.g. (523,487) → "K45" — one helper for the map AND the report renderer
+// (report-render.js TWRR.continent, loaded later, resolved at call time).
+function continentOf(x, y) { return TWRR.continent(x, y); }
 
 // Hit-test: a pixel resolves to the village on the nearest integer coord, if any.
 // Villages are ≤1 per integer coord, so this is exact and O(1) — no spatial index.
@@ -253,7 +251,9 @@ function detectMyTribe() {
     const id = nm ? idByName[nm] : null;
     if (id == null) continue;
     const a = playerAllyDb[id];
-    if (a && !seen[a]) { seen[a] = true; myAllyIds.push(a); }
+    // ally '0' = tribeless (e.g. a member who just joined, before the hourly DB catches
+    // up) — not a tribe: as an "own tribe" it would hide/claim every tribeless player.
+    if (a && a !== '0' && !seen[a]) { seen[a] = true; myAllyIds.push(a); }
   }
 }
 
@@ -307,7 +307,7 @@ function mapTribeList() {
   const counts = {};
   for (const v of villageDb) {
     const ally = playerAllyDb[v.playerId];
-    if (!ally) continue; // barbarian / tribeless
+    if (!ally || ally === '0') continue; // barbarian / tribeless
     counts[ally] = (counts[ally] || 0) + 1;
   }
   return Object.keys(counts).map(a => {
@@ -367,11 +367,32 @@ function reportVillageData(coord) {
 
 // Badge eligibility: only OFF/DEF verdicts get a map icon (incl. the unsure
 // '?' variants); ownership-stale intel and spy/empty/mixed/unknown don't.
+// Memoised per coord (M-I11): every pan/zoom frame asks again for every visible
+// report village. The memo is keyed on the IDENTITY of everything the answer reads —
+// the reports view cache (rebuilt on every reports mutation), the world DB (new object
+// per load), the troop rows (rebuilt per troop load), the own-tribe ids (new array per
+// detection) and the world — so any reload starts a fresh memo with no extra wiring.
+let reportBadgeMemo = { view: null, db: null, troops: null, allies: null, world: null, map: {} };
 function reportBadgeFor(coord) {
+  const m = reportBadgeMemo;
+  const view = (typeof riMapView === 'function') ? riMapView() : null;
+  const db = (typeof coordDb !== 'undefined') ? coordDb : null;
+  const troops = (typeof troopByCoord !== 'undefined') ? troopByCoord : null;
+  const allies = (typeof myAllyIds !== 'undefined') ? myAllyIds : null;
+  const world = (typeof twWorld !== 'undefined') ? twWorld : null;
+  if (m.view !== view || m.db !== db || m.troops !== troops || m.allies !== allies || m.world !== world) {
+    reportBadgeMemo = { view, db, troops, allies, world, map: {} };
+  }
+  // each entry also remembers the village's current owner, so an owner change made in
+  // place (no new DB object) still re-classifies
+  const memo = reportBadgeMemo.map;
+  const pid = (db && db[coord]) ? db[coord].playerId : undefined;
+  const hit = memo[coord];
+  if (hit && hit.pid === pid) return hit.badge;
   const rd = reportVillageData(coord);
-  if (!rd || rd.stale) return null;
-  if (rd.cls !== 'off' && rd.cls !== 'def') return null;
-  return { cls: rd.cls, sure: rd.sure };
+  const badge = (!rd || rd.stale || (rd.cls !== 'off' && rd.cls !== 'def')) ? null : { cls: rd.cls, sure: rd.sure };
+  memo[coord] = { pid, badge };
+  return badge;
 }
 
 // Verdict label + color for the tooltip header (OLD handled separately).
@@ -407,7 +428,7 @@ function reportTooltipHtml(coord) {
   const rd = (typeof riMapView === 'function') ? reportVillageData(coord) : null;
   if (!rd) return '';
   const v = rd.v;
-  const now = Date.now();
+  const now = (typeof riServerNow === 'function') ? riServerNow() : Date.now(); // report times are server wall clock
   const age = t => ` <span style="color:#8a7a5a;font-weight:400;">· ${riAge(now, t)}</span>`;
   const secRow = (label, right) =>
     `<div class="map-tt-row"><span class="map-tt-k">${label}</span><span class="map-tt-v">${right}</span></div>`;
@@ -453,10 +474,11 @@ function reportTooltipHtml(coord) {
 
   // Biggest army sent regardless of type (v5.8.0) — sentBig, with the classic
   // largest-off record as fallback for pre-v5.8.0 stores. A known cata striker
-  // (sentCat) is flagged in the section header.
-  const sentShow = (v.sentBig || v.sent);
+  // (sentCat) is flagged in the section header. Current owner's armies only (riOwnSent).
+  const sentCat = riOwnSent(v, 'sentCat');
+  const sentShow = (riOwnSent(v, 'sentBig') || riOwnSent(v, 'sent'));
   if (showTroops && sentShow) {
-    const catTag = v.sentCat ? ` <span style="color:#b07fd0;">💥${v.sentCat.cat}×${v.sentCat.n}</span>` : '';
+    const catTag = sentCat ? ` <span style="color:#b07fd0;">💥${sentCat.cat}×${sentCat.n}</span>` : '';
     h += troopBlockHtml(t('map_tt_rep_sent') + age(sentShow.t) + catTag, reportPowerLines(sentShow.units), sentShow.units);
   }
 

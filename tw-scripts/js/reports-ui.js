@@ -9,17 +9,106 @@
 // localStorage (compressed) like the troop upload does.
 // ══════════════════════════════════════════════════════════════
 
+// The local store is per WORLD (key tw_tribe_reports_<world>): a coord is a different
+// village in every world, so one world's facts must never be read — or shared — as
+// another's. REPORTS_KEY is the pre-per-world single key, migrated once by riAutoload.
 const REPORTS_KEY = 'tw_tribe_reports';
 let riStore = riEmptyStore();
 let riShared = null; // shared DB (everyone's merged uploads) — hosted site only
 let riSort = { key: 'last', dir: 1 }; // 'last' | 'coord' | 'player' | 'type'
 
+function riActiveWorld() { return (typeof twWorld === 'string' && twWorld) ? twWorld : 'es100'; }
+function riStoreKey(w) { return REPORTS_KEY + '_' + (w || riActiveWorld()); }
+
+// i18n entry that may be a function (pluralised) — called when it is, shown as-is otherwise.
+function riMsg(key, ...args) { const v = t(key); return typeof v === 'function' ? v(...args) : v; }
+
+// Shape-check a persisted store: a hand-edited / version-skewed dump must not crash
+// every render (a null village used to abort the whole page boot). Non-object village
+// entries are dropped; anything not store-shaped reads as "no store".
+function riValidStore(d) {
+  if (!d || typeof d !== 'object' || !d.villages || typeof d.villages !== 'object'
+      || !d.ids || typeof d.ids !== 'object') return null;
+  for (const c in d.villages) {
+    const v = d.villages[c];
+    if (!v || typeof v !== 'object' || Array.isArray(v)) delete d.villages[c];
+  }
+  return d;
+}
+
+// One-time migration of the single pre-per-world store. Its ids are "<world>:<reportId>",
+// so it belongs to the MAJORITY world prefix (a store polluted with a few foreign reports
+// still goes to its main world); no parsable id → the active world. An existing per-world
+// store is combined with it, never overwritten. On a failed write the legacy key stays
+// (retried next boot) — nothing is dropped.
+function riMigrateLegacyStore() {
+  let raw = null;
+  try { raw = localStorage.getItem(REPORTS_KEY); } catch (e) { return; }
+  if (raw == null) return;
+  const d = riValidStore(lsLoadC(REPORTS_KEY));
+  if (d) {
+    const counts = {};
+    for (const k in d.ids) {
+      const w = k.split(':')[0];
+      if (w && w !== '?') counts[w] = (counts[w] || 0) + 1;
+    }
+    let w = riActiveWorld(), best = 0;
+    for (const k in counts) if (counts[k] > best) { best = counts[k]; w = k; }
+    const have = riValidStore(lsLoadC(riStoreKey(w)));
+    if (have) {
+      for (const k in d.ids) have.ids[k] = 1;
+      for (const c in d.villages) have.villages[c] = riCombineVillages(have.villages[c], d.villages[c]);
+    }
+    if (!lsSaveC(riStoreKey(w), have || d)) return;
+  }
+  try { localStorage.removeItem(REPORTS_KEY); } catch (e) {}
+}
+
 function riAutoload() {
-  const d = lsLoadC(REPORTS_KEY);
-  if (d && d.villages && d.ids) riStore = d;
+  riMigrateLegacyStore();
+  riStore = riValidStore(lsLoadC(riStoreKey())) || riEmptyStore();
   riInvalidateView();
-  renderEnemyVillagesTable();
+  riRefreshEvTable();
   riFetchShared();
+}
+
+// World switch (db.js setWorld): everything here is per world — swap in that world's
+// local store and drop the previous world's shared + full-report DBs (a fetch still in
+// flight for the old world is discarded by riFetchShared's world check), then fetch
+// the new world's shared DB and refresh the table/counts.
+function riOnWorldChange() {
+  riShared = null;
+  riFullDbP = null;
+  riAutoload();
+}
+
+// ── Table refresh scheduling (M-I11) ──
+// Background refreshes (world DB load, shared-DB fetch, language switch, world switch)
+// repaint the table only while its tab is on screen; otherwise it is marked stale and
+// switchTab repaints it on show. Direct renderEnemyVillagesTable() calls (the tab's own
+// actions, tests) always render.
+let riEvTabShown = true; // until the first switchTab says otherwise
+let riEvStale = false;
+function riRefreshEvTable() {
+  if (riEvTabShown) renderEnemyVillagesTable(); else riEvStale = true;
+}
+function riEvTabVisible(shown) { // called by switchTab (util.js)
+  riEvTabShown = !!shown;
+  if (riEvTabShown && riEvStale) renderEnemyVillagesTable();
+}
+// #ev-search: debounced like the DB tab's search (a keystroke re-sorts every village).
+let riSearchTimer = null;
+function riScheduleSearch() {
+  clearTimeout(riSearchTimer);
+  riSearchTimer = setTimeout(renderEnemyVillagesTable, 200);
+}
+
+// "Now" on the SERVER wall clock, encoded like reportTimestamp (Date.UTC of the time the
+// game displayed — see the TIMESTAMP CONTRACT in report-render.js), so riAge compares
+// like with like. Report ages only: the shared DB's `updated` is a real instant.
+function riServerNow() {
+  const now = Date.now();
+  return now + ((typeof serverUtcOffset === 'function') ? serverUtcOffset(now) : 0) * 3600000; // offset AT now (DST-aware)
 }
 
 // ── Shared DB (fetch + push) ──
@@ -33,34 +122,42 @@ function riFetchShared() {
     return;
   }
   if (el) el.textContent = '☁ …';
+  const w = riActiveWorld();
   cloudFetchReportsDb().then(db => {
+    if (w !== riActiveWorld()) return; // world switched meanwhile — that world's own fetch owns the view
     if (db) {
       riShared = db;
       riInvalidateView();
+      // db.updated is a real ISO instant → real "now" (unlike the report timestamps)
       if (el) el.textContent = t('ev_shared')(
         Object.keys(db.villages).length, Object.keys(db.ids).length,
         db.updated ? riAge(Date.now(), Date.parse(db.updated)) : '?');
-      renderEnemyVillagesTable();
+      riRefreshEvTable();
     } else if (el) {
       el.textContent = t('ev_shared_err');
     }
   });
 }
 
-function riShareReports(reports) {
+// `note` = a warning that must survive the share status replacing the processing
+// one (the other-world skip count).
+function riShareReports(reports, note) {
   if (!reports || !reports.length) return;
   if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return;
   if (typeof cloudSyncReports !== 'function') return;
+  const say = (msg, isErr) => riStatus(msg + (note ? ' ' + note : ''), isErr || !!note);
   cloudSyncReports(JSON.stringify(reports)).then(res => {
     if (res && res.ok && res.db && !res.db.error) {
-      riStatus(t('ev_shared_pushed')(res.db.added, res.db.villages));
+      say(t('ev_shared_pushed')(res.db.added, res.db.villages));
       riFetchShared();
-    } else if (res) {
-      // endpoint reachable but upload/merge failed — the local copy is intact
-      riStatus(t('ev_share_failed'), true);
+    } else if (res && res.error === 'too_large') {
+      // the upload exceeds the endpoint's body cap — say so, the local copy is intact
+      say(riMsg('ev_share_too_large', Math.round((+res.maxBytes || 2000000) / 1e5) / 10), true);
+    } else {
+      // endpoint answered with an error, or no answer at all (no token / network /
+      // no answer on either host) — never silent: the local copy is intact
+      say(t('ev_share_failed'), true);
     }
-    // res === null (no token / network / dev) → stay quiet; the local
-    // processing message is already showing
   });
 }
 
@@ -86,7 +183,7 @@ function riInvalidateView() {
 }
 
 function riPersist() {
-  if (!lsSaveC(REPORTS_KEY, riStore)) riStatus(t('ev_quota'), true);
+  if (!lsSaveC(riStoreKey(), riStore)) riStatus(t('ev_quota'), true);
 }
 
 function riStatus(msg, isErr) {
@@ -97,38 +194,69 @@ function riStatus(msg, isErr) {
 }
 
 // ── Ingestion ──
+// Reports carry the world they were exported from (reportsExport.js `world`). Only the
+// ACTIVE world's reports may enter the local store or be shared: an es103 export processed
+// while the dropdown says es100 used to merge into es100 (same coords, other villages) and
+// land in the tribe's shared es100 DB for good. Records without a world are kept.
+function riSplitWorld(data) {
+  const w = riActiveWorld(), keep = [];
+  let other = 0;
+  for (const r of data) {
+    if (r && typeof r === 'object' && r.world != null && String(r.world) !== w) other++;
+    else keep.push(r);
+  }
+  return { keep, other };
+}
+// The skipped-other-world warning ('' when none) — appended to the processing status
+// and again to the share status that replaces it.
+function riWorldNote(other) { return other ? riMsg('ev_world_skipped', other, riActiveWorld()) : ''; }
+function riAddedStatus(added, dupes, other) {
+  const msg = t('ev_added')(added, dupes, Object.keys(riStore.villages).length);
+  riStatus(other ? msg + ' ' + riWorldNote(other) : msg, !!other);
+}
+
 function riProcessText(text) {
   let data;
   try { data = JSON.parse(text); } catch (e) { riStatus(t('ev_bad_json'), true); return; }
   if (!Array.isArray(data)) data = [data];
-  const stats = riMergeReports(riStore, data);
+  const { keep, other } = riSplitWorld(data);
+  const stats = riMergeReports(riStore, keep);
   riPersist();
   riInvalidateView();
-  riStatus(t('ev_added')(stats.added, stats.dupes, Object.keys(riStore.villages).length));
+  riAddedStatus(stats.added, stats.dupes, other);
   renderEnemyVillagesTable();
-  riShareReports(data);
+  riShareReports(keep, riWorldNote(other));
 }
 
 function riProcessFiles(files) {
   const list = Array.from(files || []);
   if (!list.length) return;
-  Promise.all(list.map(f => f.text())).then(texts => {
-    let added = 0, dupes = 0, bad = 0;
+  // A file that can't be read counts as a bad file (never an unhandled rejection that
+  // leaves the whole batch unprocessed).
+  Promise.all(list.map(f => Promise.resolve().then(() => f.text()).catch(() => null))).then(texts => {
+    let added = 0, dupes = 0, bad = 0, other = 0;
     const all = [];
     for (const txt of texts) {
       try {
+        if (txt == null) throw new Error('unreadable');
         let data = JSON.parse(txt);
         if (!Array.isArray(data)) data = [data];
-        const s = riMergeReports(riStore, data);
+        const split = riSplitWorld(data);
+        other += split.other;
+        const s = riMergeReports(riStore, split.keep);
         added += s.added; dupes += s.dupes;
-        all.push(...data);
+        all.push(...split.keep);
       } catch (e) { bad++; }
     }
     riPersist();
     riInvalidateView();
-    riStatus(bad ? t('ev_bad_files')(bad) : t('ev_added')(added, dupes, Object.keys(riStore.villages).length), !!bad);
+    if (bad) riStatus(t('ev_bad_files')(bad), true);
+    else riAddedStatus(added, dupes, other);
     renderEnemyVillagesTable();
-    riShareReports(all);
+    riShareReports(all, riWorldNote(other));
+  }).catch(e => {
+    console.error('[reports] processing the report files failed:', e);
+    riStatus(t('ev_bad_files')(list.length), true);
   });
 }
 
@@ -142,7 +270,7 @@ function riProcessPaste() {
 function riClearReports() {
   if (Object.keys(riStore.villages).length && !confirm(t('ev_clear_confirm'))) return;
   riStore = riEmptyStore();
-  try { localStorage.removeItem(REPORTS_KEY); } catch (e) {}
+  try { localStorage.removeItem(riStoreKey()); } catch (e) {}
   riInvalidateView();
   riStatus('');
   renderEnemyVillagesTable();
@@ -171,7 +299,10 @@ function riProtected(coord) {
   const prot = (typeof riProtectedAllies === 'function') ? riProtectedAllies() : [];
   if (!prot.length) return false;
   if (riStore.villages[coord]) return false; // locally uploaded → the operator's own data
-  if (typeof coordDb === 'undefined' || typeof playerAllyDb === 'undefined') return false;
+  // Fail CLOSED until the world DB is loaded: without it nobody can tell whose village
+  // this is, and the shared DB usually lands first (the Worker strip is the real gate).
+  if (typeof villageDb === 'undefined' || !villageDb.length) return true;
+  if (typeof coordDb === 'undefined' || typeof playerAllyDb === 'undefined') return true;
   const cv = coordDb[coord];
   if (!cv || !cv.playerId) return false;
   return prot.includes(String(playerAllyDb[cv.playerId] || ''));
@@ -179,12 +310,16 @@ function riProtected(coord) {
 
 function riHidden(coord, v) {
   if (riProtected(coord)) return true;
+  // A village whose troops the loaded troop file carries is ours by construction — also
+  // for a member the hourly DB still shows tribeless (ally '0', which is NOT a tribe and
+  // never enters myAllyIds: it would hide every tribeless enemy).
+  if (typeof troopByCoord !== 'undefined' && troopByCoord[coord]) return true;
   if (typeof coordDb === 'undefined') return false;
   const cv = coordDb[coord];
   if (!cv) return false;
   if (!cv.playerId || cv.playerId === '0') return true; // barbarian now
-  if (typeof myAllyIds !== 'undefined' && myAllyIds.length &&
-      typeof playerAllyDb !== 'undefined' && myAllyIds.includes(playerAllyDb[cv.playerId])) return true;
+  const ally = (typeof playerAllyDb !== 'undefined') ? playerAllyDb[cv.playerId] : null;
+  if (ally && ally !== '0' && typeof myAllyIds !== 'undefined' && myAllyIds.includes(ally)) return true;
   return false;
 }
 
@@ -210,12 +345,17 @@ function riOffPow(units) {
   return OFF_UNITS.reduce((s, u) => s + ((units[u] || 0) * ATT[u]), 0);
 }
 
+// Rows actually drawn (like the DB tab): a big shared DB is thousands of villages × 3
+// <tr> — the full set is still filtered/sorted, the summary says how many are shown.
+const EV_ROW_CAP = 200;
+
 function renderEnemyVillagesTable() {
   const tbody = document.getElementById('ev-tbody');
   if (!tbody) return;
+  riEvStale = false;
   const summary = document.getElementById('ev-summary');
   const search = (document.getElementById('ev-search')?.value || '').toLowerCase();
-  const now = Date.now();
+  const now = riServerNow(); // report timestamps are server wall clock (riServerNow)
 
   let rows = Object.entries(riViewVillages()).map(([coord, v]) => {
     const cv = (typeof coordDb !== 'undefined' && coordDb[coord]) || null;
@@ -241,7 +381,7 @@ function renderEnemyVillagesTable() {
 
   const cells = [];
   let first = true;
-  for (const r of rows) {
+  for (const r of rows.slice(0, EV_ROW_CAP)) {
     const { coord, v, cv, verdict } = r;
     const url = (typeof villageInfoUrl === 'function') ? villageInfoUrl(coord) : null;
     const coordHtml = url
@@ -294,10 +434,13 @@ function renderEnemyVillagesTable() {
     // largest army by farm pop; records merged before v5.8.0 (old local store /
     // stale shared DB) lack it, so the classic real-off row is the fallback.
     // A 💥 tail flags a known cata striker (sentCat) with its strike count.
-    const big = v.sentBig || (v.sent && v.sent.off >= RI_MIN ? v.sent : null);
+    // Only the CURRENT owner's armies (riOwnSent): after a conquest the slots still
+    // hold the previous owner's, which no longer exist.
+    const sentBig = riOwnSent(v, 'sentBig'), sent = riOwnSent(v, 'sent'), sentCat = riOwnSent(v, 'sentCat');
+    const big = sentBig || (sent && sent.off >= RI_MIN ? sent : null);
     if (big) {
-      const catTail = v.sentCat
-        ? ` <span style="color:#b07fd0;font-weight:600;white-space:nowrap;" title="${esc(t('ev_catas_tip')(v.sentCat.cat, v.sentCat.n))}">💥${v.sentCat.cat}</span>`
+      const catTail = sentCat
+        ? ` <span style="color:#b07fd0;font-weight:600;white-space:nowrap;" title="${esc(t('ev_catas_tip')(sentCat.cat, sentCat.n))}">💥${sentCat.cat}</span>`
         : '';
       cells.push(`<tr style="${dim}">${blank}`
         + `<td class="left" style="white-space:nowrap;color:#5a3a18;">⚔ ${esc(t('ev_row_sent'))}${catTail}</td>`
@@ -314,7 +457,8 @@ function renderEnemyVillagesTable() {
   if (summary) {
     const nRep = Object.keys(riStore.ids).length +
       (riShared ? Object.keys(riShared.ids).filter(k => !riStore.ids[k]).length : 0);
-    summary.textContent = nRep ? t('ev_summary')(rows.length, nRep) : '';
+    summary.textContent = nRep ? t('ev_summary')(rows.length, nRep)
+      + (rows.length > EV_ROW_CAP ? ' · ' + t('db_showing')(EV_ROW_CAP, rows.length.toLocaleString()) : '') : '';
   }
 }
 
@@ -329,10 +473,14 @@ function renderEnemyVillagesTable() {
 let riFullDbP = null;
 function riFullDb() {
   if (!riFullDbP) {
-    riFullDbP = cloudFetchReportsFullDb().then(villages => {
-      if (!villages) riFullDbP = null; // failed — retry on the next click
+    // cloudFetchReportsFullDb always settles (no answer on either host → null), and a
+    // failure clears the cache so the next click retries — but only if the cache still
+    // holds THIS fetch (a world switch may already have replaced it).
+    const p = cloudFetchReportsFullDb().then(villages => {
+      if (!villages && riFullDbP === p) riFullDbP = null;
       return villages;
     });
+    riFullDbP = p;
   }
   return riFullDbP;
 }

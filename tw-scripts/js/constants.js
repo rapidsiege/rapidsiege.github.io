@@ -92,7 +92,9 @@ const PARAM_DEFS = [
   { key: 'escortPick',         sec: 'off', def: 'closest', type: 'select', opts: ['closest', 'strongest'] },
   // Fakes: rams a village needs to send a fake (also the size preset in the rally link), the
   // minimum off tier of the villages reused for fakes, and how many fakes one village sends.
-  { key: 'fakeRams',           sec: 'off', def: 1,    min: 0, unit: 'rams' },
+  // fakeRams ≥ 1: a fake IS a ram attack — at 0 a ram-less village would be picked and handed a
+  // rally link preset with a ram it doesn't have.
+  { key: 'fakeRams',           sec: 'off', def: 1,    min: 1, unit: 'rams' },
   { key: 'fakeSourceTier',     sec: 'off', def: 'complete', type: 'select', opts: ['complete', 'tq', 'half'] },
   { key: 'fakesPerVillage',    sec: 'off', def: 1,    min: 1, unit: 'fakes' },
   // Fake source pool: 'offsThenEscorts' = villages already sending a real off, else escorts
@@ -176,7 +178,8 @@ const PARAM_DEFS = [
   // Safety margin: an off / support / Tribe Timings unit only "makes it" if it can leave at
   // least this many minutes from now (feasibility gates and the late flags).
   { key: 'departMargin',       sec: 'time', def: 0,    min: 0, unit: 'min' },
-  // Server UTC offset used whenever the Settings value is blank or not a number.
+  // Server UTC offset used when the Settings value is blank (automatic) AND the server's time zone
+  // can't be resolved in this browser (no Intl time-zone data) — see serverUtcOffset().
   { key: 'serverUtcOffsetDefault', sec: 'time', def: 2, min: -12, max: 14, unit: 'hours' },
 ];
 const PARAM_SECTIONS = ['tiers', 'overview', 'outbound', 'off', 'def', 'manageoff', 'managedef', 'time'];
@@ -232,10 +235,51 @@ function tierAtLeast(tier, minTier) {
   const r = (typeof TIER_RANK !== 'undefined') ? TIER_RANK : { complete: 3, tq: 2, half: 1, none: 0 };
   return (r[tier] || 0) >= (r[minTier] || 0);
 }
-// Server UTC offset: the Settings value, or the parameter default when blank / not a number.
-function serverUtcOffset() {
-  const off = (typeof otCfg !== 'undefined' && otCfg) ? parseFloat(otCfg.serverUtcOffset) : NaN;
-  return isNaN(off) ? PARAMS.serverUtcOffsetDefault : off;
+// ── Server UTC offset (hours) ──
+// The Settings value when the user typed one. Blank (null / '' / not a number) = AUTOMATIC: the
+// game server's own zone — guerrastribales.es runs on Europe/Madrid, UTC+2 in summer and UTC+1 in
+// winter — read through Intl AT the instant `atMs` (default: now), so a plan landing after the DST
+// switch uses the winter offset and nobody has to edit the field twice a year.
+// PARAMS.serverUtcOffsetDefault is only the fallback where the zone can't be resolved (no Intl /
+// no time-zone data). Offsets only change on the hour, so the auto value is cached per UTC hour —
+// the plan engine asks once per candidate × slot.
+const SERVER_TZ = 'Europe/Madrid';
+const serverTzCache = new Map(); // UTC hour index → offset in hours (null = unresolvable)
+let serverTzFmt = null;
+function serverTzOffsetAt(ms) {
+  const h = Math.floor(ms / 3600000);
+  if (serverTzCache.has(h)) return serverTzCache.get(h);
+  let off = null;
+  try {
+    if (!serverTzFmt) serverTzFmt = new Intl.DateTimeFormat('en-US', { timeZone: SERVER_TZ, hourCycle: 'h23',
+      year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' });
+    const p = {};
+    for (const x of serverTzFmt.formatToParts(new Date(h * 3600000))) p[x.type] = x.value;
+    const wall = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute);
+    off = Math.round((wall - h * 3600000) / 60000) / 60;
+    if (!isFinite(off)) off = null;
+  } catch (e) { off = null; }
+  serverTzCache.set(h, off);
+  return off;
+}
+// True while the Settings field is blank → the offset follows the server's zone.
+function serverUtcOffsetIsAuto() {
+  const raw = (typeof otCfg !== 'undefined' && otCfg) ? otCfg.serverUtcOffset : null;
+  return raw === null || raw === undefined || raw === '' || isNaN(parseFloat(raw));
+}
+function serverUtcOffset(atMs) {
+  if (!serverUtcOffsetIsAuto()) return parseFloat(otCfg.serverUtcOffset);
+  const at = (typeof atMs === 'number' && isFinite(atMs)) ? atMs
+    : (typeof serverNowMs === 'function' ? serverNowMs() : Date.now());
+  const auto = serverTzOffsetAt(at);
+  return auto === null ? PARAMS.serverUtcOffsetDefault : auto;
+}
+// Epoch ms of a SERVER wall time given as its fields read as UTC (Date.UTC(y, mo, d, h, mi, …)),
+// with the offset taken at that moment (the wall time read as an instant is at most a few hours
+// off — close enough to find the zone's offset there, then exact).
+function serverWallToMs(wallUtcMs) {
+  const guess = serverUtcOffset(wallUtcMs);
+  return wallUtcMs - serverUtcOffset(wallUtcMs - guess * 3600000) * 3600000;
 }
 // Plan Defense defaults derived from the parameters (a saved defensive plan keeps its own values).
 function defSnipDefaults() { return { pct: PARAMS.snipPctDefault, dist: PARAMS.snipDistDefault }; }

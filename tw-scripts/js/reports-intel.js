@@ -239,6 +239,20 @@ function riIdentity(v, t, id, name, playerId, playerName) {
   }
 }
 
+// A sent-side slot (sent / sentBig / sentCat / lastReal) is the army of whoever owned
+// the village WHEN it was sent (`pid`). After a conquest the identity snapshot
+// (v.playerId = owner in the newest report) moves on while these slots keep the
+// previous owner's largest / newest army — gone with the conquest, so classification
+// and display skip it. The MERGE keeps it unchanged (it must stay identical to the
+// Worker's reports-merge.mjs). A slot without pid (older stores) or a village without
+// an identity is kept.
+function riOwnSent(v, slot) {
+  const s = v && v[slot];
+  if (!s) return null;
+  if (s.pid == null || v.playerId == null) return s;
+  return String(s.pid) === String(v.playerId) ? s : null;
+}
+
 // ── Classification (FastNotes ladder + the away-unknown caveat) ──
 // Returns { cls: 'off'|'def'|'mixed'|'spy'|'empty'|'unknown', sure: bool }.
 // `sure` is false whenever the verdict could flip if the unseen away troops
@@ -249,7 +263,8 @@ function riClassify(v) {
   const awayKnown = !!v.away;                       // seen, or confirmed-empty via spy data
   const away = awayKnown ? v.away.units : null;
 
-  const offSent = v.sent ? v.sent.off : 0;
+  const sent = riOwnSent(v, 'sent');                // current owner's armies only
+  const offSent = sent ? sent.off : 0;
   const offAway = riSum(away, RI_OFF_POOL), defAway = riSum(away, RI_DEF_POOL);
   const offHome = riSum(home, RI_OFF_POOL), defHome = riSum(home, RI_DEF_POOL);
   const off = offHome + offAway, def = defHome + defAway;

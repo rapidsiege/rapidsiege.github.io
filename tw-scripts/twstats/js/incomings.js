@@ -1187,12 +1187,16 @@
     // Biggest army sent regardless of type (sentBig; the old largest-off `sent`
     // is the fallback for records merged before 2026-08-06), + the CATAS line
     // when the village has qualifying catapult strikes on record.
-    var sentShow = v.sentBig || v.sent;
+    // Sent-side slots outlive conquests (they carry the sender pid): show only the
+    // CURRENT owner's armies (riOwnSent, shared reports-intel.js, calc v6.1.3).
+    var own = function (k) { return (typeof riOwnSent === "function") ? riOwnSent(v, k) : v[k]; };
+    var sentShow = own("sentBig") || own("sent");
     if (sentShow) h += rcBlock("Mayor ejército enviado" + rcAgeTag(sentShow.t), sentShow.units);
-    if (v.sentCat) {
+    var ownCat = own("sentCat");
+    if (ownCat) {
       h += '<div class="rc-sec">' + rcRow("Catapultas",
-        '<span class="rc-catas">💥 suele enviar catas — máx ' + v.sentCat.cat +
-        " (" + v.sentCat.n + "×)" + rcAgeTag(v.sentCat.t) + "</span>") + "</div>";
+        '<span class="rc-catas">💥 suele enviar catas — máx ' + ownCat.cat +
+        " (" + ownCat.n + "×)" + rcAgeTag(ownCat.t) + "</span>") + "</div>";
     }
 
     // 💀 dead troops — only while no newer living-troops observation exists.
@@ -1204,10 +1208,11 @@
     }
 
     // 🎯 newest REAL attack this village sent — where its army last landed.
-    if (v.lastReal) {
+    var ownLast = own("lastReal");
+    if (ownLast) {
       h += '<div class="rc-sec">' + rcRow("Último real",
-        '<span class="rc-landed">🎯 ' + TW.commas(v.lastReal.pop) + " pop" +
-        (v.lastReal.tgt ? " → " + TW.esc(v.lastReal.tgt) : "") + rcAgeTag(v.lastReal.t) + "</span>") + "</div>";
+        '<span class="rc-landed">🎯 ' + TW.commas(ownLast.pop) + " pop" +
+        (ownLast.tgt ? " → " + TW.esc(ownLast.tgt) : "") + rcAgeTag(ownLast.t) + "</span>") + "</div>";
     }
 
     // Always all five spied buildings — 0 = unbuilt/destroyed (muted).
@@ -1532,9 +1537,10 @@
     // report check; reportFactsOf already applies the conquest cutoff).
     if (!(rt && rt.stale)) {
       var fvC = reportFactsOf(row.coord.key);
-      if (fvC && fvC.sentCat) {
+      var fvCat = fvC && ((typeof riOwnSent === "function") ? riOwnSent(fvC, "sentCat") : fvC.sentCat);
+      if (fvCat) {
         html += " <span class='note-badge note-catas' data-rc='" + row.coord.key + "'>💥CATAS · " +
-          reportAgeTxt(fvC.sentCat.t) + "</span>";
+          reportAgeTxt(fvCat.t) + "</span>";
       }
     }
     if (row.attack && row.attack.dupTotal > 1) {

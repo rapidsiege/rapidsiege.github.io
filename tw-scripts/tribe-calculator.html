@@ -428,7 +428,7 @@
   </div>
   <textarea id="ev-paste" rows="3" style="width:100%;box-sizing:border-box;margin:6px 0;" placeholder="…or paste the contents of a tw-reports-*.json here" data-i18n-placeholder="ev_paste_ph"></textarea>
   <div class="filter-row">
-    <input type="text" id="ev-search" placeholder="Search player or coord…" data-i18n-placeholder="ph_village_search" oninput="renderEnemyVillagesTable()">
+    <input type="text" id="ev-search" placeholder="Search player or coord…" data-i18n-placeholder="ph_village_search" oninput="riScheduleSearch()">
     <span id="ev-summary" style="font-size:12px;color:#a08050;font-weight:600;"></span>
     <span id="ev-shared" style="font-size:12px;color:#4a70b0;font-weight:600;margin-left:auto;"></span>
     <button class="btn btn-ghost btn-sm" onclick="riFetchShared()" title="Refresh shared DB" data-i18n-title="ev_shared_refresh">🔄</button>
@@ -959,9 +959,9 @@
   </div>
   <div class="filter-row" style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
     <label data-i18n="lbl_def_min_dist">Def min distance:</label>
-    <input type="number" id="plan-def-min-dist" value="0" min="0" style="width:70px;" title="0 = no minimum" oninput="renderDefEligibleSummary()">
+    <input type="number" id="plan-def-min-dist" value="0" min="0" style="width:70px;" data-i18n-title="def_min_dist_title" title="0 = no minimum" oninput="renderDefEligibleSummary()">
     <label data-i18n="lbl_def_max_dist">Def max distance:</label>
-    <input type="number" id="plan-def-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited" oninput="renderDefEligibleSummary()">
+    <input type="number" id="plan-def-max-dist" value="0" min="0" style="width:70px;" data-i18n-title="def_max_dist_title" title="0 = unlimited" oninput="renderDefEligibleSummary()">
     <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;" data-i18n-title="def_far_first_t" title="Support is drawn from each player's villages FURTHEST from the target first, so leftover defense sits nearest the targets — ready to reinforce quickly and easy to replenish.">
       <input type="checkbox" id="plan-def-far-first" onchange="updDefFarFirst()">
       <span data-i18n="lbl_def_far_first">Prioritize Sending From Far Villages</span>
@@ -1148,7 +1148,7 @@
   </div>
   <div class="threshold-row">
     <label data-i18n="lbl_server_offset">Server time: UTC+</label>
-    <input type="number" id="setting-server-offset" step="1" min="-12" max="14" style="width:60px;" oninput="updServerOffset(this.value)">
+    <input type="number" id="setting-server-offset" step="1" min="-12" max="14" style="width:60px;" data-i18n-title="server_offset_auto_t" oninput="updServerOffset(this.value)">
     <span id="server-now" style="font-size:12px;color:#806030;margin-left:10px;"></span>
   </div>
   <p style="font-size:12px;color:#5a3a18;margin-top:10px;" data-i18n="server_note">Used to build rally-point links in the plan table. The UTC offset converts your local clock to server time for the launch-feasibility check (guerrastribales.es runs on UTC+2 in summer, UTC+1 in winter).</p>
@@ -1186,118 +1186,12 @@
   <div id="cl-list-host"></div>
 </div>
 
-<script src="js/lz-string.js"></script>
-<script src="js/constants.js"></script>
-<script src="js/i18n.js"></script>
-<script src="js/changelog-archive.js"></script>
-<script src="js/changelog.js"></script>
-<script src="js/map.js"></script>
-<script src="js/fake-script.js"></script>
-<script src="js/map-render.js"></script>
-<script src="js/core.js"></script>
-<script src="js/data-load.js"></script>
-<script src="js/render-tables.js"></script>
-<script src="js/timings.js"></script>
-<script src="js/offensive-targets.js"></script>
-<script src="js/player-schedules.js"></script>
-<script src="js/plan.js"></script>
-<script src="js/manage-offensive.js"></script>
-<script src="js/defensive-targets.js"></script>
-<script src="js/defense-plan.js"></script>
-<script src="js/manage-defensive.js"></script>
-<script src="js/reports-intel.js"></script>
-<script src="js/report-render.js"></script>
-<script src="js/reports-ui.js"></script>
-<script src="js/db.js"></script>
-<script src="js/cloud-sync.js"></script>
-<script src="js/util.js"></script>
-<script src="js/params.js"></script>
-<script>
-// Prepend unit/stat icons to the static table headers (once)
-injectThIcons();
-
-// Restore saved settings (🎚 Parameters + Plan Offensive inputs + language)
-// before any render reads them; the saved language is applied by changeLang(lang) at the end.
-loadSettings();
-pmTplMigrateKeys(); // v5.14.1: old tw_pm_template* keys → tw_tribe_pm_template* (export/import/cloud pick them up)
-
-// Build the Changelog tab from js/changelog.js (re-rendered by changeLang on switch)
-if (typeof renderChangelog === 'function') renderChangelog();
-// Build the 🎚 Parameters tab + the per-tab panels from PARAM_DEFS (re-rendered by changeLang on switch)
-renderParamPanels();
-
-// Initial render of the Tribe Timings tab (builds its header + empty state)
-renderTargetTable();
-
-// Restore offensive targets + plan from localStorage and render their tabs
-loadOffensive();
-renderOffTargets();
-
-// Restore the imported incoming-orders snapshot BEFORE the first plan render
-// (renderPlanTable tail-calls renderManageTable, which reads it)
-loadManage();
-renderPlanTable();
-
-// Restore defensive targets + defensive plan from localStorage and render their tabs
-loadDefensive();
-renderDefTargets();
-// Restore the imported support / support-orders snapshot BEFORE the first defense-plan render
-// (renderDefPlanTable tail-calls renderManageDefTable, which reads it)
-loadManageDef();
-renderDefPlanTable();
-
-// Restore the troop data uploaded in a previous session (re-parses the stored text;
-// a fresh upload/paste this session replaces it, ✕ Clear removes it)
-autoloadTroops();
-
-// Restore the enemy-village reports store saved in a previous session
-riAutoload();
-
-// Live server clock in Settings (typeof guard: the headless test sandbox has no setInterval)
-updateServerNow();
-if (typeof setInterval === 'function') setInterval(updateServerNow, 1000);
-
-// World dropdown: loadSettings() above restored twWorld, so the DB/config loads
-// below already point at the right data/<world>/ folder. In production the option
-// list is then extended asynchronously from data/worlds.json.
-initWorldSelect();
-
-// Village database: render empty state, then load per environment — production
-// (the live site) fetches the web mirror, development restores the local folder
-renderDbTable();
-if (TW_ENV === 'production') {
-  for (const id of ['db-connect-btn', 'db-refresh-btn', 'db-load-btn']) {
-    const btn = document.getElementById(id);
-    if (btn) btn.style.display = 'none';
-  }
-  const note = document.getElementById('db-note');
-  if (note) { note.setAttribute('data-i18n', 'db_note_prod'); note.textContent = t('db_note_prod'); }
-}
-// prod → live mirror; dev → imported DB snapshot (tw_tribe_db) if present, else the saved folder
-autoloadDb();
-
-// Apply the saved language (loadSettings() set the global above) — translates the static
-// DOM, sets the active flag button, and repaints every tab in the restored language.
-changeLang(lang);
-
-// Initialise the two-level nav: open the first group (Troops Overview → Overview).
-// Single source of truth for the group/sub-tab active state (see switchTab in util.js).
-switchTab('overview');
-
-// Allow dropping files anywhere on the page
-document.addEventListener('dragover', e => e.preventDefault());
-document.addEventListener('drop', e => {
-  e.preventDefault();
-  if (e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
-});
-</script>
-
 <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
 <!-- ON EVERY VERSION BUMP: update this version number AND add a matching entry at the
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.1.2 &nbsp;·&nbsp; 2026-10-04</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.1.3 &nbsp;·&nbsp; 2026-10-04</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
@@ -1514,5 +1408,166 @@ document.addEventListener('drop', e => {
     </div>
   </div>
 </div>
+<!-- ═══════════════════════════ SCRIPTS ═══════════════════════════ -->
+<!-- Last in <body> on purpose: the boot below translates the WHOLE page (footer + modals
+     included), so everything must be parsed first. Classic scripts, document order. -->
+<script src="js/lz-string.js"></script>
+<script src="js/constants.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/changelog-archive.js"></script>
+<script src="js/changelog.js"></script>
+<script src="js/map.js"></script>
+<script src="js/fake-script.js"></script>
+<script src="js/map-render.js"></script>
+<script src="js/core.js"></script>
+<script src="js/data-load.js"></script>
+<script src="js/render-tables.js"></script>
+<script src="js/timings.js"></script>
+<script src="js/offensive-targets.js"></script>
+<script src="js/player-schedules.js"></script>
+<script src="js/plan.js"></script>
+<script src="js/manage-offensive.js"></script>
+<script src="js/defensive-targets.js"></script>
+<script src="js/defense-plan.js"></script>
+<script src="js/manage-defensive.js"></script>
+<script src="js/reports-intel.js"></script>
+<script src="js/report-render.js"></script>
+<script src="js/reports-ui.js"></script>
+<script src="js/db.js"></script>
+<script src="js/cloud-sync.js"></script>
+<script src="js/util.js"></script>
+<script src="js/params.js"></script>
+<script>
+// ── Boot ──
+// The scripts sit at the END of <body>, so the footer and every modal are parsed before
+// changeLang() first translates the page (before v6.1.3 they ran mid-page and Spanish users
+// saw an English footer + modals until a flag was clicked).
+// Each step runs on its own: one malformed saved key (a hand-edited / version-skewed debug
+// dump) used to abort everything after it — no DB, no language, no drop handlers. A failing
+// step is logged with its name, collected in BOOT_FAILED and shown in a banner; the
+// remaining steps still run. Uncaught errors / rejections are logged too (no alerts).
+if (typeof window !== 'undefined' && window && typeof window.addEventListener === 'function') {
+  window.addEventListener('error', e => console.error('[tribe-calculator] uncaught error:', (e && (e.error || e.message)) || e));
+  window.addEventListener('unhandledrejection', e => console.error('[tribe-calculator] unhandled promise rejection:', e && e.reason));
+}
+const BOOT_FAILED = []; // names of the boot steps that threw (empty on a healthy boot)
+function showBootBanner() {
+  if (!BOOT_FAILED.length || typeof document === 'undefined' || !document.body || !document.createElement) return;
+  let el = document.getElementById('boot-warn');
+  if (!el || !el.parentNode) {
+    el = document.createElement('div');
+    el.id = 'boot-warn';
+    el.className = 'warn-box';
+    el.style.margin = '8px 20px';
+    if (typeof document.body.insertBefore === 'function') document.body.insertBefore(el, document.body.firstChild);
+    else document.body.appendChild(el);
+  }
+  const msg = t('boot_failed');
+  el.textContent = typeof msg === 'function' ? msg(BOOT_FAILED.join(', ')) : msg + ' (' + BOOT_FAILED.join(', ') + ')';
+}
+function bootStep(name, fn) {
+  const fail = e => {
+    BOOT_FAILED.push(name);
+    console.error(`[tribe-calculator] boot step "${name}" failed:`, e);
+    showBootBanner();
+  };
+  try {
+    const r = fn();
+    if (r && typeof r.then === 'function') r.then(null, fail); // async loaders report late
+  } catch (e) { fail(e); }
+}
+
+// Prepend unit/stat icons to the static table headers (once)
+bootStep('icons', () => injectThIcons());
+// Drop leftover tw_tribe_backup* (and, in production, a stray dev-only tw_tribe_db snapshot)
+bootStep('storage cleanup', () => bootStorageCleanup());
+
+// Restore saved settings (🎚 Parameters + Plan Offensive inputs + language)
+// before any render reads them; the saved language is applied by changeLang(lang) at the end.
+bootStep('settings', () => {
+  loadSettings();
+  pmTplMigrateKeys(); // v5.14.1: old tw_pm_template* keys → tw_tribe_pm_template* (export/import/cloud pick them up)
+});
+// A hosted copy with its own world list ignores a saved world it doesn't know — BEFORE the
+// offensive server URL, the per-world reports store and the DB load read twWorld.
+bootStep('world', () => validateSavedWorld());
+
+// Build the Changelog tab from js/changelog.js (re-rendered by changeLang on switch)
+bootStep('changelog', () => { if (typeof renderChangelog === 'function') renderChangelog(); });
+// Build the 🎚 Parameters tab + the per-tab panels from PARAM_DEFS (re-rendered by changeLang on switch)
+bootStep('parameters', () => { renderParamPanels(); });
+
+// Initial render of the Tribe Timings tab (builds its header + empty state)
+bootStep('timings', () => renderTargetTable());
+
+// Restore offensive targets + plan from localStorage and render their tabs
+bootStep('offensive', () => loadOffensive());
+bootStep('offensive targets', () => renderOffTargets());
+
+// Restore the imported incoming-orders snapshot BEFORE the first plan render
+// (renderPlanTable tail-calls renderManageTable, which reads it)
+bootStep('manage offensive', () => loadManage());
+bootStep('offensive plan', () => renderPlanTable());
+
+// Restore defensive targets + defensive plan from localStorage and render their tabs
+bootStep('defensive', () => loadDefensive());
+bootStep('defensive targets', () => renderDefTargets());
+// Restore the imported support / support-orders snapshot BEFORE the first defense-plan render
+// (renderDefPlanTable tail-calls renderManageDefTable, which reads it)
+bootStep('manage defense', () => loadManageDef());
+bootStep('defensive plan', () => renderDefPlanTable());
+
+// Restore the troop data uploaded in a previous session (re-parses the stored text;
+// a fresh upload/paste this session replaces it, ✕ Clear removes it)
+bootStep('troops', () => autoloadTroops());
+
+// Restore the enemy-village reports store saved in a previous session (per world)
+bootStep('reports', () => riAutoload());
+
+// Live server clock in Settings (typeof guard: the headless test sandbox has no setInterval)
+bootStep('server clock', () => {
+  updateServerNow();
+  if (typeof setInterval === 'function') setInterval(updateServerNow, 1000);
+});
+
+// World dropdown: loadSettings() above restored twWorld, so the DB/config loads
+// below already point at the right data/<world>/ folder. In production the option
+// list is then extended asynchronously from data/worlds.json.
+bootStep('world select', () => initWorldSelect());
+
+// Village database: render empty state, then load per environment — production
+// (the live site) fetches the web mirror, development restores the local folder
+bootStep('database', () => {
+  renderDbTable();
+  if (TW_ENV === 'production') {
+    for (const id of ['db-connect-btn', 'db-refresh-btn', 'db-load-btn']) {
+      const btn = document.getElementById(id);
+      if (btn) btn.style.display = 'none';
+    }
+    const note = document.getElementById('db-note');
+    if (note) { note.setAttribute('data-i18n', 'db_note_prod'); note.textContent = t('db_note_prod'); }
+  }
+  // prod → live mirror; dev → imported DB snapshot (tw_tribe_db) if present, else the saved folder
+  return autoloadDb();
+});
+
+// Apply the saved language (loadSettings() set the global above) — translates the static
+// DOM, sets the active flag button, and repaints every tab in the restored language.
+bootStep('language', () => changeLang(lang));
+
+// Initialise the two-level nav: open the first group (Troops Overview → Overview).
+// Single source of truth for the group/sub-tab active state (see switchTab in util.js).
+bootStep('navigation', () => switchTab('overview'));
+
+// Allow dropping files anywhere on the page
+bootStep('drop handlers', () => {
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    if (e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
+  });
+});
+showBootBanner();
+</script>
 </body>
 </html>

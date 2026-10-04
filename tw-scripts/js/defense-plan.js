@@ -439,17 +439,18 @@ function defPacketBaseMin(units) {
 }
 
 // Epoch ms of a target's arrival deadline (server-local date+time → UTC), or null if
-// the target has no full date+time set.
+// the target has no full date+time set. The offset is the one in force AT that wall time
+// (serverWallToMs — DST-aware), not today's.
 function defArrivalMs(tg) {
   const dm = String(tg.arriveDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const tm = String(tg.arriveTime || '').match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (!dm || !tm) return null;
-  return Date.UTC(+dm[1], +dm[2] - 1, +dm[3], +tm[1], +tm[2], +(tm[3] || 0)) - serverUtcOffset() * 3600000;
+  return serverWallToMs(Date.UTC(+dm[1], +dm[2] - 1, +dm[3], +tm[1], +tm[2], +(tm[3] || 0)));
 }
-// Format an epoch ms as a server-local "YYYY-MM-DD HH:MM:SS" wall-clock string.
+// Format an epoch ms as a server-local "YYYY-MM-DD HH:MM:SS" wall-clock string (offset at that instant).
 function fmtServerDT(ms) {
   if (ms === null || ms === undefined) return '';
-  const d = new Date(ms + serverUtcOffset() * 3600000);
+  const d = new Date(ms + serverUtcOffset(ms) * 3600000);
   const p = n => String(n).padStart(2, '0');
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
@@ -609,7 +610,7 @@ function generateDefPlan() {
     snipSentPop[P] = 0; snipOverPop[P] = 0;
   }
 
-  const tgs = defTargets.map((tg, i) => ({ tg, i, c: parseCoordStr(tg.coord), tag: tg.tribe || dbTribeAt(tg.coord) }));
+  const tgs = defTargets.map((tg, i) => ({ tg, i, c: parseCoordStr(tg.coord), tag: defTargetTag(tg) })); // live DB tag first
   tgs.filter(T => !T.c).forEach(T => defPlanWarnings.push(t('warn_invalid_coord')(T.tg.coord)));
 
   const dbReady = villageDb.length > 0;
@@ -1236,11 +1237,14 @@ function renderDefPlanTable() {
 // "Available" mirrors Outbound Offs' station math (troops − defense − incoming = deployed):
 // per unit, available = stationed defense + incoming, capped at the village's OWN troops —
 // so own troops deployed elsewhere don't count, and support from other players garrisoned
-// in the village never inflates the owner's numbers. Without station data (a plain
-// tribe-info file, no defense/incoming rows) the math is meaningless — fall back to own
-// troops (the rendered note says so).
+// in the village can never push the owner ABOVE what they own. It can still stand in for
+// own troops that are away (own 1000 spear all deployed + 1000 allied spear stationed reads
+// as 1000 available — the export can't tell whose spear is whose; see defAvailUnitsNow).
+// Gated PER VILLAGE: a village without its own defense/incoming row (a plain tribe_troops
+// file next to an all_troops one, a member whose defense view wasn't shared) has nothing
+// to subtract — it falls back to its own troops instead of reading as fully deployed.
 function defAvailUnits(v) {
-  const station = hasStationData();
+  const station = (v.coord in defenseByCoord) || (v.coord in incomingByCoord);
   const de  = station ? (defenseByCoord[v.coord]  || {}) : null;
   const inc = station ? (incomingByCoord[v.coord] || {}) : null;
   const avail = {};
@@ -1268,7 +1272,7 @@ function defAvailUnits(v) {
 // Capped at `avail` so the now/future invariant holds even if defAvailUnits ever changes.
 // ⚠ There is no ETA anywhere in the export — we know the AMOUNT returning, never when.
 function defAvailUnitsFuture(v) {
-  const station = hasStationData();
+  const station = (v.coord in defenseByCoord) || (v.coord in incomingByCoord); // per village, as defAvailUnits
   const inc = station ? (incomingByCoord[v.coord] || {}) : null;
   const avail = defAvailUnits(v);
   const out = {};
@@ -1281,7 +1285,7 @@ function defAvailUnitsFuture(v) {
 // ⚠ Inherits one artefact of defAvailUnits we cannot see past: a village whose own defense is
 // fully deployed elsewhere but which HOSTS allied support reads that support as its own (the
 // cap-at-own-troops line). Such a village looks home-rich, so treat "now" as a good estimate
-// rather than a guarantee. Without station rows everything reads as home (pre-4.26 behavior).
+// rather than a guarantee. A village without station rows reads everything as home (pre-4.26 behavior).
 function defAvailUnitsNow(v) {
   const avail = defAvailUnits(v), fut = defAvailUnitsFuture(v);
   const out = {};
@@ -1355,7 +1359,7 @@ function defFilteredSenderTest() {
   const minDist = parseFloat((document.getElementById('plan-def-min-dist') || {}).value) || 0;
   const maxDist = parseFloat((document.getElementById('plan-def-max-dist') || {}).value) || 0;
   const hasTargets = defTargets.length > 0; // targets with unparseable coords still count as targets (nothing is in their band)
-  const tgs = defTargets.map(tg => ({ c: parseCoordStr(tg.coord), tag: tg.tribe || dbTribeAt(tg.coord) })).filter(T => T.c);
+  const tgs = defTargets.map(tg => ({ c: parseCoordStr(tg.coord), tag: defTargetTag(tg) })).filter(T => T.c);
   const dbReady = villageDb.length > 0, tribeGate = defSameTribeGate();
   const inBand = (c, T) => { const d = distXY(c, T.c); return (minDist <= 0 || d >= minDist) && (maxDist <= 0 || d <= maxDist); };
   return (v, stock) => {

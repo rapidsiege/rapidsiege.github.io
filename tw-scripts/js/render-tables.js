@@ -34,12 +34,12 @@ function renderOverview() {
 
   document.getElementById('power-bars').innerHTML = `
     <div style="margin-bottom:16px;">
-      <div class="power-bar-label"><span>${twIcon('off')}${t('bar_off')}</span><span style="color:#e06040;">${fmtM(totalOff)} pts</span></div>
+      <div class="power-bar-label"><span>${twIcon('off')}${t('bar_off')}</span><span style="color:#e06040;">${fmtM(totalOff)} ${t('power_pts')}</span></div>
       <div style="display:grid;gap:5px;">
         ${Object.entries(players).sort((a,b)=>b[1].offPow-a[1].offPow).slice(0,8).map(([name,p]) => `
           <div>
             <div style="display:flex;justify-content:space-between;font-size:11px;color:#806030;margin-bottom:2px;">
-              <span>${decode(name)}</span><span style="color:#d0a870;">${fmtM(p.offPow)}</span>
+              <span>${esc(decode(name))}</span><span style="color:#d0a870;">${fmtM(p.offPow)}</span>
             </div>
             <div class="power-bar-track"><div class="power-bar-fill bar-off" style="width:${maxOff>0?Math.round(p.offPow/maxOff*100):0}%"></div></div>
           </div>
@@ -47,18 +47,18 @@ function renderOverview() {
       </div>
     </div>
     <div style="margin-bottom:16px;">
-      <div class="power-bar-label"><span>${twIcon('def')}${t('bar_def')}</span><span style="color:#60a0e0;">${fmtM(totalDefInf + totalDefCav)} pts</span></div>
+      <div class="power-bar-label"><span>${twIcon('def')}${t('bar_def')}</span><span style="color:#60a0e0;">${fmtM(totalDefInf + totalDefCav)} ${t('power_pts')}</span></div>
       <div style="display:grid;gap:5px;">
         ${Object.entries(players).sort((a,b)=>(b[1].defInf+b[1].defCav)-(a[1].defInf+a[1].defCav)).slice(0,8).map(([name,p]) => {
           const infW = maxDefTotal > 0 ? Math.round(p.defInf / maxDefTotal * 100) : 0;
           const cavW = maxDefTotal > 0 ? Math.round(p.defCav / maxDefTotal * 100) : 0;
           return `<div>
             <div style="display:flex;justify-content:space-between;font-size:11px;color:#806030;margin-bottom:2px;">
-              <span>${decode(name)}</span><span style="color:#d0a870;">${fmtM(p.defInf + p.defCav)}</span>
+              <span>${esc(decode(name))}</span><span style="color:#d0a870;">${fmtM(p.defInf + p.defCav)}</span>
             </div>
             <div class="power-bar-track">
-              <div class="power-bar-fill bar-def" style="width:${infW}%" title="vs Infantry: ${fmtM(p.defInf)}"></div>
-              <div class="power-bar-fill bar-cav" style="width:${cavW}%" title="vs Cavalry: ${fmtM(p.defCav)}"></div>
+              <div class="power-bar-fill bar-def" style="width:${infW}%" title="${esc(t('pow_vs_inf')(fmtM(p.defInf)))}"></div>
+              <div class="power-bar-fill bar-cav" style="width:${cavW}%" title="${esc(t('pow_vs_cav')(fmtM(p.defCav)))}"></div>
             </div>
           </div>`;
         }).join('')}
@@ -73,9 +73,9 @@ function renderOverview() {
     const total = villages.reduce((s,v) => s+v[u], 0);
     const cls = UNIT_TYPE[u] === 'off' ? 'unit-type-off' : UNIT_TYPE[u] === 'def' ? 'unit-type-def' : 'unit-type-misc';
     let statLine;
-    if (OFF_ONLY_SET.has(u))      statLine = `Att: ${ATT[u]}`;
-    else if (DEF_ONLY_SET.has(u)) statLine = `Def: ${DINF[u]}/${DCAV[u]}`;
-    else if (u === 'catapult')    statLine = `Att: ${ATT[u]} | Def: ${DINF[u]}/${DCAV[u]}`;
+    if (OFF_ONLY_SET.has(u))      statLine = t('unit_stat_att')(ATT[u]);
+    else if (DEF_ONLY_SET.has(u)) statLine = t('unit_stat_def')(DINF[u], DCAV[u]);
+    else if (u === 'catapult')    statLine = `${t('unit_stat_att')(ATT[u])} | ${t('unit_stat_def')(DINF[u], DCAV[u])}`;
     else                          statLine = '—';
     return `<div class="unit-card ${cls}">
       <div class="unit-name">${twIcon(u)}${t('unit_' + UNITS[i])}</div>
@@ -124,11 +124,11 @@ function renderPlayersTable() {
 
   const rows = data.map(r => `
     <tr>
-      <td class="left"><span class="player-tag">${decode(r.name)}</span></td>
+      <td class="left"><span class="player-tag">${esc(decode(r.name))}</span></td>
       <td>${r.vilCount}</td>
       ${UNITS.map(u => numCell(r[u])).join('')}
       <td style="color:#e06040;font-weight:600;">${fmtM(r.offPow)}</td>
-      <td style="color:#60a0e0;font-weight:600;" title="${fmtM(r.defInf)} inf + ${fmtM(r.defCav)} cav">${fmtM(r.defInf + r.defCav)}</td>
+      <td style="color:#60a0e0;font-weight:600;" title="${esc(t('def_inf_cav')(fmtM(r.defInf), fmtM(r.defCav)))}">${fmtM(r.defInf + r.defCav)}</td>
       <td style="color:#ff6040;font-weight:${r.tierComplete>0?'700':'400'};${r.tierComplete===0?'color:#4a3010;':''}">${r.tierComplete||'—'}</td>
       <td style="color:#f0a030;font-weight:${r.tierTq>0?'700':'400'};${r.tierTq===0?'color:#4a3010;':''}">${r.tierTq||'—'}</td>
       <td style="color:#d8d030;font-weight:${r.tierHalf>0?'700':'400'};${r.tierHalf===0?'color:#4a3010;':''}">${r.tierHalf||'—'}</td>
@@ -187,10 +187,13 @@ function getOffTier(offPow) {
 // (loadSettings, called from the init block before the first render). The tw_tribe*
 // prefix means the debug export/import already round-trips this key.
 const TRIBE_SETTINGS_KEY = 'tw_tribe_settings';
-// Plan Offensive controls that should survive a refresh (keyed by element id).
+// Plan Offensive (+ Plan Defense distance band) controls that should survive a refresh (keyed
+// by element id). The two plan-def inputs keep their inline oninput (the filtered summary);
+// loadDefensive() adds their saveSettings listener.
 const PLAN_SETTING_IDS = ['plan-min-dist', 'plan-max-dist',
   'plan-snob-max', 'plan-min-morale-off', 'plan-min-morale', 'plan-cat-count', 'plan-cluster-tol',
-  'plan-morale-mode', 'plan-morale-pts']; // 🎭 Morale strategy (v5.13.0)
+  'plan-morale-mode', 'plan-morale-pts', // 🎭 Morale strategy (v5.13.0)
+  'plan-def-min-dist', 'plan-def-max-dist'];
 function saveSettings() {
   const v = id => document.getElementById(id)?.value;
   const plan = {};
@@ -268,13 +271,21 @@ function loadSettings() {
   }
 }
 
-// ── Off-power tier badge (shown in the Villages table's Tier column) ────────────
-const TIER_BADGE = {
-  complete: '<span class="badge badge-complete">Complete Off</span>',
-  tq:       '<span class="badge badge-tq">3/4</span>',
-  half:     '<span class="badge badge-half">1/2</span>',
-  none:     '<span class="badge badge-empty">—</span>',
-};
+// ── Off-power tier badge (Villages + Outbound Offs Tier column) ────────────────
+// Built at render time (not a load-time constant) so the label follows the language.
+function tierBadge(tier) {
+  if (tier === 'complete') return `<span class="badge badge-complete">${esc(t('badge_tier_complete'))}</span>`;
+  if (tier === 'tq')       return `<span class="badge badge-tq">${esc(t('tier_tq'))}</span>`;
+  if (tier === 'half')     return `<span class="badge badge-half">${esc(t('tier_half'))}</span>`;
+  return '<span class="badge badge-empty">—</span>';
+}
+// Village type badge (OFF / DEF / MIX / —) for the same two tables.
+function vilTypeBadge(type) {
+  if (type === 'off')   return `<span class="badge badge-off">${esc(t('badge_type_off'))}</span>`;
+  if (type === 'def')   return `<span class="badge badge-def">${esc(t('badge_type_def'))}</span>`;
+  if (type === 'mixed') return `<span class="badge badge-mixed">${esc(t('badge_type_mixed'))}</span>`;
+  return '<span class="badge badge-empty">—</span>';
+}
 
 // ── Manual edit of a village's troops (Villages "Edit") ─────────────────────
 // Lets you adjust a village's units in place — e.g. add snobs you know will be
@@ -338,13 +349,6 @@ function renderVillagesTable() {
     data.sort((a,b) => a.player.localeCompare(b.player) || a.coord.localeCompare(b.coord));
   }
 
-  const typeBadge = {
-    off: '<span class="badge badge-off">OFF</span>',
-    def: '<span class="badge badge-def">DEF</span>',
-    mixed: '<span class="badge badge-mixed">MIX</span>',
-    empty: '<span class="badge badge-empty">—</span>',
-  };
-
   // Coord links to the village's in-game info page when the world DB is loaded
   // (villageInfoUrl, plan.js); plain text when it isn't. Keeps the column's text color.
   const coordCell = coord => {
@@ -352,16 +356,18 @@ function renderVillagesTable() {
     return url ? `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:inherit;">${esc(coord)}</a>` : esc(coord);
   };
 
+  // The Edit handler takes the coord as a quoted JS argument — safe because only a validated
+  // X|Y (parseData's TROOP_COORD_RE) ever gets one; any other coord gets no button at all.
   const rows = data.map(v => `
     <tr>
       <td class="left" style="font-family:monospace;">${coordCell(v.coord)}</td>
-      <td class="left"><span class="player-tag">${decode(v.player)}</span></td>
-      <td>${typeBadge[v.type]}</td>
-      <td>${TIER_BADGE[v.tier]}</td>
+      <td class="left"><span class="player-tag">${esc(decode(v.player))}</span></td>
+      <td>${vilTypeBadge(v.type)}</td>
+      <td>${tierBadge(v.tier)}</td>
       ${UNITS.map(u => numCell(v[u])).join('')}
       <td style="color:#e06040;">${fmtM(v.offPow)}</td>
-      <td style="color:#60a0e0;" title="${fmtM(v.defInf)} inf + ${fmtM(v.defCav)} cav">${fmtM(v.defInf + v.defCav)}</td>
-      <td><button class="btn btn-edit btn-sm" onclick="editByVillage('${v.coord}')">✎ ${t('btn_edit')}</button></td>
+      <td style="color:#60a0e0;" title="${esc(t('def_inf_cav')(fmtM(v.defInf), fmtM(v.defCav)))}">${fmtM(v.defInf + v.defCav)}</td>
+      <td>${TROOP_COORD_RE.test(v.coord) ? `<button class="btn btn-edit btn-sm" onclick="editByVillage('${v.coord}')">✎ ${t('btn_edit')}</button>` : ''}</td>
     </tr>
   `).join('');
 
@@ -393,14 +399,17 @@ const OUTBOUND_UNITS = UNITS.filter(u => !['spear', 'sword', 'heavy', 'knight'].
 // Pure (no DOM): given owned villages + the station dicts, return the outbound-off rows.
 // Each row carries the per-unit outbound counts, the off/def power of THAT outbound army
 // (the Tier badge is derived from outOffPow — the strength of what's out right now), and
-// the village's own off power (kept for callers that want the identity tier). A village
-// with no defense/incoming row falls back to zeros → read as fully deployed (correct for a
-// real export). The caller guards the empty-station case so a plain tribe-info file — where
-// every off would falsely read as 100% out — shows an explanatory state instead of rows.
+// the village's own off power (kept for callers that want the identity tier). Gated PER
+// VILLAGE: only a village with its own defense or incoming row can be judged (a missing
+// half of the pair reads as zeros — nothing home / nothing returning). A village with
+// neither — from a plain tribe_troops file loaded next to an all_troops one, or a member
+// whose defense view the export couldn't read — is skipped, never listed as 100% out. The
+// caller still shows an explanatory state when the batch has no station data at all.
 function computeOutboundOffs(vils, defByCoord, incByCoord, minAxe, fraction) {
   const rows = [];
   for (const v of vils) {
     if ((v.axe || 0) < minAxe) continue;
+    if (!(v.coord in defByCoord) && !(v.coord in incByCoord)) continue; // no station rows → can't tell
     const de  = defByCoord[v.coord] || {};
     const inc = incByCoord[v.coord] || {};
     const out = {};
@@ -417,8 +426,9 @@ function computeOutboundOffs(vils, defByCoord, incByCoord, minAxe, fraction) {
   return rows;
 }
 
-// Is there any station data at all? Without defense/incoming rows the computation is
-// meaningless (every off reads as fully outbound), so the tab shows a hint instead.
+// Is there any station data at all? Drives only the Outbound tab's "load the full export"
+// hint (and the summary notes' wording) — every availability computation gates PER VILLAGE
+// on its own defense/incoming row, since a batch can mix files with and without them.
 function hasStationData() {
   return Object.keys(defenseByCoord).length > 0 || Object.keys(incomingByCoord).length > 0;
 }
@@ -458,6 +468,9 @@ function renderOutboundTable() {
   let data = computeOutboundOffs(villages, defenseByCoord, incomingByCoord, PARAMS.outboundMinAxe, PARAMS.outboundFraction)
     .map(r => ({ ...r, tier: getOffTier(r.outOffPow), tgt: tgtBy[r.coord] || null }));
   const totalOut = data.length;
+  // Villages computeOutboundOffs had to skip in a mixed batch: enough axes to be listed, but no
+  // defense / incoming row of their own (e.g. a plain tribe_troops file next to an all_troops one).
+  const noGarrison = villages.filter(v => (v.axe || 0) >= PARAMS.outboundMinAxe && !(v.coord in defenseByCoord) && !(v.coord in incomingByCoord)).length;
 
   if (search) data = data.filter(r => r.player.toLowerCase().includes(search) || r.coord.includes(search));
 
@@ -477,13 +490,6 @@ function renderOutboundTable() {
     data.sort((a, b) => a.player.localeCompare(b.player) || a.coord.localeCompare(b.coord));
   }
 
-  const typeBadge = {
-    off: '<span class="badge badge-off">OFF</span>',
-    def: '<span class="badge badge-def">DEF</span>',
-    mixed: '<span class="badge badge-mixed">MIX</span>',
-    empty: '<span class="badge badge-empty">—</span>',
-  };
-
   // Off Target links to the target's in-game info page when the world DB is loaded
   // (villageInfoUrl, plan.js) so "is this off really flying there?" is one click.
   // The link keeps the Coord column's plain text color — only the underline marks it.
@@ -494,12 +500,12 @@ function renderOutboundTable() {
   };
   const rows = data.map(r => `
     <tr>
-      <td class="left" style="font-family:monospace;">${r.coord}</td>
-      <td class="left"><span class="player-tag">${decode(r.player)}</span></td>
+      <td class="left" style="font-family:monospace;">${esc(r.coord)}</td>
+      <td class="left"><span class="player-tag">${esc(decode(r.player))}</span></td>
       <td style="font-family:monospace;">${tgtCell(r.tgt)}</td>
       <td class="left">${r.tgt && r.tgt.player ? `<span class="player-tag">${esc(r.tgt.player)}</span>` : '—'}</td>
-      <td>${typeBadge[r.type]}</td>
-      <td>${TIER_BADGE[r.tier]}</td>
+      <td>${vilTypeBadge(r.type)}</td>
+      <td>${tierBadge(r.tier)}</td>
       ${OUTBOUND_UNITS.map(u => numCell(r.out[u])).join('')}
       <td style="color:#e06040;">${fmtM(r.outOffPow)}</td>
     </tr>
@@ -508,7 +514,7 @@ function renderOutboundTable() {
   tbody.innerHTML = rows || `<tr class="empty-row"><td colspan="13">${t('outbound_none')}</td></tr>`;
   if (summary) {
     const players = new Set(data.map(r => r.player)).size;
-    summary.textContent = t('outbound_summary')(totalOut, players);
+    summary.textContent = t('outbound_summary')(totalOut, players) + (noGarrison ? ' ' + t('outbound_no_garrison')(noGarrison) : '');
   }
 
   const { col: ocol, dir: odir } = sortState.outbound;
@@ -553,8 +559,8 @@ function renderRankings() {
     const rows = top.map((r, i) => `
       <tr>
         <td class="left" style="color:#806030;">${i+1}</td>
-        <td class="left"><span class="player-tag">${decode(r.name)}</span></td>
-        <td style="color:${color};font-weight:600;"${tooltipFn ? ` title="${tooltipFn(r)}"` : ''}>${fmt_fn(r[valueKey])}</td>
+        <td class="left"><span class="player-tag">${esc(decode(r.name))}</span></td>
+        <td style="color:${color};font-weight:600;"${tooltipFn ? ` title="${esc(tooltipFn(r))}"` : ''}>${fmt_fn(r[valueKey])}</td>
       </tr>
     `).join('');
     return `
@@ -562,7 +568,7 @@ function renderRankings() {
         <div class="section-header"><h2>${ttl}</h2></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th class="left">#</th><th class="left">Player</th><th>${ttl}</th></tr></thead>
+            <thead><tr><th class="left">#</th><th class="left">${t('th_player')}</th><th>${ttl}</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -573,7 +579,7 @@ function renderRankings() {
   const grid = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px;">`;
   let html = grid;
   html += rankSection(t('rank_off'),      [...playerList].sort((a,b)=>b.offPow-a.offPow),   'offPow',   fmtM, '#e06040', null, 'off');
-  html += rankSection(t('rank_def'),      [...playerList].sort((a,b)=>b.defPow-a.defPow),   'defPow',   fmtM, '#60a0e0', r => `${fmtM(r.defInf)} inf + ${fmtM(r.defCav)} cav`, 'def');
+  html += rankSection(t('rank_def'),      [...playerList].sort((a,b)=>b.defPow-a.defPow),   'defPow',   fmtM, '#60a0e0', r => t('def_inf_cav')(fmtM(r.defInf), fmtM(r.defCav)), 'def');
   html += rankSection(t('rank_villages'), [...playerList].sort((a,b)=>b.vilCount-a.vilCount),'vilCount', fmt,  '#f0c040');
   html += rankSection(t('rank_spear'),    [...playerList].sort((a,b)=>b.spear-a.spear),      'spear',    fmt,  '#60a0e0', null, 'spear');
   html += rankSection(t('rank_sword'),    [...playerList].sort((a,b)=>b.sword-a.sword),      'sword',    fmt,  '#4090d0', null, 'sword');

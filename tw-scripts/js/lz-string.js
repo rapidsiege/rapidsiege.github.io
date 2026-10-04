@@ -361,3 +361,14 @@ function lsLoadC(key) {
   try { localStorage.setItem(key, LZ_PREFIX + LZString.compressToUTF16(raw)); } catch (e) {}
   return obj;
 }
+// The same read as lsLoadC (LZ1: blob or plain JSON) WITHOUT the in-place upgrade: it never
+// writes. For a key an OLDER build still owns and parses as plain JSON — the pre-6.1.3
+// tw_tribe_offensive / tw_tribe_manageoff, read only as the migration source of their *_c keys.
+function lsPeekC(key) {
+  var raw;
+  try { raw = localStorage.getItem(key); } catch (e) { return null; }
+  if (raw == null) return null;
+  var lz = raw.slice(0, LZ_PREFIX.length) === LZ_PREFIX;
+  try { return JSON.parse(lz ? LZString.decompressFromUTF16(raw.slice(LZ_PREFIX.length)) : raw); }
+  catch (e) { return null; }
+}

@@ -272,7 +272,10 @@ function readData() {
 }
 
 function showData(data) {
-    html = '<head></head><body><p><h2>Tribe data</h2>Mode selected: ' + mode + '</p><p><textarea readonly=true>' + data + '</textarea></p><p><input type="button" class="btn evt-confirm-btn btn-confirm-yes" id="download" onclick="download(\'tribe info\',data)" value="Download as csv"></input><input type="button" class="btn evt-confirm-btn btn-confirm-no" onclick="openUI()" value="Back to main menu"></input></p></body>';
+    // Named per mode, like tribeInfo v4/v5: the calculator routes a tribe_defense* file's rows to
+    // station data (typeStationFile) — the untyped header alone reads as owned troops.
+    var fileName = (mode == "members_defense" ? "tribe_defense" : "tribe_troops") + ".txt";
+    html = '<head></head><body><p><h2>Tribe data</h2>Mode selected: ' + mode + '</p><p><textarea readonly=true>' + data + '</textarea></p><p><input type="button" class="btn evt-confirm-btn btn-confirm-yes" id="download" onclick="download(\'' + fileName + '\',data)" value="Download as csv"></input><input type="button" class="btn evt-confirm-btn btn-confirm-no" onclick="openUI()" value="Back to main menu"></input></p></body>';
     Dialog.show("Tribe data", html);
 }
 

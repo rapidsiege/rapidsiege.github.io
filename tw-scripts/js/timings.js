@@ -43,7 +43,8 @@ function fmtTime(minutes) {
 }
 function fmtArrivalTime(travelMinutes) {
   // server-time arrival, consistent with the "Arrive by" deadline and the planner
-  const d = new Date(serverNowMs() + travelMinutes * 60000 + serverUtcOffset() * 3600000);
+  const at = serverNowMs() + travelMinutes * 60000;
+  const d = new Date(at + serverUtcOffset(at) * 3600000); // the offset AT arrival (DST-aware when automatic)
   const p = n => String(n).padStart(2, '0');
   return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }

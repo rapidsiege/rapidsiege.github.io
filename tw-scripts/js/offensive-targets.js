@@ -1,13 +1,21 @@
 // ══════════════════════════════════════════════════════════════
 // OFFENSIVE TARGETS + PLAN OFFENSIVE
 // ══════════════════════════════════════════════════════════════
-const OT_STORE_KEY = 'tw_tribe_offensive';
+// v6.1.3: the save is compressed under its OWN key. The pre-6.1.3 key (plain JSON, the only one a
+// 6.1.0–6.1.2 build reads) is still READ as the migration source while the new key doesn't exist
+// yet — never written, never rewritten — so an older copy sharing this storage (file:// dev, the
+// github.io clone, the es103 dist) keeps working on its own stale copy and can only overwrite that.
+const OT_STORE_KEY  = 'tw_tribe_offensive_c';
+const OT_LEGACY_KEY = 'tw_tribe_offensive';
 const TIER_RANK = { complete: 3, tq: 2, half: 1, none: 0 };
 // Offs travel at ram pace, noble trains at snob pace (slowest unit dictates)
 const PLAN_BASE_MIN = { off: 30, snob: 35 };
 const TIER_FIELD = { complete: 'nComplete', tq: 'nTq', half: 'nHalf' };
 
-let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30', serverUrl: 'es100.guerrastribales.es', serverUtcOffset: 2, defComplete: 1, defTq: 0, defHalf: 0, defSnobMode: 'solo', groups: [], nextGroupId: 1 };
+// serverUtcOffset: null = automatic (the server's zone, DST-aware — see serverUtcOffset() in
+// constants.js); a number = typed in Settings. tzAuto marks a cfg saved by a build that knows the
+// automatic mode (loadOffensive migrates the old fixed default 2 of an unmarked save to automatic).
+let otCfg        = { dateLabel: '', defWinOff: '01:00/02:00', defWinSnob: '02:00/02:30', serverUrl: 'es100.guerrastribales.es', serverUtcOffset: null, tzAuto: 1, defComplete: 1, defTq: 0, defHalf: 0, defSnobMode: 'solo', groups: [], nextGroupId: 1 };
 // [{id, coord, player, groupOffs:{<groupId>:{nComplete,nTq,nHalf,nobles,snobPlayers,snobMode}},
 //   snobAssignees:[{name,count,group}], offAssignees:[{tier,name,count,group}]}]
 // Everything a target asks for is PER WINDOW GROUP: `groupOffs[gid]` holds the off counts of
@@ -39,7 +47,7 @@ let blockPairs       = []; // [[rawOwnPlayer, defenderName], …] Block Pairs (v
 // offensive plan. A row whose stored value is later unticked KEEPS it and still lists it in ITS
 // dropdown (catModeKeys(current)) — nothing changes silently; new rows just stop offering it.
 let otBuildings      = { cat: [...CAT_BUILDING_KEYS], mode: [...CAT_MODE_KEYS] };
-let mvPairs          = []; // [[rawA, rawB], …] vacation-mode pairs — SHARED by Plan Offensive AND Plan Defense (edited from either the Offensive-Targets or Defensive-Targets picker; persisted here in tw_tribe_offensive). Offensive rule: two paired players can't both attack the SAME enemy player. Defensive rule: they can't both support the SAME target, nor support a village their partner owns.
+let mvPairs          = []; // [[rawA, rawB], …] vacation-mode pairs — SHARED by Plan Offensive AND Plan Defense (edited from either the Offensive-Targets or Defensive-Targets picker; persisted here in OT_STORE_KEY). Offensive rule: two paired players can't both attack the SAME enemy player. Defensive rule: they can't both support the SAME target, nor support a village their partner owns.
 // Coordinate Filter (Plan Offensive): layered X|Y bounds that a village must ALL satisfy to be
 // used as a sender (off OR snob train). [{axis:'x'|'y', op:'>'|'>='|'<'|'<='|'=', val:'<number>'}].
 // AND semantics; a row with no axis or a blank/NaN value is inactive; an empty list uses every
@@ -83,10 +91,13 @@ let otNextId     = 1;
 // launch reservations stay held — so a second offensive consumes only leftover troops. Slots are
 // frozen snapshots: their rows carry their own window + date, so editing targets or window groups
 // for the next offensive never touches an earlier one (removeOffWindowGroup filters the ACTIVE
-// slot only). Persisted in tw_tribe_offensive as `plans` (+ planActive / planNextId) — the active
-// slot is ALSO written under the pre-v6.1.0 keys (plan / warnings / reserved / stats) so an older
-// build sharing this origin's storage (a file:// copy of prod / the es103 dist) still shows it and,
-// should it save, can't wipe the slots silently; a pre-v6.1.0 save's single `plan` becomes slot 1.
+// slot only). Persisted COMPRESSED (lsSaveC) in tw_tribe_offensive_c (OT_STORE_KEY) as `plans`
+// (+ planActive / planNextId). The pre-v6.1.0 keys (plan / warnings / reserved / stats) are no
+// longer written, but are still READ: a pre-v6.1.0 save's single `plan` becomes slot 1, and a save
+// that carries both (6.1.0–6.1.2) is read from `plans`. A pre-6.1.3 save sits in the legacy plain-
+// JSON key (OT_LEGACY_KEY), read only while OT_STORE_KEY is absent. Loading never writes it (just
+// opening this build leaves an older build on the same storage intact); the first SUCCESSFUL save
+// into OT_STORE_KEY removes it (see saveOffensive).
 let offPlans      = []; // [{ id, name, createdISO, rows, warnings, reserved, stats }]
 let offPlanActive = 1;  // id of the slot the plan globals show
 let offPlanNextId = 2;
@@ -125,11 +136,12 @@ function offPlanOthers() { offPlanSync(); return offPlans.filter(s => s.id !== o
 // Every slot's rows in slot order, each tagged with its slot id (coord export, unused offs).
 function offPlanAllRows() { offPlanSync(); return offPlans.flatMap(s => (s.rows || []).map(r => ({ ...r, slot: s.id }))); }
 // What the OTHER slots already committed, per village — generatePlan() starts its pool from here.
-// offCoords = villages whose off is spent (planUsedOffCoords: offs, escorts, fakes, recruit holds);
-// nobles / cats = counts per source coord; reserved = their noble-launch holds. nOffs (the slot-bar
+// offCoords = villages whose off is spent (planUsedOffCoords: offs, escorts, recruit holds — NOT
+// 1-ram fakes); nobles / cats / fakes = counts per source coord (fakes feed fakesPerVillage);
+// reserved = their noble-launch holds. nOffs (the slot-bar
 // hint) = spent OR held villages, the same set the footer's "in other offensives" bucket counts.
 function offPlanPriorUsage(others) {
-  const u = { offCoords: new Set(), nobles: {}, cats: {}, reserved: new Set(), nSlots: 0, nOffs: 0, nNobles: 0, nCats: 0 };
+  const u = { offCoords: new Set(), nobles: {}, cats: {}, fakes: {}, reserved: new Set(), nSlots: 0, nOffs: 0, nNobles: 0, nCats: 0 };
   for (const s of (others || offPlanOthers())) {
     u.nSlots++;
     for (const c of planUsedOffCoords(s.rows || [])) u.offCoords.add(c);
@@ -137,6 +149,7 @@ function offPlanPriorUsage(others) {
       if (r.unassigned || !r.srcCoord) continue;
       if (r.type === 'snob')          { const n = r.count || 1; u.nobles[r.srcCoord] = (u.nobles[r.srcCoord] || 0) + n; u.nNobles += n; }
       else if (r.type === 'catapult') { const n = r.cats || 0;  u.cats[r.srcCoord]   = (u.cats[r.srcCoord]   || 0) + n; u.nCats += n; }
+      else if (r.type === 'fake')     u.fakes[r.srcCoord] = (u.fakes[r.srcCoord] || 0) + 1;
     }
     for (const c of (s.reserved || [])) u.reserved.add(c);
   }
@@ -145,6 +158,7 @@ function offPlanPriorUsage(others) {
 }
 function offPlanAfterSwitch() {
   saveOffensive();
+  renderOtOffsSummary(); // the Offensive Targets footer subtracts what the OTHER slots use
   if (typeof renderPlanTable === 'function') renderPlanTable(); // also re-renders Manage Offensive
   if (typeof repaintMapData === 'function') repaintMapData();   // map overlays read the active slot
 }
@@ -389,6 +403,10 @@ function addOffWindowGroup() {
 }
 // Removing a group drops every target's offs AND noble train in it (they have nowhere to
 // land), pinned senders included. The last group can never be removed.
+// Generated rows: only the ACTIVE offensive slot's rows of that wave go (the plan being edited);
+// the other slots are frozen snapshots and keep theirs. The confirm names how many rows of which
+// offensive that is — so viewing an earlier offensive while reshaping the waves can't silently
+// empty it (cancel, switch to the offensive being planned, then remove).
 function removeOffWindowGroup(gid) {
   const gs = otGroups();
   if (gs.length <= 1) return;
@@ -396,7 +414,11 @@ function removeOffWindowGroup(gid) {
   if (idx < 0) return;
   const offs = offTargets.reduce((s, tg) => s + ['complete', 'tq', 'half'].reduce((x, tr) => x + otTierCount(tg, gid, tr), 0), 0);
   const nobles = offTargets.reduce((s, tg) => s + otSnobCount(tg, gid, 'nobles'), 0);
-  if (!confirm(t('confirm_del_group')(otGroupLabel(idx), offs, nobles))) return;
+  const nRows = planRows.filter(r => r.group === gid).length;
+  const rowsMsg = t('confirm_del_group_rows'); // (n, offensive label) => text; guarded — a missing key must not block the delete
+  const msg = t('confirm_del_group')(otGroupLabel(idx), offs, nobles)
+    + (nRows && typeof rowsMsg === 'function' ? ' ' + rowsMsg(nRows, offPlanLabel(offPlanActiveSlot())) : '');
+  if (!confirm(msg)) return;
   otCfg.groups.splice(idx, 1);
   const fallback = otCfg.groups[0].id;
   for (const tg of offTargets) {
@@ -448,24 +470,51 @@ function groupDateLabel(g) { return bbDateLabelOf(g && g.dateISO); }
 // only then, so a normal single-wave plan keeps its exact historical output.
 function otMultiGroup() { return otGroups().length > 1; }
 
+// Compressed (lsSaveC): 400 plan rows are ~140 KB as JSON, a fraction of that compressed. Never
+// throws. On a quota failure (several big offensives + the troop file) the session stays alive —
+// the plan is still in memory and rendered, only the save failed — and the user is told ONCE per
+// session: updOTCfgInt & co. save on every keystroke, an alert per keystroke would lock the page.
+// Returns whether the save landed.
+let otSaveWarned = false;
 function saveOffensive() {
   offPlanSync(); // the active slot's record mirrors the plan globals
-  try {
-  localStorage.setItem(OT_STORE_KEY, JSON.stringify({
+  const ok = lsSaveC(OT_STORE_KEY, {
     cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, forcePlayers: offForcePlayers, forceCoords: offForceCoords, mvPairs, blockPairs,
     buildings: otBuildings,
     enemyIds: offEnemyIds, enemyDist: offEnemyDist,
     coordFilters: planCoordFilters, coordPolygon: planCoordPolygon, coordPolygonInv: planCoordPolygonInv,
     plans: offPlans, planActive: offPlanActive, planNextId: offPlanNextId, nextId: otNextId,
-    // pre-v6.1.0 shape of the ACTIVE slot (compat with older builds sharing this storage; `plans` wins on load)
-    plan: planRows, warnings: planWarnings, reserved: planReserved, stats: planStats,
-  }));
-  } catch (e) {
-    // Quota exceeded (several big offensives + the troop file) — keep the session alive: the plan
-    // is still in memory and rendered, only this save failed. Surfaced once per failure.
-    console.warn('saveOffensive failed', e);
-    if (typeof alert === 'function') alert(t('warn_save_failed'));
+  });
+  if (!ok) {
+    console.warn('saveOffensive failed (storage full)');
+    if (!otSaveWarned && typeof alert === 'function') { otSaveWarned = true; alert(t('warn_save_failed')); }
+  } else {
+    // The compressed copy landed, so the pre-6.1.3 plain-JSON key (the migration source) is dead
+    // weight: kept, it held the whole state a second time, uncompressed, in localStorage and in the
+    // cloud dump. Removing it can never destroy anything: an older build only ever reads/writes its
+    // OWN legacy key, so an old copy opened afterwards simply boots empty and writes a fresh legacy
+    // copy, which this build ignores once OT_STORE_KEY exists (and removes again on its next save).
+    // Only after a successful save — on a quota failure the legacy key may be the only stored copy.
+    try { localStorage.removeItem(OT_LEGACY_KEY); } catch {}
   }
+  return ok;
+}
+
+// Saved plan rows, element-wise: a row that is not an object, or has no `type` (every engine row
+// carries one), is dropped, and a field the plan table calls methods on (dist.toFixed, fmtTime(travel),
+// esc(coords)) is coerced when present with the wrong type (snob / unassigned rows legitimately
+// lack some of them, so absent keys stay absent unless the table needs them). One damaged row cannot empty the table.
+function otCleanPlanRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  const fix = (r, keys, ok, dflt) => { for (const k of keys) if (k in r && !ok(r[k])) r[k] = dflt; };
+  return rows.filter(r => r && typeof r === 'object' && !Array.isArray(r) && typeof r.type === 'string').map(r => {
+    r = { ...r };
+    fix(r, ['tCoord', 'tPlayer', 'srcCoord', 'srcPlayer'], v => typeof v === 'string', '');
+    // an assigned, non-snob row always has both (the table shows timing for it); others may lack them
+    if (r.type !== 'snob' && !r.unassigned) { if (!('dist' in r)) r.dist = 0; if (!('travel' in r)) r.travel = 0; }
+    fix(r, ['dist', 'travel'], v => Number.isFinite(v), 0);
+    return r;
+  });
 }
 
 function loadOffensive() {
@@ -473,13 +522,36 @@ function loadOffensive() {
   // default to another world via TW_WORLDS_OVERRIDE). A saved cfg.serverUrl below still wins.
   if (typeof twWorld === 'string' && twWorld) otCfg.serverUrl = `${twWorld}.guerrastribales.es`;
   try {
-    const d = JSON.parse(localStorage.getItem(OT_STORE_KEY));
+    // The compressed save; else the pre-6.1.3 plain-JSON key, read WITHOUT the in-place rewrite
+    // (lsPeekC): loading never writes it, so an older build sharing this storage still parses it.
+    // The next successful save lands in OT_STORE_KEY (which then wins on every later load) and
+    // removes the legacy key — see saveOffensive.
+    const d = lsLoadC(OT_STORE_KEY) || lsPeekC(OT_LEGACY_KEY);
     if (d) {
       otCfg        = { ...otCfg, ...(d.cfg || {}) };
+      // Automatic server offset (v6.1.2 review, M-I10): a cfg saved before it has no tzAuto marker,
+      // and its 2 was the old fixed default (or the summer value typed by hand) → automatic from now
+      // on. Any other value was a deliberate edit and stays. Checked on the RAW cfg — the defaults
+      // spread above always carry the marker.
+      if (!(d.cfg && d.cfg.tzAuto) && Number(otCfg.serverUtcOffset) === 2) otCfg.serverUtcOffset = null;
+      otCfg.tzAuto = 1;
       // A pre-v5.9 save has no groups: drop whatever placeholder group this session may already
       // have seeded so otMigrateGroups() rebuilds them from the stored date + per-target windows.
       if (!Array.isArray((d.cfg || {}).groups) || !(d.cfg || {}).groups.length) otCfg.groups = [];
-      offTargets   = d.targets || [];
+      else {
+        // Element-wise: a null / non-object / id-less group would throw in every consumer (otGroupIndex, labels).
+        const gseen = new Set();
+        otCfg.groups = otCfg.groups.filter(g => g && typeof g === 'object' && Number.isInteger(g.id) && !gseen.has(g.id) && gseen.add(g.id))
+          .map(g => ({ ...g, dateISO: typeof g.dateISO === 'string' ? g.dateISO : '', winOff: typeof g.winOff === 'string' ? g.winOff : '', winSnob: typeof g.winSnob === 'string' ? g.winSnob : '' }));
+      }
+      // Element-wise too: a null / non-object / coord-less target is dropped (the rest of the list survives);
+      // the fields the renderers assume are coerced, ids are made unique integers.
+      offTargets   = Array.isArray(d.targets)
+        ? d.targets.filter(x => x && typeof x === 'object' && !Array.isArray(x) && typeof x.coord === 'string' && x.coord)
+          .map(x => ({ ...x, player: typeof x.player === 'string' ? x.player : '', id: Number.isFinite(+x.id) ? +x.id : 0 }))
+        : [];
+      { const tseen = new Set(); let tmax = Math.max(0, ...offTargets.map(x => x.id));
+        for (const x of offTargets) { if (!x.id || tseen.has(x.id)) x.id = ++tmax; tseen.add(x.id); } }
       offIgnore        = typeof d.ignore === 'string' ? d.ignore : '';
       offIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
       offForcePlayers  = Array.isArray(d.forcePlayers) ? d.forcePlayers : [];
@@ -500,19 +572,19 @@ function loadOffensive() {
         const seen = new Set(); // a corrupt save with duplicate ids keeps the first copy of each
         offPlans = d.plans.filter(x => x && Number.isInteger(x.id) && !seen.has(x.id) && seen.add(x.id)).map(x => ({
           id: x.id, name: typeof x.name === 'string' ? x.name : '', createdISO: typeof x.createdISO === 'string' ? x.createdISO : '',
-          rows: Array.isArray(x.rows) ? x.rows : [], warnings: Array.isArray(x.warnings) ? x.warnings : [],
+          rows: otCleanPlanRows(x.rows), warnings: Array.isArray(x.warnings) ? x.warnings : [],
           reserved: Array.isArray(x.reserved) ? x.reserved : [], stats: (x.stats && x.stats.complete) ? x.stats : emptyPlanStats(),
         }));
         offPlanActive = parseInt(d.planActive, 10) || 1;
         offPlanNextId = parseInt(d.planNextId, 10) || 1;
       } else {
-        offPlans = [{ ...offPlanNew(1), rows: Array.isArray(d.plan) ? d.plan : [], warnings: Array.isArray(d.warnings) ? d.warnings : [],
+        offPlans = [{ ...offPlanNew(1), rows: otCleanPlanRows(d.plan), warnings: Array.isArray(d.warnings) ? d.warnings : [],
           reserved: Array.isArray(d.reserved) ? d.reserved : [], stats: (d.stats && d.stats.complete) ? d.stats : emptyPlanStats() }];
         offPlanActive = 1; offPlanNextId = 2;
       }
       offPlanEnsure();
       offPlanLoad(offPlanActiveSlot());
-      otNextId     = d.nextId || (Math.max(0, ...offTargets.map(x => x.id)) + 1);
+      otNextId     = parseInt(d.nextId, 10) || (Math.max(0, ...offTargets.map(x => x.id)) + 1);
     }
   } catch {}
   offPlanEnsure(); // no save / broken save: one empty slot 1
@@ -524,8 +596,7 @@ function loadOffensive() {
   if (esInput) esInput.value = otCfg.earliestSendISO || '';
   const su = document.getElementById('setting-server-url');
   if (su) su.value = otCfg.serverUrl || '';
-  const so = document.getElementById('setting-server-offset');
-  if (so) so.value = otCfg.serverUtcOffset ?? PARAMS.serverUtcOffsetDefault;
+  syncServerOffsetField();
   const dc = document.getElementById('ot-def-complete');
   if (dc) dc.value = otCfg.defComplete ?? 1;
   const dt = document.getElementById('ot-def-tq');
@@ -549,7 +620,19 @@ function loadOffensive() {
 
 function updOTCfg(k, v) { otCfg[k] = v.trim(); saveOffensive(); }
 function updServerUrl(v) { otCfg.serverUrl = v.trim(); saveOffensive(); }
-function updServerOffset(v) { const n = parseFloat(v); otCfg.serverUtcOffset = isNaN(n) ? PARAMS.serverUtcOffsetDefault : n; saveOffensive(); updateServerNow(); }
+// Blank = automatic (null); a number = that fixed offset. The field's value is never rewritten while
+// it is typed into (oninput) — only its placeholder, which shows the automatic offset in effect.
+function updServerOffset(v) { const n = parseFloat(v); otCfg.serverUtcOffset = isNaN(n) ? null : n; saveOffensive(); syncServerOffsetField(true); updateServerNow(); }
+// Settings → "Server time: UTC+": an explicit offset shows as the value; automatic leaves the field
+// blank with the zone's offset right now as the placeholder, and the tooltip says what blank means.
+function syncServerOffsetField(keepValue) {
+  const so = document.getElementById('setting-server-offset');
+  if (!so) return;
+  if (!keepValue) so.value = serverUtcOffsetIsAuto() ? '' : otCfg.serverUtcOffset;
+  const auto = serverTzOffsetAt(Date.now());
+  so.placeholder = String(auto === null ? PARAMS.serverUtcOffsetDefault : auto);
+  so.title = t('server_offset_auto_t');
+}
 function updOTCfgInt(k, v) { otCfg[k] = parseInt(v, 10) || 0; saveOffensive(); }
 
 // ── Ignore Coordinates / Ignore Players (Offensive Targets) ──────────────────
@@ -2027,7 +2110,10 @@ function renderOtOffsSummary() {
   // bucket so the note can say so. A village must pass BOTH whitelists.
   const forcePl = offForceSet();
   const forceCo = parseOffForceSet();
-  const stat = { complete: { total: 0, ign: 0, forced: 0, enemy: 0 }, tq: { total: 0, ign: 0, forced: 0, enemy: 0 }, half: { total: 0, ign: 0, forced: 0, enemy: 0 } };
+  // 💾 Other offensive plan slots: an off they send (or hold for a noble launch) is gone for this
+  // one — Generate starts from the same offPlanPriorUsage(), so the footer must not promise it.
+  const prior = offPlanPriorUsage();
+  const stat = { complete: { total: 0, ign: 0, forced: 0, enemy: 0, prior: 0 }, tq: { total: 0, ign: 0, forced: 0, enemy: 0, prior: 0 }, half: { total: 0, ign: 0, forced: 0, enemy: 0, prior: 0 } };
   for (const v of villages) {
     const s = stat[getOffTier(v.offPow)];
     if (!s) continue;
@@ -2035,17 +2121,19 @@ function renderOtOffsSummary() {
     if (ignoreCoords.has(v.coord) || ignorePl.has(v.player)) s.ign++;
     else if ((forcePl.size && !forcePl.has(v.player)) || (forceCo.size && !forceCo.has(v.coord))) s.forced++;
     else if (enemyExcl.has(v.coord)) s.enemy++;
+    else if (prior.offCoords.has(v.coord) || prior.reserved.has(v.coord)) s.prior++;
   }
   const tierMeta = [['complete', 'badge-complete', 'th_complete'], ['tq', 'badge-tq', 'th_tq'], ['half', 'badge-half', 'th_half']];
-  let ignTotal = 0, forcedTotal = 0, enemyTotal = 0;
+  let ignTotal = 0, forcedTotal = 0, enemyTotal = 0, priorTotal = 0;
   const parts = tierMeta.map(([tier, cls, label]) => {
     // Summed across EVERY window group: a village can only send one off, so a target asking
     // for 2 Completes on Friday and 2 more on Saturday really does cost 4 Completes.
     const used = realTargets.reduce((s, tg) => s + otTierTotal(tg, tier), 0) + (tier === 'complete' ? escortOffs : 0);
-    const avail = stat[tier].total - stat[tier].ign - stat[tier].forced - stat[tier].enemy;
+    const avail = stat[tier].total - stat[tier].ign - stat[tier].forced - stat[tier].enemy - stat[tier].prior;
     ignTotal += stat[tier].ign;
     forcedTotal += stat[tier].forced;
     enemyTotal += stat[tier].enemy;
+    priorTotal += stat[tier].prior;
     const usedHtml = used > avail ? `<span style="color:#e06040;">${used}</span>` : `${used}`;
     return `<span class="badge ${cls}">${t(label)}</span> ${usedHtml} / ${avail}`;
   });
@@ -2053,6 +2141,8 @@ function renderOtOffsSummary() {
   if (ignTotal > 0) notes.push(t('offs_ignored_note')(ignTotal));
   if (forcedTotal > 0) notes.push(t('offs_forced_note')(forcedTotal));
   if (enemyTotal > 0) notes.push(t('offs_enemy_note')(enemyTotal));
+  const priorNote = t('offs_prior_note'); // (n) => text; guarded — a missing key must not break the footer
+  if (priorTotal > 0 && typeof priorNote === 'function') notes.push(priorNote(priorTotal));
   if (escortOffs > 0) notes.push(t('offs_escort_note')(escortOffs));
   const note = notes.length ? ` <span style="color:#806030;font-weight:400;">${notes.join(' ')}</span>` : '';
   el.innerHTML =

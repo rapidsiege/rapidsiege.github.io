@@ -25,8 +25,15 @@ function serverNowMs() { return Date.now(); } // separate so tests can freeze th
 function serverWallMs(dateISO, minutes) {
   const m = String(dateISO || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
-  return Date.UTC(+m[1], +m[2] - 1, +m[3]) + minutes * 60000 - serverUtcOffset() * 3600000;
+  return serverWallToMs(Date.UTC(+m[1], +m[2] - 1, +m[3]) + minutes * 60000); // offset at that moment (DST-aware when automatic)
 }
+// A landing window that wraps past midnight ('23:30/00:30') STARTS on its arrival date and ENDS
+// on the next day, so its end minute counts from that date's midnight + 1440. The one place the
+// gates read a window's end (launch feasibility, the late flag, the Manage verdicts) — the
+// display (launchWindowStr / planRowAbsTimes) and the schedules (psLaunchRange) wrap the same way.
+function windowEndMin(w) { return w ? w.to + (w.to < w.f ? 1440 : 0) : null; }
+// Epoch ms of that end on the server clock (null without a valid date / window).
+function windowEndMs(dateISO, w) { return w ? serverWallMs(dateISO, windowEndMin(w)) : null; }
 // Epoch ms of the optional "Earliest send" datetime-local (Plan Offensive), read on the SAME
 // server wall clock as the windows. null when unset/malformed → the plan uses serverNowMs() as
 // the only send floor (original behaviour). When set, it raises that floor, shrinking range for
@@ -37,7 +44,8 @@ function earliestSendMs() {
   return serverWallMs(m[1], (+m[2]) * 60 + (+m[3]));
 }
 function serverNowStr() {
-  const d = new Date(serverNowMs() + serverUtcOffset() * 3600000);
+  const now = serverNowMs();
+  const d = new Date(now + serverUtcOffset(now) * 3600000);
   const p = n => String(n).padStart(2, '0');
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
@@ -249,8 +257,8 @@ function generatePlan() {
   // village is eligible. See passesCoordFilters (typed) + passesCoordPolygon (drawn, honours
   // "Select Reverse" inversion), both pure world-space.
   // 💾 Other offensive plan slots (v6.1.0): what they already committed starts this pool as spent
-  // — an off sent there stays sent (usedOff + `prior`; a fake-only source counts as spent too,
-  // planUsedOffCoords), its nobles are gone (snobLeft), its launch reservations stay held
+  // — an off sent there stays sent (usedOff + `prior`, planUsedOffCoords; a 1-ram fake does NOT
+  // spend the off, it only counts against fakesPerVillage via fakesSent), its nobles are gone (snobLeft), its launch reservations stay held
   // (priorReserved → offBlocked, escort pick, escorted-train pick, launch reservation, fairness)
   // and its catapults come off the def budget (catPool below). A village whose off went in another
   // offensive keeps its remaining nobles, so it may still send a SOLO train here (exactly as a
@@ -264,6 +272,7 @@ function generatePlan() {
     v, c: parseCoordStr(v.coord), tier: getOffTier(v.offPow),
     snobLeft: Math.max(0, (v.snob || 0) - (prior.nobles[v.coord] || 0)),
     usedOff: prior.offCoords.has(v.coord), prior: prior.offCoords.has(v.coord), usedSnob: false,
+    fakesSent: prior.fakes[v.coord] || 0, // fakes the other offensives already send from it (fakesPerVillage spans them)
   })).filter(p => p.c && !ignoreCoords.has(p.v.coord) && inForce(p.v)
     && passesCoordFilters(p.c, planCoordFilters)
     && passesCoordPolygon(p.c.x, p.c.y));
@@ -429,11 +438,11 @@ function generatePlan() {
     T.gEnd = {}; T.snobEnd = {};
     for (const g of otActiveGroups(T.tg)) {
       const pw = parseWindowStr(g.winOff || g.winSnob || '');
-      T.gEnd[g.id] = pw ? pw.to : null;
+      T.gEnd[g.id] = windowEndMin(pw); // a window wrapping past midnight ends the next day (+1440)
     }
     for (const g of otGroups()) {
       const sw = parseWindowStr(g.winSnob || g.winOff || '');
-      T.snobEnd[g.id] = sw ? sw.to : null;
+      T.snobEnd[g.id] = windowEndMin(sw);
     }
   }
   // Earliest send floor. A launch can never be scheduled before "now", nor (when the user set
@@ -540,12 +549,23 @@ function generatePlan() {
   const schedMode = PARAMS.scheduleMode;
   const schedActive = schedMode !== 'off' && typeof psAnySchedule === 'function' && psAnySchedule();
   const schedWin = (g, kind) => g ? parseWindowStr(kind === 'snob' ? (g.winSnob || g.winOff || '') : (g.winOff || g.winSnob || '')) : null;
-  const schedTierOf = (p, T, pw, kind) => pw
-    ? psLaunchTier(decode(p.v.player), pw, travelTimeMin(distXY(p.c, T.c), kind === 'snob' ? PLAN_BASE_MIN.snob : PLAN_BASE_MIN.off, ws, us), schedMode)
-    : 1;
+  // Minutes at the START of a launch range that already lie behind the send floor (now / Earliest
+  // send): trimmed before grading, so a past sliver of free time never makes a blocked player look
+  // free (0 without an arrival date — then nothing is known to be past).
+  const schedSkip = (dateISO, pw, travel) => {
+    const startMs = serverWallMs(dateISO, pw.f);
+    if (startMs === null) return 0;
+    const past = sendFloorMs - (startMs - Math.round(travel || 0) * 60000);
+    return past > 0 ? Math.ceil(past / 60000) : 0;
+  };
+  const schedTierOf = (p, T, pw, kind, dateISO) => {
+    if (!pw) return 1;
+    const tr = travelTimeMin(distXY(p.c, T.c), kind === 'snob' ? PLAN_BASE_MIN.snob : PLAN_BASE_MIN.off, ws, us);
+    return psLaunchTier(decode(p.v.player), pw, tr, schedMode, schedSkip(dateISO, pw, tr));
+  };
   const schedGrader = (T, g, kind) => { // one grade per candidate per pick
     const pw = schedWin(g, kind), memo = new Map();
-    return p => { let tr = memo.get(p); if (tr === undefined) { tr = schedTierOf(p, T, pw, kind); memo.set(p, tr); } return tr; };
+    return p => { let tr = memo.get(p); if (tr === undefined) { tr = schedTierOf(p, T, pw, kind, g && g.dateISO); memo.set(p, tr); } return tr; };
   };
   const schedFirst = (T, g, cands, kind) => {
     if (!schedActive || cands.length < 2) return cands;
@@ -626,6 +646,11 @@ function generatePlan() {
   // An escort village launches the noble too, so with a buildings JSON loaded a KNOWN Smithy below
   // PARAMS.snobSmithMin disqualifies it (the next closest capable off takes the slot); unknown Smithy
   // passes (smithOkOrUnknown — escorts never had a points gate, don't introduce one).
+  // A pinned train reserves among the pinned player's own villages (nobles or not — needNobles
+  // recruits there); an AUTO train only among villages that own a noble, since that is the only
+  // place an auto train can leave from. The snob loop picks the train's real origin itself (the
+  // strongest escort); when that is NOT the reserved village, the reservation is released there
+  // so it rejoins the off passes — one escorted train never costs two offs.
   const escortReserved = new Set();
   // 🎚 escortPick (v6.1.1): 'closest' = nearest eligible off, power breaks ties (today); 'strongest' =
   // most off power, distance breaks ties. Tier preference (Complete/3-4 before 1/2) stays either way.
@@ -645,7 +670,7 @@ function generatePlan() {
       for (const { name: want } of targetTrainSpec(T.tg, g.id)) {
         const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !priorReserved.has(p.v.coord) && !tooClose.has(p) && !pairBlocked(p.v.player, T)
           && tiers.includes(p.tier) && okSnobDist(p, T.c) && okSnobTime(p, T, g) && smithOkOrUnknown(p)
-          && (want ? p.v.player === want : !ignorePlayers.has(p.v.player)))
+          && (want ? p.v.player === want : (!ignorePlayers.has(p.v.player) && p.snobLeft > 0)))
           .sort(schedThen(T, g, 'snob', escortCmp(T)))[0]; // ⏰ schedules lead (v6.1.2; identity without any)
         const p = pick(['complete', 'tq']) || pick(['half']);
         if (p) escortReserved.add(p);
@@ -836,6 +861,9 @@ function generatePlan() {
           dist: needNobles ? recruitDist : undefined, travel: needNobles ? recruitTravel : undefined,
           rangeVills: snobRangeVills(want, T, g) });
         if (want) { if (mode !== 'fake') noteSnobSender(want, T, g); noteMvClaimName(want, T); } // pinned intent claims the defender
+        // An AUTO train that can't be placed has no one to recruit at its reserved escort (only a
+        // pinned sender's hold doubles as the recruit hint) → release it for the off passes.
+        else if (reservedV) escortReserved.delete(reservedV);
         return;
       }
       // escorted: strongest escort wins; solo: nearest village, weakest off stays home
@@ -852,6 +880,9 @@ function generatePlan() {
       const p = cands[0];
       p.snobLeft -= nc; p.usedSnob = true; chosen.add(p.v.player); noteMvClaim(p, T);
       if (mode === 'escorted') { p.usedOff = true; p.isEscort = true; } // its off rides as the split-off
+      // The train left from another village than the one reserved for it → free the reserved one
+      // for the off passes (it was only held for THIS train; offBlocked reads escortReserved).
+      if (reservedV && reservedV !== p) escortReserved.delete(reservedV);
       // A FAKE train sends bare nobles (real ones, so snobLeft is spent above) but NO escort
       // and consumes no off — so it never reserves launch villages or forces a clearing off.
       if (mode !== 'fake') noteSnobSender(p.v.player, T, g);
@@ -1077,7 +1108,7 @@ function generatePlan() {
       if (conqOk.size) {
         const cands = bump(p => conqOk.has(decode(p.v.player)));
         if (!cands.length) continue; // can't man this tier — try the next
-        reserve(cands.sort(byDist(T))[0], tier);
+        reserve(cands.sort(schedThen(T, cg, 'off', byDist(T)))[0], tier); // ⏰ schedules lead (identity without any), then closest
         break;
       }
       // 2) No conqueror clears the snob-off bar → reserve the off for a reachable sender that
@@ -1095,7 +1126,7 @@ function generatePlan() {
       // 3) No high-morale alternative reachable → fall back to the conqueror's own off.
       const fallback = bump(p => conq.has(decode(p.v.player)));
       if (!fallback.length) continue;
-      reserve(fallback.sort(byDist(T))[0], tier);
+      reserve(fallback.sort(schedThen(T, cg, 'off', byDist(T)))[0], tier); // ⏰ schedules lead (identity without any), then closest
       break;
     }
     }
@@ -1269,7 +1300,7 @@ function generatePlan() {
       // MV / Block Pairs) always hold.
       const anyPool = PARAMS.fakePool === 'any';
       const candsOf = filt => pool.filter(p => (anyPool || tierAtLeast(p.tier, PARAMS.fakeSourceTier)) && (p.fakesSent || 0) < PARAMS.fakesPerVillage
-        && (p.v.ram || 0) >= PARAMS.fakeRams && !ignorePlayers.has(p.v.player) && !p.prior && filt(p)
+        && (p.v.ram || 0) >= Math.max(1, PARAMS.fakeRams) && !ignorePlayers.has(p.v.player) && !p.prior && filt(p) // never a ram-less village (fakeRams min 1)
         && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
       const realOffs = p => p.usedOff && !p.isEscort;               // assigned real offs
       const escorts  = p => p.isEscort || escortReserved.has(p);    // split-off escorts (riding or reserved)
@@ -1305,8 +1336,11 @@ function generatePlan() {
   }
 
   // ── Catapult attacks (EXTRA, from defensive villages that own catapults) ──────────
-  // Fully independent of the off pool, morale gate, MV pairs and reservations — these are
-  // additional demolition attacks, NOT clearing offs. Each target's requested count
+  // Independent of the off pool, the morale gate and the noble/escort reservations — these are
+  // additional demolition attacks, NOT clearing offs. They ARE real in-game attacks sent by the
+  // tribe, so the sender-side rules still bind: Ignore Coordinates / Ignore Players, the Force
+  // lists, the sender area (typed coord filters + drawn polygon), MV pairs + Block Pairs (claimed
+  // like any attack) and the launch-time gate of the wave each attack lands in. Each target's requested count
   // (`tg.catapult`) is filled from OWN villages classified DEFENSIVE (`type === 'def'`) that
   // own catapults; one attack sends `catsPerAttack` catapults. A source village's budget =
   // floor(its catapults / catsPerAttack), spent across all targets; at most catPerSourceMax attacks per
@@ -1323,7 +1357,9 @@ function generatePlan() {
   const catsPerAttack = Math.max(1, parseInt((document.getElementById('plan-cat-count') || {}).value) || 20);
   const catPool = villages
     .map(v => ({ v, c: parseCoordStr(v.coord), budget: Math.floor(Math.max(0, (v.catapult || 0) - (prior.cats[v.coord] || 0)) / catsPerAttack) })) // minus the catapults other offensives already send
-    .filter(s => s.c && s.v.type === 'def' && s.budget > 0 && inForce(s.v));
+    .filter(s => s.c && s.v.type === 'def' && s.budget > 0 && inForce(s.v)
+      && !ignoreCoords.has(s.v.coord) && !ignorePlayers.has(s.v.player) // "excluded from the whole plan"
+      && passesCoordFilters(s.c, planCoordFilters) && passesCoordPolygon(s.c.x, s.c.y)); // same sender area as the off pool
   for (const T of targets) {
     if (!T.c || isFake(T)) continue; // fake targets get 1-ram rows only, never real demolition
     const want = T.tg.catEnabled ? (T.tg.catapult || 0) : 0; // only when the target's catapult toggle is on
@@ -1346,11 +1382,16 @@ function generatePlan() {
       : (a, b) => ((perPlayer[decode(a.v.player)] || 0) - (perPlayer[decode(b.v.player)] || 0)) || (dT(a) - dT(b));
     let placed = 0;
     while (placed < want) {
+      // The wave THIS attack is dealt to (catRows[k] → catGroups[k % n] in the window pass): its
+      // launch must still be possible (same gate + pace as an off — the row travels at off pace).
+      const cg = catGroups[placed % catGroups.length];
       const cand = catPool
-        .filter(s => s.budget > 0 && (perTarget[s.v.coord] || 0) < PARAMS.catPerSourceMax && distXY(s.c, T.c) <= maxCatDist && !pairBlocked(s.v.player, T))
-        .sort(schedThen(T, catGroups[placed % catGroups.length], 'off', catCmp))[0];
-      if (!cand) break; // no eligible cat source left (budget/cap hit or none within the distance lead)
+        .filter(s => s.budget > 0 && (perTarget[s.v.coord] || 0) < PARAMS.catPerSourceMax && distXY(s.c, T.c) <= maxCatDist
+          && !mvBlocked(s, T) && okOffTime(s, T, cg)) // MV pairs + Block Pairs (mvBlocked folds pairBlocked in); launch not in the past
+        .sort(schedThen(T, cg, 'off', catCmp))[0];
+      if (!cand) break; // no eligible cat source left (budget/cap hit, none within the distance lead, MV / too late)
       const cp = decode(cand.v.player);
+      noteMvClaim(cand, T); // a catapult attack IS an in-game attack: it claims the defender for MV
       cand.budget--;
       perTarget[cand.v.coord] = (perTarget[cand.v.coord] || 0) + 1;
       perPlayer[cp] = (perPlayer[cp] || 0) + 1;
@@ -1412,11 +1453,10 @@ function generatePlan() {
   // Snob trains are skipped: they carry no prescribed origin/launch, so there's
   // no launch-in-the-past to flag (the player picks their own send village).
   for (const r of planRows) {
-    // Catapults are slow (they'd false-positive the launch-in-the-past check en masse) and
-    // carry no off-pool launch contract — exempt them from the late flag, like snob trains.
-    if (r.unassigned || r.type === 'snob' || r.type === 'catapult') continue;
-    const pw = parseWindowStr(r.window);
-    const landMs = pw ? serverWallMs(planRowDateISO(r), pw.to) : null;
+    // Catapult attacks are flagged like offs: their travel is computed at off (ram) pace and the
+    // pick is gated by the same launch-time check (okOffTime), so a late one is a real problem.
+    if (r.unassigned || r.type === 'snob') continue;
+    const landMs = windowEndMs(planRowDateISO(r), parseWindowStr(r.window));
     if (landMs !== null && landMs - r.travel * 60000 < sendFloorMs) {
       r.late = true;
       planWarnings.push(t('warn_row_late')(r.srcCoord, r.tCoord));
@@ -1432,7 +1472,7 @@ function generatePlan() {
       if (r.unassigned || !r.srcCoord || !r.srcPlayer || typeof r.travel !== 'number') continue;
       const pw = parseWindowStr(r.window);
       if (!pw) continue;
-      const tier = psLaunchTier(r.srcPlayer, pw, r.travel, schedMode);
+      const tier = psLaunchTier(r.srcPlayer, pw, r.travel, schedMode, schedSkip(planRowDateISO(r), pw, r.travel)); // same past-trim as the picks
       if (tier === 0) { r.sched = 'blocked'; blockedBy[r.srcPlayer] = (blockedBy[r.srcPlayer] || 0) + 1; }
       else if (tier === 2) r.sched = 'preferred';
     }
@@ -1630,7 +1670,7 @@ function renderPlanTable() {
       }</td>
       <td style="color:#f0c040;">${showTiming ? r.dist.toFixed(1) : '—'}</td>
       <td>${showTiming ? fmtTime(r.travel) : '—'}</td>
-      <td style="font-family:monospace;${r.late ? 'color:#e06040;font-weight:600;' : r.sched === 'blocked' ? 'color:#e0a040;font-weight:600;' : ''}"${r.sched === 'blocked' ? ` title="${esc(t('psc_blocked_title'))}"` : ''}>${showTiming ? (r.late ? '⚠ ' : '') + (r.sched === 'blocked' ? '⏰ ' : '') + launchWindowStr(r.window, r.travel, planRowDateISO(r)) : '—'}</td>
+      <td style="font-family:monospace;${r.late ? 'color:#e06040;font-weight:600;' : r.sched === 'blocked' ? 'color:#e0a040;font-weight:600;' : ''}"${r.sched === 'blocked' ? ` title="${esc(t('psc_blocked_title'))}"` : ''}>${showTiming ? (r.late ? '⚠ ' : '') + (r.sched === 'blocked' ? '⏰ ' : '') + launchWindowStr(r.window, r.travel, planRowDateISO(r)) : (r.sched === 'blocked' ? '⏰ ' : '') + '—'}</td>
       <td>${(() => { const url = showTiming ? rallyUrl(r.srcCoord, r.tCoord, planRowRallyUnits(r)) : null; return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
     </tr>`;
@@ -1671,7 +1711,7 @@ function catTargetLabel(r) {
 // Shared by the plan table's ⚔ link and both per-player exports.
 function planRowRallyUnits(r) {
   if (r.type === 'catapult') return { catapult: r.cats };
-  if (r.type === 'fake') return { ram: PARAMS.fakeRams || 1 };
+  if (r.type === 'fake') return { ram: Math.max(1, PARAMS.fakeRams) }; // same floor as the fake source gate (≥ 1 ram)
   return undefined;
 }
 
@@ -2325,12 +2365,14 @@ function exportPlayerPlanAll() {
 // ── Unused offs BB table: every offensive village NOT committed by the current plan ──
 // "Committed" = sent as an off, used as a split-off escort, or held in reserve for a
 // pending split-off (needNobles recruitCoord). A SOLO snob train leaves the village's
-// off free, so it does NOT count as used. Sorted by off power, strongest first.
+// off free, so it does NOT count as used — nor does a 1-ram FAKE (with 🎚 fakePool 'any' a
+// village may fake without sending its off; the off is still there for another offensive).
+// Sorted by off power, strongest first.
 // `rows` defaults to the active plan; offPlanPriorUsage() passes the other slots' rows.
 function planUsedOffCoords(rows) {
   const used = new Set();
   for (const r of (rows || planRows)) {
-    if (r.type === 'catapult') continue; // catapults come from def villages, not the off pool
+    if (r.type === 'catapult' || r.type === 'fake') continue; // catapults come from def villages; a fake spends 1 ram, not the off
     if (r.unassigned) { if (r.needNobles && r.recruitCoord) used.add(r.recruitCoord); continue; }
     if (r.type === 'snob') { if (r.escorted && r.srcCoord) used.add(r.srcCoord); }
     else if (r.srcCoord) used.add(r.srcCoord);

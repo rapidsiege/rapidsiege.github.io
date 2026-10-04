@@ -10,19 +10,35 @@
 // doesn't know become an "unplanned targets" block at the end.
 // Support/returning commands and FAKES (see moIsFake) are ignored outright.
 // ══════════════════════════════════════════════════════════════
-const MO_STORE_KEY = 'tw_tribe_manageoff';
+// v6.1.3: compressed under its OWN key; the pre-6.1.3 plain-JSON key is only READ (migration
+// source while the new key doesn't exist yet), never written, and removed by the first successful
+// save — see OT_STORE_KEY / saveOffensive.
+const MO_STORE_KEY  = 'tw_tribe_manageoff_c';
+const MO_LEGACY_KEY = 'tw_tribe_manageoff';
 let moTargets    = []; // [{coord, village, owner, status}] one per exported target, import order
 let moCommands   = []; // [{id, target, type, size, snob, label, originCoord, originVillage, originPlayer, arrival, arrivalMs, units|null}]
 let moImportedAt = 0;  // unix seconds of the export (JSON) or of the import (CSV); 0 = nothing imported
 let moShowUnitTip = true; // "show units in command when hovering" header toggle (persisted)
 let moPlanView   = 'all'; // 💾 v6.1.0: 'all' = every offensive slot merged, or one slot id (number) — header <select>, persisted
 
+// Compressed (lsSaveC) — an import can hold thousands of commands. Never throws: on a quota
+// failure the import stays in memory and on screen (and, hosted, in the cloud copy) and the user is
+// told ONCE per session (md_storage_full) instead of the import aborting half-applied. Returns
+// whether the save landed.
+let moSaveWarned = false;
 function saveManage() {
-  localStorage.setItem(MO_STORE_KEY, JSON.stringify({ targets: moTargets, commands: moCommands, importedAt: moImportedAt, showUnitTip: moShowUnitTip, planView: moPlanView }));
+  const ok = lsSaveC(MO_STORE_KEY, { targets: moTargets, commands: moCommands, importedAt: moImportedAt, showUnitTip: moShowUnitTip, planView: moPlanView });
+  if (!ok && !moSaveWarned) { moSaveWarned = true; if (typeof alert === 'function') alert(t('md_storage_full')); }
+  // Landed → drop the pre-6.1.3 plain-JSON copy (dead weight once MO_STORE_KEY exists). Safe for the
+  // same reason as in saveOffensive: an older build only ever reads/writes its own legacy key, so an
+  // old copy opened afterwards boots empty and writes a fresh one, which this build ignores once
+  // MO_STORE_KEY exists. Never after a failed save — the legacy key may be the only stored copy.
+  if (ok) { try { localStorage.removeItem(MO_LEGACY_KEY); } catch {} }
+  return ok;
 }
 function loadManage() {
   try {
-    const d = JSON.parse(localStorage.getItem(MO_STORE_KEY));
+    const d = lsLoadC(MO_STORE_KEY) || lsPeekC(MO_LEGACY_KEY); // compressed save, else the untouched pre-6.1.3 plain JSON
     if (d) {
       moTargets = d.targets || []; moCommands = d.commands || []; moImportedAt = d.importedAt || 0;
       moShowUnitTip = d.showUnitTip !== false; // default ON
@@ -101,7 +117,7 @@ function moParseArrivalMs(str) {
   const m = String(str || '').trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s+(\d{1,2}):(\d{2}):(\d{2})(?::(\d{1,3}))?$/);
   if (!m) return null;
   const y = +m[3] < 100 ? 2000 + +m[3] : +m[3];
-  return Date.UTC(y, +m[2] - 1, +m[1], +m[4], +m[5], +m[6], +(m[7] || 0)) - serverUtcOffset() * 3600000;
+  return serverWallToMs(Date.UTC(y, +m[2] - 1, +m[1], +m[4], +m[5], +m[6], +(m[7] || 0))); // offset at that moment
 }
 
 // A FAKE: units are visible, no noble aboard, and the army has essentially no
@@ -213,7 +229,7 @@ function moParseImport(text) {
 function moTimingVerdict(windowStr, arrivalMs, dateISO) {
   const w = parseWindowStr(windowStr);
   if (!w || arrivalMs == null) return { status: 'unknown', deltaMin: 0 };
-  const from = serverWallMs(dateISO, w.f), to = serverWallMs(dateISO, w.to);
+  const from = serverWallMs(dateISO, w.f), to = windowEndMs(dateISO, w); // a window wrapping past midnight ends the next day
   if (from === null) return { status: 'unknown', deltaMin: 0 };
   const tol = PARAMS.moWindowTol * 60000; // 🎚 minutes of slack on either side of the window
   if (arrivalMs < from - tol) return { status: 'early', deltaMin: (from - arrivalMs) / 60000 };
@@ -330,7 +346,7 @@ function moMatchPlan(rows, commands) {
 // may simply not exist yet. Past that moment it's MISSING. No window/date = pending.
 function moRowPending(r) {
   const w = parseWindowStr(r.window);
-  const landMs = w ? serverWallMs(planRowDateISO(r), w.to) : null;
+  const landMs = windowEndMs(planRowDateISO(r), w); // wrapping past midnight → ends the next day
   if (landMs === null) return true;
   return serverNowMs() < landMs - (typeof r.travel === 'number' ? r.travel : 0) * 60000 + PARAMS.moPendingGrace * 60000; // 🎚 moPendingGrace
 }

@@ -16,25 +16,34 @@ function changeLang(l) {
   document.getElementById('lang-btn-en').classList.toggle('lang-active', l === 'en');
   document.getElementById('lang-btn-es').classList.toggle('lang-active', l === 'es');
   applyLang();
+  // Each repaint on its own: one tab throwing on malformed restored state (see the boot
+  // steps in tribe-calculator.html) must not leave the rest of the page untranslated, or
+  // the language choice unsaved.
+  const repaint = fn => { try { fn(); } catch (e) { console.error('[tribe-calculator] language repaint failed:', e); } };
   if (villages.length) {
-    renderOverview();
-    renderPlayersTable();
-    renderVillagesTable();
-    renderRankings();
+    repaint(renderOverview);
+    repaint(renderPlayersTable);
+    repaint(renderVillagesTable);
+    repaint(renderRankings);
   }
-  renderTargetTable();
-  renderOffTargets();
-  renderPlanTable(); // tail-calls renderManageTable, so Manage Offensive re-translates too
-  if (typeof renderDefTargets === 'function') renderDefTargets();
-  if (typeof renderDefPlanTable === 'function') renderDefPlanTable();
-  renderDbTable();
-  if (typeof renderEnemyVillagesTable === 'function') renderEnemyVillagesTable();
-  updateDbConnectBtn();
-  if (typeof updWorldSpeedNote === 'function') updWorldSpeedNote(); // header speeds note
-  if (typeof syncMoraleModeUi === 'function') syncMoraleModeUi();   // 🎭 Morale strategy chip
-  if (typeof renderChangelog === 'function') renderChangelog();
-  if (typeof renderParamPanels === 'function') renderParamPanels(); // 🎚 Parameters labels (central tab + inline panels)
-  if (typeof saveSettings === 'function') saveSettings(); // persist the language choice
+  repaint(renderTargetTable);
+  repaint(renderOffTargets);
+  repaint(renderPlanTable); // tail-calls renderManageTable, so Manage Offensive re-translates too
+  if (typeof renderDefTargets === 'function') repaint(renderDefTargets);
+  if (typeof renderDefPlanTable === 'function') repaint(renderDefPlanTable);
+  repaint(renderDbTable);
+  if (typeof riRefreshEvTable === 'function') repaint(riRefreshEvTable); // Enemy Villages: now if shown, else on tab show
+  repaint(updateDbConnectBtn);
+  if (typeof updWorldSpeedNote === 'function') repaint(updWorldSpeedNote); // header speeds note
+  if (typeof syncMoraleModeUi === 'function') repaint(syncMoraleModeUi);   // 🎭 Morale strategy chip
+  if (typeof renderChangelog === 'function') repaint(renderChangelog);
+  if (typeof renderParamPanels === 'function') repaint(renderParamPanels); // 🎚 Parameters labels (central tab + inline panels)
+  if (villages.length) { // load status line + buildings note are rendered (and translated) at render time
+    if (typeof renderFileSummary === 'function') repaint(renderFileSummary);
+    if (typeof updateBuildingsStatus === 'function') repaint(updateBuildingsStatus);
+  }
+  if (typeof renderOutboundTable === 'function') repaint(renderOutboundTable); // Outbound badges
+  if (typeof saveSettings === 'function') repaint(saveSettings); // persist the language choice
 }
 
 // ── Unit/stat icons (icons/units/ folder; see .claude/PLAN-tribe-calculator.md for the deploy note) ──

@@ -23,6 +23,9 @@ let defCompletePlayers = []; // raw player names drained to 100% of their availa
 // defCompletePlayers (100% drained vs. reserve kept) — enforced in the pickers AND re-checked
 // in generateDefPlan, where Complete wins a stale contradiction.
 let defSnipPlayers   = [];
+// Snip reserve + Support Packs sizing start from the 🎚 PARAMS defaults — read in loadDefensive
+// (after loadSettings applied the saved parameters), not here at parse time when PARAMS still
+// holds the built-in values.
 let defSnipPct       = defSnipDefaults().pct;  // % of available def pop kept home
 let defSnipDist      = defSnipDefaults().dist; // fields; reserve respected for targets within this radius
 // "Enemy Tribes" (v5.7.0): selected tribes are stored as world-DB ALLY IDs, not tags/names —
@@ -47,7 +50,7 @@ let dpPackSize       = dpPackDefaults().size;
 let dpPackMax        = dpPackDefaults().max; // 0 = unlimited; soft per-order farm ceiling
 let dpPackWeights    = { ...dpPackDefaults().weights };
 // NOTE: MV (vacation-mode) pairs are SHARED with Plan Offensive — the single source of truth is
-// `mvPairs` (declared + persisted in offensive-targets.js / tw_tribe_offensive). The Defensive-
+// `mvPairs` (declared + persisted in offensive-targets.js / OT_STORE_KEY). The Defensive-
 // Targets picker below edits that same list; there is deliberately no separate defensive copy.
 let defPlanRows      = []; // generated support assignments (Plan Defense)
 let defPlanWarnings  = [];
@@ -95,9 +98,32 @@ function loadDefensive() {
       }
       defPlanRows     = d.plan || [];
       defPlanWarnings = d.warnings || [];
-      dtNextId        = d.nextId || (Math.max(0, ...defTargets.map(x => x.id)) + 1);
+      dtNextId        = d.nextId;
+    } else {
+      // No defensive save yet: the snip / pack starting values come from the 🎚 PARAMS defaults,
+      // which loadSettings() has applied by now (the declarations above ran before it).
+      defSnipPct    = defSnipDefaults().pct;
+      defSnipDist   = defSnipDefaults().dist;
+      dpPackSize    = dpPackDefaults().size;
+      dpPackMax     = dpPackDefaults().max;
+      dpPackWeights = { ...dpPackDefaults().weights };
     }
   } catch {}
+  if (!Array.isArray(defTargets)) defTargets = [];
+  defTargets = defTargets.filter(tg => tg && typeof tg === 'object');
+  // Target ids are interpolated into the row handlers (updDT(${tg.id}, …)) and matched with ===:
+  // coerce each to a positive integer, give a duplicate or non-numeric id a fresh one, and keep
+  // dtNextId above every id in use — a hand-edited / imported blob can neither inject nor collide.
+  const usedIds = new Set();
+  let nextId = Math.max(1, parseInt(dtNextId, 10) || 1,
+    ...defTargets.map(tg => (parseInt(tg.id, 10) || 0) + 1));
+  for (const tg of defTargets) {
+    let id = parseInt(tg.id, 10);
+    if (!(id > 0) || usedIds.has(id)) id = nextId++;
+    tg.id = id;
+    usedIds.add(id);
+  }
+  dtNextId = nextId;
   defTargets.forEach(normalizeDefTarget);
   const setVal = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
   setVal('dt-def-spear', dtCfg.defSpear ?? 0);
@@ -120,6 +146,13 @@ function loadDefensive() {
   refreshDefEnemyTribes(); // migrates any legacy free-text tribes once a DB is present, then paints
   renderDefMvPlayers();
   updDefPolyNote(); // a saved map-area filter must be visible from the first paint
+  // Def min/max distance persist with the plan settings (PLAN_SETTING_IDS — loadSettings restores
+  // them before this runs). Their inline oninput repaints the filtered summary; the save is
+  // attached here (re-adding the same listener on a later loadDefensive is a DOM no-op).
+  for (const id of ['plan-def-min-dist', 'plan-def-max-dist']) {
+    const e = document.getElementById(id);
+    if (e && e.addEventListener && typeof saveSettings === 'function') e.addEventListener('input', saveSettings);
+  }
 }
 
 function updDTCfgInt(k, v) { dtCfg[k] = Math.max(0, parseInt(v, 10) || 0); saveDefensive(); }
@@ -139,6 +172,15 @@ function normalizeDefTarget(tg) {
 function dbTribeAt(coord) {
   const v = coordDb[coord];
   return v && typeof dbTribeTag === 'function' ? dbTribeTag(v) : '';
+}
+// The tribe tag Plan Defense gates a TARGET on: the live world DB whenever it knows the
+// village — an owner who left the tribe reads '' there, never the stale tag stored on the
+// target (which would let the same-tribe gate send support the game refuses) — and the
+// stored tag only as the offline fallback (no DB loaded / village not in it).
+function defTargetTag(tg) {
+  const c = parseCoordStr(tg.coord);
+  const key = c ? `${c.x}|${c.y}` : String(tg.coord || '');
+  return coordDb[key] ? dbTribeAt(key) : (tg.tribe || '');
 }
 
 function newDefTarget(coord, defender) {
@@ -183,9 +225,21 @@ function bulkAddDefTargets() {
 function updDT(id, field, val) {
   const tg = defTargets.find(x => x.id === id);
   if (!tg) return;
+  if (field === 'coord') {
+    // Stored in the canonical "x|y" form (the DB lookups, the plan keys and Manage Defense all
+    // match on it) — "605 600" / "605:600" are accepted as typed; anything unparseable is
+    // refused and the cell repainted with the previous value.
+    const c = parseCoordStr(val);
+    if (!c) {
+      if (typeof alert === 'function') alert(t('warn_invalid_coord')(String(val).trim()));
+      renderDefTargets();
+      return;
+    }
+    val = `${c.x}|${c.y}`;
+  }
   if (DEF_OBJ_UNITS.includes(field)) tg[field] = Math.max(0, parseInt(val) || 0);
   else if (field === 'arriveDate' || field === 'arriveTime') tg[field] = val; // raw <input> value
-  else tg[field] = val.trim();
+  else tg[field] = String(val).trim();
   if (field === 'coord') {
     // defender + tribe are DB-derived; refresh them (clear if the DB doesn't know the new coord)
     tg.defender = dbOwnerName(tg.coord) || (villageDb.length ? '' : tg.defender);
@@ -209,7 +263,7 @@ function clearDefTargets() {
 // Defender + tribe are DB-derived: refresh every target the database knows about
 // (called from setDbData when the world DB resolves).
 // ── MV (vacation-mode) pairs — SHARED with Plan Offensive. This picker edits the same
-// `mvPairs` list defined in offensive-targets.js (persisted in tw_tribe_offensive via
+// `mvPairs` list defined in offensive-targets.js (persisted in OT_STORE_KEY via
 // saveOffensive), so a pair added on either tab applies to BOTH plans. Defensive rule
 // (enforced in generateDefPlan): two paired players may not both support the SAME target,
 // nor support a village their partner owns. Mirrors the offensive picker markup. ──
@@ -257,8 +311,12 @@ function refreshDefTargetsFromDb() {
   for (const tg of defTargets) {
     const n = dbOwnerName(tg.coord);
     if (n && tg.defender !== n) { tg.defender = n; changed = true; }
-    const tr = dbTribeAt(tg.coord);
-    if (tr && tg.tribe !== tr) { tg.tribe = tr; changed = true; }
+    // A village the DB knows takes its tag from it even when that tag is EMPTY (the owner left
+    // the tribe); an unknown coord keeps its stored tag.
+    if (coordDb[tg.coord]) {
+      const tr = dbTribeAt(tg.coord);
+      if (tg.tribe !== tr) { tg.tribe = tr; changed = true; }
+    }
   }
   if (changed) saveDefensive();
   renderDefTargets();

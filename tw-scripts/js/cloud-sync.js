@@ -29,18 +29,98 @@ const CLOUD_SYNC_HOSTS = [
 ];
 const CLOUD_SYNC_SITEKEY = '0x4AAAAAADvKZN-ZLjRH8UQe'; // public site key (safe in client)
 
+// Per-attempt answer limits (read at call time, so tests can shorten them). A host
+// that never ANSWERS (seen 2026-09-24: pages.dev held a request open for 90 s while
+// both hosts answered a fresh call in <1 s) used to hang the caller forever — now it
+// counts as a network failure and the next host is tried. POSTs get a longer limit:
+// the endpoint commits + merges BEFORE it answers, and a re-post on the other host
+// writes a second history copy (the merged DBs dedupe by report id, so it's only
+// noise — but a hang is still bounded).
+let CLOUD_FETCH_TIMEOUT_MS = 20000;
+let CLOUD_POST_TIMEOUT_MS = 45000;
+
 // fetch() against the sync endpoint with hostname failover. Only NETWORK
-// failures fail over — an HTTP error is the endpoint answering, and it would
-// answer the same on either host.
-function _cloudFetch(pathQuery, opts) {
-  const attempt = (i) => fetch(CLOUD_SYNC_HOSTS[i] + pathQuery, opts)
-    .catch((e) => (i + 1 < CLOUD_SYNC_HOSTS.length ? attempt(i + 1) : Promise.reject(e)));
+// failures (and no answer within the limit) fail over — an HTTP error is the
+// endpoint answering, and it would answer the same on either host. Port of the
+// twstats pages' apiFetch, except the limit is our own timer raced against the
+// fetch (abort() is only a courtesy where AbortController exists), so it holds
+// in every runtime. The limit covers the wait for the response HEADERS. With
+// `read` (GETs, via _cloudFetchJson) the attempt also owns the BODY: once the
+// headers arrive a fresh limit is armed for read(response), the attempt
+// resolves with what read() returns, and a body that stalls (or fails to read)
+// fails over exactly like a host that never answers — a host that sends headers
+// and then hangs used to keep "View report" spinning forever. A fresh limit per
+// phase (not one for both) so a large body on a slow link still gets a full
+// window. Without `read` (POSTs) the response itself is resolved, untimed after
+// the headers, as before.
+// `opts` may be a function attempt → opts (or a promise of it): POSTs use it to
+// mint a fresh single-use token per attempt (see _cloudPost). If it rejects, the
+// whole call rejects — there is nothing left to fail over with.
+function _cloudFetch(pathQuery, opts, timeoutMs, read) {
+  const attempt = (i) => Promise.resolve(typeof opts === 'function' ? opts(i) : opts).then(o => new Promise((resolve, reject) => {
+    const limit = timeoutMs || CLOUD_FETCH_TIMEOUT_MS;
+    const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+    const req = Object.assign({}, o || {});
+    if (ctl) req.signal = ctl.signal;
+    let settled = false, timer = null;
+    const next = (err) => {
+      if (i + 1 < CLOUD_SYNC_HOSTS.length) attempt(i + 1).then(resolve, reject);
+      else reject(err);
+    };
+    const arm = () => {
+      if (typeof setTimeout !== 'function') return;
+      timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        if (ctl) { try { ctl.abort(); } catch (_) {} }
+        next(new Error(`no answer within ${Math.round(limit / 1000)} s`));
+      }, limit);
+    };
+    const disarm = () => { if (timer !== null) { clearTimeout(timer); timer = null; } };
+    // Settle once: a late answer / the abort() rejection of a timed-out attempt is ignored.
+    const finish = fn => v => { if (settled) return; settled = true; disarm(); fn(v); };
+    arm();
+    let p;
+    try { p = fetch(CLOUD_SYNC_HOSTS[i] + pathQuery, req); } catch (e) { p = Promise.reject(e); }
+    p.then((r) => {
+      if (settled) return; // answered after the limit — that host was already given up on
+      if (!read) { finish(resolve)(r); return; }
+      disarm(); arm(); // headers in: a fresh limit for the body
+      let b;
+      try { b = Promise.resolve(read(r)); } catch (e) { b = Promise.reject(e); }
+      b.then(finish(resolve), finish(next));
+    }, finish(next));
+  }));
   return attempt(0);
+}
+
+// GET a JSON document with failover; the body read is timed too (see _cloudFetch).
+// Resolves the parsed body, or null when the endpoint answers with an HTTP error
+// (that answer would be the same on the other host — no failover). Rejects when
+// no host answered in time.
+function _cloudFetchJson(pathQuery) {
+  return _cloudFetch(pathQuery, undefined, undefined, res => (res.ok ? res.json() : null));
+}
+
+// POST a JSON payload to the endpoint. The verification token is single-use, so
+// EVERY attempt mints its own: a failover re-post must not replay the first one.
+// Rejects when no token can be had (the caller treats that like a network failure).
+function _cloudPost(payload) {
+  return _cloudFetch('/', async () => {
+    const token = await _getSyncToken();
+    if (!token) throw new Error('no_token');
+    return {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, token }),
+    };
+  }, CLOUD_POST_TIMEOUT_MS);
 }
 
 let _guardId = null;
 let _guardReady = false;
-let _guardPending = null; // resolver for the currently-executing token request
+let _guardPending = null; // resolver of the token request currently executing (one at a time)
+let _guardQueue = Promise.resolve(); // tail of the serialised token requests (_getSyncToken)
 
 // Inject the Cloudflare check's api.js and render one execute-on-demand widget.
 // Runs after DOM ready (see the bottom of this file). Hosted-site only.
@@ -87,18 +167,35 @@ function _initCloudSync() {
 }
 
 // Resolve to a fresh single-use verification token, or null if unobtainable.
+// Requests are SERIALISED: the one widget runs one check at a time, and a second
+// request's reset()+execute() used to orphan the first one's resolver — an
+// overlapping backup + plan push silently lost one of them. Each request owns its
+// resolver and its 20 s safety timer, so a late timer only ever ends its own request.
 function _getSyncToken() {
+  const p = _guardQueue.then(_mintSyncToken);
+  _guardQueue = p; // never rejects (every path resolves a token or null)
+  return p;
+}
+function _mintSyncToken() {
   return new Promise((resolve) => {
     if (!_guardReady || _guardId === null || typeof turnstile === 'undefined') { resolve(null); return; }
-    _guardPending = resolve;
+    let done = false, timer = null;
+    const finish = (token) => {
+      if (done) return;
+      done = true;
+      if (_guardPending === finish) _guardPending = null;
+      if (timer !== null) clearTimeout(timer);
+      resolve(token || null);
+    };
+    _guardPending = finish;
     try { turnstile.reset(_guardId); } catch (_) {}
     try {
       turnstile.execute('#cloud-sync-guard');
     } catch (_) {
-      _guardPending = null; resolve(null); return;
+      finish(null); return;
     }
-    // Safety net: never let a stuck check hang the flow.
-    setTimeout(() => { if (_guardPending) { const r = _guardPending; _guardPending = null; r(null); } }, 20000);
+    // Safety net: never let a stuck check hang the flow (or the requests queued behind it).
+    timer = setTimeout(() => finish(null), 20000);
   });
 }
 
@@ -160,10 +257,8 @@ async function _cloudPush(content, kind, opts) {
   if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return; // local = no-op
   if (!content || !content.trim()) return;
   try {
-    const token = await _getSyncToken();
-    if (!token) return; // couldn't verify a real browser — skip
     const name = _cloudLabel() + ((opts && opts.nameSuffix) ? '_' + opts.nameSuffix : '');
-    const payload = { name, content, token, kind, world: _cloudWorld() };
+    const payload = { name, content, kind, world: _cloudWorld() };
     if (opts && opts.ext) payload.ext = opts.ext;
     // NOTE: do NOT set keepalive:true here. Browsers cap keepalive fetch bodies
     // at 64 KB total; a tribe-info export / plan snapshot is hundreds of KB, so
@@ -172,11 +267,7 @@ async function _cloudPush(content, kind, opts) {
     // fetch has no size cap. The sync fires right after a successful parse/
     // generate while the player is using the tool, so the tab staying open long
     // enough isn't a concern.
-    await _cloudFetch('/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    await _cloudPost(payload); // no token (couldn't verify a real browser) → rejects → skipped
   } catch (_) { /* best-effort sync — ignore all failures */ }
 }
 
@@ -216,21 +307,14 @@ async function cloudSyncManageDef(text, sub) {
 // Share a batch of raw battle reports (Enemy Villages tab). Unlike the silent
 // backup pushes above, this RETURNS the endpoint's parsed response: the server
 // merges the reports into the shared per-village DB synchronously, and the tab
-// shows the returned merge stats to the uploader. Resolves null on any failure
-// or when running locally (the caller stays quiet then — the local processing
-// message has already been shown).
+// shows the returned merge stats to the uploader. An HTTP error still resolves the
+// endpoint's JSON ({ ok:false, error:'too_large', … }); null means no answer at all
+// (no token, network failure / no answer on either host) or running locally.
 async function cloudSyncReports(text) {
   if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return null;
   if (!text || !text.trim()) return null;
   try {
-    const token = await _getSyncToken();
-    if (!token) return null;
-    const payload = { name: _cloudLabel(), content: text, token, kind: 'reports', ext: 'json', world: _cloudWorld() };
-    const res = await _cloudFetch('/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    const res = await _cloudPost({ name: _cloudLabel(), content: text, kind: 'reports', ext: 'json', world: _cloudWorld() });
     return await res.json();
   } catch (_) { return null; }
 }
@@ -240,9 +324,7 @@ async function cloudSyncReports(text) {
 async function cloudFetchReportsDb() {
   if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return null;
   try {
-    const res = await _cloudFetch(`/reports?world=${encodeURIComponent(_cloudWorld())}`);
-    if (!res.ok) return null;
-    const db = await res.json();
+    const db = await _cloudFetchJson(`/reports?world=${encodeURIComponent(_cloudWorld())}`);
     return (db && db.villages && db.ids) ? db : null;
   } catch (_) { return null; }
 }
@@ -255,9 +337,7 @@ async function cloudFetchReportsDb() {
 async function cloudFetchReportsFullDb() {
   if (typeof TW_ENV === 'undefined' || TW_ENV !== 'production') return null;
   try {
-    const res = await _cloudFetch(`/reports-full?world=${encodeURIComponent(_cloudWorld())}`);
-    if (!res.ok) return null;
-    const db = await res.json();
+    const db = await _cloudFetchJson(`/reports-full?world=${encodeURIComponent(_cloudWorld())}`);
     return (db && db.villages) ? db.villages : null;
   } catch (_) { return null; }
 }

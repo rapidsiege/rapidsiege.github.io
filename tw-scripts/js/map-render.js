@@ -640,7 +640,13 @@ function renderMapOffscreen() {
   if (mapShowReports && !spriteMode && typeof riMapView === 'function'
       && typeof reportBadgeFor === 'function' && typeof coordDb !== 'undefined') {
     const offC = {}, defC = {};
+    const haloMargin = margin + MAP_INCOMING_COUNT_CAP; // same cull as drawPlanHaloPass
     for (const coord in riMapView()) {
+      // cull BEFORE classifying: a zoomed-in view shows a fraction of the report villages
+      const v = coordDb[coord];
+      if (!v) continue;
+      const s = worldToScreen(v.x, v.y);
+      if (s.px < -haloMargin || s.py < -haloMargin || s.px > w + haloMargin || s.py > h + haloMargin) continue;
       const rb = reportBadgeFor(coord);
       if (rb) (rb.cls === 'off' ? offC : defC)[coord] = 1;
     }
@@ -919,8 +925,7 @@ function onMapMouseMove(e) {
     mapView.panY = mapDrag.panY0 + dy;
     mapDrag.moved = true;
     hideMapTip();
-    renderMapOffscreen();
-    paintMap();
+    scheduleMapRedraw();
     return;
   }
   // Draw-filter mode (and Extract → Draw area): track the world point under the cursor for the
@@ -967,8 +972,18 @@ function onMapWheel(e) {
   mapView.panX = p.x - wpt.x * mapView.scale; // keep world point under cursor fixed
   mapView.panY = p.y - wpt.y * mapScaleY();   // (vertical uses the compressed scale)
   hideMapTip();
-  renderMapOffscreen();
-  paintMap();
+  scheduleMapRedraw();
+}
+
+// Pan/zoom redraws coalesced to one per animation frame (M-I11): mousemove/wheel fire
+// faster than a full offscreen render, and only the latest view matters. Runtimes
+// without requestAnimationFrame (the headless test sandbox) redraw immediately.
+let mapRedrawPending = false;
+function scheduleMapRedraw() {
+  if (typeof requestAnimationFrame !== 'function') { renderMapOffscreen(); paintMap(); return; }
+  if (mapRedrawPending) return;
+  mapRedrawPending = true;
+  requestAnimationFrame(() => { mapRedrawPending = false; renderMapOffscreen(); paintMap(); });
 }
 
 function showMapTip(coord, e) {

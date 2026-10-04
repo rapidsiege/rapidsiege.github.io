@@ -31,7 +31,16 @@ function loadPlayerSchedules() {
   return playerSchedules;
 }
 function psAll() { return playerSchedules || loadPlayerSchedules(); }
-function savePlayerSchedules() { try { localStorage.setItem(PS_STORE_KEY, JSON.stringify(psAll())); } catch {} }
+// Returns whether the save landed. On a quota failure the schedules still apply this session (they
+// live in memory) — the user is told ONCE per session (every time-field edit saves).
+let psSaveWarned = false;
+function savePlayerSchedules() {
+  try { localStorage.setItem(PS_STORE_KEY, JSON.stringify(psAll())); return true; }
+  catch (e) {
+    if (!psSaveWarned && typeof alert === 'function') { psSaveWarned = true; alert(t('warn_save_failed')); }
+    return false;
+  }
+}
 // Own properties only — a player called "constructor" / "toString" must not read the prototype.
 function psGet(name) { const all = psAll(); return Object.prototype.hasOwnProperty.call(all, name) ? all[name] : null; }
 function psSet(name, kind, winStr) {
@@ -52,10 +61,14 @@ function psAnySchedule() { return Object.keys(psAll()).length > 0; }
 function psSegments(r) { return r.f <= r.to ? [[r.f, r.to]] : [[r.f, 1440], [0, r.to]]; }
 // The LAUNCH range of an attack landing inside `win` ({f, to} minutes) after `travel` minutes: the
 // same span shifted earlier by the travel time, as a daily range (a 24h+ window covers the day).
-function psLaunchRange(win, travel) {
-  const span = win.to >= win.f ? win.to - win.f : win.to + 1440 - win.f;
+// `skip` (optional, minutes) trims the START of that range — the part already behind the send floor
+// (now / Earliest send, computed by the engine), so a past moment never grades as free / preferred.
+function psLaunchRange(win, travel, skip) {
+  let span = win.to >= win.f ? win.to - win.f : win.to + 1440 - win.f;
+  const cut = Math.max(0, Math.min(span, Math.round(skip || 0)));
+  span -= cut;
   if (span >= 1440) return { f: 0, to: 1440 };
-  const f = ((win.f - Math.round(travel || 0)) % 1440 + 1440) % 1440;
+  const f = ((win.f - Math.round(travel || 0) + cut) % 1440 + 1440) % 1440;
   const e = f + span;
   return { f, to: e > 1440 ? e - 1440 : e }; // a range ending exactly at midnight ends at 1440, not at the instant 0
 }
@@ -78,11 +91,12 @@ function psSchedSegs(s) {
 // 0 = EVERY launch moment falls inside the player's blocked time (no free moment), 1 = neutral (no
 // schedule, or a free moment outside both ranges), 2 = some free launch moment lies inside the
 // preferred time. `mode` is the 🎚 scheduleMode: 'preferredThenBlocked' | 'blockedOnly' | 'off'.
-function psLaunchTier(name, win, travel, mode) {
+// `skip` = minutes at the start of the launch range already in the past (see psLaunchRange).
+function psLaunchTier(name, win, travel, mode, skip) {
   if (mode === 'off' || !win) return 1;
   const sc = psGet(name);
   if (!sc) return 1;
-  const L = psSegments(psLaunchRange(win, travel));
+  const L = psSegments(psLaunchRange(win, travel, skip));
   const B = sc.block ? psSchedSegs(sc.block) : [];
   if (B.length && L.every(l => psSegCoveredBy(l, B))) return 0;
   if (mode === 'blockedOnly' || !sc.pref) return 1;

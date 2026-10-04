@@ -140,11 +140,32 @@ async function loadWorldConfigFromDir() {
   } catch {}
 }
 
+// A hosted copy with its own world list (TW_WORLDS_OVERRIDE) knows ONLY those worlds:
+// a world saved by another copy (e.g. an es100 dump imported into the es103 copy) must
+// not switch it to data it doesn't mirror. Without the override any world is accepted
+// (the public site's list comes from data/worlds.json at runtime).
+function twWorldAllowed(w) {
+  const ov = (typeof window !== 'undefined') ? window.TW_WORLDS_OVERRIDE : null;
+  if (!ov || typeof ov !== 'object' || !Object.keys(ov).length) return true;
+  return Object.prototype.hasOwnProperty.call(TW_WORLDS, w);
+}
+// Boot: right after loadSettings() restored the saved world — before anything reads it
+// (offensive server URL, the per-world reports store, the DB load). An unknown world
+// falls back to the default world and its speeds.
+function validateSavedWorld() {
+  if (twWorldAllowed(twWorld)) return;
+  twWorld = Object.keys(TW_WORLDS)[0];
+  twWorldSpeed = TW_WORLDS[twWorld].speed;
+  twUnitSpeed = TW_WORLDS[twWorld].unitSpeed;
+  saveSettings();
+}
+
 // Header dropdown handler: switch world → persist, apply that world's speeds,
-// re-point the rally/info server URL, reload the DB from the new mirror folder (prod).
+// re-point the rally/info server URL, reload the DB from the new mirror folder (prod),
+// swap the per-world reports store + shared DB (reports-ui.js riOnWorldChange).
 function setWorld(w) {
   w = String(w || '').trim();
-  if (!w || w === twWorld) return;
+  if (!w || w === twWorld || !twWorldAllowed(w)) return;
   twWorld = w;
   saveSettings();
   applyWorldConfig(twWorldsInfo[w] || null);
@@ -154,6 +175,7 @@ function setWorld(w) {
   saveOffensive();
   if (TW_ENV === 'production') loadDbFromWeb();
   else loadWorldConfigFromDir();
+  if (typeof riOnWorldChange === 'function') riOnWorldChange();
 }
 
 // Format the mirror's last-updated ISO timestamp as UTC + browser-local + game-server clocks.
@@ -164,13 +186,17 @@ function fmtUpdatedStamp(raw) {
   const p = n => String(n).padStart(2, '0');
   const utc = `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
   const local = `${p(d.getHours())}:${p(d.getMinutes())} ${t('upd_local')}`;
-  const off = serverUtcOffset();
+  const off = serverUtcOffset(d.getTime()); // the server zone's offset AT that instant (DST-aware)
   const s = new Date(d.getTime() + off * 3600000);
   const server = `${p(s.getUTCHours())}:${p(s.getUTCMinutes())} ${t('upd_server')} (UTC+${off})`;
   return `${utc} · ${local} · ${server}`;
 }
 
+// Request generation: every call supersedes the previous one, so a slow response for
+// the world we just switched AWAY from can't land after (and overwrite) the new one's.
+let dbWebGen = 0;
 async function loadDbFromWeb() {
+  const gen = ++dbWebGen;
   try {
     const base = twDataUrl();
     const [vText, pText, updated, aText] = await Promise.all([
@@ -179,11 +205,13 @@ async function loadDbFromWeb() {
       fetch(base + 'last-updated.txt').then(r => r.ok ? r.text() : '').catch(() => ''),
       fetch(base + 'ally.txt').then(r => r.ok ? r.text() : '').catch(() => ''),
     ]);
+    if (gen !== dbWebGen) return; // superseded (world switch) — drop the old world's data
     setDbData(vText, pText, aText);
     if (updated.trim()) {
       document.getElementById('db-status').textContent += ` — ${t('db_web_updated')(fmtUpdatedStamp(updated))}`;
     }
   } catch (e) {
+    if (gen !== dbWebGen) return;
     document.getElementById('db-status').textContent = t('db_web_failed');
   }
 }
@@ -274,9 +302,10 @@ function setDbData(vText, pText, aText) {
   if (typeof renderOffEnemyTribes === 'function') renderOffEnemyTribes();       // same, offensive side (no legacy text → plain repaint)
   renderTargetTable(); // refresh owner info in Tribe Timings
   renderPlanTable();   // materialize rally links once DB arrives
+  if (typeof renderDefPlanTable === 'function') renderDefPlanTable(); // same for Plan Defense: rally links, Tribes selector, same-tribe gate
   if (typeof mapDetectAndSeed === 'function') mapDetectAndSeed(); // detect my tribe now the DB resolves coords
   if (typeof mapRefresh === 'function') mapRefresh(); // repaint map if it's open
-  if (typeof renderEnemyVillagesTable === 'function') renderEnemyVillagesTable(); // owner names / own-tribe filter now resolve
+  if (typeof riRefreshEvTable === 'function') riRefreshEvTable(); // owner names / own-tribe filter now resolve
 }
 
 function dbOwnerName(coord) {
@@ -300,7 +329,12 @@ function refreshTargetsFromDb() {
     const n = dbOwnerName(tg.coord);
     if (n && tg.player !== n) { tg.player = n; changed = true; }
   }
-  if (changed) saveOffensive();
+  // Persist the refreshed owner names only once this build already owns a
+  // compressed save (v6.1.3 keys): a plain OPEN must never write the offensive
+  // store, or the first boot would already drop the legacy key an older copy on
+  // the same file:// storage still reads. Owner names are re-read from the DB on
+  // every load, so waiting for the first real edit loses nothing.
+  if (changed && typeof OT_STORE_KEY !== 'undefined' && localStorage.getItem(OT_STORE_KEY) !== null) saveOffensive();
   renderOffTargets();
 }
 
@@ -365,7 +399,11 @@ function autoloadDb() {
   if (typeof TW_ENV !== 'undefined' && TW_ENV === 'production') { loadDbFromWeb(); return; }
   try {
     const d = JSON.parse(localStorage.getItem('tw_tribe_db') || 'null');
-    if (d && d.village && d.player) { setDbData(d.village, d.player, d.ally || ''); return; }
+    // shape-checked: a hand-edited snapshot (non-string text) falls through to the folder
+    if (d && typeof d.village === 'string' && typeof d.player === 'string' && d.village && d.player) {
+      setDbData(d.village, d.player, typeof d.ally === 'string' ? d.ally : '');
+      return;
+    }
   } catch {}
   tryAutoLoadDb();
 }
@@ -374,9 +412,10 @@ function autoloadDb() {
 function loadDbFromFileInput(input) {
   const files = [...(input.files || [])];
   if (!files.length) return;
-  Promise.all(files.map(f => new Promise(res => {
+  Promise.all(files.map(f => new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = e => res({ name: f.name.toLowerCase(), text: e.target.result });
+    r.onerror = () => rej(r.error || new Error('read failed: ' + f.name));
     r.readAsText(f);
   }))).then(rs => {
     let vText = null, pText = null, aText = null;
@@ -397,6 +436,10 @@ function loadDbFromFileInput(input) {
     if (vText === null || pText === null) { alert(t('alert_select_both')); return; }
     setDbData(vText, pText, aText || '');
     try { localStorage.removeItem('tw_tribe_db'); } catch {} // real files supersede an imported snapshot
+  }).catch(e => {
+    console.error('[db] reading the selected DB files failed:', e);
+    const st = document.getElementById('db-status');
+    if (st) st.textContent = t('db_read_failed');
   });
   input.value = '';
 }

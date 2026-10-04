@@ -106,8 +106,26 @@ function buildDebugDump(opts) {
   // page reload re-derives the whole DB from it (dev), so the database "sits the same".
   if (opts && opts.includeDbRaw && typeof dbRawText !== 'undefined' && dbRawText && dbRawText.village) {
     dump.dbRaw = dbRawText;
+    // a dev session running on an imported snapshot also holds it as tw_tribe_db —
+    // dbRaw already carries the DB, so don't ship the same MBs twice
+    delete storage.tw_tribe_db;
   }
   return dump;
+}
+
+// Boot-time storage hygiene: drop any tw_tribe_backup* a pre-4.13.2 import left behind
+// (the rollback copy lives in memory since then), and — production only — a stray
+// tw_tribe_db snapshot (a dev-only debug-import artefact the hosted site never reads,
+// that would otherwise ride along in every cloud plan dump and eat the storage quota).
+function bootStorageCleanup() {
+  try {
+    const drop = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.indexOf('tw_tribe_backup') === 0 || (k === 'tw_tribe_db' && TW_ENV === 'production'))) drop.push(k);
+    }
+    for (const k of drop) localStorage.removeItem(k);
+  } catch {}
 }
 
 function exportDebugData() {
@@ -152,7 +170,9 @@ function applyDebugImport(dump) {
   // a big DB), roll back to the pre-import state and fail — never reload into a half-written
   // mix that would silently drop whole subsystems (troops gone → blank map, no error).
   try {
+    const prod = typeof TW_ENV !== 'undefined' && TW_ENV === 'production';
     for (const [k, v] of Object.entries(dump.storage || {})) {
+      if (prod && k === 'tw_tribe_db') continue; // dev-only DB snapshot (see the dbRaw note below)
       localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
     }
     // full world-DB snapshot (raw text) → tw_tribe_db, re-derived on reload by autoloadDb —
@@ -242,6 +262,7 @@ function switchTab(id) {
   if (subs) subs.classList.toggle('single', !group || group.tabs.length < 2);
   document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + id));
   if (id === 'map' && typeof onMapTabShown === 'function') onMapTabShown();
+  if (typeof riEvTabVisible === 'function') riEvTabVisible(id === 'enemyvillages'); // repaints a stale Enemy Villages table on show
 }
 
 // ══════════════════════════════════════════════════════════════

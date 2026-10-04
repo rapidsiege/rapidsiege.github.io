@@ -18,7 +18,9 @@
 // The table is village-keyed (works with or without a plan): every village that
 // holds support, has inferred/ordered inbound support, or is a Defense-Plan
 // target gets a group. When a plan exists, a red "Remaining Incoming Support"
-// row shows plan − (stationed + incoming), floored at 0.
+// row shows plan − (stationed + incoming FROM THE TARGET'S PLAN SENDERS), floored
+// at 0 — other allied support and the origin-less .txt estimates are shown but
+// cover nothing (see mdBuildRows).
 // ══════════════════════════════════════════════════════════════
 const MD_STORE_KEY = 'tw_tribe_managedef';
 let mdSupTargets = []; // villageSupports: [{coord, village, owner, status, ownUnits, supports:[{originCoord,originVillage,originPlayer,units}]}]
@@ -48,8 +50,9 @@ function loadManageDef() {
   try {
     const d = lsLoadC(MD_STORE_KEY); // compressed (LZ1:) or legacy uncompressed JSON
     if (d) {
-      mdSupTargets = Array.isArray(d.supTargets) ? d.supTargets : [];
-      mdOrders     = Array.isArray(d.orders) ? d.orders : [];
+      const okObj = x => x && typeof x === 'object' && !Array.isArray(x); // drop null / scalar entries, keep the valid siblings
+      mdSupTargets = Array.isArray(d.supTargets) ? d.supTargets.filter(okObj) : [];
+      mdOrders     = Array.isArray(d.orders) ? d.orders.filter(okObj) : [];
       mdSupAt      = d.supAt || 0;
       mdOrdAt      = d.ordAt || 0;
       // Back-compat: older saves lack ordCoords → derive from the orders' targets.
@@ -191,14 +194,15 @@ function mdParseOrders(text) {
 // attacks/support/scavenging with (b) ally support en route. Own returning troops
 // can't exceed what the village owns at home, so the per-type EXCESS of incoming
 // over own-home troops is (heuristically) ally support inbound. Defensive types
-// only — an incoming axe/light stack is not defensive support. Needs station data;
-// without it (plain tribe-info file) there is no incoming row → all zeros.
+// only — an incoming axe/light stack is not defensive support. Needs the village's
+// OWN station row (gated per village — a batch can mix files with and without them);
+// without one (plain tribe-info file) there is no incoming row → all zeros.
 // (This intentionally uses own-home troops, not "own − defense" — validated against
 // real es100 snapshots where "own − defense" false-positived a village's own
 // returning army as support. Easy to retune here if the game data shifts.)
 function mdInferIncoming(coord) {
   const z = mdZero();
-  if (typeof hasStationData !== 'function' || !hasStationData()) return z;
+  if (!mdHasStation(coord)) return z;
   const inc = (typeof incomingByCoord !== 'undefined' && incomingByCoord[coord]) || null;
   if (!inc) return z;
   const own = (typeof troopByCoord !== 'undefined' && troopByCoord[coord]) || {};
@@ -213,15 +217,22 @@ function mdInferIncoming(coord) {
 // only sees the EXPORTING account's own troops, so for foreign-owned allied villages
 // this reads ~0 (a stale/own-only snapshot) — it's a placeholder that gets REPLACED by
 // the exact per-origin sum the moment an "Import Support" (villageSupports.js) file is
-// loaded. Defensive types only. No station data (plain tribe-info file) → all zeros.
+// loaded. Defensive types only. No station row for the village (plain tribe-info file) → all zeros.
 function mdEstimateStationed(coord) {
   const z = mdZero();
-  if (typeof hasStationData !== 'function' || !hasStationData()) return z;
+  if (!mdHasStation(coord)) return z;
   const def = (typeof defenseByCoord !== 'undefined' && defenseByCoord[coord]) || null;
   if (!def) return z;
   const own = (typeof troopByCoord !== 'undefined' && troopByCoord[coord]) || {};
   for (const u of DEF_OBJ_UNITS) z[u] = Math.max(0, (def[u] || 0) - (own[u] || 0));
   return z;
+}
+
+// Does the loaded tribe .txt carry a defense or incoming row for THIS village? (Per village,
+// like Plan Defense's defAvailUnits — never the batch-wide hasStationData() switch.)
+function mdHasStation(coord) {
+  return (typeof defenseByCoord !== 'undefined' && coord in defenseByCoord)
+      || (typeof incomingByCoord !== 'undefined' && coord in incomingByCoord);
 }
 
 // ── "Who has already sent?" (pure) ────────────────────────────────────────────
@@ -383,7 +394,13 @@ function mdBuildRows(supTargets, orders, planRows, opts) {
     if (mdPop(est) > 0) { const g = get(coord); g.inferredIncoming = est; mdAddUnits(g.incoming, est); }
   }
 
-  // Remaining = plan − (stationed + incoming), floored at 0.
+  // Remaining = plan − what the target's PLANNED senders already have there or on the way,
+  // floored at 0. The engine plans each objective as NEW sends and never subtracts support
+  // already sitting in (or heading to) the target, so only support that can be traced to one
+  // of this target's plan senders covers the plan: imported stationed support (Import
+  // Support) and imported orders (Import Support Orders) whose origin is a plan sender here.
+  // Other allied support — and the origin-less estimates from the tribe .txt (support est.,
+  // inferred incoming) — is still SHOWN on its own rows but covers nothing.
   // Support = ally support stationed in the village (NOT the owner's own troops). When an
   // Import Support file has been loaded for the village, g.stationed is the exact per-origin
   // sum; otherwise we show a placeholder ESTIMATE inferred from the tribe .txt (defense − own,
@@ -396,9 +413,11 @@ function mdBuildRows(supTargets, orders, planRows, opts) {
     g.hasOrders = ordCoords.has(coord);
     g.support = g.hasSupImport ? g.stationed : mdZero();
     g.supportEst = g.hasSupImport ? mdZero() : mdEstimateStationed(coord);
-    // Remaining incoming support still needed = plan − (support already there, real or estimated) − incoming.
-    const supportShown = g.hasSupImport ? g.stationed : g.supportEst;
-    for (const u of DEF_OBJ_UNITS) g.remaining[u] = Math.max(0, g.planNeed[u] - supportShown[u] - g.incoming[u]);
+    const planned = new Set(g.planList.map(r => r.srcCoord));
+    const covering = mdZero();
+    for (const sp of g.supportRows) if (planned.has(sp.originCoord)) mdAddUnits(covering, sp.units);
+    for (const o of g.orderRows)    if (planned.has(o.originCoord))  mdAddUnits(covering, o.units);
+    for (const u of DEF_OBJ_UNITS) g.remaining[u] = Math.max(0, g.planNeed[u] - covering[u]);
     const sset = sent[coord];
     g.missingRows = g.planList.filter(r => !(sset && sset.has(r.srcCoord)));
   }
@@ -556,7 +575,9 @@ function renderMdTableBody() {
     // Support summary row (click to expand/collapse) — carries #/Target/Owner + the Support totals.
     const caret = `<span style="color:#c0a060;">${expanded ? '▼' : '▶'}</span>`;
     const supStatus = supIsEst ? `<span style="color:#60a0e0;">${esc(t('md_st_estimated'))}</span>` : '—';
-    cells.push(`<tr class="md-grp-head" onclick="mdToggleGroup('${g.coord}')" title="${esc(t('md_grp_toggle'))}"`
+    // Group head rows toggle by INDEX into mdGroups (the coord comes from imported files / plan
+    // rows and is never interpolated into the handler).
+    cells.push(`<tr class="md-grp-head" onclick="mdToggleGroup(mdGroups[${myNum - 1}].coord)" title="${esc(t('md_grp_toggle'))}"`
       + ` style="cursor:pointer;background:rgba(240,192,64,0.05);${firstGroup ? '' : 'border-top:2px solid #7a5c10;'}">`
       + `<td style="color:#806030;">${myNum}</td>`
       + `<td class="left" style="font-family:monospace;">${caret} ${mdCoordLink(g.coord)}</td>`
@@ -579,7 +600,7 @@ function renderMdTableBody() {
         : (owed
             ? `<span style="color:#e69090;font-weight:600;">${esc(t('md_grp_missing')(Math.round(mdPop(g.remaining)).toLocaleString()))}</span>`
             : `<span style="color:#7fdca0;font-weight:600;">${esc(t('md_grp_covered'))}</span>`);
-      cells.push(`<tr class="md-grp-head" onclick="mdToggleGroup('${g.coord}')" style="cursor:pointer;background:${owed ? 'rgba(192,64,32,0.06)' : 'rgba(64,192,96,0.05)'};">`
+      cells.push(`<tr class="md-grp-head" onclick="mdToggleGroup(mdGroups[${myNum - 1}].coord)" style="cursor:pointer;background:${owed ? 'rgba(192,64,32,0.06)' : 'rgba(64,192,96,0.05)'};">`
         + blankMeta
         + `<td><span class="badge" style="background:${owed ? '#3a1414' : '#1d3a24'};color:${owed ? '#e69090' : '#7fdca0'};">${owed ? '⚠' : '✓'} ${esc(t('md_ty_remaining'))}</span></td>`
         + `<td class="left" colspan="2" style="color:${owed ? '#e0a020' : '#5a8a5a'};font-size:12px;">${esc(owed ? t('md_remaining_note') : t('md_covered_note'))}</td>`
