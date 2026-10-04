@@ -102,6 +102,13 @@ const PARAM_DEFS = [
   // Extra catapult attacks — which def village sends the next one: 'playerSpread' = fewest attacks
   // per player first, then closest (today); 'closest'; 'mostCats' = most catapult attacks left.
   { key: 'catSpread',          sec: 'off', def: 'playerSpread', type: 'select', opts: ['playerSpread', 'closest', 'mostCats'] },
+  // ⏰ Player Schedules (v6.1.2) — how the per-player preferred / blocked LAUNCH times (Offensive
+  // Targets popup, player-schedules.js) steer the automatic picks (offs, fakes, catapult attacks,
+  // escorts, noble senders): 'preferredThenBlocked' = a sender launching inside a preferred time
+  // first, then anyone outside their blocked time, then a blocked launch (the plan always fills —
+  // such rows get ⏰ + a warning); 'blockedOnly' = only avoid blocked times; 'off' = ignore them.
+  // Inert while no player has a schedule.
+  { key: 'scheduleMode',       sec: 'off', def: 'preferredThenBlocked', type: 'select', opts: ['preferredThenBlocked', 'blockedOnly', 'off'] },
   // Roster balance: the auto "optimize" score is damped by (1 − d) + d × remaining fraction of
   // the sender's roster, so already-used players slide down. 0 = off, 1 = strongest.
   { key: 'rosterDamping',      sec: 'off', def: 0.5,  min: 0, max: 1, step: 0.05 },

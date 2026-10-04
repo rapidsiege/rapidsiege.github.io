@@ -523,6 +523,42 @@ function generatePlan() {
     const hi = cands.filter(p => { const m = planAttackMorale(p.v.coord, T.tg.coord); return (m == null ? 1 : m) >= gate; });
     return hi.length ? hi : cands;
   };
+  // ⏰ Player Schedules (v6.1.2, 🎚 scheduleMode): a soft tiering on top of every automatic pick.
+  // Each candidate's LAUNCH range for the slot = the group's landing window shifted back by its
+  // travel time (off pace for offs / fakes / catapults, noble pace for escorts and noble senders);
+  // psLaunchTier (player-schedules.js) grades it 2 = a free launch moment inside the sender's
+  // preferred time, 1 = neutral (no schedule, or outside both ranges), 0 = every launch moment
+  // inside their blocked time. schedFirst keeps only the best grade present (like moraleFirst, it
+  // never empties a set — the plan always fills), schedThen prefixes a comparator with the grade;
+  // both grade each candidate ONCE per pick (memo — a sort asks n·log n times). Order inside a
+  // pick: morale gate → destroyer strategy (the cat-off filter is never traded for a nicer launch)
+  // → schedule → score. Both helpers are the identity while no player has a schedule or the mode
+  // is 'off', so the defaults are byte-identical. Rows are graded again after the merge (⏰ flag +
+  // warning) by their final window. Named off pins are never moved by this (only flagged); a
+  // pinned noble / escort sender keeps the assignment while the schedule may pick WHICH of their
+  // villages launches.
+  const schedMode = PARAMS.scheduleMode;
+  const schedActive = schedMode !== 'off' && typeof psAnySchedule === 'function' && psAnySchedule();
+  const schedWin = (g, kind) => g ? parseWindowStr(kind === 'snob' ? (g.winSnob || g.winOff || '') : (g.winOff || g.winSnob || '')) : null;
+  const schedTierOf = (p, T, pw, kind) => pw
+    ? psLaunchTier(decode(p.v.player), pw, travelTimeMin(distXY(p.c, T.c), kind === 'snob' ? PLAN_BASE_MIN.snob : PLAN_BASE_MIN.off, ws, us), schedMode)
+    : 1;
+  const schedGrader = (T, g, kind) => { // one grade per candidate per pick
+    const pw = schedWin(g, kind), memo = new Map();
+    return p => { let tr = memo.get(p); if (tr === undefined) { tr = schedTierOf(p, T, pw, kind); memo.set(p, tr); } return tr; };
+  };
+  const schedFirst = (T, g, cands, kind) => {
+    if (!schedActive || cands.length < 2) return cands;
+    const grade = schedGrader(T, g, kind);
+    let best = -1, out = [];
+    for (const p of cands) { const tr = grade(p); if (tr > best) { best = tr; out = [p]; } else if (tr === best) out.push(p); }
+    return out;
+  };
+  const schedThen = (T, g, kind, cmp) => {
+    if (!schedActive) return cmp;
+    const grade = schedGrader(T, g, kind);
+    return (a, b) => (grade(b) - grade(a)) || cmp(a, b);
+  };
   // Manually-pinned senders: distance only (closest of their own villages first; no
   // morale, no fairness — the pin is the user's explicit choice).
   const byDist = T => (a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (b.v.offPow - a.v.offPow);
@@ -610,7 +646,7 @@ function generatePlan() {
         const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !priorReserved.has(p.v.coord) && !tooClose.has(p) && !pairBlocked(p.v.player, T)
           && tiers.includes(p.tier) && okSnobDist(p, T.c) && okSnobTime(p, T, g) && smithOkOrUnknown(p)
           && (want ? p.v.player === want : !ignorePlayers.has(p.v.player)))
-          .sort(escortCmp(T))[0];
+          .sort(schedThen(T, g, 'snob', escortCmp(T)))[0]; // ⏰ schedules lead (v6.1.2; identity without any)
         const p = pick(['complete', 'tq']) || pick(['half']);
         if (p) escortReserved.add(p);
         picks.push(p || null);
@@ -807,11 +843,12 @@ function generatePlan() {
       // off side now via conquerorByTarget); fake: FARTHEST in-range village wins — a bare
       // decoy doesn't care about proximity, and a longer flight shows up in the enemy's
       // incoming list sooner (more warning = more wasted defence), ties to the weakest off.
-      cands.sort(mode === 'escorted'
+      const snobCmp = mode === 'escorted'
         ? (a, b) => (b.v.offPow - a.v.offPow) || (distXY(a.c, T.c) - distXY(b.c, T.c))
         : mode === 'fake'
         ? (a, b) => (distXY(b.c, T.c) - distXY(a.c, T.c)) || (a.v.offPow - b.v.offPow)
-        : (a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (a.v.offPow - b.v.offPow));
+        : (a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (a.v.offPow - b.v.offPow);
+      cands.sort(schedThen(T, g, 'snob', snobCmp)); // ⏰ schedules lead (v6.1.2; identity without any)
       const p = cands[0];
       p.snobLeft -= nc; p.usedSnob = true; chosen.add(p.v.player); noteMvClaim(p, T);
       if (mode === 'escorted') { p.usedOff = true; p.isEscort = true; } // its off rides as the split-off
@@ -1052,7 +1089,7 @@ function generatePlan() {
       const repGate = offGateFor(T);
       const repCands = bump(p => playerMorale(decode(p.v.player)) >= repGate);
       if (repCands.length) {
-        reserve(repCands.sort(byOptimize(T))[0], tier);
+        reserve(schedFirst(T, cg, repCands, 'off').sort(byOptimize(T))[0], tier); // ⏰ schedules (v6.1.2): the one free pick in this reservation
         break;
       }
       // 3) No high-morale alternative reachable → fall back to the conqueror's own off.
@@ -1113,7 +1150,8 @@ function generatePlan() {
       }
       // Raw off power leads on POWER targets; clustering is only a within-tolerance tiebreaker.
       // A destroyer target applies its 🎚 strategy on top (cat-carriers first; the fallback may leave the slot open).
-      const dp = destroyerPick(T, cands, (a, b) => b.v.offPow - a.v.offPow);
+      const dp0 = destroyerPick(T, cands, (a, b) => b.v.offPow - a.v.offPow);
+      const dp = { cands: schedFirst(T, g, dp0.cands, 'off'), cmp: dp0.cmp }; // ⏰ schedules (v6.1.2) INSIDE the destroyer's chosen set — a preferred launch never costs the cat-off
       if (!dp.cands.length) {
         if (!destroyerOpenWarned.has(T.i)) { planWarnings.push(t('warn_destroyer_open')(T.tg.coord)); destroyerOpenWarned.add(T.i); }
         T.offRows.push({ type: 'complete', group: g.id, unassigned: true });
@@ -1187,7 +1225,8 @@ function generatePlan() {
         // Morale gate first (usual requirement), then the destroyer 🎚 strategy (cat-carriers first;
         // the fallback may leave the slot open); clustering (if on) breaks near-ties among the
         // survivors without overriding morale/power.
-        const dp = destroyerPick(T, moraleFirst(T, cands), byOptimize(T));
+        const dp0 = destroyerPick(T, moraleFirst(T, cands), byOptimize(T));
+        const dp = { cands: schedFirst(T, g, dp0.cands, 'off'), cmp: dp0.cmp }; // ⏰ schedules (v6.1.2) INSIDE the destroyer's chosen set — a preferred launch never costs the cat-off
         if (!dp.cands.length) {
           if (!destroyerOpenWarned.has(T.i)) { planWarnings.push(t('warn_destroyer_open')(T.tg.coord)); destroyerOpenWarned.add(T.i); }
           T.offRows.push({ type: tier, group: g.id, unassigned: true });
@@ -1243,7 +1282,7 @@ function generatePlan() {
         T.offRows.push({ type: 'fake', group: g.id, unassigned: true });
         continue;
       }
-      const p = cands.sort(byDist(T))[0];
+      const p = schedFirst(T, g, cands, 'off').sort(byDist(T))[0]; // ⏰ schedules (v6.1.2): best grade first, then closest
       p.usedFake = true; p.fakesSent = (p.fakesSent || 0) + 1; noteMvClaim(p, T);
       const d = distXY(p.c, T.c);
       T.offRows.push({ type: 'fake', group: g.id, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
@@ -1301,6 +1340,7 @@ function generatePlan() {
     // closest (today); 'closest' = nearest source; 'mostCats' = most catapult attacks LEFT in its
     // budget, distance breaks ties. budget / perTarget caps apply in every mode.
     const dT = s => distXY(s.c, T.c);
+    const catGroups = otActiveGroups(T.tg); // ⏰ schedules (v6.1.2) grade each cat source by the wave THIS attack is dealt to (catRows[k] → catGroups[k % n], see the window pass)
     const catCmp = PARAMS.catSpread === 'closest' ? (a, b) => dT(a) - dT(b)
       : PARAMS.catSpread === 'mostCats' ? (a, b) => (b.budget - a.budget) || (dT(a) - dT(b))
       : (a, b) => ((perPlayer[decode(a.v.player)] || 0) - (perPlayer[decode(b.v.player)] || 0)) || (dT(a) - dT(b));
@@ -1308,7 +1348,7 @@ function generatePlan() {
     while (placed < want) {
       const cand = catPool
         .filter(s => s.budget > 0 && (perTarget[s.v.coord] || 0) < PARAMS.catPerSourceMax && distXY(s.c, T.c) <= maxCatDist && !pairBlocked(s.v.player, T))
-        .sort(catCmp)[0];
+        .sort(schedThen(T, catGroups[placed % catGroups.length], 'off', catCmp))[0];
       if (!cand) break; // no eligible cat source left (budget/cap hit or none within the distance lead)
       const cp = decode(cand.v.player);
       cand.budget--;
@@ -1381,6 +1421,22 @@ function generatePlan() {
       r.late = true;
       planWarnings.push(t('warn_row_late')(r.srcCoord, r.tCoord));
     }
+  }
+  // ⏰ Player Schedules (v6.1.2): grade every assigned row by its FINAL window + travel (same math
+  // as the picks above, now on the row the player will actually see). 'blocked' → ⏰ on the row +
+  // one warning per player; 'preferred' is kept on the row for the UI. Frozen at Generate like
+  // `late` — a schedule changed afterwards applies at the next Generate.
+  if (schedActive) {
+    const blockedBy = {};
+    for (const r of planRows) {
+      if (r.unassigned || !r.srcCoord || !r.srcPlayer || typeof r.travel !== 'number') continue;
+      const pw = parseWindowStr(r.window);
+      if (!pw) continue;
+      const tier = psLaunchTier(r.srcPlayer, pw, r.travel, schedMode);
+      if (tier === 0) { r.sched = 'blocked'; blockedBy[r.srcPlayer] = (blockedBy[r.srcPlayer] || 0) + 1; }
+      else if (tier === 2) r.sched = 'preferred';
+    }
+    for (const name of Object.keys(blockedBy)) planWarnings.push(t('warn_sched_blocked')(name, blockedBy[name]));
   }
 
   // Off-pool breakdown for the Plan summary footer, split PER OFF TIER (Complete / 3-4 /
@@ -1574,7 +1630,7 @@ function renderPlanTable() {
       }</td>
       <td style="color:#f0c040;">${showTiming ? r.dist.toFixed(1) : '—'}</td>
       <td>${showTiming ? fmtTime(r.travel) : '—'}</td>
-      <td style="font-family:monospace;${r.late ? 'color:#e06040;font-weight:600;' : ''}">${showTiming ? (r.late ? '⚠ ' : '') + launchWindowStr(r.window, r.travel, planRowDateISO(r)) : '—'}</td>
+      <td style="font-family:monospace;${r.late ? 'color:#e06040;font-weight:600;' : r.sched === 'blocked' ? 'color:#e0a040;font-weight:600;' : ''}"${r.sched === 'blocked' ? ` title="${esc(t('psc_blocked_title'))}"` : ''}>${showTiming ? (r.late ? '⚠ ' : '') + (r.sched === 'blocked' ? '⏰ ' : '') + launchWindowStr(r.window, r.travel, planRowDateISO(r)) : '—'}</td>
       <td>${(() => { const url = showTiming ? rallyUrl(r.srcCoord, r.tCoord, planRowRallyUnits(r)) : null; return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">⚔</a>` : '—'; })()}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
     </tr>`;

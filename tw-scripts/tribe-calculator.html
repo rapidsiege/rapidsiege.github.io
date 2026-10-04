@@ -560,7 +560,8 @@
     <input type="number" id="ot-enemy-dist" value="0" min="0" style="width:70px;" title="0 = off" oninput="updOffEnemyDist()">
     <button class="btn btn-ghost btn-sm" onclick="toggleOffEnemy()" data-i18n="btn_enemy_tribes">⚔ Enemy Tribes</button>
     <span style="font-size:12px;color:#5a3a18;" data-i18n="ot_defender_note">Defender auto-fills from the village database.</span>
-    <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="openOtBuildings()" data-i18n="btn_ot_buildings" data-i18n-title="ot_buildings_title" title="Choose which buildings the Catapults picker and the Catapult Mode dropdown offer. Rows already using an unticked building keep it.">🏛 Buildings</button>
+    <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="openPlayerSchedules()" data-i18n="btn_player_schedules" data-i18n-title="psc_schedules_title" title="Per-player preferred and blocked LAUNCH times (server clock). The plan prefers launches inside preferred times, avoids blocked ones whenever possible, and still fills every slot. Saved in this browser across sessions, independent of the loaded files.">⏰ Player Schedules</button>
+    <button class="btn btn-ghost btn-sm" onclick="openOtBuildings()" data-i18n="btn_ot_buildings" data-i18n-title="ot_buildings_title" title="Choose which buildings the Catapults picker and the Catapult Mode dropdown offer. Rows already using an unticked building keep it.">🏛 Buildings</button>
     <button class="btn btn-ghost btn-sm" id="ot-filter-btn" onclick="toggleOtFilter()" data-i18n="btn_ot_filter" data-i18n-title="ot_filter_title" title="Show only the rows matching a text search, a points condition and/or a target type. A view filter: the list, exports and the plan are unaffected; select-all and mass edits act on the visible rows only.">🔍 Filter</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleOtColVis()" data-i18n="btn_colvis">👁 Columns</button>
     <button class="btn btn-ghost btn-sm" onclick="openMassEdit()" data-i18n="btn_mass_edit">✏ Edit Selected Rows</button>
@@ -1198,6 +1199,7 @@
 <script src="js/render-tables.js"></script>
 <script src="js/timings.js"></script>
 <script src="js/offensive-targets.js"></script>
+<script src="js/player-schedules.js"></script>
 <script src="js/plan.js"></script>
 <script src="js/manage-offensive.js"></script>
 <script src="js/defensive-targets.js"></script>
@@ -1295,7 +1297,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.1.1 &nbsp;·&nbsp; 2026-10-04</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.1.2 &nbsp;·&nbsp; 2026-10-04</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
@@ -1365,7 +1367,26 @@ document.addEventListener('drop', e => {
   </div>
 </div>
 
-<!-- ═══════════════════════ MASS EDIT MODAL (Offensive Targets) ═══════════════════════ -->
+<!-- ⏰ Player Schedules (v6.1.2): per-player preferred / blocked launch times, kept in localStorage
+     (tw_tribe_schedules) across sessions and independently of the loaded files. Body rendered by
+     renderPlayerSchedulesModal() (player-schedules.js) on open; rows edit in place. -->
+<div class="modal-overlay" id="ps-modal" onclick="if(event.target===this)closePlayerSchedules()">
+  <div class="modal" style="width:min(780px,95vw);">
+    <div class="modal-header">
+      <h3 data-i18n="psc_modal_title">⏰ Player Schedules</h3>
+      <button class="modal-close" onclick="closePlayerSchedules()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:12px;color:#806030;margin-bottom:10px;" data-i18n="psc_modal_note">Launch times on the server clock, HH:MM – HH:MM (a range may wrap past midnight, e.g. 23:00 – 07:00); both fields of a range are needed, blank = no preference, an end of 23:59 counts as the end of the day. Generate Plan then places a player's attacks so they launch inside their preferred time when it can, outside their blocked time whenever possible — and still inside a blocked time rather than leaving a slot empty (⏰ on the row + a warning). Saved in this browser, not in the files: a player keeps their schedule while not loaded (listed below as saved but not loaded) until you clear it here.</div>
+      <div id="ps-host"></div>
+    </div>
+    <div class="modal-footer">
+      <span id="ps-footer-note" style="font-size:11px;color:#806030;margin-right:auto;"></span>
+      <button class="btn btn-ghost btn-sm" onclick="clearPlayerSchedules()" data-i18n="psc_clear_all">🗑 Clear all</button>
+      <button class="btn btn-ghost btn-sm" onclick="closePlayerSchedules()" data-i18n="btn_close">Close</button>
+    </div>
+  </div>
+</div>
 <!-- 🏛 Buildings (v6.0.4): which buildings the Catapults picker / Catapult Mode dropdown offer.
      Body rendered by renderOtBuildingsModal() (offensive-targets.js) on open and on every tick. -->
 <div class="modal-overlay" id="ot-buildings-modal" onclick="if(event.target===this)closeOtBuildings()">
@@ -1384,6 +1405,7 @@ document.addEventListener('drop', e => {
     </div>
   </div>
 </div>
+<!-- ═══════════════════════ MASS EDIT MODAL (Offensive Targets) ═══════════════════════ -->
 <div class="modal-overlay" id="ot-mass-modal" onclick="if(event.target===this)closeMassEdit()">
   <div class="modal" style="width:min(600px,95vw);">
     <div class="modal-header">
