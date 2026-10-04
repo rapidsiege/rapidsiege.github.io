@@ -223,14 +223,15 @@ function riProtectedAllies() {
 // Values are the in-game building keys (the rally-point confirm-page <select name="building">
 // option values), so they drop straight into the rally URL's &building= param. Labels are i18n
 // (`catb_<key>`). Used by both offensive-targets.js (the picker) and plan.js (display + URL).
-const CAT_BUILDING_KEYS = ['smith', 'farm', 'wood', 'stone', 'iron'];
+// v6.0.2: + Rally Point ('place') and Warehouse ('storage') in both this list and CAT_MODE_KEYS.
+const CAT_BUILDING_KEYS = ['smith', 'farm', 'place', 'storage', 'wood', 'stone', 'iron'];
 // "Catapult Mode" column (per target): the building objective for the OFF SENDERS' attacks
 // (clearing offs / destroyer offs / offs accompanying a noble) — distinct from CAT_BUILDING_KEYS
 // (the extra def-sourced catapult attacks). Default 'smith'; POWER forces 'wall'.
-const CAT_MODE_KEYS = ['smith', 'farm', 'wall'];
+const CAT_MODE_KEYS = ['smith', 'farm', 'place', 'storage', 'wall'];
 // Union of every building key that can appear as a row's target building (picker ∪ mode) — used
 // to validate the label lookup (`catb_<key>`) and the rally URL's best-effort &building= param.
-const BUILDING_TARGET_KEYS = ['smith', 'farm', 'wood', 'stone', 'iron', 'wall'];
+const BUILDING_TARGET_KEYS = ['smith', 'farm', 'place', 'storage', 'wood', 'stone', 'iron', 'wall'];
 
 // Target types (Offensive Targets, per row — badge `ttype_<key>`, style `.ttype-<key>`):
 //   off       — a normal offensive target (clearing offs, optional nobles).

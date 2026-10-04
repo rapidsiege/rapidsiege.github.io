@@ -18,6 +18,14 @@
 // v6 entries into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v6.0.2', date: '2026-10-04',
+    en: [
+      `<b>🏰 Rally Point and Warehouse as catapult objectives.</b> Both buildings join the <b>Catapult Mode</b> dropdown (the building this target's off senders aim at — now Smithy / Farm / Rally Point / Warehouse / Wall; POWER still forces Wall) and the per-attack building picker of the <b>Catapults</b> column (Smithy / Farm / Rally Point / Warehouse / Timber Camp / Clay Pit / Iron Mine). The Edit Selected Rows modal offers them too, and they show up in the plan and every export like the other buildings.`,
+    ],
+    es: [
+      `<b>🏰 Plaza de Reuniones y Almacén como objetivos de catapulta.</b> Ambos edificios se suman al desplegable <b>Modo Catapulta</b> (el edificio al que apuntan los remitentes de off de este objetivo — ahora Herrería / Granja / Plaza de Reuniones / Almacén / Muralla; POWER sigue forzando Muralla) y al selector de edificios por ataque de la columna <b>Catapultas</b> (Herrería / Granja / Plaza de Reuniones / Almacén / Leñador / Barrera / Mina de Hierro). El modal Editar Filas Seleccionadas también los ofrece, y aparecen en el plan y en todas las exportaciones como los demás edificios.`,
+    ],
+  },
   { ver: 'v6.0.1', date: '2026-10-03',
     en: [
       `<b>🐴 Ignore Village with Knight (Plan Defense).</b> A new checkbox next to <b>Prioritize Sending From Far Villages</b>: when on, any of your villages that <b>owns a knight</b> keeps all its defense home — it leaves the sender pool entirely (so it doesn't inflate its player's capacity share either), whether the knight is home or out. Ownership is read from the village's own troop row; a village that merely hosts another player's knight is not affected. Remembered with the rest of the defensive plan.`,
