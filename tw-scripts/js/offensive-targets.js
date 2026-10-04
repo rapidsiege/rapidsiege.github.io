@@ -65,11 +65,131 @@ function emptyPlanStats() {
   // `heldEnemy` (v5.10.0) is its OWN bucket, not folded into `heldDist`: both are distance
   // holdbacks but they answer different questions ("too close to an objective" vs "too close to
   // an enemy tribe"), and a user who sees the footer needs to know which knob to turn.
-  const t = () => ({ assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0 });
+  // `heldPrior` (v6.1.0): committed or held by ANOTHER offensive plan slot (offPlanPriorUsage).
+  const t = () => ({ assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0, heldPrior: 0 });
   return { complete: t(), tq: t(), half: t() };
 }
 let planStats    = emptyPlanStats();
 let otNextId     = 1;
+
+// ── 💾 Offensive plan slots (v6.1.0) ───────────────────────────────────────────────────────
+// Several offensive plans ("Offensive 1", "Offensive 2", …) live side by side, like save slots.
+// The planRows / planWarnings / planReserved / planStats globals ALWAYS hold the ACTIVE slot, so
+// every existing reader (plan table, exports, map overlays, Manage) keeps working unchanged;
+// offPlans holds every slot, the active one included — its record is refreshed from the globals
+// by offPlanSync() whenever the plan is saved or another slot is read. generatePlan() fills the
+// active slot with the villages the OTHER slots left free (offPlanPriorUsage): an off sent in
+// another offensive stays sent, its nobles are gone, its catapults come off the def budget, its
+// launch reservations stay held — so a second offensive consumes only leftover troops. Slots are
+// frozen snapshots: their rows carry their own window + date, so editing targets or window groups
+// for the next offensive never touches an earlier one (removeOffWindowGroup filters the ACTIVE
+// slot only). Persisted in tw_tribe_offensive as `plans` (+ planActive / planNextId) — the active
+// slot is ALSO written under the pre-v6.1.0 keys (plan / warnings / reserved / stats) so an older
+// build sharing this origin's storage (a file:// copy of prod / the es103 dist) still shows it and,
+// should it save, can't wipe the slots silently; a pre-v6.1.0 save's single `plan` becomes slot 1.
+let offPlans      = []; // [{ id, name, createdISO, rows, warnings, reserved, stats }]
+let offPlanActive = 1;  // id of the slot the plan globals show
+let offPlanNextId = 2;
+
+function offPlanNew(id) {
+  const now = typeof serverNowMs === 'function' ? serverNowMs() : Date.now();
+  return { id, name: '', createdISO: new Date(now).toISOString().slice(0, 10), rows: [], warnings: [], reserved: [], stats: emptyPlanStats() };
+}
+// Guarantee at least one slot and a valid active id (fresh install, legacy save, deleted slot).
+function offPlanEnsure() {
+  if (!Array.isArray(offPlans)) offPlans = [];
+  if (!offPlans.length) offPlans.push(offPlanNew(offPlanActive || 1));
+  if (!offPlans.some(s => s.id === offPlanActive)) offPlanActive = offPlans[0].id;
+  offPlanNextId = Math.max(offPlanNextId || 1, ...offPlans.map(s => s.id + 1));
+}
+function offPlanIndex(id) { return offPlans.findIndex(s => s.id === id); }
+function offPlanActiveSlot() { offPlanEnsure(); return offPlans.find(s => s.id === offPlanActive); }
+// Globals → the active record (before saving, before reading the other slots).
+function offPlanSync() {
+  const s = offPlanActiveSlot();
+  s.rows = planRows; s.warnings = planWarnings; s.reserved = planReserved; s.stats = planStats;
+}
+// A record → the globals.
+function offPlanLoad(s) {
+  planRows     = Array.isArray(s.rows) ? s.rows : [];
+  planWarnings = Array.isArray(s.warnings) ? s.warnings : [];
+  planReserved = Array.isArray(s.reserved) ? s.reserved : [];
+  planStats    = (s.stats && s.stats.complete) ? s.stats : emptyPlanStats();
+}
+// "Offensive 2" (by position) unless the user named it.
+function offPlanLabel(s) {
+  const n = String((s && s.name) || '').trim();
+  return n || t('plan_slot_default')(offPlanIndex(s.id) + 1);
+}
+function offPlanOthers() { offPlanSync(); return offPlans.filter(s => s.id !== offPlanActive); }
+// Every slot's rows in slot order, each tagged with its slot id (coord export, unused offs).
+function offPlanAllRows() { offPlanSync(); return offPlans.flatMap(s => (s.rows || []).map(r => ({ ...r, slot: s.id }))); }
+// What the OTHER slots already committed, per village — generatePlan() starts its pool from here.
+// offCoords = villages whose off is spent (planUsedOffCoords: offs, escorts, fakes, recruit holds);
+// nobles / cats = counts per source coord; reserved = their noble-launch holds. nOffs (the slot-bar
+// hint) = spent OR held villages, the same set the footer's "in other offensives" bucket counts.
+function offPlanPriorUsage(others) {
+  const u = { offCoords: new Set(), nobles: {}, cats: {}, reserved: new Set(), nSlots: 0, nOffs: 0, nNobles: 0, nCats: 0 };
+  for (const s of (others || offPlanOthers())) {
+    u.nSlots++;
+    for (const c of planUsedOffCoords(s.rows || [])) u.offCoords.add(c);
+    for (const r of (s.rows || [])) {
+      if (r.unassigned || !r.srcCoord) continue;
+      if (r.type === 'snob')          { const n = r.count || 1; u.nobles[r.srcCoord] = (u.nobles[r.srcCoord] || 0) + n; u.nNobles += n; }
+      else if (r.type === 'catapult') { const n = r.cats || 0;  u.cats[r.srcCoord]   = (u.cats[r.srcCoord]   || 0) + n; u.nCats += n; }
+    }
+    for (const c of (s.reserved || [])) u.reserved.add(c);
+  }
+  u.nOffs = new Set([...u.offCoords, ...u.reserved]).size;
+  return u;
+}
+function offPlanAfterSwitch() {
+  saveOffensive();
+  if (typeof renderPlanTable === 'function') renderPlanTable(); // also re-renders Manage Offensive
+  if (typeof repaintMapData === 'function') repaintMapData();   // map overlays read the active slot
+}
+// Show another slot (the plan table, exports and map follow; Manage keeps its own view).
+function setOffPlanActive(id) {
+  id = parseInt(id, 10);
+  if (offPlanIndex(id) < 0 || id === offPlanActive) return;
+  offPlanSync();
+  offPlanActive = id;
+  offPlanLoad(offPlanActiveSlot());
+  offPlanAfterSwitch();
+}
+// Start an empty offensive next to the existing ones and make it active. Targets / window
+// groups are left as they are — the user edits them, then Generate Plan fills the new slot
+// with what the other offensives left free.
+function newOffPlan() {
+  offPlanSync();
+  const s = offPlanNew(offPlanNextId++);
+  offPlans.push(s);
+  offPlanActive = s.id;
+  offPlanLoad(s);
+  offPlanAfterSwitch();
+}
+function renameOffPlan(id, name) {
+  const s = offPlans.find(x => x.id === parseInt(id, 10));
+  if (!s) return;
+  s.name = String(name || '').trim().slice(0, 40);
+  saveOffensive();
+  if (typeof renderOffPlanSlots === 'function') renderOffPlanSlots();
+  if (typeof renderManageTable === 'function') renderManageTable(); // selector options + badge tooltips carry the name
+}
+// The last slot can never be deleted (clearPlan empties it instead).
+function deleteOffPlan(id) {
+  id = parseInt(id, 10);
+  offPlanEnsure();
+  if (offPlans.length <= 1) return;
+  const s = offPlans.find(x => x.id === id);
+  if (!s) return;
+  offPlanSync();
+  const n = (s.rows || []).filter(r => !r.unassigned).length;
+  if (!confirm(t('confirm_del_plan_slot')(offPlanLabel(s), n))) return;
+  offPlans = offPlans.filter(x => x.id !== id);
+  if (offPlanActive === id) { offPlanActive = offPlans[0].id; offPlanLoad(offPlans[0]); }
+  offPlanAfterSwitch();
+}
 
 function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
@@ -287,6 +407,8 @@ function removeOffWindowGroup(gid) {
   }
   // Orders already generated for that wave describe attacks that no longer exist — drop them so
   // the plan table, the exports and Manage Offensive can't disagree about what is still planned.
+  // ACTIVE offensive slot only (v6.1.0): the other slots are frozen snapshots whose rows carry
+  // their own window + date — reshaping the waves for the next offensive must not touch them.
   planRows = planRows.filter(r => r.group !== gid);
   saveOffensive(); renderOffWindowGroups(); renderOffTargets();
   if (typeof renderPlanTable === 'function') renderPlanTable();
@@ -327,13 +449,23 @@ function groupDateLabel(g) { return bbDateLabelOf(g && g.dateISO); }
 function otMultiGroup() { return otGroups().length > 1; }
 
 function saveOffensive() {
+  offPlanSync(); // the active slot's record mirrors the plan globals
+  try {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
     cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, forcePlayers: offForcePlayers, forceCoords: offForceCoords, mvPairs, blockPairs,
     buildings: otBuildings,
     enemyIds: offEnemyIds, enemyDist: offEnemyDist,
     coordFilters: planCoordFilters, coordPolygon: planCoordPolygon, coordPolygonInv: planCoordPolygonInv,
-    plan: planRows, warnings: planWarnings, reserved: planReserved, stats: planStats, nextId: otNextId,
+    plans: offPlans, planActive: offPlanActive, planNextId: offPlanNextId, nextId: otNextId,
+    // pre-v6.1.0 shape of the ACTIVE slot (compat with older builds sharing this storage; `plans` wins on load)
+    plan: planRows, warnings: planWarnings, reserved: planReserved, stats: planStats,
   }));
+  } catch (e) {
+    // Quota exceeded (several big offensives + the troop file) — keep the session alive: the plan
+    // is still in memory and rendered, only this save failed. Surfaced once per failure.
+    console.warn('saveOffensive failed', e);
+    if (typeof alert === 'function') alert(t('warn_save_failed'));
+  }
 }
 
 function loadOffensive() {
@@ -362,13 +494,28 @@ function loadOffensive() {
       planCoordPolygon = Array.isArray(d.coordPolygon)
         ? d.coordPolygon.filter(p => p && p.x != null && p.y != null && p.x !== '' && p.y !== '' && isFinite(p.x) && isFinite(p.y)).map(p => ({ x: +p.x, y: +p.y }))
         : [];
-      planRows     = d.plan || [];
-      planWarnings = d.warnings || [];
-      planReserved = d.reserved || [];
-      planStats    = (d.stats && d.stats.complete) ? d.stats : emptyPlanStats(); // ignore the pre-3.13 flat shape
+      // 💾 Offensive plan slots (v6.1.0). A pre-v6.1.0 save holds ONE plan at the top level — it
+      // becomes slot 1. (The pre-3.13 flat stats shape is still ignored.)
+      if (Array.isArray(d.plans) && d.plans.length) {
+        const seen = new Set(); // a corrupt save with duplicate ids keeps the first copy of each
+        offPlans = d.plans.filter(x => x && Number.isInteger(x.id) && !seen.has(x.id) && seen.add(x.id)).map(x => ({
+          id: x.id, name: typeof x.name === 'string' ? x.name : '', createdISO: typeof x.createdISO === 'string' ? x.createdISO : '',
+          rows: Array.isArray(x.rows) ? x.rows : [], warnings: Array.isArray(x.warnings) ? x.warnings : [],
+          reserved: Array.isArray(x.reserved) ? x.reserved : [], stats: (x.stats && x.stats.complete) ? x.stats : emptyPlanStats(),
+        }));
+        offPlanActive = parseInt(d.planActive, 10) || 1;
+        offPlanNextId = parseInt(d.planNextId, 10) || 1;
+      } else {
+        offPlans = [{ ...offPlanNew(1), rows: Array.isArray(d.plan) ? d.plan : [], warnings: Array.isArray(d.warnings) ? d.warnings : [],
+          reserved: Array.isArray(d.reserved) ? d.reserved : [], stats: (d.stats && d.stats.complete) ? d.stats : emptyPlanStats() }];
+        offPlanActive = 1; offPlanNextId = 2;
+      }
+      offPlanEnsure();
+      offPlanLoad(offPlanActiveSlot());
       otNextId     = d.nextId || (Math.max(0, ...offTargets.map(x => x.id)) + 1);
     }
   } catch {}
+  offPlanEnsure(); // no save / broken save: one empty slot 1
   // normalize targets saved by older versions (this is also what migrates a pre-v5.9 save's
   // single arrival date + per-target windows into window groups)
   offTargets.forEach(normalizeOffTarget);

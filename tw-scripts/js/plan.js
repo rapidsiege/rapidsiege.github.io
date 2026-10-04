@@ -246,9 +246,22 @@ function generatePlan() {
   // Sender region = typed X|Y filters AND (if drawn) the map polygon. Both empty → every
   // village is eligible. See passesCoordFilters (typed) + passesCoordPolygon (drawn, honours
   // "Select Reverse" inversion), both pure world-space.
+  // 💾 Other offensive plan slots (v6.1.0): what they already committed starts this pool as spent
+  // — an off sent there stays sent (usedOff + `prior`; a fake-only source counts as spent too,
+  // planUsedOffCoords), its nobles are gone (snobLeft), its launch reservations stay held
+  // (priorReserved → offBlocked, escort pick, escorted-train pick, launch reservation, fairness)
+  // and its catapults come off the def budget (catPool below). A village whose off went in another
+  // offensive keeps its remaining nobles, so it may still send a SOLO train here (exactly as a
+  // village already used in THIS plan may). `prior` villages never fake here either: their off left
+  // in the other offensive, they're not a cheap decoy source. Time plays no part: a village spent
+  // on Friday stays spent for an offensive planned a week later (by design — the user frees it by
+  // deleting or regenerating the earlier offensive).
+  const prior = offPlanPriorUsage();
+  const priorReserved = prior.reserved;
   const pool = villages.map(v => ({
     v, c: parseCoordStr(v.coord), tier: getOffTier(v.offPow),
-    snobLeft: v.snob, usedOff: false, usedSnob: false,
+    snobLeft: Math.max(0, (v.snob || 0) - (prior.nobles[v.coord] || 0)),
+    usedOff: prior.offCoords.has(v.coord), prior: prior.offCoords.has(v.coord), usedSnob: false,
   })).filter(p => p.c && !ignoreCoords.has(p.v.coord) && inForce(p.v)
     && passesCoordFilters(p.c, planCoordFilters)
     && passesCoordPolygon(p.c.x, p.c.y));
@@ -310,7 +323,7 @@ function generatePlan() {
   // many have been committed so far. Used to spread offs in PROPORTION to roster size, so
   // a small-roster player isn't drained while a big one sits idle (e.g. 9+4, not 7+6).
   const offCapacity = {};
-  for (const p of pool) if (p.tier !== 'none') offCapacity[p.v.player] = (offCapacity[p.v.player] || 0) + 1;
+  for (const p of pool) if (p.tier !== 'none' && !p.prior && !priorReserved.has(p.v.coord)) offCapacity[p.v.player] = (offCapacity[p.v.player] || 0) + 1;
   const offUsedByPlayer = {};
   const noteOffUsed = name => { offUsedByPlayer[name] = (offUsedByPlayer[name] || 0) + 1; };
 
@@ -574,7 +587,7 @@ function generatePlan() {
       if (otSnobMode(T.tg, g.id) !== 'escorted') continue;
       const picks = T.escortPicks[g.id] = [];
       for (const { name: want } of targetTrainSpec(T.tg, g.id)) {
-        const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !tooClose.has(p) && !pairBlocked(p.v.player, T)
+        const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !priorReserved.has(p.v.coord) && !tooClose.has(p) && !pairBlocked(p.v.player, T)
           && tiers.includes(p.tier) && okSnobDist(p, T.c) && okSnobTime(p, T, g) && smithOkOrUnknown(p)
           && (want ? p.v.player === want : !ignorePlayers.has(p.v.player)))
           .sort((a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (b.v.offPow - a.v.offPow))[0];
@@ -678,7 +691,7 @@ function generatePlan() {
         p.snobLeft > 0 && okSnobDist(p, T.c) && okSnobTime(p, T, g) && !mvBlocked(p, T) &&
         // a pinned (want) sender may be an ignored player; auto-picks never use ignored players
         (want ? p.v.player === want : (!chosen.has(p.v.player) && !ignorePlayers.has(p.v.player))) &&
-        (mode !== 'escorted' || !p.usedOff));
+        (mode !== 'escorted' || (!p.usedOff && !priorReserved.has(p.v.coord)))); // a split-off also spends the off — never one another offensive holds for a launch
       if (mode === 'escorted') {
         // train travels with its own off escort → prefer villages with real off power
         const strong = cands.filter(p => tierAtLeast(p.tier, PARAMS.escortMinTier)); // 🎚 escortMinTier ('none' keeps every candidate)
@@ -824,14 +837,14 @@ function generatePlan() {
   if (!noReserve) for (const [rawName, tset] of Object.entries(snobSenderTargets)) {
     const tcs = [...tset].map(i => targets[i]).filter(T => T && T.c).map(T => T.c);
     if (!tcs.length) continue;
-    const mine = pool.filter(p => p.v.player === rawName && reserveEligible(p));
+    const mine = pool.filter(p => p.v.player === rawName && reserveEligible(p) && !p.prior && !priorReserved.has(p.v.coord)); // spent / held by another offensive → not a launch village here
     const dOf = p => Math.min(...tcs.map(tc => distXY(p.c, tc)));
     mine.sort((a, b) => (dOf(a) - dOf(b)) || (b.v.offPow - a.v.offPow) || (a.v.coord < b.v.coord ? -1 : 1));
     for (const p of mine.slice(0, PARAMS.reserveVillages)) snobReserved.add(p);
   }
   // Ignored players are barred from every regular-off pass here (all four use offBlocked),
   // but NOT from the snob loop / escort pick — so a hand-picked ignored noble sender still sends.
-  const offBlocked = p => escortReserved.has(p) || snobReserved.has(p) || ignorePlayers.has(p.v.player);
+  const offBlocked = p => escortReserved.has(p) || snobReserved.has(p) || priorReserved.has(p.v.coord) || ignorePlayers.has(p.v.player);
   // Persist the reserved launch-village coords so the "Export Unused Offs" list can drop
   // them (they're being kept for a noble, not offered as a free second-wave off).
   planReserved = [...snobReserved].map(p => p.v.coord);
@@ -1147,7 +1160,7 @@ function generatePlan() {
     const want = otTierCount(T.tg, g.id, 'complete');
     for (let k = 0; k < want; k++) {
       const candsOf = filt => pool.filter(p => tierAtLeast(p.tier, PARAMS.fakeSourceTier) && (p.fakesSent || 0) < PARAMS.fakesPerVillage
-        && (p.v.ram || 0) >= PARAMS.fakeRams && !ignorePlayers.has(p.v.player) && filt(p)
+        && (p.v.ram || 0) >= PARAMS.fakeRams && !ignorePlayers.has(p.v.player) && !p.prior && filt(p)
         && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
       let cands = candsOf(p => p.usedOff && !p.isEscort);           // primary: assigned real offs
       if (!cands.length) cands = candsOf(p => p.isEscort || escortReserved.has(p)); // fallback: escorts
@@ -1195,7 +1208,7 @@ function generatePlan() {
   const CAT_OFF_LEAD = PARAMS.catOffLead;
   const catsPerAttack = Math.max(1, parseInt((document.getElementById('plan-cat-count') || {}).value) || 20);
   const catPool = villages
-    .map(v => ({ v, c: parseCoordStr(v.coord), budget: Math.floor((v.catapult || 0) / catsPerAttack) }))
+    .map(v => ({ v, c: parseCoordStr(v.coord), budget: Math.floor(Math.max(0, (v.catapult || 0) - (prior.cats[v.coord] || 0)) / catsPerAttack) })) // minus the catapults other offensives already send
     .filter(s => s.c && s.v.type === 'def' && s.budget > 0 && inForce(s.v));
   for (const T of targets) {
     if (!T.c || isFake(T)) continue; // fake targets get 1-ram rows only, never real demolition
@@ -1344,7 +1357,8 @@ function generatePlan() {
     if (p.tier === 'none') continue;                                          // not an off
     if (ignorePlayers.has(p.v.player)) continue;                              // counted under `ignored` above (now in pool, but barred from offs)
     const s = planStats[p.tier];
-    if (escortReserved.has(p) || (p.usedOff && p.isEscort)) s.heldSplit++;     // reserved for / riding as a split-off escort
+    if (p.prior || priorReserved.has(p.v.coord))            s.heldPrior++;     // committed / held by another offensive slot (v6.1.0)
+    else if (escortReserved.has(p) || (p.usedOff && p.isEscort)) s.heldSplit++; // reserved for / riding as a split-off escort
     else if (snobReserved.has(p))                           s.heldNoble++;     // held free for a noble launch
     else if (p.usedOff)                                     s.assigned++;      // an off committed in the plan
     else if (tooClose.has(p))                               s.heldDist++;      // blanket min-distance holdback
@@ -1361,8 +1375,8 @@ function generatePlan() {
 
 function delPlanRow(i) { planRows.splice(i, 1); saveOffensive(); renderPlanTable(); }
 
-// Wipe the generated offensive plan (mirrors clearOffTargets). Confirms only when there's
-// a plan to lose; resets the same state generatePlan() rebuilds, then re-renders empty.
+// Wipe the generated offensive plan — the ACTIVE slot only (mirrors clearOffTargets). Confirms
+// only when there's a plan to lose; resets the same state generatePlan() rebuilds, then re-renders empty.
 function clearPlan() {
   if (planRows.length && !confirm(t('confirm_clear_plan'))) return;
   planRows = []; planWarnings = []; planReserved = [];
@@ -1370,10 +1384,32 @@ function clearPlan() {
   saveOffensive(); renderPlanTable();
 }
 
+// ── 💾 Offensive plan slot bar (Plan Offensive, v6.1.0) ─────────────────────────────────────
+// Active-slot <select>, an optional name, ➕ New offensive / 🗑 Delete offensive and a hint line
+// saying what the OTHER slots hold back from this one. Re-rendered with the plan table (so it
+// follows a language switch too). No-op without its host (headless harness, attack-planner).
+function renderOffPlanSlots() {
+  const host = document.getElementById('plan-slots');
+  if (!host) return;
+  offPlanSync();
+  const act = offPlanActiveSlot();
+  const nAtt = s => (s.rows || []).filter(r => !r.unassigned).length;
+  const opts = offPlans.map(s => `<option value="${s.id}"${s.id === offPlanActive ? ' selected' : ''}>${esc(t('plan_slot_opt')(offPlanLabel(s), nAtt(s)))}</option>`).join('');
+  const prior = offPlanPriorUsage();
+  const hint = offPlans.length > 1 ? t('plan_slot_hint')(prior.nSlots, prior.nOffs, prior.nNobles, prior.nCats) : t('plan_slot_hint_single');
+  host.innerHTML = `<span class="plan-slots-lbl">${esc(t('plan_slot_lbl'))}</span>`
+    + `<select id="plan-slot-select" onchange="setOffPlanActive(this.value)" title="${esc(t('plan_slot_select_t'))}">${opts}</select>`
+    + `<input id="plan-slot-name" type="text" maxlength="40" value="${esc(act.name || '')}" placeholder="${esc(t('plan_slot_name_ph'))}" title="${esc(t('plan_slot_name_t'))}" onchange="renameOffPlan(${act.id}, this.value)">`
+    + `<button class="btn btn-ghost btn-sm" onclick="newOffPlan()" title="${esc(t('btn_plan_slot_new_t'))}">${esc(t('btn_plan_slot_new'))}</button>`
+    + (offPlans.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="deleteOffPlan(${act.id})" title="${esc(t('btn_plan_slot_del_t'))}">${esc(t('btn_plan_slot_del'))}</button>` : '')
+    + `<span class="plan-slots-hint">${esc(hint)}</span>`;
+}
+
 function renderPlanTable() {
   // Rebuild the Coordinate Filter rows (also refreshes them on a language switch, since
   // renderPlanTable runs from changeLang). Guarded + no-ops without its host element.
   if (typeof renderCoordFilters === 'function') renderCoordFilters();
+  renderOffPlanSlots();
   // Warnings can be many; render them collapsed (count in the summary) so they
   // don't bury the plan table. Native <details> — no JS, works under file://.
   document.getElementById('plan-warnings').innerHTML = planWarnings.length
@@ -1382,19 +1418,19 @@ function renderPlanTable() {
   const assigned = planRows.filter(r => !r.unassigned).length;
   // Per-tier off breakdown next to the attack tally. Every number comes from planStats
   // (computed in generatePlan), whose six buckets partition each tier's gross village count,
-  // so each segment reconciles: assigned + held(distance/noble/split) + unused + ignored = [N].
+  // so each segment reconciles: assigned + held(distance/noble/split/other offensives) + unused + ignored = [N].
   const TIER_BADGE = { complete: 'badge-complete', tq: 'badge-tq', half: 'badge-half' };
   let summary = planRows.length ? esc(t('plan_summary')(assigned, planRows.length - assigned)) : '';
   if (planRows.length && planStats) {
     // One line per off tier, behind a collapsible toggle (native <details>, file://-safe).
     const segs = ['complete', 'tq', 'half'].map(tier => {
       // A plan saved before v5.10.0 has no `heldEnemy` — the string treats it as 0.
-      const s = planStats[tier] || { assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0 };
+      const s = planStats[tier] || { assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0, heldPrior: 0 };
       // [N] = gross count of villages of this tier tribe-wide (same denominator as the
       // Offensive Targets footer — total selectable offs, before any holdback/reservation).
       const gross = villages.filter(v => getOffTier(v.offPow) === tier).length;
       return `<span class="badge ${TIER_BADGE[tier]}">${t('tier_' + tier)} [${gross}]</span> `
-        + esc(t('plan_offs_summary')(s.assigned, s.heldDist, s.heldNoble, s.heldSplit, s.heldLate, s.far, s.outside, s.avail, s.ignored, s.heldEnemy));
+        + esc(t('plan_offs_summary')(s.assigned, s.heldDist, s.heldNoble, s.heldSplit, s.heldLate, s.far, s.outside, s.avail, s.ignored, s.heldEnemy, s.heldPrior));
     });
     summary += `<details style="margin-top:6px;"><summary style="cursor:pointer;">${esc(t('btn_show_off_counts'))}</summary>`
       + `<div style="margin-top:4px;line-height:1.9;">${segs.join('<br>')}</div></details>`;
@@ -1404,6 +1440,7 @@ function renderPlanTable() {
   const tbody = document.getElementById('plan-tbody');
   if (!planRows.length) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="13">${t('empty_no_plan')}</td></tr>`;
+    renderPlanDependents(); // an EMPTY active slot (new / cleared / deleted-to-empty) must reach Manage + Outbound too (v6.1.0)
     return;
   }
   let lastIdx = null;
@@ -1461,10 +1498,13 @@ function renderPlanTable() {
       <td><button class="btn btn-ghost btn-sm" onclick="delPlanRow(${i})">✕</button></td>
     </tr>`;
   }).join('');
-  // The Outbound Offs tab shows each sender's assigned target (Off Target / Target
-  // Player columns), so any plan change must repaint it too. Cheap + idempotent.
+  renderPlanDependents();
+}
+// The Outbound Offs tab shows each sender's assigned target (Off Target / Target Player columns),
+// so any plan change must repaint it too; Manage Offensive matches the imported incoming orders
+// against the plan (all slots) — same deal. Cheap + idempotent.
+function renderPlanDependents() {
   if (typeof renderOutboundTable === 'function') renderOutboundTable();
-  // Manage Offensive matches the imported incoming orders against this plan — same deal.
   if (typeof renderManageTable === 'function') renderManageTable();
 }
 
@@ -1518,10 +1558,12 @@ function planRowIconBB(r) {
 // ── Export the plan's target coordinates (one per line) ──
 // Exactly the paste format the "Target Village Orders Exporter" userscript
 // (incomingOrders.js) expects; its .txt/.json export then feeds the Manage
-// Offensive tab. Unique coords, plan order.
+// Offensive tab. Unique coords, plan order — across EVERY offensive slot (v6.1.0), since Manage
+// Offensive checks all of them together.
 function exportPlanCoords() {
-  if (!planRows.length) { alert(t('empty_no_plan')); return; }
-  const coords = [...new Set(planRows.map(r => r.tCoord))];
+  const all = offPlanAllRows();
+  if (!all.length) { alert(t('empty_no_plan')); return; }
+  const coords = [...new Set(all.map(r => r.tCoord))];
   // Not a BB table — retitle the shared modal (closeBBModal restores the default)
   const h = document.getElementById('bb-modal-title');
   if (h) {
@@ -1611,7 +1653,12 @@ function showPlanBB() {
   // necessarily group A. A single-group plan prints exactly one section, as it always did.
   const sections = planWindowSections();
   if (!sections.length) { alert(t('empty_no_plan')); return; }
-  let bb = `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabelOf(sections[0].g.dateISO)}[/size]\n\n`;
+  // A section's date is the one its ROWS were stamped with at generation (planRowDateISO) — the
+  // live group's date only for pre-v5.9 rows that carry none. The two agree for a freshly generated
+  // plan; they differ for a frozen offensive slot (v6.1.0) after the groups were re-dated for the
+  // next offensive, and the rows are the truth about when those orders land.
+  const secDate = sec => planRowDatesOf(sec.rows)[0] || sec.g.dateISO;
+  let bb = `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabelOf(secDate(sections[0]))}[/size]\n\n`;
   bb += `[unit]ram[/unit] --> ${t('bb_legend_ram')}\n`;
   if (planRows.some(r => r.type === 'tq')) bb += `[unit]axe[/unit] (${t('tier_tq')}) --> ${t('bb_legend_tq')}\n`;
   if (planRows.some(r => r.type === 'half')) bb += `[unit]axe[/unit] (${t('tier_half')}) --> ${t('bb_legend_axe')}\n`;
@@ -1624,7 +1671,7 @@ function showPlanBB() {
 
   sections.forEach((sec, si) => {
     // The first section's date is already in the header above; later waves announce their own.
-    if (si > 0) bb += `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabelOf(sec.g.dateISO)}[/size]\n\n`;
+    if (si > 0) bb += `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabelOf(secDate(sec))}[/size]\n\n`;
     planGroups(sec.rows).forEach((g, gi) => {
       bb += `${gi + 1}. ${g.coord}${g.player ? ` - [player]${g.player}[/player]` : ''}\n`;
       const multiSnob = g.rows.filter(x => x.type === 'snob').length > 1;
@@ -2142,9 +2189,10 @@ function exportPlayerPlanAll() {
 // "Committed" = sent as an off, used as a split-off escort, or held in reserve for a
 // pending split-off (needNobles recruitCoord). A SOLO snob train leaves the village's
 // off free, so it does NOT count as used. Sorted by off power, strongest first.
-function planUsedOffCoords() {
+// `rows` defaults to the active plan; offPlanPriorUsage() passes the other slots' rows.
+function planUsedOffCoords(rows) {
   const used = new Set();
-  for (const r of planRows) {
+  for (const r of (rows || planRows)) {
     if (r.type === 'catapult') continue; // catapults come from def villages, not the off pool
     if (r.unassigned) { if (r.needNobles && r.recruitCoord) used.add(r.recruitCoord); continue; }
     if (r.type === 'snob') { if (r.escorted && r.srcCoord) used.add(r.srcCoord); }
@@ -2154,8 +2202,13 @@ function planUsedOffCoords() {
 }
 
 function unusedOffs() {
-  const used = planUsedOffCoords();
-  const reserved = new Set(planReserved); // launch villages held for nobles — not free offs
+  // Across EVERY offensive slot (v6.1.0): an off committed or held in any offensive isn't free.
+  offPlanSync();
+  const used = new Set(), reserved = new Set(); // reserved = launch villages held for nobles — not free offs
+  for (const s of offPlans) {
+    for (const c of planUsedOffCoords(s.rows || [])) used.add(c);
+    for (const c of (s.reserved || [])) reserved.add(c);
+  }
   // With Force Players / Force Coords on, non-forced villages aren't part of the operation,
   // so they're not "unused offs" to offer as a second wave.
   const force = new Set(offForcePlayers);

@@ -15,9 +15,10 @@ let moTargets    = []; // [{coord, village, owner, status}] one per exported tar
 let moCommands   = []; // [{id, target, type, size, snob, label, originCoord, originVillage, originPlayer, arrival, arrivalMs, units|null}]
 let moImportedAt = 0;  // unix seconds of the export (JSON) or of the import (CSV); 0 = nothing imported
 let moShowUnitTip = true; // "show units in command when hovering" header toggle (persisted)
+let moPlanView   = 'all'; // 💾 v6.1.0: 'all' = every offensive slot merged, or one slot id (number) — header <select>, persisted
 
 function saveManage() {
-  localStorage.setItem(MO_STORE_KEY, JSON.stringify({ targets: moTargets, commands: moCommands, importedAt: moImportedAt, showUnitTip: moShowUnitTip }));
+  localStorage.setItem(MO_STORE_KEY, JSON.stringify({ targets: moTargets, commands: moCommands, importedAt: moImportedAt, showUnitTip: moShowUnitTip, planView: moPlanView }));
 }
 function loadManage() {
   try {
@@ -25,6 +26,7 @@ function loadManage() {
     if (d) {
       moTargets = d.targets || []; moCommands = d.commands || []; moImportedAt = d.importedAt || 0;
       moShowUnitTip = d.showUnitTip !== false; // default ON
+      moPlanView = Number.isInteger(d.planView) ? d.planView : 'all';
     }
   } catch {}
   const tt = document.getElementById('mo-tip-toggle');
@@ -34,6 +36,58 @@ function updMoTipToggle(on) {
   moShowUnitTip = !!on;
   saveManage();
   renderManageTable();
+}
+
+// ── 💾 Offensive plan slots in Manage (v6.1.0) ─────────────────────────────────────────────
+// The rows the table works on. One slot in existence, or one slot picked → that slot's rows
+// untouched (today's behaviour, byte-identical). 'all' with several slots → every slot's rows
+// MERGED: rows of the same target coord from different slots sit together (order of first
+// appearance), targets are renumbered 1..N, and each row carries its `slot` id (badge in the
+// Type cell). moMatchPlan keys by tCoord, so merged rows for one target compete for the same
+// incoming commands exactly like several rows of one plan do.
+function setMoPlanView(v) {
+  const n = parseInt(v, 10);
+  moPlanView = v === 'all' || !Number.isInteger(n) ? 'all' : n;
+  saveManage();
+  renderManageTable();
+}
+function moMergeSlotRows(slots) {
+  const order = [], by = {};
+  for (const s of slots) for (const r of (s.rows || [])) {
+    if (!by[r.tCoord]) { by[r.tCoord] = []; order.push(r.tCoord); }
+    by[r.tCoord].push({ ...r, slot: s.id });
+  }
+  const out = [];
+  order.forEach((c, i) => { for (const r of by[c]) out.push({ ...r, tIdx: i + 1 }); });
+  return out;
+}
+function moViewRows() {
+  if (typeof offPlans === 'undefined') return (typeof planRows !== 'undefined') ? planRows : [];
+  offPlanSync();
+  if (moPlanView !== 'all') {
+    const s = offPlans.find(x => x.id === moPlanView);
+    if (s) return s.rows || [];
+    moPlanView = 'all'; // the picked slot was deleted
+  }
+  if (offPlans.length === 1) return offPlans[0].rows || [];
+  return moMergeSlotRows(offPlans);
+}
+function moMergedView() { return moPlanView === 'all' && typeof offPlans !== 'undefined' && offPlans.length > 1; }
+// Header <select>: only while there are 2+ offensive slots (one slot = nothing to pick).
+function renderMoPlanView() {
+  const host = document.getElementById('mo-plan-view-host');
+  if (!host) return;
+  if (typeof offPlans === 'undefined' || offPlans.length < 2) { host.innerHTML = ''; return; }
+  const opt = (v, label) => `<option value="${v}"${String(moPlanView) === String(v) ? ' selected' : ''}>${esc(label)}</option>`;
+  host.innerHTML = `<label class="mo-plan-view">${esc(t('mo_plan_view_lbl'))} <select id="mo-plan-view" onchange="setMoPlanView(this.value)">`
+    + opt('all', t('mo_plan_view_all')) + offPlans.map(s => opt(s.id, offPlanLabel(s))).join('')
+    + `</select></label><span class="map-tb-sep"></span>`;
+}
+function moSlotBadge(r) {
+  if (!moMergedView() || r.slot == null) return '';
+  const s = offPlans.find(x => x.id === r.slot);
+  if (!s) return '';
+  return `<span class="mo-slot" title="${esc(t('mo_slot_badge_t')(offPlanLabel(s)))}">${esc(t('plan_slot_short')(offPlanIndex(s.id) + 1))}</span>`;
 }
 
 // Player names in planRows come decoded from the troop file, names in the export come
@@ -404,8 +458,9 @@ function renderManageTable() {
   if (!sumEl || !tbody) return;
   const impEl = document.getElementById('mo-import-status');
   moTipData = [];
+  renderMoPlanView();
 
-  const rows = (typeof planRows !== 'undefined') ? planRows : [];
+  const rows = moViewRows();
   if (!rows.length) {
     sumEl.innerHTML = '';
     if (impEl) impEl.textContent = '';
@@ -499,7 +554,7 @@ function renderManageTable() {
       <td style="color:#806030;">${head ? r.tIdx : ''}</td>
       <td class="left" style="font-family:monospace;">${head ? moCoordLink(r.tCoord) : ''}</td>
       <td class="left">${head && r.tPlayer ? `<span class="player-tag">${esc(r.tPlayer)}</span>` : ''}${ownerWarn}</td>
-      <td${tip}>${moTypeBadge(r, j, nSub)}</td>
+      <td${tip}>${moSlotBadge(r)}${moTypeBadge(r, j, nSub)}</td>
       <td class="left" style="font-family:monospace;"${tip}>${isSnob ? `<span style="color:#e0a020;">👑</span>` : (r.unassigned ? `<span style="color:#e06040;">${t('bb_unassigned')}</span>` : esc(r.srcCoord || '—'))}</td>
       <td class="left"${tip}>${r.srcPlayer ? `<span class="player-tag">${esc(r.srcPlayer)}</span>` : '—'}</td>
       <td style="color:#60a0e0;font-weight:600;font-family:monospace;"${tip}>${esc(fmtWindow(r.window) || '—')}</td>

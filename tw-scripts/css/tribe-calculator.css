@@ -869,3 +869,13 @@
     .twrr-bld th:last-child, .twrr-bld td:last-child { width: 38px; text-align: right; }
     .twrr-bld img { width: 16px; height: 16px; vertical-align: middle; margin-right: 2px; }
     .twrr-away th { border-bottom: 0; }
+
+    /* 💾 Offensive plan slots (v6.1.0): slot bar on Plan Offensive + slot badge / selector in Manage */
+    .plan-slots { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0; padding: 6px 14px; background: #120c03; border: 1px solid #3a2808; border-radius: 5px; font-size: 12px; color: #a08050; }
+    .plan-slots-lbl { font-weight: 600; }
+    .plan-slots select, .plan-slots input { font-size: 12px; }
+    .plan-slots input { width: 170px; }
+    .plan-slots-hint { flex-basis: 100%; font-size: 11px; color: #806030; }
+    .mo-plan-view { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #a08050; white-space: nowrap; }
+    .mo-plan-view select { font-size: 12px; }
+    .mo-slot { display: inline-block; margin-right: 4px; padding: 0 5px; border-radius: 3px; background: #2a1c06; border: 1px solid #5a3a10; color: #c09040; font-size: 10px; font-weight: 600; vertical-align: middle; }

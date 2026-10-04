@@ -691,6 +691,8 @@
       <button class="btn btn-ghost btn-sm" onclick="clearPlan()" data-i18n="btn_clear_targets">✕ Clear All</button>
     </div>
   </div>
+  <!-- 💾 Offensive plan slots (v6.1.0): rendered by renderOffPlanSlots() (plan.js) -->
+  <div id="plan-slots" class="plan-slots"></div>
   <!-- Plan Offensive settings: 4 rows — (1) send/range, (2) morale, (3) toggles, (4) generate -->
   <div class="plan-cfg" style="padding:4px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
   <div class="filter-row plan-row">
@@ -797,6 +799,7 @@
   <div class="section-header">
     <h2 data-i18n="sec_manageoff">Manage Offensive</h2>
     <div style="display:flex;gap:8px;align-items:center;">
+      <span id="mo-plan-view-host" style="display:contents;"></span><!-- 💾 v6.1.0 Offensive selector (renderMoPlanView, 2+ slots only) -->
       <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#a08050;cursor:pointer;white-space:nowrap;">
         <input type="checkbox" id="mo-tip-toggle" checked onchange="updMoTipToggle(this.checked)">
         <span data-i18n="mo_tip_toggle">Show units in command when hovering</span>
@@ -1288,7 +1291,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.0.4 &nbsp;·&nbsp; 2026-10-04</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.1.0 &nbsp;·&nbsp; 2026-10-04</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
