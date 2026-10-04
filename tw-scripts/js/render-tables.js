@@ -205,6 +205,11 @@ function saveSettings() {
   if (noResEl) plan['plan-no-reserve'] = !!noResEl.checked;
   const snobOwnEl = document.getElementById('plan-snob-own-off');
   if (snobOwnEl) plan['plan-snob-own-off'] = !!snobOwnEl.checked;
+  // ↩ Returning Offs toggles (v6.2.0) — HTML default ON; saved like the three above.
+  const exclOutEl = document.getElementById('plan-excl-outbound');
+  if (exclOutEl) plan['plan-excl-outbound'] = !!exclOutEl.checked;
+  const inclRetEl = document.getElementById('plan-incl-returning');
+  if (inclRetEl) plan['plan-incl-returning'] = !!inclRetEl.checked;
   try {
     localStorage.setItem(TRIBE_SETTINGS_KEY, JSON.stringify({
       lang: (typeof lang === 'string') ? lang : undefined,
@@ -246,6 +251,12 @@ function loadSettings() {
   if (s.plan && 'plan-snob-own-off' in s.plan) {
     const snobOwnEl = document.getElementById('plan-snob-own-off');
     if (snobOwnEl) snobOwnEl.checked = !!s.plan['plan-snob-own-off'];
+  }
+  // ↩ Returning Offs toggles (v6.2.0): only when saved — a save from before 6.2.0 keeps the HTML default (ON).
+  for (const id of ['plan-excl-outbound', 'plan-incl-returning']) {
+    if (!(s.plan && id in s.plan)) continue;
+    const e = document.getElementById(id);
+    if (e) e.checked = !!s.plan[id];
   }
   // Offensive Targets hidden columns — drop keys OT_COLS no longer knows (renamed/removed).
   if (Array.isArray(s.otCols) && typeof otHiddenCols !== 'undefined')

@@ -486,6 +486,7 @@ function parseData(text, filename) {
   renderPlayersTable();
   renderVillagesTable();
   if (typeof renderOutboundTable === 'function') renderOutboundTable(); // needs the station rows
+  if (typeof renderReturningTable === 'function') renderReturningTable(); // ↩ Tier + Outbound-tab columns read the troops too
   renderRankings();
   renderTargetTable();
   renderOffTargets(); // sender picker depends on the troop data

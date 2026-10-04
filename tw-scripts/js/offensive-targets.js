@@ -74,7 +74,8 @@ function emptyPlanStats() {
   // holdbacks but they answer different questions ("too close to an objective" vs "too close to
   // an enemy tribe"), and a user who sees the footer needs to know which knob to turn.
   // `heldPrior` (v6.1.0): committed or held by ANOTHER offensive plan slot (offPlanPriorUsage).
-  const t = () => ({ assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0, heldPrior: 0 });
+  // `heldOut` (v6.2.0): its off is away — held by the "Exclude ALL Outbound Offs" toggle.
+  const t = () => ({ assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0, heldPrior: 0, heldOut: 0 });
   return { complete: t(), tq: t(), half: t() };
 }
 let planStats    = emptyPlanStats();

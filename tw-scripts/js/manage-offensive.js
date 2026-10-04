@@ -9,6 +9,9 @@
 // targets are listed as EXTRAS (with a why), attacks on coords the plan
 // doesn't know become an "unplanned targets" block at the end.
 // Support/returning commands and FAKES (see moIsFake) are ignored outright.
+// v6.2.0: a successful JSON import is also handed to ↩ Returning Offs (roIngestFromManage,
+// returning-offs.js), which reads the RAW text itself — it needs the return rows this tab drops
+// (an off's home time) and the attacks still in flight; ✕ Clear Import drops that feed too.
 // ══════════════════════════════════════════════════════════════
 // v6.1.3: compressed under its OWN key; the pre-6.1.3 plain-JSON key is only READ (migration
 // source while the new key doesn't exist yet), never written, and removed by the first successful
@@ -667,6 +670,7 @@ function moImportText(text) {
   moImportedAt = parsed.exportedAt || Math.floor(Date.now() / 1000);
   saveManage();
   renderManageTable();
+  if (typeof roIngestFromManage === 'function') roIngestFromManage(text); // ↩ Returning Offs feed (JSON only; v6.2.0)
   if (typeof cloudSyncManageOff === 'function') cloudSyncManageOff(text); // hosted-site cloud save
   const el = document.getElementById('mo-import-wrap');
   if (el) el.style.display = 'none';
@@ -688,4 +692,5 @@ function clearManage() {
   moTargets = []; moCommands = []; moImportedAt = 0;
   saveManage();
   renderManageTable();
+  if (typeof roDropManageFeed === 'function') roDropManageFeed(); // the ↩ Returning Offs entry it fed goes too (v6.2.0)
 }

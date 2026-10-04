@@ -59,6 +59,7 @@
   <div class="tab" data-tab="offtargets"  data-group="offensive" onclick="switchTab('offtargets')" data-i18n="tab_offtargets">📌 Offensive Targets</div>
   <div class="tab" data-tab="plan"        data-group="offensive" onclick="switchTab('plan')"       data-i18n="tab_plan">⚔ Plan Offensive</div>
   <div class="tab" data-tab="manageoff"   data-group="offensive" onclick="switchTab('manageoff')"  data-i18n="tab_manageoff">📊 Manage Offensive</div>
+  <div class="tab" data-tab="returning"   data-group="offensive" onclick="switchTab('returning')"  data-i18n="tab_returning">↩ Returning Offs</div>
   <div class="tab" data-tab="outbound"    data-group="offensive" onclick="switchTab('outbound')"   data-i18n="tab_outbound">Outbound Offs</div>
   <!-- Defense -->
   <div class="tab" data-tab="deftargets"  data-group="defense"   onclick="switchTab('deftargets')" data-i18n="tab_deftargets">🛡 Defensive Targets</div>
@@ -753,6 +754,13 @@
     <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" data-i18n-title="snob_own_off_title" title="Every noble sender is handed one of their own clearing offs to time right before their train — regardless of their morale on the target. Off by default: then Min. morale (snob off) decides, and a low-morale sender's off goes to a higher-morale player instead.">
       <input type="checkbox" id="plan-snob-own-off" onchange="saveSettings()"><img class="tw-ic" src="icons/units/snob.png" alt=""><span data-i18n="lbl_snob_own_off">Assign 1 off to snob sender</span>
     </label>
+    <!-- ↩ Returning Offs (v6.2.0): both ON by default; saveSettings/loadSettings keep the user's choice -->
+    <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" data-i18n-title="excl_outbound_title" title="Villages whose off is away are left out of the plan (the off counts list them as &quot;excluded (outbound)&quot;). Away = flagged on the Outbound Offs tab, an attack still in flight in Returning Offs, or an off still on its way home — unless the next box lets a returning one back in.">
+      <input type="checkbox" id="plan-excl-outbound" checked onchange="saveSettings()"> <span data-i18n="lbl_excl_outbound">Exclude ALL outbound offs</span>
+    </label>
+    <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" data-i18n-title="incl_returning_title" title="A village whose off is on its way home (a return row in Returning Offs) stays usable, but only for targets it can still reach when launched after its home time. An off still in flight is never used — its survivors are unknown until the hit.">
+      <input type="checkbox" id="plan-incl-returning" checked onchange="saveSettings()"> <span data-i18n="lbl_incl_returning">Include ALL returning offs in window</span>
+    </label>
   </div>
   <div class="filter-row plan-row">
     <span style="font-size:12px;color:#5a3a18;" data-i18n="plan_optimize_note">Auto-optimizes by morale × off power vs. distance. Pin senders per target or tag a target POWER in Offensive Targets.</span>
@@ -853,6 +861,53 @@
   </div>
   <!-- Row-hover units tooltip (matched command's travelling units; map-tooltip look) -->
   <div id="mo-tooltip"></div>
+</div>
+
+<!-- ═══════════════════════════ RETURNING OFFS (v6.2.0) ═══════════════════════════ -->
+<div class="tab-content" id="tab-returning">
+  <div class="section-header">
+    <h2 data-i18n="sec_returning">↩ Returning Offs</h2>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-primary btn-sm" onclick="toggleRoImport()" data-i18n="btn_ro_import">📥 Import Orders (JSON)</button>
+      <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="clearReturning()" data-i18n="btn_ro_clear">✕ Clear All</button>
+    </div>
+  </div>
+  <div id="ro-import-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:8px;" data-i18n="ro_import_hint">Run the Target Village Orders Exporter userscript (incomingOrders.js) on the villages your offs attacked — tick "returning" so the return rows are exported too — then paste its JSON export here or load one or more downloaded .json files. Batches merge: a command seen again replaces its older copy. Only real offs count (large / medium attacks, nobles, icons without a size); small attacks (fakes) and supports are ignored. A JSON imported in Manage Offensive lands here as well.</div>
+    <textarea id="ro-import-text" rows="6" style="width:100%;box-sizing:border-box;" spellcheck="false" data-i18n-placeholder="ro_import_ph" placeholder="Paste the incoming_orders JSON export…"></textarea>
+    <div style="margin-top:6px;display:flex;gap:8px;">
+      <input type="file" id="ro-import-file" accept=".json,.txt" multiple style="display:none;" onchange="roLoadFiles(this)">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ro-import-file').click()" data-i18n="btn_load_files">📂 Load File(s)</button>
+      <button class="btn btn-primary btn-sm" onclick="roLoadPaste()" data-i18n="btn_load_pasted">Load Pasted Data</button>
+      <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="moCopyScript()" data-i18n="btn_mo_copy_script" data-i18n-title="mo_copy_script_title" title="Copies the quickbar loader for the exporter userscript (incomingOrders.js) to the clipboard.">📋 Copy Script</button>
+    </div>
+  </div>
+  <div id="ro-import-status" style="font-size:12px;color:#5a3a18;margin-top:10px;"></div>
+  <div id="ro-files"></div>
+  <div id="ro-summary" style="font-size:12px;color:#806030;margin:10px 0;"></div>
+  <div class="filter-row">
+    <input type="text" id="ro-search" placeholder="Search player or coord…" data-i18n-placeholder="ph_village_search" oninput="renderReturningTable()">
+  </div>
+  <div class="table-wrap">
+    <table id="ro-table">
+      <thead>
+        <tr>
+          <th class="left" data-i18n="th_coord">Coord</th>
+          <th class="left" data-i18n="th_player">Player</th>
+          <th data-i18n="th_tier">Tier</th>
+          <th data-i18n="th_ro_state">State</th>
+          <th data-i18n="th_ro_cmds">Commands</th>
+          <th class="left" data-i18n="th_ro_targets">Targets · From</th>
+          <th data-i18n="th_ro_time">Hit / Home</th>
+          <th data-i18n="th_ro_in">In</th>
+          <th data-i18n="th_ro_outbound">Outbound tab</th>
+        </tr>
+      </thead>
+      <tbody id="ro-tbody"></tbody>
+    </table>
+  </div>
 </div>
 
 <!-- ═══════════════════════════ DEFENSIVE TARGETS (v3.0.0) ═══════════════════════════ -->
@@ -1191,7 +1246,7 @@
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.1.3 &nbsp;·&nbsp; 2026-10-04</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.2.0 &nbsp;·&nbsp; 2026-10-05</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
@@ -1427,6 +1482,7 @@
 <script src="js/player-schedules.js"></script>
 <script src="js/plan.js"></script>
 <script src="js/manage-offensive.js"></script>
+<script src="js/returning-offs.js"></script>
 <script src="js/defensive-targets.js"></script>
 <script src="js/defense-plan.js"></script>
 <script src="js/manage-defensive.js"></script>
@@ -1507,6 +1563,8 @@ bootStep('offensive targets', () => renderOffTargets());
 // Restore the imported incoming-orders snapshot BEFORE the first plan render
 // (renderPlanTable tail-calls renderManageTable, which reads it)
 bootStep('manage offensive', () => loadManage());
+// ↩ Returning Offs (v6.2.0) import — renderPlanTable tail-calls renderReturningTable too
+bootStep('returning offs', () => loadReturning());
 bootStep('offensive plan', () => renderPlanTable());
 
 // Restore defensive targets + defensive plan from localStorage and render their tabs

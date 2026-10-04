@@ -132,6 +132,8 @@ function paramsChanged(keys) {
     if (typeof renderTargetTable === 'function') renderTargetTable();
   }
   if (has(/^outbound/) && typeof renderOutboundTable === 'function') renderOutboundTable();
+  // ↩ Returning Offs (v6.2.0): its Tier column and its "Outbound tab" ✓ follow these two families.
+  if (has(/^(outbound|tier)/) && typeof renderReturningTable === 'function') renderReturningTable();
   // Plan Defense summaries (v6.0.3): spyPerRam moves every availability number → all three
   // tables; the same-tribe gate and the sender floor only change the filtered one.
   if (has(/^spyPerRam$/) && typeof renderDefSummaries === 'function') renderDefSummaries();

@@ -298,6 +298,13 @@ async function cloudSyncManageOff(text) {
   return _cloudPush(text, 'manage_offensive', { ext: _cloudExt(text) });
 }
 
+// Cloud-save a ↩ Returning Offs import (v6.2.0): one raw JSON file, or the merged roToJson() of a
+// multi-file batch. The 'manage_offensive' kind is reused ON PURPOSE — same exporter, same bucket,
+// so no Worker change — and the 'returning' name suffix keeps it apart from the Manage import.
+async function cloudSyncReturning(text) {
+  return _cloudPush(text, 'manage_offensive', { ext: 'json', nameSuffix: 'returning' });
+}
+
 // Cloud-save a Manage Defense tab import. `sub` ('support' | 'orders') keeps the
 // two imports in the one bucket from overwriting each other's latest file.
 async function cloudSyncManageDef(text, sub) {

@@ -43,6 +43,7 @@ function changeLang(l) {
     if (typeof updateBuildingsStatus === 'function') repaint(updateBuildingsStatus);
   }
   if (typeof renderOutboundTable === 'function') repaint(renderOutboundTable); // Outbound badges
+  if (typeof renderReturningTable === 'function') repaint(renderReturningTable); // ↩ Returning Offs states / file lines
   if (typeof saveSettings === 'function') repaint(saveSettings); // persist the language choice
 }
 

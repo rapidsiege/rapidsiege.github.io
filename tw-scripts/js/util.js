@@ -96,6 +96,8 @@ function buildDebugDump(opts) {
               cluster: !!document.getElementById('plan-cluster')?.checked, clusterTol: val('plan-cluster-tol'),
               noReserve: !!document.getElementById('plan-no-reserve')?.checked,
               snobOwnOff: !!document.getElementById('plan-snob-own-off')?.checked,
+              exclOutbound: !!document.getElementById('plan-excl-outbound')?.checked,   // ↩ v6.2.0
+              inclReturning: !!document.getElementById('plan-incl-returning')?.checked, // ↩ v6.2.0
               moraleMode: val('plan-morale-mode'), moralePts: val('plan-morale-pts') },
       lang,
     },
@@ -236,7 +238,7 @@ const TAB_GROUPS = [
   { id: 'overview',  tabs: ['overview', 'players', 'villages', 'rankings', 'enemyvillages'] },
   { id: 'map',       tabs: ['map'] },
   { id: 'timings',   tabs: ['target'] },
-  { id: 'offensive', tabs: ['offtargets', 'plan', 'manageoff', 'outbound'] },
+  { id: 'offensive', tabs: ['offtargets', 'plan', 'manageoff', 'returning', 'outbound'] },
   { id: 'defense',   tabs: ['deftargets', 'defplan', 'managedef'] },
   { id: 'settings',  tabs: ['settings', 'params', 'changelog', 'db'] },
 ];

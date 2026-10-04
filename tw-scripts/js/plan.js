@@ -268,12 +268,40 @@ function generatePlan() {
   // deleting or regenerating the earlier offensive).
   const prior = offPlanPriorUsage();
   const priorReserved = prior.reserved;
-  const pool = villages.map(v => ({
-    v, c: parseCoordStr(v.coord), tier: getOffTier(v.offPow),
-    snobLeft: Math.max(0, (v.snob || 0) - (prior.nobles[v.coord] || 0)),
-    usedOff: prior.offCoords.has(v.coord), prior: prior.offCoords.has(v.coord), usedSnob: false,
-    fakesSent: prior.fakes[v.coord] || 0, // fakes the other offensives already send from it (fakesPerVillage spans them)
-  })).filter(p => p.c && !ignoreCoords.has(p.v.coord) && inForce(p.v)
+  // ↩ Returning Offs (v6.2.0) — two Plan Offensive toggles, both ON in the HTML (a headless run
+  // reads them OFF = exactly the pre-6.2.0 engine), independent of each other:
+  //  • Exclude ALL Outbound Offs (exclOutbound): a village whose off is AWAY is held out of every
+  //    off pass — `heldOut` (usedOff from the start, like a `prior` off, but its own footer bucket).
+  //    Away = the Outbound Offs tab flags it (station data: owned − home − returning), OR Returning
+  //    Offs has a qualifying attack from it still in flight (planOutboundCoords), OR its off is
+  //    still on the way home (roReturning — station data never flags that: it subtracts the
+  //    returning troops).
+  //  • Include ALL Returning Offs in window (inclReturning): a village whose ONLY qualifying
+  //    commands are return rows gets a per-village send floor = its home time (`floorMs`, from
+  //    roHomeFloorMs) — it stays in the pool, or is RE-ADMITTED when toggle 1 would hold it, but an
+  //    off / fake / split-off from it may only launch once it is home (floorFor → okOffTime,
+  //    okEscortTime, the schedule trim and the late flag). An attack still in flight is never
+  //    re-admitted: its survivors are unknown until the hit.
+  // Toggle 1 off + toggle 2 on = the floor only; toggle 1 on + toggle 2 off = every away village held,
+  // returning ones included. Nobles stay home: snob trains ignore heldOut and keep the global floor.
+  // The catapult pool (defensive villages) is untouched.
+  const exclOutbound  = !!(document.getElementById('plan-excl-outbound') || {}).checked;
+  const inclReturning = !!(document.getElementById('plan-incl-returning') || {}).checked;
+  const roNowMs = serverNowMs();
+  const outboundSet = exclOutbound && typeof planOutboundCoords === 'function' ? planOutboundCoords() : new Set();
+  const offAway = coord => outboundSet.has(coord) || (typeof roReturning === 'function' && roReturning(coord, roNowMs));
+  const pool = villages.map(v => {
+    const floorMs = inclReturning && typeof roHomeFloorMs === 'function' ? roHomeFloorMs(v.coord) : null;
+    const away = exclOutbound && offAway(v.coord);
+    const heldOut = away && !(inclReturning && floorMs != null);
+    return {
+      v, c: parseCoordStr(v.coord), tier: getOffTier(v.offPow),
+      snobLeft: Math.max(0, (v.snob || 0) - (prior.nobles[v.coord] || 0)),
+      usedOff: prior.offCoords.has(v.coord) || heldOut, prior: prior.offCoords.has(v.coord), usedSnob: false,
+      heldOut, readmitted: away && !heldOut, floorMs,
+      fakesSent: prior.fakes[v.coord] || 0, // fakes the other offensives already send from it (fakesPerVillage spans them)
+    };
+  }).filter(p => p.c && !ignoreCoords.has(p.v.coord) && inForce(p.v)
     && passesCoordFilters(p.c, planCoordFilters)
     && passesCoordPolygon(p.c.x, p.c.y));
 
@@ -334,7 +362,7 @@ function generatePlan() {
   // many have been committed so far. Used to spread offs in PROPORTION to roster size, so
   // a small-roster player isn't drained while a big one sits idle (e.g. 9+4, not 7+6).
   const offCapacity = {};
-  for (const p of pool) if (p.tier !== 'none' && !p.prior && !priorReserved.has(p.v.coord)) offCapacity[p.v.player] = (offCapacity[p.v.player] || 0) + 1;
+  for (const p of pool) if (p.tier !== 'none' && !p.prior && !p.heldOut && !priorReserved.has(p.v.coord)) offCapacity[p.v.player] = (offCapacity[p.v.player] || 0) + 1;
   const offUsedByPlayer = {};
   const noteOffUsed = name => { offUsedByPlayer[name] = (offUsedByPlayer[name] || 0) + 1; };
 
@@ -466,16 +494,25 @@ function generatePlan() {
       if (landMs !== null && esMs >= landMs) planWarnings.push(t('warn_earliest_after_window')(T.tg.coord));
     }
   }
+  // ↩ Per-village floor (v6.2.0): a returning off (pool `floorMs`, see the pool build) can't launch
+  // before it is home, so its OFF gates use the later of the global floor and its home time. A
+  // village without one — and every catapult-pool source, which carries no floorMs — keeps
+  // sendFloorMs, so with both toggles off nothing changes.
+  const floorFor = p => Math.max(sendFloorMs, (p && p.floorMs) || 0);
   // `dateISO` is the group's arrival date — with several groups the same window minute means a
   // different epoch in each, so it must travel with the gate rather than be read globally.
-  const okTime = (p, T, endMin, baseMin, dateISO) => {
+  const okTime = (p, T, endMin, baseMin, dateISO, floorMs) => {
     if (endMin === null || endMin === undefined) return true;
     const landMs = serverWallMs(dateISO, endMin);
     if (landMs === null) return true;
-    return landMs - travelTimeMin(distXY(p.c, T.c), baseMin, ws, us) * 60000 >= sendFloorMs;
+    return landMs - travelTimeMin(distXY(p.c, T.c), baseMin, ws, us) * 60000 >= floorMs;
   };
-  const okOffTime  = (p, T, g) => okTime(p, T, T.gEnd[g.id], PLAN_BASE_MIN.off, g.dateISO);
-  const okSnobTime = (p, T, g) => okTime(p, T, T.snobEnd[g.id], PLAN_BASE_MIN.snob, g.dateISO);
+  const okOffTime  = (p, T, g) => okTime(p, T, T.gEnd[g.id], PLAN_BASE_MIN.off, g.dateISO, floorFor(p));
+  // Nobles stay home while the off is away → a solo train keeps the global floor…
+  const okSnobTime = (p, T, g) => okTime(p, T, T.snobEnd[g.id], PLAN_BASE_MIN.snob, g.dateISO, sendFloorMs);
+  // …but a split-off ESCORT rides the village's off with the noble (snob pace, snob window), so the
+  // off has to be home first: the escort reservation and escorted-train origins take the village floor.
+  const okEscortTime = (p, T, g) => okTime(p, T, T.snobEnd[g.id], PLAN_BASE_MIN.snob, g.dateISO, floorFor(p));
 
   // ── Sorting: named pins go by distance, auto picks "optimize" ──────────────
   // Morale only helps when the target's defender points are actually known (world
@@ -510,7 +547,7 @@ function generatePlan() {
   // The centroid is the centre of the AVAILABLE offs: ignored players and villages spent or held by
   // other offensives don't pull it (they can't send anything here).
   const poolCentroid = (() => {
-    const offs = pool.filter(p => p.tier !== 'none' && !p.prior && !priorReserved.has(p.v.coord) && !ignorePlayers.has(p.v.player));
+    const offs = pool.filter(p => p.tier !== 'none' && !p.prior && !p.heldOut && !priorReserved.has(p.v.coord) && !ignorePlayers.has(p.v.player));
     return offs.length ? { x: offs.reduce((a, p) => a + p.c.x, 0) / offs.length, y: offs.reduce((a, p) => a + p.c.y, 0) / offs.length } : null;
   })();
   const centroidDist = T => (T.c && poolCentroid) ? distXY(poolCentroid, T.c) : Infinity;
@@ -552,16 +589,18 @@ function generatePlan() {
   // Minutes at the START of a launch range that already lie behind the send floor (now / Earliest
   // send): trimmed before grading, so a past sliver of free time never makes a blocked player look
   // free (0 without an arrival date — then nothing is known to be past).
-  const schedSkip = (dateISO, pw, travel) => {
+  // `floorMs` = the sender's own floor (a returning off's home time, v6.2.0) — the launch moments
+  // before it are just as impossible as those before now.
+  const schedSkip = (dateISO, pw, travel, floorMs) => {
     const startMs = serverWallMs(dateISO, pw.f);
     if (startMs === null) return 0;
-    const past = sendFloorMs - (startMs - Math.round(travel || 0) * 60000);
+    const past = floorMs - (startMs - Math.round(travel || 0) * 60000);
     return past > 0 ? Math.ceil(past / 60000) : 0;
   };
   const schedTierOf = (p, T, pw, kind, dateISO) => {
     if (!pw) return 1;
     const tr = travelTimeMin(distXY(p.c, T.c), kind === 'snob' ? PLAN_BASE_MIN.snob : PLAN_BASE_MIN.off, ws, us);
-    return psLaunchTier(decode(p.v.player), pw, tr, schedMode, schedSkip(dateISO, pw, tr));
+    return psLaunchTier(decode(p.v.player), pw, tr, schedMode, schedSkip(dateISO, pw, tr, kind === 'snob' ? sendFloorMs : floorFor(p)));
   };
   const schedGrader = (T, g, kind) => { // one grade per candidate per pick
     const pw = schedWin(g, kind), memo = new Map();
@@ -669,7 +708,7 @@ function generatePlan() {
       const picks = T.escortPicks[g.id] = [];
       for (const { name: want } of targetTrainSpec(T.tg, g.id)) {
         const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !priorReserved.has(p.v.coord) && !tooClose.has(p) && !pairBlocked(p.v.player, T)
-          && tiers.includes(p.tier) && okSnobDist(p, T.c) && okSnobTime(p, T, g) && smithOkOrUnknown(p)
+          && tiers.includes(p.tier) && okSnobDist(p, T.c) && okEscortTime(p, T, g) && smithOkOrUnknown(p)
           && (want ? p.v.player === want : (!ignorePlayers.has(p.v.player) && p.snobLeft > 0)))
           .sort(schedThen(T, g, 'snob', escortCmp(T)))[0]; // ⏰ schedules lead (v6.1.2; identity without any)
         const p = pick(['complete', 'tq']) || pick(['half']);
@@ -772,7 +811,7 @@ function generatePlan() {
         p.snobLeft > 0 && okSnobDist(p, T.c) && okSnobTime(p, T, g) && !mvBlocked(p, T) &&
         // a pinned (want) sender may be an ignored player; auto-picks never use ignored players
         (want ? p.v.player === want : (!chosen.has(p.v.player) && !ignorePlayers.has(p.v.player))) &&
-        (mode !== 'escorted' || (!p.usedOff && !priorReserved.has(p.v.coord)))); // a split-off also spends the off — never one another offensive holds for a launch
+        (mode !== 'escorted' || (!p.usedOff && !priorReserved.has(p.v.coord) && okEscortTime(p, T, g)))); // a split-off also spends the off — never one another offensive holds for a launch, nor one still on its way home (v6.2.0)
       if (mode === 'escorted') {
         // train travels with its own off escort → prefer villages with real off power
         const strong = cands.filter(p => tierAtLeast(p.tier, PARAMS.escortMinTier)); // 🎚 escortMinTier ('none' keeps every candidate)
@@ -925,14 +964,15 @@ function generatePlan() {
   if (!noReserve) for (const [rawName, tset] of Object.entries(snobSenderTargets)) {
     const tcs = [...tset].map(i => targets[i]).filter(T => T && T.c).map(T => T.c);
     if (!tcs.length) continue;
-    const mine = pool.filter(p => p.v.player === rawName && reserveEligible(p) && !p.prior && !priorReserved.has(p.v.coord)); // spent / held by another offensive → not a launch village here
+    const mine = pool.filter(p => p.v.player === rawName && reserveEligible(p) && !p.prior && !p.heldOut && !priorReserved.has(p.v.coord)); // spent / held by another offensive / off away (v6.2.0) → not a launch village here
     const dOf = p => Math.min(...tcs.map(tc => distXY(p.c, tc)));
     mine.sort((a, b) => (dOf(a) - dOf(b)) || (b.v.offPow - a.v.offPow) || (a.v.coord < b.v.coord ? -1 : 1));
     for (const p of mine.slice(0, PARAMS.reserveVillages)) snobReserved.add(p);
   }
   // Ignored players are barred from every regular-off pass here (all four use offBlocked),
   // but NOT from the snob loop / escort pick — so a hand-picked ignored noble sender still sends.
-  const offBlocked = p => escortReserved.has(p) || snobReserved.has(p) || priorReserved.has(p.v.coord) || ignorePlayers.has(p.v.player);
+  // An away off (heldOut, v6.2.0) is already usedOff from the pool build; listed here too so the gate says it.
+  const offBlocked = p => escortReserved.has(p) || snobReserved.has(p) || priorReserved.has(p.v.coord) || ignorePlayers.has(p.v.player) || p.heldOut;
   // Persist the reserved launch-village coords so the "Export Unused Offs" list can drop
   // them (they're being kept for a noble, not offered as a free second-wave off).
   planReserved = [...snobReserved].map(p => p.v.coord);
@@ -1300,7 +1340,7 @@ function generatePlan() {
       // MV / Block Pairs) always hold.
       const anyPool = PARAMS.fakePool === 'any';
       const candsOf = filt => pool.filter(p => (anyPool || tierAtLeast(p.tier, PARAMS.fakeSourceTier)) && (p.fakesSent || 0) < PARAMS.fakesPerVillage
-        && (p.v.ram || 0) >= Math.max(1, PARAMS.fakeRams) && !ignorePlayers.has(p.v.player) && !p.prior && filt(p) // never a ram-less village (fakeRams min 1)
+        && (p.v.ram || 0) >= Math.max(1, PARAMS.fakeRams) && !ignorePlayers.has(p.v.player) && !p.prior && !p.heldOut && filt(p) // never a ram-less village (fakeRams min 1); an away off's rams are away too (v6.2.0)
         && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
       const realOffs = p => p.usedOff && !p.isEscort;               // assigned real offs
       const escorts  = p => p.isEscort || escortReserved.has(p);    // split-off escorts (riding or reserved)
@@ -1448,6 +1488,18 @@ function generatePlan() {
     });
   }
 
+  // ↩ Returning offs (v6.2.0): an off / fake row whose sender is still on its way home at Generate
+  // carries `returning` + `homeMs` (the ↩ marker in the Source cell, and the floor of the two
+  // passes below). One stamp pass instead of one per push site; catapult rows come from the
+  // defensive catapult pool, which never takes a floor. A home time already past constrains
+  // nothing (sendFloorMs ≥ now), so such a sender's rows stay unmarked.
+  const homeFloorBy = new Map(pool.filter(p => p.floorMs != null && p.floorMs > roNowMs).map(p => [p.v.coord, p.floorMs]));
+  if (homeFloorBy.size) for (const r of planRows) {
+    if (r.unassigned || !r.srcCoord || !['complete', 'tq', 'half', 'fake'].includes(r.type)) continue;
+    const h = homeFloorBy.get(r.srcCoord);
+    if (h != null) { r.returning = true; r.homeMs = h; }
+  }
+  const rowFloorMs = r => r.returning ? Math.max(sendFloorMs, r.homeMs || 0) : sendFloorMs;
   // A row can still be impossible when its assigned window is earlier than
   // the latest one its source was vetted against — flag it instead of hiding it.
   // Snob trains are skipped: they carry no prescribed origin/launch, so there's
@@ -1457,7 +1509,7 @@ function generatePlan() {
     // pick is gated by the same launch-time check (okOffTime), so a late one is a real problem.
     if (r.unassigned || r.type === 'snob') continue;
     const landMs = windowEndMs(planRowDateISO(r), parseWindowStr(r.window));
-    if (landMs !== null && landMs - r.travel * 60000 < sendFloorMs) {
+    if (landMs !== null && landMs - r.travel * 60000 < rowFloorMs(r)) {
       r.late = true;
       planWarnings.push(t('warn_row_late')(r.srcCoord, r.tCoord));
     }
@@ -1472,7 +1524,7 @@ function generatePlan() {
       if (r.unassigned || !r.srcCoord || !r.srcPlayer || typeof r.travel !== 'number') continue;
       const pw = parseWindowStr(r.window);
       if (!pw) continue;
-      const tier = psLaunchTier(r.srcPlayer, pw, r.travel, schedMode, schedSkip(planRowDateISO(r), pw, r.travel)); // same past-trim as the picks
+      const tier = psLaunchTier(r.srcPlayer, pw, r.travel, schedMode, schedSkip(planRowDateISO(r), pw, r.travel, rowFloorMs(r))); // same past-trim as the picks
       if (tier === 0) { r.sched = 'blocked'; blockedBy[r.srcPlayer] = (blockedBy[r.srcPlayer] || 0) + 1; }
       else if (tier === 2) r.sched = 'preferred';
     }
@@ -1483,8 +1535,13 @@ function generatePlan() {
   // 1-2) by each village's OWN tier. Computed HERE (after every off pass) so `usedOff` /
   // `isEscort` are final. Over OFF-CAPABLE villages only (tier !== 'none' — a defensive/empty
   // village isn't an off). The buckets PARTITION each tier's gross village count so the footer
-  // reconciles exactly: gross[tier] = assigned + heldDist + heldEnemy + heldNoble + heldSplit + heldLate + far + outside + avail + ignored.
+  // reconciles exactly: gross[tier] = assigned + heldDist + heldEnemy + heldNoble + heldSplit + heldLate + far + outside + avail + ignored
+  //   + heldPrior + heldOut.
   //   • ignored    = excluded from the pool by the Ignore Coordinates / Ignore Players lists
+  //   • heldOut    = (v6.2.0) its off is away — held by "Exclude ALL Outbound Offs" (outbound on the
+  //                  Outbound Offs tab, in flight or still returning in Returning Offs, and not
+  //                  re-admitted by a home-time floor). Tested FIRST: it is usedOff, but not assigned.
+  //   • heldPrior  = committed / held by another offensive plan slot (v6.1.0)
   //   • outside    = off-capable, NOT ignored, but outside the sender area (typed coord filters
   //                  or the drawn polygon) — so it never enters the pool at all. Counted from the
   //                  full roster here since the pool is already area-filtered. (was uncounted pre-v4.22)
@@ -1508,6 +1565,8 @@ function generatePlan() {
   // it. Villages out of DISTANCE range everywhere go to `far`; the rest (reachable + in time) to `avail`.
   // With several window groups a village is only "too late" when it misses EVERY wave of every
   // reachable target — making wave B on Saturday is reason enough not to call it late.
+  // A returning off (v6.2.0) is judged from its home time (okOffTime → floorFor), so one that
+  // gets home too late for every reachable target lands here too.
   const offLate = p => {
     let reachable = false;
     for (const T of targets) {
@@ -1534,7 +1593,8 @@ function generatePlan() {
     if (p.tier === 'none') continue;                                          // not an off
     if (ignorePlayers.has(p.v.player)) continue;                              // counted under `ignored` above (now in pool, but barred from offs)
     const s = planStats[p.tier];
-    if (p.prior || priorReserved.has(p.v.coord))            s.heldPrior++;     // committed / held by another offensive slot (v6.1.0)
+    if (p.heldOut)                                          s.heldOut++;       // its off is away — Exclude ALL Outbound Offs (v6.2.0)
+    else if (p.prior || priorReserved.has(p.v.coord))       s.heldPrior++;     // committed / held by another offensive slot (v6.1.0)
     else if (escortReserved.has(p) || (p.usedOff && p.isEscort)) s.heldSplit++; // reserved for / riding as a split-off escort
     else if (snobReserved.has(p))                           s.heldNoble++;     // held free for a noble launch
     else if (p.usedOff)                                     s.assigned++;      // an off committed in the plan
@@ -1544,6 +1604,14 @@ function generatePlan() {
     else if (offFar(p))                                     s.far++;           // free, in-area, but beyond max distance of every target
     else                                                    s.avail++;         // free, in-area, in-band, in time → deployable now
   }
+  // ↩ Informational, last in the list (v6.2.0): what the two Returning Offs toggles did. Counted
+  // over the same villages as the footer (off-capable, not an ignored player), so the first count
+  // equals the summed heldOut buckets; the second = held-away villages a home-time floor let back in.
+  const roCounted = p => p.tier !== 'none' && !ignorePlayers.has(p.v.player);
+  const nHeldOut = pool.filter(p => p.heldOut && roCounted(p)).length;
+  const nReadmitted = pool.filter(p => p.readmitted && roCounted(p)).length;
+  if (nHeldOut) planWarnings.push(t('warn_outbound_excluded')(nHeldOut));
+  if (nReadmitted) planWarnings.push(t('warn_returning_floor')(nReadmitted));
 
   saveOffensive();
   renderPlanTable();
@@ -1602,12 +1670,12 @@ function renderPlanTable() {
     // One line per off tier, behind a collapsible toggle (native <details>, file://-safe).
     const segs = ['complete', 'tq', 'half'].map(tier => {
       // A plan saved before v5.10.0 has no `heldEnemy` — the string treats it as 0.
-      const s = planStats[tier] || { assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0, heldPrior: 0 };
+      const s = planStats[tier] || { assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0, heldPrior: 0, heldOut: 0 };
       // [N] = gross count of villages of this tier tribe-wide (same denominator as the
       // Offensive Targets footer — total selectable offs, before any holdback/reservation).
       const gross = villages.filter(v => getOffTier(v.offPow) === tier).length;
       return `<span class="badge ${TIER_BADGE[tier]}">${t('tier_' + tier)} [${gross}]</span> `
-        + esc(t('plan_offs_summary')(s.assigned, s.heldDist, s.heldNoble, s.heldSplit, s.heldLate, s.far, s.outside, s.avail, s.ignored, s.heldEnemy, s.heldPrior));
+        + esc(t('plan_offs_summary')(s.assigned, s.heldDist, s.heldNoble, s.heldSplit, s.heldLate, s.far, s.outside, s.avail, s.ignored, s.heldEnemy, s.heldPrior, s.heldOut));
     });
     summary += `<details style="margin-top:6px;"><summary style="cursor:pointer;">${esc(t('btn_show_off_counts'))}</summary>`
       + `<div style="margin-top:4px;line-height:1.9;">${segs.join('<br>')}</div></details>`;
@@ -1656,7 +1724,8 @@ function renderPlanTable() {
           ? `<span style="color:#e0a020;font-weight:600;">${esc(t('plan_prepare_snob')(r.escorted))}${r.fake ? ` <span style="color:#0e8f0e;">(${esc(t('ttype_fake'))})</span>` : ''}</span>${snobRange}`
           : (r.unassigned
               ? `<span style="color:#e06040;">${t('bb_unassigned')}</span>`
-              : esc(r.srcCoord))
+              : esc(r.srcCoord) + (r.returning
+                  ? ` <span class="plan-returning" title="${esc(t('plan_returning_title')(typeof fmtServerDT === 'function' ? fmtServerDT(r.homeMs) : ''))}">↩</span>` : ''))
       }</td>
       <td class="left">${r.srcPlayer ? `<span class="player-tag">${esc(r.srcPlayer)}</span>` : '—'}</td>
       <td style="color:${moraleColor(r.morale)};font-weight:600;">${isSnob ? '—' : fmtMorale(r.morale)}</td>
@@ -1683,6 +1752,7 @@ function renderPlanTable() {
 function renderPlanDependents() {
   if (typeof renderOutboundTable === 'function') renderOutboundTable();
   if (typeof renderManageTable === 'function') renderManageTable();
+  if (typeof renderReturningTable === 'function') renderReturningTable(); // ↩ v6.2.0 (repaints with every plan / language render)
 }
 
 // The snob-range text for a snob row, or '' when there's no assigned player to attribute
