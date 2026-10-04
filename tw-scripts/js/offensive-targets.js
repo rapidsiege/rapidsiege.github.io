@@ -1334,7 +1334,7 @@ function resetOtBuildings() {
   otBuildings = { cat: [...CAT_BUILDING_KEYS], mode: [...CAT_MODE_KEYS] };
   saveOffensive(); renderOtBuildingsModal(); renderOffTargets(); renderMassCatBuildings(); renderMassCatMode();
 }
-const OT_BUILDING_ICONS = { main: 'headquarters', barracks: 'barracks', stable: 'stable', garage: 'workshop', snob: 'academy', smith: 'smithy', place: 'rally_point', statue: 'statue', market: 'market', wood: 'timber_camp', stone: 'clay_pit', iron: 'iron_mine', farm: 'farm', storage: 'warehouse', wall: 'wall' }; // church / watchtower have no local icon
+const OT_BUILDING_ICONS = { main: 'headquarters', barracks: 'barracks', stable: 'stable', garage: 'workshop', church: 'church', watchtower: 'watchtower', snob: 'academy', smith: 'smithy', place: 'rally_point', statue: 'statue', market: 'market', wood: 'timber_camp', stone: 'clay_pit', iron: 'iron_mine', farm: 'farm', storage: 'warehouse', wall: 'wall' }; // every BUILDING_KEYS_ALL key → icons/buildings/<file>.webp
 function renderOtBuildingsModal() {
   const host = document.getElementById('ot-buildings-host');
   if (!host) return;
