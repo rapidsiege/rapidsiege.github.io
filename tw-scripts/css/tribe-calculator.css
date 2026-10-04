@@ -555,6 +555,14 @@
     .mass-row:last-child { border-bottom: none; }
     .mass-row .mass-lbl { flex: 0 0 130px; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #806030; font-weight: 600; }
     .mass-row .mass-lbl .tw-ic { margin-right: 0; }
+    /* 🏛 Buildings popup (v6.0.4): two checkbox columns, one per building dropdown */
+    .bld-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .bld-col h4 { margin: 0 0 2px; font-size: 13px; color: #f0c040; }
+    .bld-hint { font-size: 11px; color: #806030; margin-bottom: 8px; min-height: 28px; }
+    .bld-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #d4b483; padding: 3px 0; cursor: pointer; user-select: none; }
+    .bld-row.bld-off { color: #806030; }
+    .bld-row .tw-ic { width: 16px; height: 16px; margin: 0; display: inline-block; }
+    .bld-use { margin-left: auto; font-size: 10px; color: #a08050; background: #1a1206; border: 1px solid #3a2808; border-radius: 8px; padding: 0 6px; }
 
     /* ── POWER tag (Offensive Targets) ── */
     .ot-power { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; user-select: none; font-size: 13px; }

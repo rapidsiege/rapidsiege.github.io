@@ -560,7 +560,8 @@
     <input type="number" id="ot-enemy-dist" value="0" min="0" style="width:70px;" title="0 = off" oninput="updOffEnemyDist()">
     <button class="btn btn-ghost btn-sm" onclick="toggleOffEnemy()" data-i18n="btn_enemy_tribes">⚔ Enemy Tribes</button>
     <span style="font-size:12px;color:#5a3a18;" data-i18n="ot_defender_note">Defender auto-fills from the village database.</span>
-    <button class="btn btn-ghost btn-sm" id="ot-filter-btn" style="margin-left:auto;" onclick="toggleOtFilter()" data-i18n="btn_ot_filter" data-i18n-title="ot_filter_title" title="Show only the rows matching a text search, a points condition and/or a target type. A view filter: the list, exports and the plan are unaffected; select-all and mass edits act on the visible rows only.">🔍 Filter</button>
+    <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="openOtBuildings()" data-i18n="btn_ot_buildings" data-i18n-title="ot_buildings_title" title="Choose which buildings the Catapults picker and the Catapult Mode dropdown offer. Rows already using an unticked building keep it.">🏛 Buildings</button>
+    <button class="btn btn-ghost btn-sm" id="ot-filter-btn" onclick="toggleOtFilter()" data-i18n="btn_ot_filter" data-i18n-title="ot_filter_title" title="Show only the rows matching a text search, a points condition and/or a target type. A view filter: the list, exports and the plan are unaffected; select-all and mass edits act on the visible rows only.">🔍 Filter</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleOtColVis()" data-i18n="btn_colvis">👁 Columns</button>
     <button class="btn btn-ghost btn-sm" onclick="openMassEdit()" data-i18n="btn_mass_edit">✏ Edit Selected Rows</button>
   </div>
@@ -1287,7 +1288,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.0.3 &nbsp;·&nbsp; 2026-10-04</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.0.4 &nbsp;·&nbsp; 2026-10-04</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
@@ -1358,6 +1359,24 @@ document.addEventListener('drop', e => {
 </div>
 
 <!-- ═══════════════════════ MASS EDIT MODAL (Offensive Targets) ═══════════════════════ -->
+<!-- 🏛 Buildings (v6.0.4): which buildings the Catapults picker / Catapult Mode dropdown offer.
+     Body rendered by renderOtBuildingsModal() (offensive-targets.js) on open and on every tick. -->
+<div class="modal-overlay" id="ot-buildings-modal" onclick="if(event.target===this)closeOtBuildings()">
+  <div class="modal" style="width:min(640px,95vw);">
+    <div class="modal-header">
+      <h3 data-i18n="bld_modal_title">🏛 Buildings</h3>
+      <button class="modal-close" onclick="closeOtBuildings()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:12px;color:#806030;margin-bottom:10px;" data-i18n="bld_modal_note">Tick the buildings each dropdown should offer. A row that already uses an unticked building keeps it (and still lists it in its own dropdown); new rows stop offering it. The number next to a building is how many target rows use it right now.</div>
+      <div id="ot-buildings-host" class="bld-cols"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="resetOtBuildings()" data-i18n="ow_reset">↺ Reset defaults</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeOtBuildings()" data-i18n="btn_close">Close</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="ot-mass-modal" onclick="if(event.target===this)closeMassEdit()">
   <div class="modal" style="width:min(600px,95vw);">
     <div class="modal-header">
@@ -1424,11 +1443,8 @@ document.addEventListener('drop', e => {
       </div>
       <div class="mass-row">
         <span class="mass-lbl"><img class="tw-ic" src="icons/buildings/smithy.webp" alt=""> <span data-i18n="th_catmode">Catapult Mode</span></span>
-        <button class="btn btn-ghost btn-sm" onclick="massSetCatMode('smith')" data-i18n="catb_smith">Smithy</button>
-        <button class="btn btn-ghost btn-sm" onclick="massSetCatMode('farm')" data-i18n="catb_farm">Farm</button>
-        <button class="btn btn-ghost btn-sm" onclick="massSetCatMode('place')" data-i18n="catb_place">Rally Point</button>
-        <button class="btn btn-ghost btn-sm" onclick="massSetCatMode('storage')" data-i18n="catb_storage">Warehouse</button>
-        <button class="btn btn-ghost btn-sm" onclick="massSetCatMode('wall')" data-i18n="catb_wall">Wall</button>
+        <!-- one button per building ticked in 🏛 Buildings (v6.0.4) — rendered by renderMassCatMode() -->
+        <span id="ot-mass-catmode-host" style="display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center;"></span>
       </div>
       <div class="mass-row">
         <span class="mass-lbl"></span>

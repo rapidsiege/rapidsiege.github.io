@@ -33,6 +33,12 @@ let offForceCoords = '';   // v5.12.3: raw coord list — non-empty → ONLY the
 let offEnemyIds      = []; // ally ids (strings) whose villages bar nearby senders
 let offEnemyDist     = 0;  // "Distance from enemy tribes" (fields); 0 = filter off
 let blockPairs       = []; // [[rawOwnPlayer, defenderName], …] Block Pairs (v5.17): that player never attacks that defender (shared IPs, personal pacts, zones…) — offensive only
+// 🏛 Buildings (v6.0.4): which buildings the two building dropdowns OFFER — `cat` = the per-attack
+// Catapults picker (default CAT_BUILDING_KEYS), `mode` = the Catapult Mode column + its mass-edit
+// buttons (default CAT_MODE_KEYS). Any BUILDING_KEYS_ALL key may be ticked. Persisted with the
+// offensive plan. A row whose stored value is later unticked KEEPS it and still lists it in ITS
+// dropdown (catModeKeys(current)) — nothing changes silently; new rows just stop offering it.
+let otBuildings      = { cat: [...CAT_BUILDING_KEYS], mode: [...CAT_MODE_KEYS] };
 let mvPairs          = []; // [[rawA, rawB], …] vacation-mode pairs — SHARED by Plan Offensive AND Plan Defense (edited from either the Offensive-Targets or Defensive-Targets picker; persisted here in tw_tribe_offensive). Offensive rule: two paired players can't both attack the SAME enemy player. Defensive rule: they can't both support the SAME target, nor support a village their partner owns.
 // Coordinate Filter (Plan Offensive): layered X|Y bounds that a village must ALL satisfy to be
 // used as a sender (off OR snob train). [{axis:'x'|'y', op:'>'|'>='|'<'|'<='|'=', val:'<number>'}].
@@ -323,6 +329,7 @@ function otMultiGroup() { return otGroups().length > 1; }
 function saveOffensive() {
   localStorage.setItem(OT_STORE_KEY, JSON.stringify({
     cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, forcePlayers: offForcePlayers, forceCoords: offForceCoords, mvPairs, blockPairs,
+    buildings: otBuildings,
     enemyIds: offEnemyIds, enemyDist: offEnemyDist,
     coordFilters: planCoordFilters, coordPolygon: planCoordPolygon, coordPolygonInv: planCoordPolygonInv,
     plan: planRows, warnings: planWarnings, reserved: planReserved, stats: planStats, nextId: otNextId,
@@ -349,6 +356,7 @@ function loadOffensive() {
       offEnemyDist     = Math.max(0, parseInt(d.enemyDist, 10) || 0);
       mvPairs          = Array.isArray(d.mvPairs) ? d.mvPairs.filter(p => Array.isArray(p) && p.length === 2 && p[0] && p[1] && p[0] !== p[1]) : [];
       blockPairs       = Array.isArray(d.blockPairs) ? d.blockPairs.filter(p => Array.isArray(p) && p.length === 2 && p[0] && p[1]) : [];
+      otBuildings      = otNormalizeBuildings(d.buildings);
       planCoordFilters = Array.isArray(d.coordFilters) ? d.coordFilters.filter(f => f && (f.axis === 'x' || f.axis === 'y')) : [];
       planCoordPolygonInv = d.coordPolygonInv === true;
       planCoordPolygon = Array.isArray(d.coordPolygon)
@@ -892,12 +900,14 @@ function normalizeOffTarget(tg) {
   if (typeof tg.power !== 'boolean') tg.power = false;
   if (typeof tg.catapult !== 'number' || !(tg.catapult >= 0)) tg.catapult = Math.max(0, parseInt(tg.catapult) || 0);
   if (typeof tg.catEnabled !== 'boolean') tg.catEnabled = tg.catapult > 0; // migrate a prior count>0 to the new toggle
-  // Catapult target buildings: drop anything not on the 5-building allowlist (stale/corrupt saves)
+  // Catapult target buildings: drop anything that is not a catapultable building key (stale /
+  // corrupt saves). Validated against BUILDING_KEYS_ALL, not the 🏛 Buildings selection — a value
+  // the user later unticks in the popup is kept on the rows that already use it (v6.0.4).
   if (!Array.isArray(tg.catBuildings)) tg.catBuildings = [];
   tg.catBuildings = tg.catBuildings
-    .filter(b => b && CAT_BUILDING_KEYS.includes(b.building))
+    .filter(b => b && BUILDING_KEYS_ALL.includes(b.building))
     .map(b => ({ building: b.building, count: Math.max(0, parseInt(b.count) || 0) }));
-  if (!CAT_MODE_KEYS.includes(tg.catMode)) tg.catMode = 'smith'; // Catapult Mode (off-sender building objective)
+  if (!BUILDING_KEYS_ALL.includes(tg.catMode)) tg.catMode = 'smith'; // Catapult Mode (off-sender building objective)
   if (!Array.isArray(tg.snobAssignees)) tg.snobAssignees = [];
   tg.snobAssignees = tg.snobAssignees.filter(Boolean).map(a => typeof a === 'string'
     ? { name: a, count: 0 }
@@ -1092,7 +1102,7 @@ function setOTCatapult(id, val) {
 // with an explicit count > 0 is honored; buildings left at 0 split the remaining attacks
 // evenly (earlier buildings absorb the rounding via splitNobles, e.g. 5 over 3 → 2,2,1).
 function addCatBuilding(id, building) {
-  if (!building || !CAT_BUILDING_KEYS.includes(building)) return;
+  if (!building || !BUILDING_KEYS_ALL.includes(building)) return;
   const tg = offTargets.find(x => x.id === id);
   if (!tg) return;
   if (!Array.isArray(tg.catBuildings)) tg.catBuildings = [];
@@ -1119,7 +1129,7 @@ function updCatBuildingCount(id, idx, val) {
 function targetCatBuildingSpec(tg) {
   const want = tg.catEnabled ? (tg.catapult || 0) : 0;
   if (!want) return [];
-  const list = (tg.catBuildings || []).filter(b => b && CAT_BUILDING_KEYS.includes(b.building));
+  const list = (tg.catBuildings || []).filter(b => b && BUILDING_KEYS_ALL.includes(b.building));
   if (!list.length) return [{ building: 'smith', count: want }]; // no buildings picked → all attacks default to Smithy
   const explicitSum = list.reduce((s, b) => s + (b.count > 0 ? b.count : 0), 0);
   const auto = list.filter(b => !(b.count > 0));
@@ -1155,11 +1165,11 @@ function catBuildingTargets(tg) {
 // Wall. `effectiveCatMode` is the value actually used (display + plan + rally URL): wall iff POWER.
 function effectiveCatMode(tg) {
   if (tg.power) return 'wall';
-  return CAT_MODE_KEYS.includes(tg.catMode) ? tg.catMode : 'smith';
+  return BUILDING_KEYS_ALL.includes(tg.catMode) ? tg.catMode : 'smith';
 }
 function updCatMode(id, val) {
   const tg = offTargets.find(x => x.id === id);
-  if (!tg || !CAT_MODE_KEYS.includes(val)) return;
+  if (!tg || !BUILDING_KEYS_ALL.includes(val)) return;
   tg.catMode = val; // only reachable when POWER is off (the select is disabled under POWER)
   saveOffensive();
 }
@@ -1267,6 +1277,7 @@ function openMassEdit() {
   document.getElementById('ot-mass-cat-count').value = PARAMS.catAttacksDefault; // (v6.0: was a stray 5 while the row toggle used 3)
   massCatBuildings = [];
   renderMassCatBuildings();
+  renderMassCatMode();
   // Both group pickers start on the "Default offs" group, and the whole group row is hidden
   // while there is only one group — nothing to choose.
   for (const id of ['ot-mass-group', 'ot-mass-snobgroup']) {
@@ -1284,6 +1295,69 @@ function closeMassEdit() {
   document.getElementById('ot-mass-modal').classList.remove('open');
 }
 
+// ── 🏛 Buildings popup (v6.0.4) ───────────────────────────────────────────────
+// Two checkbox columns over BUILDING_KEYS_ALL: left = the Catapults picker's buildings
+// (`otBuildings.cat`), right = the Catapult Mode dropdown's (`otBuildings.mode`). Ticking writes
+// otBuildings, saves with the offensive plan and re-renders the targets table + the mass-edit
+// hosts, so every dropdown follows at once. Defaults = CAT_BUILDING_KEYS / CAT_MODE_KEYS.
+// Saved shape {cat:[…], mode:[…]} is sanitized on load; junk / missing → the defaults.
+function otNormalizeBuildings(d) {
+  const pick = (arr, def) => Array.isArray(arr)
+    ? BUILDING_KEYS_ALL.filter(k => arr.includes(k)) // game order, valid keys only, deduped
+    : [...def];
+  return { cat: pick(d && d.cat, CAT_BUILDING_KEYS), mode: pick(d && d.mode, CAT_MODE_KEYS) };
+}
+// The live lists, in game order. `catModeKeys(current)`: a row's current building stays listed in
+// ITS dropdown even when unticked (so nothing changes silently) — pass the row's effective mode.
+function otBuildingList(kind) { return BUILDING_KEYS_ALL.filter(k => (otBuildings[kind] || []).includes(k)); }
+function catBuildingKeys() { return otBuildingList('cat'); }
+function catModeKeys(current) {
+  const list = otBuildingList('mode');
+  if (current && !list.includes(current) && BUILDING_KEYS_ALL.includes(current)) return BUILDING_KEYS_ALL.filter(k => list.includes(k) || k === current);
+  return list;
+}
+// How many target rows currently use a building in that role (shown in the popup, so an untick
+// of a building in use is an informed one).
+function otBuildingUse(kind, key) {
+  return offTargets.reduce((n, tg) => n + (kind === 'cat'
+    ? ((tg.catBuildings || []).some(b => b.building === key) ? 1 : 0)
+    : (effectiveCatMode(tg) === key ? 1 : 0)), 0);
+}
+function toggleOtBuilding(kind, key, on) {
+  if (!(kind in otBuildings) || !BUILDING_KEYS_ALL.includes(key)) return;
+  const set = new Set(otBuildings[kind]);
+  if (on) set.add(key); else set.delete(key);
+  otBuildings[kind] = BUILDING_KEYS_ALL.filter(k => set.has(k));
+  saveOffensive(); renderOtBuildingsModal(); renderOffTargets(); renderMassCatBuildings(); renderMassCatMode();
+}
+function resetOtBuildings() {
+  otBuildings = { cat: [...CAT_BUILDING_KEYS], mode: [...CAT_MODE_KEYS] };
+  saveOffensive(); renderOtBuildingsModal(); renderOffTargets(); renderMassCatBuildings(); renderMassCatMode();
+}
+const OT_BUILDING_ICONS = { main: 'headquarters', barracks: 'barracks', stable: 'stable', garage: 'workshop', snob: 'academy', smith: 'smithy', place: 'rally_point', statue: 'statue', market: 'market', wood: 'timber_camp', stone: 'clay_pit', iron: 'iron_mine', farm: 'farm', storage: 'warehouse', wall: 'wall' }; // church / watchtower have no local icon
+function renderOtBuildingsModal() {
+  const host = document.getElementById('ot-buildings-host');
+  if (!host) return;
+  const col = (kind, titleKey, hintKey) => `
+    <div class="bld-col">
+      <h4>${esc(t(titleKey))}</h4>
+      <div class="bld-hint">${esc(t(hintKey))}</div>
+      ${BUILDING_KEYS_ALL.map(k => {
+        const on = otBuildings[kind].includes(k), use = otBuildingUse(kind, k);
+        const icon = OT_BUILDING_ICONS[k] ? `<img class="tw-ic" src="icons/buildings/${OT_BUILDING_ICONS[k]}.webp" alt="">` : '<span class="tw-ic"></span>';
+        return `<label class="bld-row${on ? '' : ' bld-off'}"><input type="checkbox"${on ? ' checked' : ''} onchange="toggleOtBuilding('${kind}','${k}',this.checked)">${icon}<span>${esc(t('catb_' + k))}</span>${use ? `<span class="bld-use" title="${esc(t('bld_in_use_t'))}">${use}</span>` : ''}</label>`;
+      }).join('')}
+    </div>`;
+  host.innerHTML = col('cat', 'bld_col_cat', 'bld_col_cat_hint') + col('mode', 'bld_col_mode', 'bld_col_mode_hint');
+}
+function openOtBuildings() {
+  renderOtBuildingsModal();
+  document.getElementById('ot-buildings-modal').classList.add('open');
+}
+function closeOtBuildings() {
+  document.getElementById('ot-buildings-modal').classList.remove('open');
+}
+
 // ── Mass-edit staging list (catapult buildings) ───────────────────────────────
 // A LOCAL draft for the modal: openMassEdit resets it, its Apply copies it onto every
 // selected target (same shape as tg.catBuildings).
@@ -1293,7 +1367,7 @@ function renderMassCatBuildings() {
   const host = document.getElementById('ot-mass-catb-host');
   if (!host) return;
   const chosen = new Set(massCatBuildings.map(b => b.building));
-  const opts = CAT_BUILDING_KEYS.filter(k => !chosen.has(k));
+  const opts = catBuildingKeys().filter(k => !chosen.has(k));
   const chips = massCatBuildings.map((b, j) =>
     `<span class="chip">${esc(t('catb_' + b.building))} ×<input type="number" min="0" value="${b.count || 0}" title="${esc(t('cat_building_count_title'))}" style="width:28px;background:transparent;border:none;border-bottom:1px solid #7a5c10;color:inherit;font-size:11px;text-align:center;" onchange="massUpdCatBuildingCount(${j},this.value)"><span class="chip-x" onclick="massRemoveCatBuilding(${j})">✕</span></span>`).join('');
   const picker = opts.length
@@ -1302,7 +1376,7 @@ function renderMassCatBuildings() {
   host.innerHTML = chips + picker;
 }
 function massAddCatBuilding(b) {
-  if (!b || !CAT_BUILDING_KEYS.includes(b) || massCatBuildings.some(x => x.building === b)) return;
+  if (!b || !BUILDING_KEYS_ALL.includes(b) || massCatBuildings.some(x => x.building === b)) return;
   massCatBuildings.push({ building: b, count: 0 });
   renderMassCatBuildings();
 }
@@ -1385,7 +1459,13 @@ function massSetSnobs() {
 }
 // Snob mode of that same group on every selected row.
 function massSetSnobMode(v) { const gid = massGroupId('ot-mass-snobgroup'); massApply(tg => { otSetSnobMode(tg, gid, v); }); }
-function massSetCatMode(v)  { if (CAT_MODE_KEYS.includes(v)) massApply(tg => { tg.catMode = v; }); }
+function massSetCatMode(v)  { if (BUILDING_KEYS_ALL.includes(v)) massApply(tg => { tg.catMode = v; }); }
+// The modal's Catapult Mode buttons follow the 🏛 Buildings selection (v6.0.4) — one per ticked building.
+function renderMassCatMode() {
+  const host = document.getElementById('ot-mass-catmode-host');
+  if (!host) return;
+  host.innerHTML = catModeKeys().map(k => `<button class="btn btn-ghost btn-sm" onclick="massSetCatMode('${k}')">${esc(t('catb_' + k))}</button>`).join('');
+}
 function massDeleteSelected() {
   otPruneSelection();
   if (!otSelected.size) return;
@@ -2116,7 +2196,7 @@ function renderOffTargets(opts) {
           // Target-building picker + editable-count chips (which buildings the cats demolish, how
           // many attacks each). Buildings not yet chosen are offered; default 0 = split evenly.
           const chosen = new Set((tg.catBuildings || []).map(b => b.building));
-          const opts = CAT_BUILDING_KEYS.filter(k => !chosen.has(k));
+          const opts = catBuildingKeys().filter(k => !chosen.has(k));
           const bChips = (tg.catBuildings || []).map((b, j) =>
             `<span class="chip">${esc(t('catb_' + b.building))} ×<input type="number" min="0" value="${b.count || 0}" title="${esc(t('cat_building_count_title'))}" style="width:28px;background:transparent;border:none;border-bottom:1px solid #7a5c10;color:inherit;font-size:11px;text-align:center;" onchange="updCatBuildingCount(${tg.id},${j},this.value)"><span class="chip-x" onclick="removeCatBuilding(${tg.id},${j})">✕</span></span>`).join('');
           const bPicker = opts.length
@@ -2132,7 +2212,7 @@ function renderOffTargets(opts) {
       <td>${snobModeCell}</td>
       <td title="${esc(t('catmode_title'))}">${isFakeTg ? dash : `
         <select class="cell-input" ${tg.power ? 'disabled' : ''} onchange="updCatMode(${tg.id},this.value)">
-          ${CAT_MODE_KEYS.map(k => `<option value="${k}"${effectiveCatMode(tg) === k ? ' selected' : ''}>${esc(t('catb_' + k))}</option>`).join('')}
+          ${catModeKeys(effectiveCatMode(tg)).map(k => `<option value="${k}"${effectiveCatMode(tg) === k ? ' selected' : ''}>${esc(t('catb_' + k))}</option>`).join('')}
         </select>`}
       </td>
       <td>${offWinCell}</td>

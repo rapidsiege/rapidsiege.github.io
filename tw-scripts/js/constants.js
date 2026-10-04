@@ -228,14 +228,21 @@ function riProtectedAllies() {
 // option values), so they drop straight into the rally URL's &building= param. Labels are i18n
 // (`catb_<key>`). Used by both offensive-targets.js (the picker) and plan.js (display + URL).
 // v6.0.2: + Rally Point ('place') and Warehouse ('storage') in both this list and CAT_MODE_KEYS.
+// v6.0.4: these two lists are now the DEFAULT selections of the 🏛 Buildings popup (Offensive
+// Targets) — the live lists come from catBuildingKeys() / catModeKeys() in offensive-targets.js.
 const CAT_BUILDING_KEYS = ['smith', 'farm', 'place', 'storage', 'wood', 'stone', 'iron'];
 // "Catapult Mode" column (per target): the building objective for the OFF SENDERS' attacks
 // (clearing offs / destroyer offs / offs accompanying a noble) — distinct from CAT_BUILDING_KEYS
 // (the extra def-sourced catapult attacks). Default 'smith'; POWER forces 'wall'.
 const CAT_MODE_KEYS = ['smith', 'farm', 'place', 'storage', 'wall'];
-// Union of every building key that can appear as a row's target building (picker ∪ mode) — used
-// to validate the label lookup (`catb_<key>`) and the rally URL's best-effort &building= param.
-const BUILDING_TARGET_KEYS = ['smith', 'farm', 'place', 'storage', 'wood', 'stone', 'iron', 'wall'];
+// v6.0.4: every building catapults can hit, in the game's own build-screen order — the candidates
+// of the 🏛 Buildings popup and the validation set for a stored row value. Hiding Place and First
+// Church are not catapultable (user, 2026-10-04) and are left out.
+const BUILDING_KEYS_ALL = ['main', 'barracks', 'stable', 'garage', 'church', 'watchtower', 'snob', 'smith', 'place', 'statue', 'market', 'wood', 'stone', 'iron', 'farm', 'storage', 'wall'];
+// Every building key that can appear as a row's target building — used to validate the label
+// lookup (`catb_<key>`) and the rally URL's best-effort &building= param. Since v6.0.4 any
+// catapultable building can be picked, so this is the full list (it used to be picker ∪ mode).
+const BUILDING_TARGET_KEYS = BUILDING_KEYS_ALL;
 
 // Target types (Offensive Targets, per row — badge `ttype_<key>`, style `.ttype-<key>`):
 //   off       — a normal offensive target (clearing offs, optional nobles).

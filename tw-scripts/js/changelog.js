@@ -18,6 +18,14 @@
 // v6 entries into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v6.0.4', date: '2026-10-04',
+    en: [
+      `<b>🏛 Buildings (Offensive Targets).</b> A new button left of Filter / Columns / Edit Selected Rows opens a popup with two checkbox columns: <b>Catapult target buildings</b> (what the per-attack picker of the Catapults column offers) and <b>Offensive target building</b> (what the Catapult Mode dropdown and its Edit Selected Rows buttons offer). Every building catapults can hit is available — Headquarters, Barracks, Stable, Workshop, Church, Watchtower, Academy, Smithy, Rally Point, Statue, Market, Timber Camp, Clay Pit, Iron Mine, Farm, Warehouse, Wall — and the defaults are exactly today's lists. A row already using a building you untick keeps it and still lists it in its own dropdown; the popup shows how many rows use each building. Remembered with the offensive plan; ↺ Reset defaults restores the original lists.`,
+    ],
+    es: [
+      `<b>🏛 Edificios (Objetivos Ofensivos).</b> Un botón nuevo a la izquierda de Filtro / Columnas / Editar Filas Seleccionadas abre una ventana con dos columnas de casillas: <b>Edificios objetivo de catapulta</b> (lo que ofrece el selector por ataque de la columna Catapultas) y <b>Edificio objetivo de la ofensiva</b> (lo que ofrecen el desplegable Modo Catapulta y sus botones de Editar Filas Seleccionadas). Están todos los edificios que las catapultas pueden golpear — Edificio Principal, Cuartel, Cuadra, Taller, Iglesia, Torre de vigilancia, Academia, Herrería, Plaza de Reuniones, Estatua, Mercado, Leñador, Barrera, Mina de Hierro, Granja, Almacén, Muralla — y por defecto están marcados exactamente los de hoy. Una fila que ya usa un edificio que desmarques lo conserva y sigue listándolo en su propio desplegable; la ventana muestra cuántas filas usan cada edificio. Se recuerda con el plan ofensivo; ↺ Restablecer vuelve a las listas originales.`,
+    ],
+  },
   { ver: 'v6.0.3', date: '2026-10-04',
     en: [
       `<b>📊 Available Defense (filtered).</b> A third summary table under Plan Defense: the leftover defense <b>another plan could still draw on</b>. A village only counts while it could still send right now — it passes every sender hold (Ignore Coordinates / Players, the map-drawn area, the enemy-tribe radius, Ignore Village with Knight, the sender min def pop), lies inside the Def min/max distance of at least one target and, with the same-tribe rule on, shares a tribe with a target. The existing <b>Available Defense</b> table keeps showing everything left at home, holds included.`,
