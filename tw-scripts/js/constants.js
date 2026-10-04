@@ -74,11 +74,34 @@ const PARAM_DEFS = [
   { key: 'escortMinTier',      sec: 'off', def: 'half', type: 'select', opts: ['none', 'half', 'tq', 'complete'] },
   // A missing tier gets filled by a stronger one (half → 3/4 → Complete), never a weaker one.
   { key: 'tierBump',           sec: 'off', def: true, type: 'bool' },
+  // ── Engine STRATEGY selects (v6.1.1): each decision the engine used to make silently is a
+  // named option; the FIRST option of every list is today's behaviour and the default. ──
+  // Weaker-tier fallback (auto pass): 'never' = a slot with no off of its tier (or stronger, see
+  // tierBump) stays unassigned; 'whenEmpty' = fall back to the next weaker tier, normal score picks (warned).
+  { key: 'tierBumpDown',       sec: 'off', def: 'never', type: 'select', opts: ['never', 'whenEmpty'] },
+  // Destroyer targets — ranking INSIDE the qualifying set (offs with ≥ catClearMin catapults):
+  // 'power' = the normal optimize score (today), 'catsFirst' = more catapults first, score breaks ties.
+  { key: 'destroyerRank',      sec: 'off', def: 'power', type: 'select', opts: ['power', 'catsFirst'] },
+  // Destroyer targets — when NO candidate reaches catClearMin: 'power' = the best regular off
+  // (today), 'mostCats' = the off with the most catapults (≥ destroyerFallbackMinCats), 'unassigned'
+  // = leave the slot open for the tribe to fill by hand (warned).
+  { key: 'destroyerFallback',  sec: 'off', def: 'power', type: 'select', opts: ['power', 'mostCats', 'unassigned'] },
+  { key: 'destroyerFallbackMinCats', sec: 'off', def: 0, min: 0, unit: 'cats' },
+  // Split-off escort reservation: 'closest' = nearest eligible off, power breaks ties (today);
+  // 'strongest' = most off power, distance breaks ties.
+  { key: 'escortPick',         sec: 'off', def: 'closest', type: 'select', opts: ['closest', 'strongest'] },
   // Fakes: rams a village needs to send a fake (also the size preset in the rally link), the
   // minimum off tier of the villages reused for fakes, and how many fakes one village sends.
   { key: 'fakeRams',           sec: 'off', def: 1,    min: 0, unit: 'rams' },
   { key: 'fakeSourceTier',     sec: 'off', def: 'complete', type: 'select', opts: ['complete', 'tq', 'half'] },
   { key: 'fakesPerVillage',    sec: 'off', def: 1,    min: 1, unit: 'fakes' },
+  // Fake source pool: 'offsThenEscorts' = villages already sending a real off, else escorts
+  // (today); 'escortsThenOffs' = the reverse; 'any' = EVERY village with ≥ fakeRams rams, whatever
+  // its tier and whether it sends a real off or not (closest first).
+  { key: 'fakePool',           sec: 'off', def: 'offsThenEscorts', type: 'select', opts: ['offsThenEscorts', 'escortsThenOffs', 'any'] },
+  // Extra catapult attacks — which def village sends the next one: 'playerSpread' = fewest attacks
+  // per player first, then closest (today); 'closest'; 'mostCats' = most catapult attacks left.
+  { key: 'catSpread',          sec: 'off', def: 'playerSpread', type: 'select', opts: ['playerSpread', 'closest', 'mostCats'] },
   // Roster balance: the auto "optimize" score is damped by (1 − d) + d × remaining fraction of
   // the sender's roster, so already-used players slide down. 0 = off, 1 = strongest.
   { key: 'rosterDamping',      sec: 'off', def: 0.5,  min: 0, max: 1, step: 0.05 },
@@ -87,6 +110,10 @@ const PARAM_DEFS = [
   // pre-v6.0.3 behaviour). Off: any tribe may be supported, for worlds that allow cross-tribe
   // support. Tribes come from the world DB — without it every pair is allowed either way.
   { key: 'defSameTribeOnly',   sec: 'def', def: true, type: 'bool' },
+  // Fill order of the sender pools (Complete → normal → snip far → snip near → snip over):
+  // 'perPool' = each pool drains troops AT HOME then RETURNING before the next pool (today);
+  // 'homeFirst' = every pool's troops at home first, returning troops of any pool only after.
+  { key: 'defPoolOrder',       sec: 'def', def: 'perPool', type: 'select', opts: ['perPool', 'homeFirst'] },
   // A village only sends support if it has at least this much farm pop in defensive troops
   // (spear/sword/spy/heavy) — small garrisons are left alone. And every emitted support order
   // carries at least this much farm pop (Max Efficiency), so a player's contribution is
@@ -126,6 +153,9 @@ const PARAM_DEFS = [
   // this many minutes after the target's deadline.
   { key: 'mdUnitTol',          sec: 'managedef', def: 0,    min: 0, unit: 'units' },
   { key: 'mdArrivalGrace',     sec: 'managedef', def: 0,    min: 0, unit: 'min' },
+  // Which incoming order claims a plan slot first when several could: 'earliest' = earliest
+  // arrival (today); 'closestAmount' = the order whose units are closest to a slot of that target.
+  { key: 'mdSlotOrder',        sec: 'managedef', def: 'earliest', type: 'select', opts: ['earliest', 'closestAmount'] },
   // ── Overview / Outbound ──
   // Outbound Offs: a village counts as an off out when its own axe is ≥ this and at least this
   // share of that axe body is away.

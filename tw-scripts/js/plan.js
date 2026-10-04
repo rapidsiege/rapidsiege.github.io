@@ -204,7 +204,9 @@ function generatePlan() {
   //               balanced among themselves, taking the best morale the optimizer can still find.
   //               The gates are the same everywhere — this mode only changes the ORDER.
   const moraleModeRaw = (document.getElementById('plan-morale-mode') || {}).value;
-  const moraleMode = ['priority', 'balanced', 'points'].includes(moraleModeRaw) ? moraleModeRaw : 'priority';
+  //  'distance'  — (v6.1.1) like 'priority' but the targets are served NEAREST to the tribe's off
+  //               villages first (distance from the pool's off centroid), list order breaks ties.
+  const moraleMode = MORALE_MODES.includes(moraleModeRaw) ? moraleModeRaw : 'priority';
   const moralePtsRaw = parseFloat((document.getElementById('plan-morale-pts') || {}).value);
   const moralePts = isNaN(moralePtsRaw) ? 5000 : Math.max(0, moralePtsRaw);
 
@@ -337,7 +339,8 @@ function generatePlan() {
   // FAKE targets consume nothing real: they're excluded from every off/snob/catapult pass and
   // filled by their own pass (1-ram rows REUSING villages already sending a real off — see the
   // fake pass after the auto offs). DESTROYER only changes off SELECTION (prefer cat-carriers,
-  // see preferCatOffs) — the old implicit "no nobles + cats on" heuristic is gone.
+  // see destroyerPick + 🎚 destroyerRank / destroyerFallback) — the old implicit "no nobles + cats
+  // on" heuristic is gone.
   const isFake      = T => T.tg.type === 'fake';
   const isDestroyer = T => T.tg.type === 'destroyer';
   // A destroyer is for flattening, not conquering — snob trains assigned to one are almost
@@ -489,12 +492,23 @@ function generatePlan() {
   const snobGateFor = T => (snobOwnOff || !moraleUsable(T)) ? 0 : minMorale;
   // Off-pass target order: 'points' mode serves the big targets (≥ moralePts village points, from
   // the world-DB record — not the owner's total) first so they get first pick of the high-morale
-  // offs, list order kept within each band; other modes keep the list order ('balanced' then
-  // re-orders dynamically per slot — see the auto pass).
+  // offs, list order kept within each band; 'distance' (v6.1.1) sorts nearest-to-the-off-pool first
+  // (below); the other modes keep the list order ('balanced' then re-orders dynamically per slot —
+  // see the auto pass).
   const targetPoints = T => { const v = coordDb[T.tg.coord]; return v ? (parseInt(v.points, 10) || 0) : 0; };
   const bigTarget = T => moraleMode !== 'points' || targetPoints(T) >= moralePts;
+  // 'distance' (v6.1.1): nearest to the off pool's centroid first (stable; unparseable coords last).
+  // The centroid is the centre of the AVAILABLE offs: ignored players and villages spent or held by
+  // other offensives don't pull it (they can't send anything here).
+  const poolCentroid = (() => {
+    const offs = pool.filter(p => p.tier !== 'none' && !p.prior && !priorReserved.has(p.v.coord) && !ignorePlayers.has(p.v.player));
+    return offs.length ? { x: offs.reduce((a, p) => a + p.c.x, 0) / offs.length, y: offs.reduce((a, p) => a + p.c.y, 0) / offs.length } : null;
+  })();
+  const centroidDist = T => (T.c && poolCentroid) ? distXY(poolCentroid, T.c) : Infinity;
   const orderedTargets = moraleMode === 'points'
     ? [...targets.filter(T => bigTarget(T)), ...targets.filter(T => !bigTarget(T))]
+    : moraleMode === 'distance'
+    ? targets.slice().sort((a, b) => centroidDist(a) - centroidDist(b))
     : targets;
   // Average morale of a target's assigned offs so far (rows from every pass); -1 = none yet, so
   // an untouched target is always served before one that already has an off ('balanced' mode).
@@ -568,14 +582,20 @@ function generatePlan() {
 
   // Escort reservation (split-off / "escorted" mode): the noble rides WITH one of the
   // sender's offs to the same target, so hold one noble-capable off village out of the
-  // off passes per escorted train — the closest Complete/3-4 off to that target (noble
-  // range + pace govern, since the off travels with the noble). Reserved up front so the
+  // off passes per escorted train — by default the closest Complete/3-4 off to that target
+  // (🎚 escortPick 'strongest' takes the most powerful instead; noble range + pace govern,
+  // since the off travels with the noble). Reserved up front so the
   // off passes leave it free for the split-off. Applies even to pinned senders who don't
   // own the noble yet (needNobles): the slot is held until they recruit one.
   // An escort village launches the noble too, so with a buildings JSON loaded a KNOWN Smithy below
   // PARAMS.snobSmithMin disqualifies it (the next closest capable off takes the slot); unknown Smithy
   // passes (smithOkOrUnknown — escorts never had a points gate, don't introduce one).
   const escortReserved = new Set();
+  // 🎚 escortPick (v6.1.1): 'closest' = nearest eligible off, power breaks ties (today); 'strongest' =
+  // most off power, distance breaks ties. Tier preference (Complete/3-4 before 1/2) stays either way.
+  const escortCmp = T => PARAMS.escortPick === 'strongest'
+    ? (a, b) => (b.v.offPow - a.v.offPow) || (distXY(a.c, T.c) - distXY(b.c, T.c))
+    : (a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (b.v.offPow - a.v.offPow);
   for (const T of targets) {
     // One reserved escort village per (wave, train), in spec order (null = none in range).
     // The snob loop reads these by the SAME group id + train index to tell a needNobles sender
@@ -590,7 +610,7 @@ function generatePlan() {
         const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !priorReserved.has(p.v.coord) && !tooClose.has(p) && !pairBlocked(p.v.player, T)
           && tiers.includes(p.tier) && okSnobDist(p, T.c) && okSnobTime(p, T, g) && smithOkOrUnknown(p)
           && (want ? p.v.player === want : !ignorePlayers.has(p.v.player)))
-          .sort((a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (b.v.offPow - a.v.offPow))[0];
+          .sort(escortCmp(T))[0];
         const p = pick(['complete', 'tq']) || pick(['half']);
         if (p) escortReserved.add(p);
         picks.push(p || null);
@@ -906,22 +926,47 @@ function generatePlan() {
   // shared by the conqueror reservation below and the auto pass further down.
   // 🎚 tierBump off → no bumping at all (a missing tier stays unassigned).
   const TIER_UP = PARAMS.tierBump ? { half: ['tq', 'complete'], tq: ['complete'], complete: [] } : { half: [], tq: [], complete: [] };
+  // 🎚 tierBumpDown 'whenEmpty' (v6.1.1): the AUTO pass may fall back to the next WEAKER tier when
+  // the tier and every stronger tier are empty (tried AFTER the upward bumps). Auto pass only — the
+  // conqueror reservation stays bump-up-only (a snob sender's clearing off must not get weaker).
+  // Tiers are processed Complete → 3/4 → 1/2, so a weaker off taken this way is no longer there for
+  // its own tier's requests later in the pass — documented in the parameter's tooltip.
+  const TIER_DOWN = PARAMS.tierBumpDown === 'whenEmpty' ? { complete: ['tq', 'half'], tq: ['half'], half: [] } : { complete: [], tq: [], half: [] };
 
   // ── DESTROYER / VOLADORA targets ──────────────────────────────────────────
   // An explicit per-row type (see isDestroyer above): you flatten the village instead of
   // taking it. Off selection PREFERS catapult-carrying off villages (≥ CAT_CLEAR_MIN cats)
-  // so the clearing off itself demolishes — applied to EVERY off slot, falling back to a
-  // normal off only when no cat-off qualifies (range/time/tier still gate first; a target whose
-  // offs end up carrying no cats is warned once, see below). Independent of the EXTRA small cat
+  // so the clearing off itself demolishes — applied to EVERY off slot; by default falling back
+  // to a normal off when no cat-off qualifies (🎚 destroyerFallback can send the most-cats off or
+  // leave the slot open instead, 🎚 destroyerRank can rank the qualifiers catapults-first — see
+  // destroyerPick). Range/time/tier still gate first: the strategy runs INSIDE the resolved tier,
+  // after the morale gate. A target whose offs end up carrying no cats is warned once, see
+  // below. Independent of the EXTRA small cat
   // attacks sourced from defensive villages further down (a destroyer also gets those by
   // default: its catapult toggle starts ON at PARAMS.catAttacksDefault attacks).
   const CAT_CLEAR_MIN = PARAMS.catClearMin; // an off with ≥ this many catapults can serve as the clearing off
-  // Among already-filtered off candidates, keep only the cat-carriers when this is a destroyer
-  // target and at least one qualifies; otherwise leave the set untouched (normal-off fallback).
-  const preferCatOffs = (T, cands) => {
-    if (!isDestroyer(T)) return cands;
-    const catOffs = cands.filter(p => (p.v.catapult || 0) >= CAT_CLEAR_MIN);
-    return catOffs.length ? catOffs : cands;
+  // 🎚 Destroyer strategy (v6.1.1) — the ONE place the two selects act. Takes the (morale-gated)
+  // candidates and the pass's ranking comparator, returns the set to pick from + the comparator:
+  //  · qualifying set non-empty → that set; destroyerRank 'catsFirst' ranks more catapults first,
+  //    the pass's own comparator breaks ties ('power' = today: the comparator alone).
+  //  · nobody reaches catClearMin → destroyerFallback: 'power' = the whole set, unchanged (today);
+  //    'mostCats' = the whole set (minus offs under destroyerFallbackMinCats) ranked catapults-first;
+  //    'unassigned' = nothing — the slot stays open (warn_destroyer_open) for the tribe to fill by hand.
+  // Defaults reproduce the pre-6.1.1 "keep only the cat-carriers when any qualifies" filter + the
+  // comparator byte-for-byte. pickClustered keeps its "within clusterTol of the primary pick"
+  // contract on top of whatever comparator comes back. Runs INSIDE the resolved tier and after the
+  // morale gate (so 'unassigned' can leave a slot open although a cat-off of another tier, or a
+  // low-morale one, exists — documented in the tooltip + warning).
+  const catsOf = p => p.v.catapult || 0;
+  const destroyerOpenWarned = new Set(); // warn_destroyer_open once per target, not once per open slot
+  const catsFirst = cmp => (a, b) => (catsOf(b) - catsOf(a)) || cmp(a, b);
+  const destroyerPick = (T, cands, cmp) => {
+    if (!isDestroyer(T)) return { cands, cmp };
+    const catOffs = cands.filter(p => catsOf(p) >= CAT_CLEAR_MIN);
+    if (catOffs.length) return { cands: catOffs, cmp: PARAMS.destroyerRank === 'catsFirst' ? catsFirst(cmp) : cmp };
+    if (PARAMS.destroyerFallback === 'mostCats') return { cands: cands.filter(p => catsOf(p) >= PARAMS.destroyerFallbackMinCats), cmp: catsFirst(cmp) };
+    if (PARAMS.destroyerFallback === 'unassigned') return { cands: [], cmp };
+    return { cands, cmp };
   };
 
   // ── Conqueror off reservation (the force, placed up front) ────────────────
@@ -1053,7 +1098,7 @@ function generatePlan() {
       // when no reachable candidate clears minMoraleOff does the pick fall back to the full set
       // (soft, via moraleFirst). Raw off power then ranks the survivors — that's the tag's job.
       const rawCands = pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
-      const cands = preferCatOffs(T, moraleFirst(T, rawCands));
+      const cands = moraleFirst(T, rawCands);
       remaining[T.i + '|' + g.id]--;
       if (!cands.length) {
         if (!warned.has(T.i)) {
@@ -1067,7 +1112,14 @@ function generatePlan() {
         continue;
       }
       // Raw off power leads on POWER targets; clustering is only a within-tolerance tiebreaker.
-      const p = pickClustered(cands, T, (a, b) => b.v.offPow - a.v.offPow);
+      // A destroyer target applies its 🎚 strategy on top (cat-carriers first; the fallback may leave the slot open).
+      const dp = destroyerPick(T, cands, (a, b) => b.v.offPow - a.v.offPow);
+      if (!dp.cands.length) {
+        if (!destroyerOpenWarned.has(T.i)) { planWarnings.push(t('warn_destroyer_open')(T.tg.coord)); destroyerOpenWarned.add(T.i); }
+        T.offRows.push({ type: 'complete', group: g.id, unassigned: true });
+        continue;
+      }
+      const p = pickClustered(dp.cands, T, dp.cmp);
       p.usedOff = true; powSum[T.i] += p.v.offPow; noteOffUsed(p.v.player); noteMvClaim(p, T);
       const d = distXY(p.c, T.c);
       noteClusterDist(decode(p.v.player), d);
@@ -1077,7 +1129,8 @@ function generatePlan() {
   }
 
   // Offs: strongest requests claim villages first (complete → 3/4 → 1/2);
-  // an exhausted tier auto-bumps to the nearest stronger off (1/2 → 3/4 → Complete)
+  // an exhausted tier auto-bumps to the nearest stronger off (1/2 → 3/4 → Complete; 🎚 tierBump),
+  // then — only with 🎚 tierBumpDown 'whenEmpty' — falls back to the next weaker one (3/4 before 1/2),
   // and the row is relabeled to what is actually sent, with a warning. Slots already
   // reserved by named senders + the conqueror reservation above are subtracted so each
   // tier isn't double-filled.
@@ -1087,7 +1140,8 @@ function generatePlan() {
   // currently average the lowest morale (untouched targets first, list order on ties), so the
   // high-morale offs are spread across the targets rather than exhausted on the first ones;
   // 'points' does the same but within the big band first (band rank, then lowest average) — so the
-  // big targets share the high-morale offs evenly and the small ones share what is left.
+  // big targets share the high-morale offs evenly and the small ones share what is left;
+  // 'distance' (v6.1.1) drains front-to-back like 'priority', over the nearest-first `orderedTargets`.
   for (const tier of ['complete', 'tq', 'half']) {
     const queue = [];
     for (const T of orderedTargets) {
@@ -1101,7 +1155,7 @@ function generatePlan() {
       const open = queue.filter(sl => sl.left > 0);
       if (!open.length) break;
       const bandRank = sl => bigTarget(sl.T) ? 0 : 1; // 0 for every target outside 'points' mode
-      const slot = moraleMode === 'priority'
+      const slot = (moraleMode === 'priority' || moraleMode === 'distance') // 'distance' already ordered the queue
         ? open[0]
         : open.slice().sort((a, b) => (bandRank(a) - bandRank(b)) || (targetAvgMorale(a.T) - targetAvgMorale(b.T)))[0];
       slot.left--;
@@ -1114,10 +1168,10 @@ function generatePlan() {
       {
         const tierCands = tt => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
         let sent = tier, cands = tierCands(tier);
-        for (const up of TIER_UP[tier]) {
+        for (const alt of [...TIER_UP[tier], ...TIER_DOWN[tier]]) { // stronger first, then (🎚 tierBumpDown) weaker
           if (cands.length) break;
-          cands = tierCands(up);
-          if (cands.length) sent = up;
+          cands = tierCands(alt);
+          if (cands.length) sent = alt;
         }
         if (!cands.length) {
           const inBand = pool.filter(p => !p.usedOff && !offBlocked(p) && okOffDist(p, T.c));
@@ -1127,13 +1181,22 @@ function generatePlan() {
           T.offRows.push({ type: tier, group: g.id, unassigned: true });
           continue;
         }
-        if (sent !== tier) planWarnings.push(t('warn_tier_bumped')(t('tier_' + tier), t('tier_' + sent), T.tg.coord));
         // The conqueror's own off was already reserved up front (see the conqueror reservation
         // above), so the auto pass just fills the remaining slots by optimize — preferring the
         // villages that clear the Min. Morale (off) gate, else falling back to all candidates.
-        // Morale gate first (usual requirement), then prefer cat-carriers on a destroyer target;
-        // clustering (if on) breaks near-ties among the survivors without overriding morale/power.
-        const p = pickClustered(preferCatOffs(T, moraleFirst(T, cands)), T, byOptimize(T));
+        // Morale gate first (usual requirement), then the destroyer 🎚 strategy (cat-carriers first;
+        // the fallback may leave the slot open); clustering (if on) breaks near-ties among the
+        // survivors without overriding morale/power.
+        const dp = destroyerPick(T, moraleFirst(T, cands), byOptimize(T));
+        if (!dp.cands.length) {
+          if (!destroyerOpenWarned.has(T.i)) { planWarnings.push(t('warn_destroyer_open')(T.tg.coord)); destroyerOpenWarned.add(T.i); }
+          T.offRows.push({ type: tier, group: g.id, unassigned: true });
+          continue;
+        }
+        // The bump / downgrade warning only once an off is actually sent — an open destroyer slot
+        // above would otherwise read "bumped to Complete" AND "left open" for nothing sent.
+        if (sent !== tier) planWarnings.push(t(TIER_RANK[sent] > TIER_RANK[tier] ? 'warn_tier_bumped' : 'warn_tier_bumped_down')(t('tier_' + tier), t('tier_' + sent), T.tg.coord));
+        const p = pickClustered(dp.cands, T, dp.cmp);
         p.usedOff = true; noteOffUsed(p.v.player); noteMvClaim(p, T);
         const d = distXY(p.c, T.c);
         noteClusterDist(decode(p.v.player), d);
@@ -1148,22 +1211,33 @@ function generatePlan() {
   // ── FAKE targets (1-ram pretend attacks) ──────────────────────────────────
   // Runs AFTER every real off pass so `usedOff`/`isEscort` are final. Each fake target wants
   // `nComplete` fake rows (the Complete column doubles as the fake count — a fake consumes no
-  // off). Sources are COMPLETE-tier villages that already send a real off in this plan — the
-  // village "attacks twice": once for real, once with 1 ram — preferring non-escorts, then
-  // falling back to escort villages (reserved or launched). A village fakes at most ONCE
-  // (usedFake / fakesSent < PARAMS.fakesPerVillage), needs ≥ PARAMS.fakeRams rams, is at least
-  // PARAMS.fakeSourceTier, and the usual distance/launch-time/MV gates apply (a fake IS an
+  // off). By default (🎚 fakePool 'offsThenEscorts') sources are villages of at least
+  // PARAMS.fakeSourceTier that already send a real off in this plan — the village "attacks twice":
+  // once for real, once with 1 ram — preferring non-escorts, then falling back to escort villages
+  // (reserved or launched); 'escortsThenOffs' reverses that, 'any' opens the pool to every village
+  // with rams (tier and assignment ignored). A village fakes at most PARAMS.fakesPerVillage times
+  // (fakesSent), needs ≥ PARAMS.fakeRams rams, and the usual distance/launch-time/MV gates apply (a fake IS an
   // in-game attack, so the vacation-mode limit still binds; morale is irrelevant and skipped).
   for (const T of targets) {
     if (!T.c || !isFake(T)) continue;
     for (const g of otActiveGroups(T.tg)) {
     const want = otTierCount(T.tg, g.id, 'complete');
     for (let k = 0; k < want; k++) {
-      const candsOf = filt => pool.filter(p => tierAtLeast(p.tier, PARAMS.fakeSourceTier) && (p.fakesSent || 0) < PARAMS.fakesPerVillage
+      // 🎚 fakePool (v6.1.1): 'offsThenEscorts' = assigned real offs, else escorts (today);
+      // 'escortsThenOffs' = the reverse; 'any' = EVERY village with ≥ fakeRams rams, whatever its
+      // tier (fakeSourceTier is not applied) and whether it sends a real off or not. The other gates
+      // (fakesPerVillage, ignore, other offensives, noble-launch reservations, distance, launch time,
+      // MV / Block Pairs) always hold.
+      const anyPool = PARAMS.fakePool === 'any';
+      const candsOf = filt => pool.filter(p => (anyPool || tierAtLeast(p.tier, PARAMS.fakeSourceTier)) && (p.fakesSent || 0) < PARAMS.fakesPerVillage
         && (p.v.ram || 0) >= PARAMS.fakeRams && !ignorePlayers.has(p.v.player) && !p.prior && filt(p)
         && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
-      let cands = candsOf(p => p.usedOff && !p.isEscort);           // primary: assigned real offs
-      if (!cands.length) cands = candsOf(p => p.isEscort || escortReserved.has(p)); // fallback: escorts
+      const realOffs = p => p.usedOff && !p.isEscort;               // assigned real offs
+      const escorts  = p => p.isEscort || escortReserved.has(p);    // split-off escorts (riding or reserved)
+      let cands;
+      if (anyPool) cands = candsOf(p => !snobReserved.has(p) && !priorReserved.has(p.v.coord)); // never a village held for a noble launch (this or another offensive)
+      else if (PARAMS.fakePool === 'escortsThenOffs') { cands = candsOf(escorts); if (!cands.length) cands = candsOf(realOffs); }
+      else { cands = candsOf(realOffs); if (!cands.length) cands = candsOf(escorts); }
       if (!cands.length) {
         planWarnings.push(t('warn_missed_fake')(T.tg.coord));
         T.offRows.push({ type: 'fake', group: g.id, unassigned: true });
@@ -1187,7 +1261,7 @@ function generatePlan() {
       if (!T.c || !isDestroyer(T)) continue;
       const assigned = T.offRows.filter(r => !r.unassigned && r.srcCoord);
       if (assigned.length && !assigned.some(r => (vCat[r.srcCoord] || 0) >= CAT_CLEAR_MIN))
-        planWarnings.push(t('warn_no_cat_clear')(T.tg.coord));
+        planWarnings.push(t('warn_no_cat_clear')(T.tg.coord, CAT_CLEAR_MIN));
     }
   }
 
@@ -1199,9 +1273,10 @@ function generatePlan() {
   // floor(its catapults / catsPerAttack), spent across all targets; at most catPerSourceMax attacks per
   // (source village → the SAME target) — so a player can still send 4 to one target from two
   // villages. Two extra rules:
-  //   • Player spread: among eligible sources we pick the player who has sent the FEWEST
-  //     attacks to this target so far (ties broken by closest), so we don't repeat a player
-  //     while a fresh one is available — only repeating once every distinct player is used.
+  //   • Player spread (🎚 catSpread default): among eligible sources we pick the player who has
+  //     sent the FEWEST attacks to this target so far (ties broken by closest), so we don't repeat
+  //     a player while a fresh one is available — only repeating once every distinct player is
+  //     used. 'closest' / 'mostCats' replace this rule (see catCmp below).
   //   • Distance lead: a cat source must be at least CAT_OFF_LEAD fields CLOSER to the target
   //     than the farthest assigned off (cats are slow — keep them inside the off ring). With no
   //     assigned off the gate is inert. This can tighten supply, so shortfalls are warned.
@@ -1222,12 +1297,18 @@ function generatePlan() {
     const maxCatDist = offDists.length ? Math.max(...offDists) - CAT_OFF_LEAD : Infinity;
     const perTarget = {}; // source coord → attacks already aimed at THIS target (cap PARAMS.catPerSourceMax)
     const perPlayer = {}; // source player → attacks already aimed at THIS target (spread)
+    // 🎚 catSpread (v6.1.1): 'playerSpread' = fewest attacks per player at this target first, then
+    // closest (today); 'closest' = nearest source; 'mostCats' = most catapult attacks LEFT in its
+    // budget, distance breaks ties. budget / perTarget caps apply in every mode.
+    const dT = s => distXY(s.c, T.c);
+    const catCmp = PARAMS.catSpread === 'closest' ? (a, b) => dT(a) - dT(b)
+      : PARAMS.catSpread === 'mostCats' ? (a, b) => (b.budget - a.budget) || (dT(a) - dT(b))
+      : (a, b) => ((perPlayer[decode(a.v.player)] || 0) - (perPlayer[decode(b.v.player)] || 0)) || (dT(a) - dT(b));
     let placed = 0;
     while (placed < want) {
       const cand = catPool
         .filter(s => s.budget > 0 && (perTarget[s.v.coord] || 0) < PARAMS.catPerSourceMax && distXY(s.c, T.c) <= maxCatDist && !pairBlocked(s.v.player, T))
-        .sort((a, b) => (perPlayer[decode(a.v.player)] || 0) - (perPlayer[decode(b.v.player)] || 0)
-          || distXY(a.c, T.c) - distXY(b.c, T.c))[0];
+        .sort(catCmp)[0];
       if (!cand) break; // no eligible cat source left (budget/cap hit or none within the distance lead)
       const cp = decode(cand.v.player);
       cand.budget--;
@@ -2241,7 +2322,7 @@ function showUnusedOffsBB() {
 // The hidden #plan-morale-mode input is the source of truth (persisted by saveSettings via
 // PLAN_SETTING_IDS, read by generatePlan); the radios, points inputs and the chip next to the
 // button mirror it. See the "Morale strategy" block in generatePlan for what each mode does.
-const MORALE_MODES = ['priority', 'balanced', 'points'];
+const MORALE_MODES = ['priority', 'balanced', 'points', 'distance']; // 'distance' since v6.1.1
 function currentMoraleMode() {
   const v = (document.getElementById('plan-morale-mode') || {}).value;
   return MORALE_MODES.includes(v) ? v : 'priority';

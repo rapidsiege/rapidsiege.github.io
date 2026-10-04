@@ -488,6 +488,21 @@ function defSenderHoldsCtx() {
 // call time like every other parameter; anything but an explicit `false` keeps the rule.
 function defSameTribeGate() { return PARAMS.defSameTribeOnly !== false; }
 
+// Fill phases of generateDefPlan (v6.1.1, 🎚 defPoolOrder). Pools in fixed order Complete → normal →
+// snip far → snip near → snip over; 'perPool' (default) drains each pool's troops at home then its
+// returning troops before the next pool; 'homeFirst' drains every pool's troops at home first and
+// only then any pool's returning troops — EXCEPT snipOver, the reserve-breaking overdraft pool,
+// which stays the very last resort in BOTH orders (home, then returning, after every other pool's
+// returning troops): breaking a sniper's reserve while another pool still has troops on the way
+// home would be a false shortfall (review finding, 2026-10-04). Pure — exported for the tests.
+const DEF_POOLS = ['complete', 'normal', 'snipFar', 'snipNear', 'snipOver'];
+function defPhaseList(order) {
+  if (order !== 'homeFirst') return DEF_POOLS.flatMap(pool => [{ pool, view: 'stockNow' }, { pool, view: 'stockFut' }]);
+  const budgeted = DEF_POOLS.filter(pool => pool !== 'snipOver');
+  return [...budgeted.map(pool => ({ pool, view: 'stockNow' })), ...budgeted.map(pool => ({ pool, view: 'stockFut' })),
+    { pool: 'snipOver', view: 'stockNow' }, { pool: 'snipOver', view: 'stockFut' }];
+}
+
 function generateDefPlan() {
   if (!villages.length)   { alert(t('plan_need_data'));   return; }
   if (!defTargets.length) { alert(t('def_need_targets')); return; }
@@ -755,13 +770,7 @@ function generateDefPlan() {
     //                 reported (warning per player + one alert at the end).
     // Each runs home-first then returning, exactly like the pools above it. ──
     const placed = { spear: 0, sword: 0, spy: 0, heavy: 0 };
-    const phases = [
-      { pool: 'complete', view: 'stockNow' }, { pool: 'complete', view: 'stockFut' },
-      { pool: 'normal',   view: 'stockNow' }, { pool: 'normal',   view: 'stockFut' },
-      { pool: 'snipFar',  view: 'stockNow' }, { pool: 'snipFar',  view: 'stockFut' },
-      { pool: 'snipNear', view: 'stockNow' }, { pool: 'snipNear', view: 'stockFut' },
-      { pool: 'snipOver', view: 'stockNow' }, { pool: 'snipOver', view: 'stockFut' },
-    ];
+    const phases = defPhaseList(PARAMS.defPoolOrder); // 🎚 defPoolOrder (v6.1.1): 'perPool' = the list above (today), 'homeFirst' = every pool at home, then every pool returning
     // Which senders a phase may draw from. Spies are the standing exception: Complete and Snip
     // players' scouts ride the NORMAL chunked spy pool (their special treatment is about real
     // defense), so the special pools skip the type entirely and 'normal' accepts everyone.

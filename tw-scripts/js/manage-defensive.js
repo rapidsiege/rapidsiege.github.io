@@ -255,23 +255,44 @@ function mdSentOrigins(supTargets, orders) {
 // Units match = per-type equality within 🎚 PARAMS.mdUnitTol units (0 = exact; a resend of the
 // same packet is a duplicate).
 // Two passes so exact matches claim their slots before looser matches do; orders are
-// processed target- then arrival-ordered so the earliest of identical orders "matches"
-// and later ones fall to "duplicate".
+// processed target- then arrival-ordered (🎚 mdSlotOrder 'earliest', the default) so the earliest
+// of identical orders "matches" and later ones fall to "duplicate"; 'closestAmount' ranks AND
+// claims by the unit gap to the target's slots instead, arrival breaking ties.
 function mdClassifyOrders(orders, planRows) {
   const verdicts = (orders || []).map(() => 'inbound');
   if (!orders || !orders.length || !planRows || !planRows.length) return verdicts;
   const eq = (a, b) => DEF_OBJ_UNITS.every(u => Math.abs(((a && a[u]) || 0) - ((b && b[u]) || 0)) <= PARAMS.mdUnitTol);
   const slots = planRows.map(r => ({ src: r.srcCoord, tgt: r.tCoord, units: r.units, filled: false }));
   const plannedTgt = new Set(planRows.map(r => r.tCoord));
+  // 🎚 mdSlotOrder (v6.1.1): 'earliest' = earliest arrival claims a slot (today); 'closestAmount' =
+  // the order whose units are closest (sum of per-type differences) to any slot of its target goes
+  // first, arrival breaks ties. Orders are still grouped per target either way.
+  const unitGap = (x, o) => DEF_OBJ_UNITS.reduce((acc, u) => acc + Math.abs(((x.units && x.units[u]) || 0) - ((o.units && o.units[u]) || 0)), 0);
+  const gapOf = o => {
+    let best = Infinity;
+    for (const x of slots) if (x.tgt === o.target) { const d = unitGap(x, o); if (d < best) best = d; }
+    return best;
+  };
+  const byAmount = PARAMS.mdSlotOrder === 'closestAmount';
+  // The slot an order claims: the first eligible one in plan order (default), or with 'closestAmount'
+  // the eligible slot whose units are closest to the order's — ranking and claiming follow the SAME
+  // rule, so a "closer" order never takes the only slot a later order fits (review finding, 2026-10-04).
+  const claim = (o, ok) => {
+    if (!byAmount) return slots.find(ok);
+    let best, bestGap = Infinity;
+    for (const x of slots) if (ok(x)) { const d = unitGap(x, o); if (d < bestGap) { best = x; bestGap = d; } }
+    return best;
+  };
   const idx = orders.map((_, i) => i).sort((a, b) => {
     const A = orders[a], B = orders[b];
     return (A.target < B.target ? -1 : A.target > B.target ? 1 : 0)
+      || (byAmount ? (gapOf(A) - gapOf(B)) : 0)
       || ((A.arrivalMs || 0) - (B.arrivalMs || 0)) || (a - b);
   });
   const done = new Array(orders.length).fill(false);
   for (const i of idx) { // pass 1 — exact src+tgt+units
     const o = orders[i];
-    const s = slots.find(x => !x.filled && x.tgt === o.target && x.src === o.originCoord && eq(x.units, o.units));
+    const s = claim(o, x => !x.filled && x.tgt === o.target && x.src === o.originCoord && eq(x.units, o.units));
     if (s) { s.filled = true; verdicts[i] = 'matches'; done[i] = true; }
   }
   for (const i of idx) { // pass 2 — everything else
@@ -279,7 +300,7 @@ function mdClassifyOrders(orders, planRows) {
     const o = orders[i];
     if (plannedTgt.has(o.target)) {
       if (slots.some(x => x.filled && x.tgt === o.target && x.src === o.originCoord && eq(x.units, o.units))) { verdicts[i] = 'duplicate'; continue; }
-      const s2 = slots.find(x => !x.filled && x.tgt === o.target && x.src !== o.originCoord && eq(x.units, o.units));
+      const s2 = claim(o, x => !x.filled && x.tgt === o.target && x.src !== o.originCoord && eq(x.units, o.units));
       if (s2) { s2.filled = true; verdicts[i] = 'diff_origin'; continue; }
       if (slots.some(x => x.tgt !== o.target && x.src === o.originCoord && eq(x.units, o.units))) { verdicts[i] = 'diff_target'; continue; }
       verdicts[i] = slots.some(x => x.tgt === o.target && x.src === o.originCoord) ? 'wrong_amount' : 'extra';
