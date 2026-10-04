@@ -54,7 +54,7 @@ function parseDefIgnoreSet() { return coordSetOf(defIgnore); }
 function updDefIgnore() {
   const el = document.getElementById('dp-ignore-input');
   defIgnore = el ? el.value : '';
-  saveDefensive();
+  saveDefensive(); renderDefEligibleSummary();
 }
 function toggleDefIgnore() {
   const el = document.getElementById('dp-ignore-wrap');
@@ -92,11 +92,11 @@ function defIgnorePlayerOptions() {
 function addDefIgnorePlayer(name) {
   if (!name || defIgnorePlayers.includes(name)) return;
   defIgnorePlayers.push(name);
-  saveDefensive(); renderDefIgnorePlayers();
+  saveDefensive(); renderDefIgnorePlayers(); renderDefEligibleSummary();
 }
 function removeDefIgnorePlayer(idx) {
   defIgnorePlayers.splice(idx, 1);
-  saveDefensive(); renderDefIgnorePlayers();
+  saveDefensive(); renderDefIgnorePlayers(); renderDefEligibleSummary();
 }
 // Chip list of ignored players + picker (same chip/select markup as the offensive one).
 function renderDefIgnorePlayers() {
@@ -146,11 +146,11 @@ function addDefCompletePlayer(name) {
   // stale/edited state — refuse loudly rather than silently producing a nonsense plan.
   if (defSnipPlayers.includes(name)) { alert(t('err_def_snip_complete')(decode(name))); return; }
   defCompletePlayers.push(name);
-  saveDefensive(); renderDefCompletePlayers(); renderDefSnipPlayers();
+  saveDefensive(); renderDefCompletePlayers(); renderDefSnipPlayers(); renderDefEligibleSummary();
 }
 function removeDefCompletePlayer(idx) {
   defCompletePlayers.splice(idx, 1);
-  saveDefensive(); renderDefCompletePlayers(); renderDefSnipPlayers(); // freed name becomes Snip-pickable
+  saveDefensive(); renderDefCompletePlayers(); renderDefSnipPlayers(); renderDefEligibleSummary(); // freed name becomes Snip-pickable
 }
 // Chip list of Complete players + picker (same chip/select markup as the ignore one).
 function renderDefCompletePlayers() {
@@ -292,11 +292,11 @@ function addDefEnemyTribe(id) {
   id = String(id || '');
   if (!id || defEnemyIds.includes(id)) return;
   defEnemyIds.push(id);
-  saveDefensive(); renderDefEnemyTribes();
+  saveDefensive(); renderDefEnemyTribes(); renderDefEligibleSummary();
 }
 function removeDefEnemyTribe(idx) {
   defEnemyIds.splice(idx, 1);
-  saveDefensive(); renderDefEnemyTribes();
+  saveDefensive(); renderDefEnemyTribes(); renderDefEligibleSummary();
 }
 // Drop the un-migratable legacy free text (it filters nothing — see renderDefEnemyTribes).
 function clearDefEnemyLegacy() {
@@ -352,7 +352,7 @@ function renderDefEnemyTribes() {
 function updDefEnemyDist() {
   const el = document.getElementById('plan-def-enemy-dist');
   defEnemyDist = el ? Math.max(0, parseInt(el.value, 10) || 0) : 0;
-  saveDefensive();
+  saveDefensive(); renderDefEligibleSummary();
 }
 function updDefFarFirst() {
   const el = document.getElementById('plan-def-far-first');
@@ -364,7 +364,7 @@ function updDefFarFirst() {
 function updDefSkipKnight() {
   const el = document.getElementById('plan-def-skip-knight');
   defSkipKnight = !!(el && el.checked);
-  saveDefensive();
+  saveDefensive(); renderDefEligibleSummary();
 }
 
 // ── "Config Support Size" panel (Max Efficiency vs Support Packs) ──────────────
@@ -454,6 +454,40 @@ function fmtServerDT(ms) {
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
 
+// ── Sender holds (v6.0.3) — the ONE place that decides whether a troop village may send
+// support at all. Shared by generateDefPlan (the sender pool) and the filtered Available
+// Defense table (what another plan could still draw on), so the two can never disagree. Reads
+// the live Plan-Defense state exactly as the engine always did: Ignore Coordinates / Ignore
+// Players, the map-drawn area (passesCoordPolygon), the Enemy-Tribes radius (the DOM input, 0 =
+// off), Ignore Village with Knight (the village's OWN knight column, never a hosted knight) and
+// the PARAMS.defSenderMinPop floor on AVAILABLE def pop — waived for Complete Players (v4.27.0:
+// 100% means even their small garrisons ship). `mayPass(v, c, cap)`: c = parsed coord (falsy →
+// barred), cap = available def pop (defAvailUnits × POP).
+function defSenderHoldsCtx() {
+  const ignore   = parseDefIgnoreSet();
+  const ignorePl = new Set(defIgnorePlayers);
+  // Complete Players — drained to 100% first (see the picker block above). Ignore wins
+  // should a player somehow be on both lists (the pickers hide each other's members,
+  // but a stale localStorage blob could still carry the contradiction).
+  const completePl = new Set(defCompletePlayers.filter(p => !ignorePl.has(p)));
+  const enemyDist = parseFloat((document.getElementById('plan-def-enemy-dist') || {}).value) || 0;
+  const enemySet  = parseDefEnemySet();
+  const enemyCoords = enemyDist > 0 ? enemyTribeVillageCoords(enemySet) : [];
+  const nearEnemy = c => enemyCoords.length > 0 && enemyCoords.some(e => distXY(c, e) <= enemyDist);
+  // Cheap, pure checks first; the enemy-radius scan (O(enemy villages)) runs last — the result
+  // is the same whatever the order, but the summaries re-run this on every plan render.
+  const mayPass = (v, c, cap) => !!c && !ignore.has(v.coord) && !ignorePl.has(v.player)
+    && !(defSkipKnight && (v.knight || 0) > 0)
+    && (cap >= PARAMS.defSenderMinPop || (completePl.has(v.player) && cap > 0))
+    && passesCoordPolygon(c.x, c.y)
+    && !nearEnemy(c);
+  return { ignore, ignorePl, completePl, enemyDist, enemySet, enemyCoords, nearEnemy, mayPass };
+}
+
+// The same-tribe rule as a parameter (v6.0.3): PARAMS.defSameTribeOnly, default ON. Read at
+// call time like every other parameter; anything but an explicit `false` keeps the rule.
+function defSameTribeGate() { return PARAMS.defSameTribeOnly !== false; }
+
 function generateDefPlan() {
   if (!villages.length)   { alert(t('plan_need_data'));   return; }
   if (!defTargets.length) { alert(t('def_need_targets')); return; }
@@ -463,14 +497,10 @@ function generateDefPlan() {
   const us = twUnitSpeed;
   const minDist = parseFloat((document.getElementById('plan-def-min-dist') || {}).value) || 0;
   const maxDist = parseFloat((document.getElementById('plan-def-max-dist') || {}).value) || 0;
-  const ignore  = parseDefIgnoreSet();
-  const ignorePl = new Set(defIgnorePlayers);
-  // Complete Players — drained to 100% first (see the picker block above). Ignore wins
-  // should a player somehow be on both lists (the pickers hide each other's members,
-  // but a stale localStorage blob could still carry the contradiction).
-  const completePl = new Set(defCompletePlayers.filter(p => !ignorePl.has(p)));
-  const enemyDist = parseFloat((document.getElementById('plan-def-enemy-dist') || {}).value) || 0;
-  const enemySet  = parseDefEnemySet();
+  // Sender holds (ignore lists, map area, enemy radius, knight, min-pop floor) — ONE shared
+  // decision, also read by the filtered Available Defense table (v6.0.3). See defSenderHoldsCtx.
+  const holds = defSenderHoldsCtx();
+  const { ignorePl, completePl, enemyDist, enemySet, enemyCoords } = holds;
   // Snip Players — last-resort pool with a protected reserve (see the picker block above).
   // Ignore wins (they send nothing at all) and Complete wins (100% drain is the stronger,
   // explicitly opposite instruction); the pickers prevent both contradictions, so anything
@@ -494,7 +524,6 @@ function generateDefPlan() {
 
   // ── Enemy Tribes proximity bar. Needs the world DB to locate hostile villages; without
   // it (or with a 0 distance) the filter is a no-op — warn so it doesn't fail silently. ──
-  const enemyCoords = enemyDist > 0 ? enemyTribeVillageCoords(enemySet) : [];
   if (enemySet.size) {
     if (enemyDist <= 0)            defPlanWarnings.push(t('warn_def_enemy_no_dist'));
     else if (!villageDb.length)   defPlanWarnings.push(t('warn_def_enemy_no_db'));
@@ -509,13 +538,12 @@ function generateDefPlan() {
   // user believe a tribe they typed pre-v5.7.0 is still being filtered on.
   const enemyLegacy = String(defEnemyTribes || '').trim();
   if (enemyLegacy) defPlanWarnings.push(t('warn_def_enemy_legacy')(enemyLegacy.split('\n').join(', ')));
-  const nearEnemy = s => enemyCoords.length > 0 && enemyCoords.some(e => distXY(s.c, e) <= enemyDist);
 
-  // Senders: our troop villages with a parseable coord, not on the ignore list (coords OR
-  // whole ignored players), inside the map-drawn area if one exists (passesCoordPolygon —
-  // shared with Plan Offensive, honours "Select Reverse"; typed X|Y filters stay
-  // offensive-only), not within the enemy-tribe radius, holding at least
-  // PARAMS.defSenderMinPop farm pop of AVAILABLE defense (small garrisons are left alone).
+  // Senders: our troop villages with a parseable coord that pass every sender hold
+  // (holds.mayPass — ignore list (coords OR whole ignored players), the map-drawn area if one
+  // exists (passesCoordPolygon — shared with Plan Offensive, honours "Select Reverse"; typed
+  // X|Y filters stay offensive-only), the enemy-tribe radius, Ignore Village with Knight, and
+  // at least PARAMS.defSenderMinPop farm pop of AVAILABLE defense — small garrisons are left alone).
   // v4.5.0: stock AND cap are the AVAILABLE units (defAvailUnits — at home or incoming,
   // capped at own troops), not the player's total troops: defense that is deployed
   // elsewhere is never assigned, so no order ever implies recalling support. Without
@@ -534,16 +562,12 @@ function generateDefPlan() {
       cap: DEF_OBJ_UNITS.reduce((s, u) => s + stock[u] * POP[u], 0),
     };
   // v4.27.0: a Complete player's villages skip the PARAMS.defSenderMinPop floor — 100% means
-  // even their small garrisons ship (but every other hold above still applies to them).
+  // even their small garrisons ship (but every other hold still applies to them).
   // v6.0.1: "Ignore Village with Knight" — a village whose OWN troops include a knight is held
   // home entirely (spies included), like an ignored coordinate: it is dropped here so it
   // neither sends nor inflates its player's capacity weight. Knight ownership comes from the
   // village's own troop row (v.knight), never from a knight stationed there as support.
-  }).filter(s => s.c && !ignore.has(s.v.coord) && !ignorePl.has(s.v.player)
-    && passesCoordPolygon(s.c.x, s.c.y)
-    && !nearEnemy(s)
-    && !(defSkipKnight && (s.v.knight || 0) > 0)
-    && (s.cap >= PARAMS.defSenderMinPop || (completePl.has(s.v.player) && s.cap > 0)));
+  }).filter(s => holds.mayPass(s.v, s.c, s.cap));
 
   const capByPlayer = {};
   for (const s of senders) capByPlayer[s.v.player] = (capByPlayer[s.v.player] || 0) + s.cap;
@@ -574,12 +598,17 @@ function generateDefPlan() {
   tgs.filter(T => !T.c).forEach(T => defPlanWarnings.push(t('warn_invalid_coord')(T.tg.coord)));
 
   const dbReady = villageDb.length > 0;
-  // Same-tribe gate. Without the world DB we can't resolve tribes, so we allow all (dev
-  // fallback); with it loaded, BOTH sides must resolve to the SAME tag or the pair is barred.
-  const sameTribe = (s, T) => !dbReady || (!!s.tag && !!T.tag && s.tag === T.tag);
+  // Same-tribe gate — the 🎚 PARAMS.defSameTribeOnly parameter (v6.0.3, default ON = the es100 /
+  // es103 rule; OFF for worlds that allow cross-tribe support). Without the world DB we can't
+  // resolve tribes, so we allow all (dev fallback); with it loaded and the gate on, BOTH sides
+  // must resolve to the SAME tag or the pair is barred.
+  const tribeGate = defSameTribeGate();
+  const sameTribe = (s, T) => !tribeGate || !dbReady || (!!s.tag && !!T.tag && s.tag === T.tag);
 
-  // Loud failure modes (so an empty target explains itself rather than reading as a bug):
-  if (dbReady) {
+  // Loud failure modes (so an empty target explains itself rather than reading as a bug).
+  // Only meaningful while the gate is on — with cross-tribe support allowed an unresolved
+  // tribe bars nothing.
+  if (dbReady && tribeGate) {
     for (const T of tgs) if (T.c && !T.tag) defPlanWarnings.push(t('warn_def_target_no_tribe')(T.tg.coord));
     const noTag = [...new Set(senders.filter(s => !s.tag).map(s => s.v.coord))];
     if (noTag.length) {
@@ -1021,7 +1050,7 @@ function generateDefPlan() {
       const n = T.tg[u] || 0;
       if (placed[u] >= n) continue;
       if (u === 'spy' && n - placed[u] < PARAMS.defSpyMinOrder) continue;
-      defPlanWarnings.push(t('warn_def_short')(t('th_' + u), n - placed[u], T.tg.coord));
+      defPlanWarnings.push(t(tribeGate ? 'warn_def_short' : 'warn_def_short_any')(t('th_' + u), n - placed[u], T.tg.coord));
     }
   }
 
@@ -1156,8 +1185,7 @@ function renderDefPlanTable() {
   if (!tbody) return;
   if (!defPlanRows.length) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="11">${t('empty_no_def_plan')}</td></tr>`;
-    renderDefPlayerSummary(); // clears the per-player summary too
-    renderDefLeftoverSummary();
+    renderDefSummaries(); // clears the tribe-view select + the three summaries too
     updDefPolyNote();
     if (typeof renderManageDefTable === 'function') renderManageDefTable(); // Manage Defense reads the plan
     return;
@@ -1190,8 +1218,7 @@ function renderDefPlanTable() {
       <td>${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">🛡</a>` : '—'}<button class="btn btn-ghost btn-sm" style="margin-left:4px;" onclick="delDefPlanRow(${i})">✕</button></td>
     </tr>`;
   }).join('');
-  renderDefPlayerSummary();
-  renderDefLeftoverSummary();
+  renderDefSummaries();
   updDefPolyNote();
   if (typeof renderManageDefTable === 'function') renderManageDefTable(); // Manage Defense reads the plan
 }
@@ -1259,13 +1286,17 @@ function defAvailUnitsNow(v) {
 function computeDefPlayerSummary(rows, vils) {
   const by = {};
   const entry = name => by[name] || (by[name] = {
-    player: name,
+    player: name, tribe: '',
     avail:   { spear: 0, sword: 0, spy: 0, heavy: 0 },
     sending: { spear: 0, sword: 0, spy: 0, heavy: 0 },
   });
+  // v6.0.3: the player's tribe tag (defPlayerTribes — majority vote over their villages' DB
+  // tags; '' when the DB isn't loaded) lets the summaries split or filter by tribe.
+  const tribes = defPlayerTribes(vils);
   for (const v of vils || []) {
     const a = defAvailUnits(v), e = entry(decode(v.player));
     for (const u of DEF_OBJ_UNITS) e.avail[u] += a[u];
+    e.tribe = tribes[e.player] || '';
   }
   for (const r of rows || []) {
     const e = entry(r.srcPlayer);
@@ -1275,33 +1306,6 @@ function computeDefPlayerSummary(rows, vils) {
   return Object.values(by)
     .filter(e => pop(e.avail) > 0 || pop(e.sending) > 0)
     .sort((a, b) => (pop(b.avail) - pop(a.avail)) || a.player.toLowerCase().localeCompare(b.player.toLowerCase()));
-}
-
-// Rendered under the plan table (tail-called from renderDefPlanTable, so it refreshes on
-// generate / row delete / clear / language switch). Needs the troop file — a plan restored
-// from localStorage alone has nothing to summarize against.
-function renderDefPlayerSummary() {
-  const host = document.getElementById('defplan-player-summary');
-  if (!host) return;
-  if (!defPlanRows.length || !villages.length) { host.innerHTML = ''; return; }
-  const data = computeDefPlayerSummary(defPlanRows, villages);
-  if (!data.length) { host.innerHTML = ''; return; }
-  const totals = { player: t('def_sum_total'), avail: { spear: 0, sword: 0, spy: 0, heavy: 0 }, sending: { spear: 0, sword: 0, spy: 0, heavy: 0 } };
-  for (const e of data) for (const u of DEF_OBJ_UNITS) { totals.avail[u] += e.avail[u]; totals.sending[u] += e.sending[u]; }
-  const cells = e => DEF_OBJ_UNITS.map(u => {
-    const over = e.sending[u] > e.avail[u];
-    return `<td><span style="${over ? 'color:#e06040;font-weight:600;' : ''}"${over ? ` title="${esc(t('def_sum_over_title'))}"` : ''}>${e.sending[u].toLocaleString()}</span><span style="color:#5a3a18;"> / ${e.avail[u].toLocaleString()}</span></td>`;
-  }).join('');
-  host.innerHTML = `
-    <div style="font-size:13px;color:#a08050;font-weight:600;margin:16px 0 4px;">${esc(t('def_sum_title'))}</div>
-    <div style="font-size:12px;color:#5a3a18;margin-bottom:8px;">${esc(t(hasStationData() ? 'def_sum_note' : 'def_sum_note_nostation'))}</div>
-    <div class="table-wrap"><table>
-      <thead><tr><th class="left">${t('th_player')}</th>${DEF_OBJ_UNITS.map(u => `<th>${twIcon(u)}</th>`).join('')}</tr></thead>
-      <tbody>
-        ${data.map(e => `<tr><td class="left"><span class="player-tag">${esc(e.player)}</span></td>${cells(e)}</tr>`).join('')}
-        <tr style="font-weight:600;"><td class="left" style="border-top:2px solid #7a5c10;">${esc(totals.player)}</td>${cells(totals).replace(/<td>/g, '<td style="border-top:2px solid #7a5c10;">')}</tr>
-      </tbody>
-    </table></div>`;
 }
 
 // ── Available Defense (v6.0.1): what is left UNASSIGNED after the plan, per player ────────
@@ -1317,32 +1321,258 @@ function computeDefLeftover(rows, vils) {
     .map(e => {
       const left = {};
       for (const u of DEF_OBJ_UNITS) left[u] = Math.max(0, e.avail[u] - e.sending[u]);
-      return { player: e.player, left, pop: pop(left) };
+      return { player: e.player, tribe: e.tribe, left, pop: pop(left) };
     })
     .sort((a, b) => (b.pop - a.pop) || a.player.toLowerCase().localeCompare(b.player.toLowerCase()));
 }
 
-// Rendered right under the Support per Player table (same callers, same empty rules).
-function renderDefLeftoverSummary() {
-  const host = document.getElementById('defplan-leftover-summary');
+// ── Available Defense (filtered) (v6.0.3): the leftover ANOTHER PLAN COULD STILL DRAW ON ────
+// Computed per VILLAGE, then summed per player: leftover(v) = available − what THIS village
+// sends in the plan, and the village counts only while it would be an eligible sender RIGHT
+// NOW for that leftover — it passes every sender hold (defSenderHoldsCtx — ignore lists, map
+// area, enemy radius, knight, and the min-pop floor checked on what is LEFT: a village drained
+// below PARAMS.defSenderMinPop can't be a sender next time), lies inside the Def min/max
+// distance band of at least one target, and — with the same-tribe parameter on and the world
+// DB loaded — shares a tribe with at least one target. No targets → only the holds apply.
+// Per village (not per player like computeDefLeftover) so a village that drops out of the
+// filter after Generate never has its sends charged to its player's other villages. Snip
+// reserves are NOT subtracted: they only protect against targets within the snip radius, so
+// they are not a fixed amount (the note says so). `defFilteredSenderTest()` is the per-village
+// predicate `(v, stock) → bool` (stock defaults to defAvailUnits(v)); it reads the live
+// Plan-Defense state (DOM distance inputs, pickers, parameters) like the engine, and the hold
+// handlers re-render the table so it tracks every change.
+function defFilteredSenderTest() {
+  const holds = defSenderHoldsCtx();
+  const minDist = parseFloat((document.getElementById('plan-def-min-dist') || {}).value) || 0;
+  const maxDist = parseFloat((document.getElementById('plan-def-max-dist') || {}).value) || 0;
+  const hasTargets = defTargets.length > 0; // targets with unparseable coords still count as targets (nothing is in their band)
+  const tgs = defTargets.map(tg => ({ c: parseCoordStr(tg.coord), tag: tg.tribe || dbTribeAt(tg.coord) })).filter(T => T.c);
+  const dbReady = villageDb.length > 0, tribeGate = defSameTribeGate();
+  const inBand = (c, T) => { const d = distXY(c, T.c); return (minDist <= 0 || d >= minDist) && (maxDist <= 0 || d <= maxDist); };
+  return (v, stock) => {
+    const c = parseCoordStr(v.coord);
+    if (!c) return false;
+    stock = stock || defAvailUnits(v);
+    const cap = DEF_OBJ_UNITS.reduce((a, u) => a + stock[u] * POP[u], 0);
+    if (!holds.mayPass(v, c, cap)) return false;
+    if (!hasTargets) return true;
+    const tag = dbTribeAt(v.coord);
+    return tgs.some(T => inBand(c, T) && (!tribeGate || !dbReady || (!!tag && !!T.tag && tag === T.tag)));
+  };
+}
+function computeDefLeftoverFiltered(rows, vils, test) {
+  test = test || defFilteredSenderTest();
+  const pop = tally => DEF_OBJ_UNITS.reduce((s, u) => s + (tally[u] || 0) * POP[u], 0);
+  const sentBy = {};
+  for (const r of rows || []) {
+    const s = sentBy[r.srcCoord] || (sentBy[r.srcCoord] = { spear: 0, sword: 0, spy: 0, heavy: 0 });
+    for (const u of DEF_OBJ_UNITS) s[u] += (r.units && r.units[u]) || 0;
+  }
+  const tribes = defPlayerTribes(vils);
+  const by = {};
+  for (const v of vils || []) {
+    const a = defAvailUnits(v), sent = sentBy[v.coord], left = {};
+    for (const u of DEF_OBJ_UNITS) left[u] = Math.max(0, a[u] - (sent ? sent[u] : 0));
+    if (!test(v, left)) continue;
+    const name = decode(v.player);
+    const e = by[name] || (by[name] = { player: name, tribe: tribes[name] || '', left: { spear: 0, sword: 0, spy: 0, heavy: 0 }, pop: 0 });
+    for (const u of DEF_OBJ_UNITS) e.left[u] += left[u];
+  }
+  return Object.values(by)
+    .map(e => { e.pop = pop(e.left); return e; })
+    .filter(e => e.pop > 0)
+    .sort((a, b) => (b.pop - a.pop) || a.player.toLowerCase().localeCompare(b.player.toLowerCase()));
+}
+
+// Tribe tag per (decoded) player — a MAJORITY vote over the player's villages' DB tags, so one
+// village nobled between the troop export and the DB snapshot can't hand the player (or the
+// Tribes selector) another tribe's tag. '' when nothing resolves (no DB).
+function defPlayerTribes(vils) {
+  const votes = {};
+  for (const v of vils || []) {
+    const tag = dbTribeAt(v.coord);
+    if (!tag) continue;
+    const name = decode(v.player);
+    const vt = votes[name] || (votes[name] = {});
+    vt[tag] = (vt[tag] || 0) + 1;
+  }
+  const out = {};
+  for (const name in votes) {
+    const vt = votes[name];
+    out[name] = Object.keys(vt).sort((a, b) => (vt[b] - vt[a]) || a.localeCompare(b))[0];
+  }
+  return out;
+}
+
+// ── Summary preferences (v6.0.3): collapsed/open state of the three summary panels and the
+// tribe view. Their own small localStorage key (plain JSON) — UI prefs, not plan data, so they
+// don't ride in the compressed tw_tribe_defensive blob. Loaded lazily on first use.
+//   open  — { player, left, elig } booleans; every panel starts COLLAPSED (the tables are tall).
+//   tribe — 'combined' (one list, the pre-v6.0.3 view) · 'split' (one block per tribe, each with
+//           its own Total) · 'tag:<TAG>' (only that tribe). Only offered when the loaded troop
+//           file spans 2+ tribes (es100 / es103 forbid cross-tribe support, so mixed numbers
+//           mislead); with a single tribe the view is always 'combined'.
+const DEF_SUM_PREFS_KEY = 'tw_tribe_defsum';
+let defSumPrefs = null;
+function defSumPrefsGet() {
+  if (defSumPrefs) return defSumPrefs;
+  defSumPrefs = { open: { player: false, left: false, elig: false }, tribe: 'combined' };
+  try {
+    const d = JSON.parse(localStorage.getItem(DEF_SUM_PREFS_KEY) || 'null');
+    if (d && d.open) for (const k of ['player', 'left', 'elig']) defSumPrefs.open[k] = d.open[k] === true;
+    if (d && typeof d.tribe === 'string') defSumPrefs.tribe = d.tribe;
+  } catch {}
+  return defSumPrefs;
+}
+function defSumPrefsSave() { try { localStorage.setItem(DEF_SUM_PREFS_KEY, JSON.stringify(defSumPrefsGet())); } catch {} }
+// <details ontoggle> handler: remembers which panels the user keeps open.
+function setDefSumOpen(key, open) {
+  const p = defSumPrefsGet();
+  if (!Object.prototype.hasOwnProperty.call(p.open, key) || p.open[key] === !!open) return;
+  p.open[key] = !!open; defSumPrefsSave();
+}
+// Tribe-view <select> handler: re-renders the three summaries in the new view.
+function setDefSumTribeMode(mode) {
+  const p = defSumPrefsGet();
+  p.tribe = /^(combined|split|tag:.+)$/.test(String(mode)) ? String(mode) : 'combined';
+  defSumPrefsSave();
+  renderDefSummaries();
+}
+// The tools row + the three summary panels, in order (renderDefPlanTable's tail, the tribe
+// selector, and the spyPerRam parameter — which moves every availability number — all go here).
+function renderDefSummaries() {
+  renderDefSumTools(); renderDefPlayerSummary(); renderDefLeftoverSummary(); renderDefEligibleSummary();
+}
+
+// Sorted distinct tribe tags of the loaded troop file — the PLAYERS' tags (defPlayerTribes), so
+// a single nobled village can't conjure a ghost tribe into the selector.
+function defSumTribes(vils) {
+  const tags = new Set(Object.values(defPlayerTribes(vils)));
+  return [...tags].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+}
+// The tribe view in force: the saved preference, but 'combined' whenever fewer than two
+// tribes are loaded (a 'tag:' pick that no longer exists falls back too).
+function defSumTribeMode(tribes) {
+  const mode = defSumPrefsGet().tribe;
+  if (tribes.length < 2) return 'combined';
+  if (mode === 'split') return mode;
+  if (mode.startsWith('tag:')) return tribes.includes(mode.slice(4)) ? mode : 'combined';
+  return 'combined';
+}
+// Pure seam: slice a summary list ([{player, tribe, …}]) into the blocks a table renders —
+// [{ tag, rows }] — tag = null for the single combined / filtered block, the tribe tag for a
+// 'split' block (players without a resolvable tribe last, tag ''). Empty blocks are dropped
+// (no rows at all → [] — the renderer shows the empty note instead of a lone Total row).
+function defSumGroups(data, mode, tribes) {
+  if (mode === 'split') {
+    return [...tribes, ''].map(tag => ({ tag, rows: data.filter(e => (e.tribe || '') === tag) })).filter(gp => gp.rows.length);
+  }
+  const rows = mode.startsWith('tag:') ? data.filter(e => e.tribe === mode.slice(4)) : data;
+  return rows.length ? [{ tag: null, rows }] : [];
+}
+// Label of a group's Total row: "Total" or "Total [TAG]" / "Total — no tribe" in the split view.
+function defSumTotalLabel(tag) {
+  if (tag === null) return t('def_sum_total');
+  return t('def_sum_total_tribe')(tag || t('def_sum_tribe_unknown'));
+}
+// The tribe-view <select>, rendered into #defplan-sum-tools only while a plan is shown and the
+// troop file spans 2+ tribes (same callers as the summaries, so it clears with them).
+function renderDefSumTools() {
+  const host = document.getElementById('defplan-sum-tools');
+  if (!host) return;
+  const tribes = villages.length && defPlanRows.length ? defSumTribes(villages) : [];
+  if (tribes.length < 2) { host.innerHTML = ''; return; }
+  const mode = defSumTribeMode(tribes);
+  const opt = (val, label) => `<option value="${esc(val)}"${val === mode ? ' selected' : ''}>${esc(label)}</option>`;
+  host.innerHTML = `
+    <div class="def-sum-tools" title="${esc(t('def_sum_tribes_t'))}">
+      <label for="defsum-tribe-mode">${esc(t('def_sum_tribes_lbl'))}</label>
+      <select id="defsum-tribe-mode" onchange="setDefSumTribeMode(this.value)">
+        ${opt('combined', t('def_sum_tribes_combined'))}${opt('split', t('def_sum_tribes_split'))}
+        ${tribes.map(tg => opt('tag:' + tg, `[${tg}]`)).join('')}
+      </select>
+    </div>`;
+}
+// Collapsible wrapper shared by the three summaries: <details> whose <summary> carries the
+// title and a one-glance hint (so a collapsed panel still tells the headline), open state
+// remembered per panel (defSumPrefs.open[key]).
+function defSumPanel(key, title, hint, body) {
+  const open = defSumPrefsGet().open[key] === true;
+  return `<details class="def-sum-panel"${open ? ' open' : ''} ontoggle="setDefSumOpen('${key}', this.open)">`
+    + `<summary title="${esc(t('def_sum_toggle_t'))}"><span class="def-sum-title">${esc(title)}</span>${hint ? `<span class="def-sum-hint">${esc(hint)}</span>` : ''}</summary>`
+    + `<div class="def-sum-body">${body}</div></details>`;
+}
+// Grouped table body: per block an optional tribe header row, the rows, and its Total row.
+// `cells(e)` renders one entry's <td>s; `totalOf(rows)` folds a block into a totals entry.
+function defSumTableHtml(headCells, groups, cells, totalOf, nCols) {
+  const body = groups.map(gp => {
+    const tot = totalOf(gp.rows);
+    return (gp.tag !== null ? `<tr class="def-sum-tribe"><td class="left" colspan="${nCols}"><span class="player-tag">${esc(gp.tag || t('def_sum_tribe_unknown'))}</span></td></tr>` : '')
+      + gp.rows.map(e => `<tr><td class="left"><span class="player-tag">${esc(e.player)}</span></td>${cells(e)}</tr>`).join('')
+      + `<tr class="def-sum-total" style="font-weight:600;"><td class="left" style="border-top:2px solid #7a5c10;">${esc(defSumTotalLabel(gp.tag))}</td>${cells(tot).replace(/<td( style="[^"]*")?>/g, (m0, st) => `<td style="border-top:2px solid #7a5c10;${st ? st.slice(8, -1) : ''}">`)}</tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table><thead><tr><th class="left">${t('th_player')}</th>${headCells}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+// Rendered under the plan table (tail-called from renderDefPlanTable, so it refreshes on
+// generate / row delete / clear / language switch). Needs the troop file — a plan restored
+// from localStorage alone has nothing to summarize against. v6.0.3: collapsible panel +
+// tribe view (combined / split / one tribe).
+function renderDefPlayerSummary() {
+  const host = document.getElementById('defplan-player-summary');
   if (!host) return;
   if (!defPlanRows.length || !villages.length) { host.innerHTML = ''; return; }
-  const data = computeDefLeftover(defPlanRows, villages);
+  const data = computeDefPlayerSummary(defPlanRows, villages);
   if (!data.length) { host.innerHTML = ''; return; }
-  const totals = { player: t('def_sum_total'), left: { spear: 0, sword: 0, spy: 0, heavy: 0 }, pop: 0 };
-  for (const e of data) { for (const u of DEF_OBJ_UNITS) totals.left[u] += e.left[u]; totals.pop += e.pop; }
+  const tribes = defSumTribes(villages), mode = defSumTribeMode(tribes);
+  const groups = defSumGroups(data, mode, tribes);
+  const totalOf = rows => {
+    const tot = { avail: { spear: 0, sword: 0, spy: 0, heavy: 0 }, sending: { spear: 0, sword: 0, spy: 0, heavy: 0 } };
+    for (const e of rows) for (const u of DEF_OBJ_UNITS) { tot.avail[u] += e.avail[u]; tot.sending[u] += e.sending[u]; }
+    return tot;
+  };
+  const cells = e => DEF_OBJ_UNITS.map(u => {
+    const over = e.sending[u] > e.avail[u];
+    return `<td><span style="${over ? 'color:#e06040;font-weight:600;' : ''}"${over ? ` title="${esc(t('def_sum_over_title'))}"` : ''}>${e.sending[u].toLocaleString()}</span><span style="color:#5a3a18;"> / ${e.avail[u].toLocaleString()}</span></td>`;
+  }).join('');
+  const shown = groups.reduce((n, gp) => n + gp.rows.length, 0);
+  const body = `<div class="def-sum-note">${esc(t(hasStationData() ? 'def_sum_note' : 'def_sum_note_nostation'))}</div>`
+    + defSumTableHtml(DEF_OBJ_UNITS.map(u => `<th>${twIcon(u)}</th>`).join(''), groups, cells, totalOf, DEF_OBJ_UNITS.length + 1);
+  host.innerHTML = defSumPanel('player', t('def_sum_title'), t('def_sum_hint_players')(shown), body);
+}
+
+// Rendered right under the Support per Player table (same callers, same empty rules).
+function renderDefLeftoverSummary() {
+  renderDefLeftoverLike('defplan-leftover-summary', 'left', 'def_left_title',
+    hasStationData() ? 'def_left_note' : 'def_left_note_nostation', computeDefLeftover);
+}
+// The filtered twin (v6.0.3), right under it.
+function renderDefEligibleSummary() {
+  renderDefLeftoverLike('defplan-eligible-summary', 'elig', 'def_elig_title',
+    hasStationData() ? 'def_elig_note' : 'def_elig_note_nostation', computeDefLeftoverFiltered);
+}
+// Shared renderer of the two leftover tables: Player · spear/sword/spy/heavy · Def pop, grouped
+// by the tribe view, each block closed by its Total; the panel hint is the def pop left.
+function renderDefLeftoverLike(hostId, key, titleKey, noteKey, compute) {
+  const host = document.getElementById(hostId);
+  if (!host) return;
+  if (!defPlanRows.length || !villages.length) { host.innerHTML = ''; return; }
+  const data = compute(defPlanRows, villages);
+  const tribes = defSumTribes(villages), mode = defSumTribeMode(tribes);
+  const groups = defSumGroups(data, mode, tribes);
+  const totalOf = rows => {
+    const tot = { left: { spear: 0, sword: 0, spy: 0, heavy: 0 }, pop: 0 };
+    for (const e of rows) { for (const u of DEF_OBJ_UNITS) tot.left[u] += e.left[u]; tot.pop += e.pop; }
+    return tot;
+  };
   const num = n => n > 0 ? n.toLocaleString() : `<span class="num-zero">0</span>`;
   const cells = e => DEF_OBJ_UNITS.map(u => `<td>${num(e.left[u])}</td>`).join('') + `<td style="color:#f0c040;">${num(e.pop)}</td>`;
-  host.innerHTML = `
-    <div style="font-size:13px;color:#a08050;font-weight:600;margin:16px 0 4px;">${esc(t('def_left_title'))}</div>
-    <div style="font-size:12px;color:#5a3a18;margin-bottom:8px;">${esc(t(hasStationData() ? 'def_left_note' : 'def_left_note_nostation'))}</div>
-    <div class="table-wrap"><table>
-      <thead><tr><th class="left">${t('th_player')}</th>${DEF_OBJ_UNITS.map(u => `<th>${twIcon(u)}</th>`).join('')}<th>${t('th_def_left_pop')}</th></tr></thead>
-      <tbody>
-        ${data.map(e => `<tr><td class="left"><span class="player-tag">${esc(e.player)}</span></td>${cells(e)}</tr>`).join('')}
-        <tr style="font-weight:600;"><td class="left" style="border-top:2px solid #7a5c10;">${esc(totals.player)}</td>${cells(totals).replace(/<td( style="[^"]*")?>/g, (m0, st) => `<td style="border-top:2px solid #7a5c10;${st ? st.slice(8, -1) : ''}">`)}</tr>
-      </tbody>
-    </table></div>`;
+  const popAll = groups.reduce((n, gp) => n + totalOf(gp.rows).pop, 0);
+  const table = groups.length
+    ? defSumTableHtml(DEF_OBJ_UNITS.map(u => `<th>${twIcon(u)}</th>`).join('') + `<th>${t('th_def_left_pop')}</th>`, groups, cells, totalOf, DEF_OBJ_UNITS.length + 2)
+    : `<div class="def-sum-empty">${esc(t('def_sum_empty'))}</div>`;
+  const body = `<div class="def-sum-note">${esc(t(noteKey))}</div>` + table;
+  host.innerHTML = defSumPanel(key, t(titleKey), t('def_sum_hint_pop')(popAll), body);
 }
 
 // Readiness colors of the per-player exports (v4.28.1: on the SEND ▶ link text only)

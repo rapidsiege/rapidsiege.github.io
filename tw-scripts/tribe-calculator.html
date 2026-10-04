@@ -950,9 +950,9 @@
   </div>
   <div class="filter-row" style="padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
     <label data-i18n="lbl_def_min_dist">Def min distance:</label>
-    <input type="number" id="plan-def-min-dist" value="0" min="0" style="width:70px;" title="0 = no minimum">
+    <input type="number" id="plan-def-min-dist" value="0" min="0" style="width:70px;" title="0 = no minimum" oninput="renderDefEligibleSummary()">
     <label data-i18n="lbl_def_max_dist">Def max distance:</label>
-    <input type="number" id="plan-def-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited">
+    <input type="number" id="plan-def-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited" oninput="renderDefEligibleSummary()">
     <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;" data-i18n-title="def_far_first_t" title="Support is drawn from each player's villages FURTHEST from the target first, so leftover defense sits nearest the targets — ready to reinforce quickly and easy to replenish.">
       <input type="checkbox" id="plan-def-far-first" onchange="updDefFarFirst()">
       <span data-i18n="lbl_def_far_first">Prioritize Sending From Far Villages</span>
@@ -1024,9 +1024,11 @@
       <tbody id="defplan-tbody"></tbody>
     </table>
   </div>
+  <div id="defplan-sum-tools"></div>
   <div id="defplan-player-summary"></div>
   <div id="defplan-leftover-summary"></div>
-  <p style="font-size:12px;color:#5a3a18;margin-top:12px;" data-i18n="defplan_note">Intra-tribe support only, from villages with ≥4,000 def pop AVAILABLE (at home or incoming — defense deployed elsewhere is never recalled). Bigger defenders send more; troops are spread evenly across a player's villages, ≥400 pop per order.</p>
+  <div id="defplan-eligible-summary"></div>
+  <p style="font-size:12px;color:#5a3a18;margin-top:12px;" data-i18n="defplan_note">Same-tribe support only by default (🎚 Parameters), from villages with ≥4,000 def pop AVAILABLE (at home or incoming — defense deployed elsewhere is never recalled). Bigger defenders send more; troops are spread evenly across a player's villages, ≥400 pop per order.</p>
 </div>
 
 <!-- ═══════════════════════════ MANAGE DEFENSE (v4.9.0) ═══════════════════════════ -->
@@ -1285,7 +1287,7 @@ document.addEventListener('drop', e => {
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.0.2 &nbsp;·&nbsp; 2026-10-04</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.0.3 &nbsp;·&nbsp; 2026-10-04</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

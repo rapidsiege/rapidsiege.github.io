@@ -416,6 +416,21 @@
     .param-panel-body .param-grid { margin-bottom: 8px; }
     .param-panel-body .section-header { margin: 8px 0 8px; }
     .param-panel-body .section-header h2 { font-size: 13px; }
+    /* Plan Defense summary panels (v6.0.3): collapsible <details>; the summary line carries the
+       title + a one-glance hint, so a collapsed panel still tells the headline number. */
+    .def-sum-tools { display: flex; align-items: center; gap: 8px; margin: 16px 0 0; font-size: 12px; color: #a08050; font-weight: 600; }
+    .def-sum-tools select { font-size: 12px; }
+    .def-sum-panel { background: #120c03; border: 1px solid #3a2808; border-radius: 5px; margin-top: 10px; }
+    .def-sum-panel > summary { cursor: pointer; padding: 8px 14px; font-size: 13px; color: #a08050; font-weight: 600; list-style: none; user-select: none; }
+    .def-sum-panel > summary::-webkit-details-marker { display: none; }
+    .def-sum-panel > summary::before { content: '▸ '; color: #806030; }
+    .def-sum-panel[open] > summary::before { content: '▾ '; }
+    .def-sum-panel > summary:hover { color: #f0c040; }
+    .def-sum-hint { float: right; font-size: 11px; font-weight: 400; color: #806030; }
+    .def-sum-body { padding: 0 10px 10px; }
+    .def-sum-note { font-size: 12px; color: #5a3a18; margin-bottom: 8px; }
+    .def-sum-empty { font-size: 12px; color: #806030; padding: 6px 0; }
+    .def-sum-tribe td { background: #1a1206; color: #f0c040; font-weight: 600; padding-top: 8px; }
     @media (max-width: 640px) {
       .param-row { grid-template-columns: 1fr; grid-template-areas: "label" "ctl" "tip"; }
     }

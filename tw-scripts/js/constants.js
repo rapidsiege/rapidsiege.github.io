@@ -83,6 +83,10 @@ const PARAM_DEFS = [
   // the sender's roster, so already-used players slide down. 0 = off, 1 = strongest.
   { key: 'rosterDamping',      sec: 'off', def: 0.5,  min: 0, max: 1, step: 0.05 },
   // ── Plan Defense ──
+  // Support may only go to villages of the SENDER'S OWN TRIBE (the es100 / es103 rule; the
+  // pre-v6.0.3 behaviour). Off: any tribe may be supported, for worlds that allow cross-tribe
+  // support. Tribes come from the world DB — without it every pair is allowed either way.
+  { key: 'defSameTribeOnly',   sec: 'def', def: true, type: 'bool' },
   // A village only sends support if it has at least this much farm pop in defensive troops
   // (spear/sword/spy/heavy) — small garrisons are left alone. And every emitted support order
   // carries at least this much farm pop (Max Efficiency), so a player's contribution is
