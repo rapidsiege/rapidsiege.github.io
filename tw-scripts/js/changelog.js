@@ -18,6 +18,16 @@
 // v6 entries into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v6.2.1', date: '2026-10-06',
+    en: [
+      `<b>🏷 Tribe column in Offensive Targets</b>, right after Defender: the defender's tribe tag from the village database (hover for the full name). <b>Hidden by default</b> — tick it under 👁 Columns; the choice is remembered on this device. Click its header to sort by tribe.`,
+      `<b>🔍 Filter by tribe.</b> The row filter gains a <b>Tribe</b> dropdown listing the tribes of the current targets (plus "(no tribe)" for barbarian / tribeless owners), and the text search now also matches the tribe tag. Like the other filters it is a view filter: the list, the exports and the plan are unaffected.`,
+    ],
+    es: [
+      `<b>🏷 Columna Tribu en Objetivos Ofensivos</b>, justo después de Defensor: la etiqueta de la tribu del defensor según la base de datos de aldeas (pasa el ratón para ver el nombre completo). <b>Oculta por defecto</b> — márcala en 👁 Columnas; la elección se recuerda en este dispositivo. Clic en su cabecera para ordenar por tribu.`,
+      `<b>🔍 Filtrar por tribu.</b> El filtro de filas gana un desplegable <b>Tribu</b> con las tribus de los objetivos actuales (más "(sin tribu)" para dueños bárbaros / sin tribu), y la búsqueda de texto ahora también coincide con la etiqueta de tribu. Como los demás filtros es un filtro de vista: la lista, las exportaciones y el plan no cambian.`,
+    ],
+  },
   { ver: 'v6.2.0', date: '2026-10-05',
     en: [
       `<b>↩ Returning Offs</b> (new Offensive tab). Import the Target Village Orders Exporter (incomingOrders.js) <b>JSON</b> exports — paste, or load several files at once — and see, per off village, whether its off is <b>in flight</b> 🚀, <b>returning</b> ↩ (with the time it is home again and a countdown) or already <b>home</b> 🏠, with its targets, tier and whether the Outbound Offs tab flags it too. Only real offs count: large / medium attacks, nobles and icons without a size; small attacks (fakes) and supports are ignored. One export of the enemy targets with "returning" ticked carries both the attacks in flight and the tribe's returns (listed on the attacked village, home village as origin).`,

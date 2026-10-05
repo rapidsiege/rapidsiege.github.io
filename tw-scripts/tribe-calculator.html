@@ -589,6 +589,9 @@
       <option value="destroyer" data-i18n="ttype_destroyer">DESTROYER</option>
       <option value="fake" data-i18n="ttype_fake">FAKE</option>
     </select>
+    <label data-i18n="lbl_ot_filter_tribe">Tribe:</label>
+    <!-- options = the tribes of the current rows, rebuilt by renderOtTribeFilterOptions() on every table render -->
+    <select id="ot-filter-tribe" class="cell-input" style="width:auto;" onchange="updOtFilter('tribe',this.value)"><option value="">Any</option></select>
     <button class="btn btn-ghost btn-sm" onclick="clearOtFilter()" data-i18n="btn_ot_filter_clear">✕ Clear</button>
     <span id="ot-filter-count" style="font-size:12px;color:#a08050;font-weight:600;"></span>
   </div>
@@ -647,6 +650,7 @@
           <th data-i18n="th_ttype" data-i18n-title="ttype_title" title="Target type — set at add time (bulk-add dropdown), changeable via Edit Selected Rows">Type</th>
           <th class="left" data-otsort="coord" onclick="sortOT('coord')" data-i18n-th="th_coord" data-i18n-title="ot_sort_title" title="Click to sort (again to flip).">Coord <span class="sort-arrow"></span></th>
           <th class="left" data-otsort="defender" onclick="sortOT('defender')" data-i18n-th="th_def_player" data-i18n-title="ot_sort_title" title="Click to sort (again to flip).">Defender <span class="sort-arrow"></span></th>
+          <th class="left" data-otsort="tribe" onclick="sortOT('tribe')" data-i18n-th="th_tribe" data-i18n-title="ot_tribe_title" title="Defender's tribe, from the village database. Hidden by default — tick it under 👁 Columns. Click to sort (again to flip).">Tribe <span class="sort-arrow"></span></th>
           <th data-otsort="points" onclick="sortOT('points')" data-i18n-th="th_points" data-i18n-title="ot_sort_title" title="Click to sort (again to flip).">Points <span class="sort-arrow"></span></th>
           <th><span class="badge badge-complete" data-i18n="th_complete">Complete</span></th>
           <th><span class="badge badge-tq" data-i18n="th_tq">3/4</span></th>
@@ -1246,7 +1250,7 @@
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.2.0 &nbsp;·&nbsp; 2026-10-05</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.2.1 &nbsp;·&nbsp; 2026-10-06</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

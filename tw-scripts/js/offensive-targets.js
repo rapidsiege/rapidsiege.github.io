@@ -1986,22 +1986,40 @@ function otFillPicker(sel, kind, tgId) {
 const OT_COLS = [ // [key, 1-based nth-child in #offtargets-table, header i18n key]
   ['type',        3,  'th_ttype'],
   ['defender',    5,  'th_def_player'],
-  ['points',      6,  'th_points'],
-  ['complete',    7,  'th_complete'],
-  ['tq',          8,  'th_tq'],
-  ['half',        9,  'th_half'],
-  ['power',       10, 'th_power'],
-  ['catapults',   11, 'th_catapults'],
-  ['offSenders',  12, 'th_off_senders'],
-  ['snobPlayers', 13, 'th_snob_players'],
-  ['nobles',      14, 'th_nobles'],
-  ['senders',     15, 'th_snob_senders'],
-  ['snobMode',    16, 'th_escort'],
-  ['catMode',     17, 'th_catmode'],
-  ['winOff',      18, 'th_win_off'],
-  ['winSnob',     19, 'th_win_snob'],
+  ['tribe',       6,  'th_tribe'],       // v6.2.1 — hidden by default (OT_COLS_HIDDEN_DEFAULT)
+  ['points',      7,  'th_points'],
+  ['complete',    8,  'th_complete'],
+  ['tq',          9,  'th_tq'],
+  ['half',        10, 'th_half'],
+  ['power',       11, 'th_power'],
+  ['catapults',   12, 'th_catapults'],
+  ['offSenders',  13, 'th_off_senders'],
+  ['snobPlayers', 14, 'th_snob_players'],
+  ['nobles',      15, 'th_nobles'],
+  ['senders',     16, 'th_snob_senders'],
+  ['snobMode',    17, 'th_escort'],
+  ['catMode',     18, 'th_catmode'],
+  ['winOff',      19, 'th_win_off'],
+  ['winSnob',     20, 'th_win_snob'],
 ];
-let otHiddenCols = new Set(); // keys from OT_COLS; restored by loadSettings()
+// Columns that start HIDDEN (v6.2.1): the Tribe column is a lookup aid, not plan data, so it
+// stays out of an already wide table until the user ticks it. Persistence keeps the two
+// directions apart (render-tables.js): `otCols` = default-visible columns the user hid,
+// `otColsShown` = default-hidden columns the user showed — so a save written before a column
+// existed leaves it at its default instead of silently showing it.
+const OT_COLS_HIDDEN_DEFAULT = new Set(['tribe']);
+let otHiddenCols = new Set(OT_COLS_HIDDEN_DEFAULT); // keys from OT_COLS; restored by loadSettings()
+// Tribe of a target's current owner, from the world DB ('' = no DB / unknown coord / no tribe).
+function otTribeTag(coord) {
+  const v = coordDb[coord];
+  return v && typeof dbTribeTag === 'function' ? (dbTribeTag(v) || '') : '';
+}
+// "[TAG] Name" for the hover title ('' when unresolved).
+function otTribeLabel(coord) {
+  const v = coordDb[coord];
+  const id = v && typeof playerAllyDb !== 'undefined' ? playerAllyDb[v.playerId] : null;
+  return id && typeof allyLabel === 'function' ? allyLabel(id) : '';
+}
 
 // Pure: the CSS that hides the given column keys (unknown keys ignored) — headless-testable.
 function otColVisCss(hidden) {
@@ -2156,10 +2174,11 @@ function renderOtOffsSummary() {
 // order (the objective # column always prints the target's position in that list, so #3 stays
 // #3 however the rows are sorted), exports and the plan read offTargets directly, and mass
 // edits act on the selection. Both are persisted with the other view prefs (tw_tribe_settings).
-const OT_SORT_KEYS  = ['idx', 'coord', 'defender', 'points'];
+const OT_SORT_KEYS  = ['idx', 'coord', 'defender', 'tribe', 'points'];
 const OT_FILTER_OPS = ['<', '<=', '>', '>=', '='];
+const OT_FILTER_NO_TRIBE = '-'; // tribe filter value for "rows whose owner has no tribe / unknown"
 let otSort   = { key: 'idx', dir: 1 };                    // dir 1 = ascending, -1 = descending
-let otFilter = { q: '', ptsOp: '', pts: '', type: '' };   // q matches coord OR defender name
+let otFilter = { q: '', ptsOp: '', pts: '', type: '', tribe: '' }; // q matches coord, defender OR tribe tag; tribe = exact tag, '-' = none
 let otVisibleIds = null; // ids rendered by the last renderOffTargets (null = never rendered)
 function otTargetPoints(tg) {
   const v = coordDb[tg.coord];
@@ -2167,7 +2186,7 @@ function otTargetPoints(tg) {
 }
 function otFilterActive(f) {
   f = f || otFilter;
-  return !!((f.q || '').trim() || f.type || (OT_FILTER_OPS.includes(f.ptsOp) && f.pts !== '' && !isNaN(parseFloat(f.pts))));
+  return !!((f.q || '').trim() || f.type || f.tribe || (OT_FILTER_OPS.includes(f.ptsOp) && f.pts !== '' && !isNaN(parseFloat(f.pts))));
 }
 // Pure: the rows to show as [{tg, i}] — i = index in `targets` (the objective #) — after the
 // filter, in sort order. Unknown values (no DB points, blank defender, unparsable coord) always
@@ -2181,7 +2200,9 @@ function otVisibleRows(targets, filter, sort) {
   const ptsOk = { '<': p => p < ptsVal, '<=': p => p <= ptsVal, '>': p => p > ptsVal, '>=': p => p >= ptsVal, '=': p => p === ptsVal }[f.ptsOp];
   const rows = targets.map((tg, i) => ({ tg, i })).filter(({ tg }) => {
     if (f.type && tg.type !== f.type) return false;
-    if (q && !(String(tg.coord || '').toLowerCase().includes(q) || String(tg.player || '').toLowerCase().includes(q))) return false;
+    if (f.tribe) { const tag = otTribeTag(tg.coord); if (f.tribe === OT_FILTER_NO_TRIBE ? tag !== '' : tag !== f.tribe) return false; }
+    if (q && !(String(tg.coord || '').toLowerCase().includes(q) || String(tg.player || '').toLowerCase().includes(q)
+      || otTribeTag(tg.coord).toLowerCase().includes(q))) return false;
     if (ptsOn) { const pts = otTargetPoints(tg); if (pts == null || !ptsOk(pts)) return false; }
     return true;
   });
@@ -2191,6 +2212,7 @@ function otVisibleRows(targets, filter, sort) {
   const val = ({ tg }) => {
     if (key === 'points') return otTargetPoints(tg);
     if (key === 'defender') { const n = String(tg.player || '').trim(); return n ? n.toLowerCase() : null; }
+    if (key === 'tribe') { const n = otTribeTag(tg.coord); return n ? n.toLowerCase() : null; }
     const m = /^\s*(\d+)\s*\|\s*(\d+)\s*$/.exec(String(tg.coord || ''));
     return m ? (+m[1]) * 1000 + (+m[2]) : null; // coord: by X, then Y
   };
@@ -2232,12 +2254,13 @@ function updOtFilter(field, value) {
   else if (field === 'ptsOp') otFilter.ptsOp = OT_FILTER_OPS.includes(value) ? value : '';
   else if (field === 'pts') otFilter.pts = String(value ?? '').trim();
   else if (field === 'type') otFilter.type = TARGET_TYPES.includes(value) ? value : '';
+  else if (field === 'tribe') otFilter.tribe = String(value ?? '');
   else return;
   if (typeof saveSettings === 'function') saveSettings();
   renderOffTargets();
 }
 function clearOtFilter() {
-  otFilter = { q: '', ptsOp: '', pts: '', type: '' };
+  otFilter = { q: '', ptsOp: '', pts: '', type: '', tribe: '' };
   if (typeof saveSettings === 'function') saveSettings();
   syncOtFilterUi();
   renderOffTargets();
@@ -2246,8 +2269,35 @@ function clearOtFilter() {
 function syncOtFilterUi() {
   const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
   set('ot-filter-q', otFilter.q); set('ot-filter-ptsop', otFilter.ptsOp); set('ot-filter-pts', otFilter.pts); set('ot-filter-type', otFilter.type);
+  renderOtTribeFilterOptions(); // the options must exist before the value can be set — it sets it
   const btn = document.getElementById('ot-filter-btn');
   if (btn) btn.classList.toggle('ot-filter-on', otFilterActive());
+}
+// Pure: the tribe filter's option values — every tag among the current targets (A→Z), then the
+// "(no tribe)" entry when some row has none. The active filter value is kept in the list even
+// when no row carries it any more (a stale tag after a rename / a DB change), so the select
+// always shows the filter that is really applied instead of silently reading "Any".
+function otTribeFilterValues(targets, current) {
+  const tags = new Set(); let none = false;
+  for (const tg of targets) { const tag = otTribeTag(tg.coord); if (tag) tags.add(tag); else none = true; }
+  const out = [...tags].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  if (none) out.push(OT_FILTER_NO_TRIBE);
+  if (current && !out.includes(current)) out.push(current);
+  return out;
+}
+// Rebuilds #ot-filter-tribe only when its option list actually changed (signature compare), so a
+// re-render never flickers the open select; always re-applies the current value.
+function renderOtTribeFilterOptions() {
+  const sel = document.getElementById('ot-filter-tribe');
+  if (!sel) return;
+  const vals = otTribeFilterValues(offTargets, otFilter.tribe);
+  const sig = lang + '\u0001' + vals.join('\u0001');
+  if (sel.dataset.sig !== sig) {
+    sel.dataset.sig = sig;
+    sel.innerHTML = `<option value="">${esc(t('ot_filter_any'))}</option>`
+      + vals.map(v => `<option value="${esc(v)}">${v === OT_FILTER_NO_TRIBE ? esc(t('ot_filter_no_tribe')) : esc(v)}</option>`).join('');
+  }
+  sel.value = otFilter.tribe;
 }
 function renderOtFilterCount(shown, total) {
   const el = document.getElementById('ot-filter-count');
@@ -2287,9 +2337,10 @@ function renderOffTargets(opts) {
   otVisibleIds = new Set(rows.map(r => r.tg.id));
   if (rows.length !== offTargets.length) for (const id of [...otSelected]) if (!otVisibleIds.has(id)) otSelected.delete(id);
   renderOtFilterCount(rows.length, offTargets.length);
+  renderOtTribeFilterOptions();
   applyOtSortArrows();
   if (!offTargets.length || !rows.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="20">${t(offTargets.length ? 'ot_filter_empty' : 'empty_no_targets')}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="21">${t(offTargets.length ? 'ot_filter_empty' : 'empty_no_targets')}</td></tr>`;
     syncOtSelAll();
     return;
   }
@@ -2415,6 +2466,7 @@ function renderOffTargets(opts) {
       <td><span class="badge ttype-${tg.type}" title="${esc(t('ttype_title'))}">${t('ttype_' + tg.type)}</span></td>
       <td class="left"><input class="cell-input mono" style="width:74px;${isUnknown ? 'border-color:#b02010;' : ''}" value="${esc(tg.coord)}" title="${dbTitle}" onchange="updOT(${tg.id},'coord',this.value)"></td>
       <td class="left" title="${dbTitle}">${tg.player ? `<span class="player-tag">${esc(tg.player)}</span>` : '<span class="num-zero">—</span>'}</td>
+      <td class="left" title="${esc(otTribeLabel(tg.coord))}">${(() => { const tag = otTribeTag(tg.coord); return tag ? `<span class="player-tag">${esc(tag)}</span>` : '<span class="num-zero">—</span>'; })()}</td>
       <td>${(() => {
         const dbv = coordDb[tg.coord];
         const pts = dbv && typeof dbv.points === 'number' ? dbv.points : null;

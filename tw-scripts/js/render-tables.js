@@ -219,7 +219,10 @@ function saveSettings() {
       plan,
       // Offensive Targets hidden columns (👁 Columns panel) — a view preference, so it
       // lives here with lang/thresholds, not in the offensive plan export.
-      otCols: (typeof otHiddenCols !== 'undefined') ? [...otHiddenCols] : undefined,
+      // Two lists (v6.2.1): hidden default-visible columns + shown default-hidden columns, so a
+      // column added later keeps ITS default on a save that predates it (see OT_COLS_HIDDEN_DEFAULT).
+      otCols: (typeof otHiddenCols !== 'undefined') ? [...otHiddenCols].filter(k => !OT_COLS_HIDDEN_DEFAULT.has(k)) : undefined,
+      otColsShown: (typeof otHiddenCols !== 'undefined') ? [...OT_COLS_HIDDEN_DEFAULT].filter(k => !otHiddenCols.has(k)) : undefined,
       // Offensive Targets sort + row filter (v5.14.0) — view prefs too.
       otSort: (typeof otSort !== 'undefined') ? otSort : undefined,
       otFilter: (typeof otFilter !== 'undefined') ? otFilter : undefined,
@@ -259,15 +262,22 @@ function loadSettings() {
     if (e) e.checked = !!s.plan[id];
   }
   // Offensive Targets hidden columns — drop keys OT_COLS no longer knows (renamed/removed).
-  if (Array.isArray(s.otCols) && typeof otHiddenCols !== 'undefined')
-    otHiddenCols = new Set(s.otCols.filter(k => OT_COLS.some(([c]) => c === k)));
+  // Default-hidden columns (OT_COLS_HIDDEN_DEFAULT) stay hidden unless `otColsShown` lists them.
+  if (Array.isArray(s.otCols) && typeof otHiddenCols !== 'undefined') {
+    const shown = new Set(Array.isArray(s.otColsShown) ? s.otColsShown : []);
+    otHiddenCols = new Set([
+      ...s.otCols.filter(k => OT_COLS.some(([c]) => c === k) && !OT_COLS_HIDDEN_DEFAULT.has(k)),
+      ...[...OT_COLS_HIDDEN_DEFAULT].filter(k => !shown.has(k)),
+    ]);
+  }
   // Offensive Targets sort + filter — validated field by field (a stale/corrupt save falls back to defaults).
   if (s.otSort && typeof otSort !== 'undefined' && OT_SORT_KEYS.includes(s.otSort.key))
     otSort = { key: s.otSort.key, dir: s.otSort.dir === -1 ? -1 : 1 };
   if (s.otFilter && typeof otFilter !== 'undefined') {
     const f = s.otFilter;
     otFilter = { q: typeof f.q === 'string' ? f.q : '', ptsOp: OT_FILTER_OPS.includes(f.ptsOp) ? f.ptsOp : '',
-      pts: (typeof f.pts === 'string' || typeof f.pts === 'number') ? String(f.pts) : '', type: TARGET_TYPES.includes(f.type) ? f.type : '' };
+      pts: (typeof f.pts === 'string' || typeof f.pts === 'number') ? String(f.pts) : '', type: TARGET_TYPES.includes(f.type) ? f.type : '',
+      tribe: typeof f.tribe === 'string' ? f.tribe : '' };
     if (typeof syncOtFilterUi === 'function') syncOtFilterUi();
   }
   // The init block applies this via changeLang(lang) after loadSettings() sets the global.
