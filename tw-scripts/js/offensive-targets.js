@@ -75,7 +75,8 @@ function emptyPlanStats() {
   // an enemy tribe"), and a user who sees the footer needs to know which knob to turn.
   // `heldPrior` (v6.1.0): committed or held by ANOTHER offensive plan slot (offPlanPriorUsage).
   // `heldOut` (v6.2.0): its off is away — held by the "Exclude ALL Outbound Offs" toggle.
-  const t = () => ({ assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0, heldPrior: 0, heldOut: 0 });
+  // `heldShare` (v6.3.0): deployable, but its player reached their ⚖ Player Share cap.
+  const t = () => ({ assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0, heldPrior: 0, heldOut: 0, heldShare: 0 });
   return { complete: t(), tq: t(), half: t() };
 }
 let planStats    = emptyPlanStats();
@@ -1967,10 +1968,14 @@ function otFillPicker(sel, kind, tgId) {
 // Assigned = offs the targets request, per tier (each split-off/escorted train rides
 // with one Complete off, so it counts as +1 Complete — same per-train count the escort
 // reservation uses, incl. needNobles pins). Available = off villages in the loaded
-// troop file MINUS the Ignore Coordinates / Ignore Players holdouts — the pool
-// generatePlan actually draws from. Distance, morale and noble-launch reservations
-// only resolve at Generate Plan (its summary footer shows that breakdown), so
-// "available" here is the static upper bound. Kept separate from renderOffTargets so
+// troop file MINUS every holdback that is known before Generate (v6.3.0 added the last five):
+// Ignore Coordinates / Players, the Force lists, Enemy Tribes, other offensives, the sender area
+// (typed coord filters + drawn polygon), away offs (the two Returning Offs toggles, via the same
+// planAwayState call generatePlan uses), the Plan Offensive min distance (within it of ANY target)
+// and max distance (beyond it of EVERY target), and an ESTIMATE of the ⚖ Player Share caps.
+// Noble-launch / split-off reservations, morale and launch times only resolve at Generate Plan
+// (its summary footer shows that breakdown), so "available" here is still an upper bound. Each
+// village counts in ONE bucket, in that order. Kept separate from renderOffTargets so
 // the cheap edits that DON'T rebuild the table (off-count cells via updOT, the ignore
 // textarea) can refresh just this line without stealing focus; the ↻ button re-runs
 // it on demand as well.
@@ -2132,37 +2137,80 @@ function renderOtOffsSummary() {
   // 💾 Other offensive plan slots: an off they send (or hold for a noble launch) is gone for this
   // one — Generate starts from the same offPlanPriorUsage(), so the footer must not promise it.
   const prior = offPlanPriorUsage();
-  const stat = { complete: { total: 0, ign: 0, forced: 0, enemy: 0, prior: 0 }, tq: { total: 0, ign: 0, forced: 0, enemy: 0, prior: 0 }, half: { total: 0, ign: 0, forced: 0, enemy: 0, prior: 0 } };
+  // v6.3.0 — the holdbacks Plan Offensive applies that are already known here, mirroring generatePlan:
+  // sender area (typed coord filters + drawn polygon), away offs (planAwayState — the same call the
+  // pool build makes), min distance (within it of ANY target, fakes included, like tooClose) and
+  // max distance (beyond it of EVERY target, like offFar; skipped without targets). Read from the
+  // Plan Offensive inputs, so they follow that tab (switchTab refreshes this line on show).
+  const awayOf = typeof planAwayState === 'function' ? planAwayState(serverNowMs()) : () => ({ heldOut: false });
+  const numIn = id => { const n = parseFloat((document.getElementById(id) || {}).value); return isNaN(n) ? 0 : n; };
+  const minDist = numIn('plan-min-dist'), maxDist = numIn('plan-max-dist');
+  const tcs = offTargets.map(tg => parseCoordStr(tg.coord)).filter(Boolean);
+  const inArea = c => (typeof passesCoordFilters !== 'function' || passesCoordFilters(c, planCoordFilters))
+    && (typeof passesCoordPolygon !== 'function' || passesCoordPolygon(c.x, c.y));
+  const B = () => ({ total: 0, ign: 0, forced: 0, enemy: 0, prior: 0, outside: 0, away: 0, dist: 0, far: 0, share: 0 });
+  const stat = { complete: B(), tq: B(), half: B() };
+  const free = []; // villages no holdback above took — the ⚖ share estimate draws from these
   for (const v of villages) {
     const s = stat[getOffTier(v.offPow)];
     if (!s) continue;
     s.total++;
+    const c = parseCoordStr(v.coord);
     if (ignoreCoords.has(v.coord) || ignorePl.has(v.player)) s.ign++;
     else if ((forcePl.size && !forcePl.has(v.player)) || (forceCo.size && !forceCo.has(v.coord))) s.forced++;
     else if (enemyExcl.has(v.coord)) s.enemy++;
     else if (prior.offCoords.has(v.coord) || prior.reserved.has(v.coord)) s.prior++;
+    else if (!c || !inArea(c)) s.outside++;
+    else if (awayOf(v.coord).heldOut) s.away++;
+    else if (minDist > 0 && tcs.some(tc => distXY(c, tc) < minDist)) s.dist++;
+    else if (maxDist > 0 && tcs.length && !tcs.some(tc => distXY(c, tc) <= maxDist)) s.far++;
+    else free.push(v);
+  }
+  // ⚖ Player Share (v6.3.0) — an ESTIMATE: per player (decoded name, like the engine) the cap is
+  // floor(free × share) over the villages left above; the rest count as held, WEAKEST tier first
+  // (the auto pass fills the Complete slots first, so a capped player's strongest offs are usually
+  // the ones sent). Generate also leaves out the noble-launch / split-off reservations and offs too
+  // late for every wave, so its cap can come out lower.
+  if (typeof pshGet === 'function') {
+    const byPl = new Map();
+    for (const v of free) {
+      const k = decode(v.player);
+      if (pshGet(k) >= 100) continue;
+      if (!byPl.has(k)) byPl.set(k, []);
+      byPl.get(k).push(v);
+    }
+    for (const [k, vs] of byPl) {
+      let held = vs.length - pshCap(vs.length, pshGet(k));
+      for (const tier of ['half', 'tq', 'complete']) {
+        const n = Math.min(held, vs.filter(v => getOffTier(v.offPow) === tier).length);
+        stat[tier].share += n; held -= n;
+      }
+    }
   }
   const tierMeta = [['complete', 'badge-complete', 'th_complete'], ['tq', 'badge-tq', 'th_tq'], ['half', 'badge-half', 'th_half']];
-  let ignTotal = 0, forcedTotal = 0, enemyTotal = 0, priorTotal = 0;
+  const tot = B();
   const parts = tierMeta.map(([tier, cls, label]) => {
     // Summed across EVERY window group: a village can only send one off, so a target asking
     // for 2 Completes on Friday and 2 more on Saturday really does cost 4 Completes.
     const used = realTargets.reduce((s, tg) => s + otTierTotal(tg, tier), 0) + (tier === 'complete' ? escortOffs : 0);
-    const avail = stat[tier].total - stat[tier].ign - stat[tier].forced - stat[tier].enemy - stat[tier].prior;
-    ignTotal += stat[tier].ign;
-    forcedTotal += stat[tier].forced;
-    enemyTotal += stat[tier].enemy;
-    priorTotal += stat[tier].prior;
+    const st = stat[tier];
+    const avail = st.total - st.ign - st.forced - st.enemy - st.prior - st.outside - st.away - st.dist - st.far - st.share;
+    for (const k of Object.keys(tot)) tot[k] += st[k];
     const usedHtml = used > avail ? `<span style="color:#e06040;">${used}</span>` : `${used}`;
     return `<span class="badge ${cls}">${t(label)}</span> ${usedHtml} / ${avail}`;
   });
   const notes = [];
-  if (ignTotal > 0) notes.push(t('offs_ignored_note')(ignTotal));
-  if (forcedTotal > 0) notes.push(t('offs_forced_note')(forcedTotal));
-  if (enemyTotal > 0) notes.push(t('offs_enemy_note')(enemyTotal));
+  if (tot.ign > 0) notes.push(t('offs_ignored_note')(tot.ign));
+  if (tot.forced > 0) notes.push(t('offs_forced_note')(tot.forced));
+  if (tot.enemy > 0) notes.push(t('offs_enemy_note')(tot.enemy));
   const priorNote = t('offs_prior_note'); // (n) => text; guarded — a missing key must not break the footer
-  if (priorTotal > 0 && typeof priorNote === 'function') notes.push(priorNote(priorTotal));
+  if (tot.prior > 0 && typeof priorNote === 'function') notes.push(priorNote(tot.prior));
   if (escortOffs > 0) notes.push(t('offs_escort_note')(escortOffs));
+  if (tot.outside > 0) notes.push(t('offs_outside_note')(tot.outside));
+  if (tot.away > 0) notes.push(t('offs_away_note')(tot.away));
+  if (tot.dist > 0) notes.push(t('offs_dist_note')(tot.dist));
+  if (tot.far > 0) notes.push(t('offs_far_note')(tot.far));
+  if (tot.share > 0) notes.push(t('offs_share_note')(tot.share));
   const note = notes.length ? ` <span style="color:#806030;font-weight:400;">${notes.join(' ')}</span>` : '';
   el.innerHTML =
     `<button class="btn btn-ghost btn-sm" style="padding:1px 7px;margin-right:6px;" title="${esc(t('refresh_offs_title'))}" onclick="renderOtOffsSummary()">↻</button>`

@@ -285,15 +285,12 @@ function generatePlan() {
   // Toggle 1 off + toggle 2 on = the floor only; toggle 1 on + toggle 2 off = every away village held,
   // returning ones included. Nobles stay home: snob trains ignore heldOut and keep the global floor.
   // The catapult pool (defensive villages) is untouched.
-  const exclOutbound  = !!(document.getElementById('plan-excl-outbound') || {}).checked;
-  const inclReturning = !!(document.getElementById('plan-incl-returning') || {}).checked;
+  // The toggles are read by planAwayState (returning-offs.js) — the SAME call the Offensive Targets
+  // footer makes (v6.3.0), so its "away" count and this plan's heldOut can't drift apart.
   const roNowMs = serverNowMs();
-  const outboundSet = exclOutbound && typeof planOutboundCoords === 'function' ? planOutboundCoords() : new Set();
-  const offAway = coord => outboundSet.has(coord) || (typeof roReturning === 'function' && roReturning(coord, roNowMs));
+  const awayOf = typeof planAwayState === 'function' ? planAwayState(roNowMs) : () => ({ floorMs: null, away: false, heldOut: false });
   const pool = villages.map(v => {
-    const floorMs = inclReturning && typeof roHomeFloorMs === 'function' ? roHomeFloorMs(v.coord) : null;
-    const away = exclOutbound && offAway(v.coord);
-    const heldOut = away && !(inclReturning && floorMs != null);
+    const { floorMs, away, heldOut } = awayOf(v.coord);
     return {
       v, c: parseCoordStr(v.coord), tier: getOffTier(v.offPow),
       snobLeft: Math.max(0, (v.snob || 0) - (prior.nobles[v.coord] || 0)),
@@ -364,7 +361,14 @@ function generatePlan() {
   const offCapacity = {};
   for (const p of pool) if (p.tier !== 'none' && !p.prior && !p.heldOut && !priorReserved.has(p.v.coord)) offCapacity[p.v.player] = (offCapacity[p.v.player] || 0) + 1;
   const offUsedByPlayer = {};
-  const noteOffUsed = name => { offUsedByPlayer[name] = (offUsedByPlayer[name] || 0) + 1; };
+  const noteOffUsed = name => {
+    offUsedByPlayer[name] = (offUsedByPlayer[name] || 0) + 1;
+    const k = shareKey.get(name); if (k !== undefined) shareUsed.set(k, (shareUsed.get(k) || 0) + 1); // ⚖ per decoded name
+  };
+  // ⚖ Player Share (v6.3.0): shareKey = raw name → decoded name, only for players below 100%;
+  // shareCap / shareBase / shareUsed are keyed by that DECODED name. Filled after the reservations
+  // (see the ⚖ block below the launch-village reservation); declared here for noteOffUsed / remOffFrac.
+  const shareKey = new Map(), shareCap = new Map(), shareBase = new Map(), shareUsed = new Map();
 
   planRows = []; planWarnings = []; planReserved = [];
   planStats = emptyPlanStats();
@@ -621,10 +625,13 @@ function generatePlan() {
   // Manually-pinned senders: distance only (closest of their own villages first; no
   // morale, no fairness — the pin is the user's explicit choice).
   const byDist = T => (a, b) => (distXY(a.c, T.c) - distXY(b.c, T.c)) || (b.v.offPow - a.v.offPow);
-  // Fraction of a player's off roster still unused (1 = untouched, →0 = drained).
+  // Fraction of a player's off roster still unused (1 = untouched, →0 = drained). A ⚖ Player Share
+  // (v6.3.0) shrinks the roster to the cap, so a capped player is balanced like a smaller one.
   const remOffFrac = name => {
-    const cap = offCapacity[name] || 0;
-    return cap > 0 ? Math.max(0, (cap - (offUsedByPlayer[name] || 0)) / cap) : 1;
+    const k = shareKey.get(name);
+    const cap = k !== undefined ? shareCap.get(k) : (offCapacity[name] || 0);
+    const used = k !== undefined ? (shareUsed.get(k) || 0) : (offUsedByPlayer[name] || 0);
+    return cap > 0 ? Math.max(0, (cap - used) / cap) : 1;
   };
   // Auto "optimize" score for a candidate: effective power per field of travel (so a small
   // morale loss for a much closer village wins — 95% @ 7h beats 100% @ 50h), or pure
@@ -977,6 +984,55 @@ function generatePlan() {
   // them (they're being kept for a noble, not offered as a free second-wave off).
   planReserved = [...snobReserved].map(p => p.v.coord);
 
+  // A village is "outside earliest launch date" (heldLate) when it's within off-distance of at
+  // least one target but is too LATE for every such target (fails okOffTime) — i.e. timing is the
+  // ONLY thing stopping it, so pushing the arrival date (or the Earliest send) later would free
+  // it. Villages out of DISTANCE range everywhere go to `far`; the rest (reachable + in time) to `avail`.
+  // With several window groups a village is only "too late" when it misses EVERY wave of every
+  // reachable target — making wave B on Saturday is reason enough not to call it late.
+  // A returning off (v6.2.0) is judged from its home time (okOffTime → floorFor), so one that
+  // gets home too late for every reachable target lands here too.
+  const offLate = p => {
+    let reachable = false;
+    for (const T of targets) {
+      if (!T.c || !okOffDist(p, T.c)) continue;
+      reachable = true;
+      for (const g of otActiveGroups(T.tg)) if (okOffTime(p, T, g)) return false;
+    }
+    return reachable;
+  };
+  // Beyond MAX distance of every target — can't reach anything (the pool loop reaches this
+  // check only after tooClose is already handled, so okOffDist here is pure max-distance).
+  const offFar = p => !targets.some(T => T.c && okOffDist(p, T.c));
+
+  // ── ⚖ Player Share (v6.3.0) ─────────────────────────────────────────────────
+  // A per-player cap on the offs this plan sends (Offensive Targets popup, player-shares.js).
+  // Keyed by the DECODED name (shareKey maps each raw troop-file spelling to it), so one player
+  // spelt two ways in the files gets ONE cap over both. Base = the player's off villages that can
+  // actually go HERE — after the noble-launch / split-off reservations, the other offensives, away
+  // offs, ignored players, the tribe-wide distance holdbacks (min distance, Enemy Tribes) and the
+  // villages that reach no target in range (offFar) or in time (offLate): what the plan footer
+  // would otherwise count as "unused [available]". Cap = pshCap(base, share) = floor ("at most":
+  // 50% of 3 = 1, of 1 = 0). Counted in shareUsed (noteOffUsed: named, conqueror, POWER and auto
+  // passes — never escorts or fakes, which spend no off of the base). HARD: shareCapped bars the
+  // player from the conqueror, POWER and auto picks even when that leaves a slot open
+  // (warn_share_open). Named pins are the user's explicit choice — never barred, but they count
+  // (warn_share_pins when they pass the cap). Empty while no player is below 100%, so the
+  // defaults are byte-identical.
+  if (typeof pshAny === 'function' && pshAny()) {
+    for (const raw of new Set(pool.map(p => p.v.player))) {
+      const name = decode(raw);
+      if (pshGet(name) < 100) shareKey.set(raw, name);
+    }
+    for (const p of pool) {
+      const k = shareKey.get(p.v.player);
+      if (k === undefined || p.tier === 'none' || p.usedOff || offBlocked(p) || tooClose.has(p) || nearEnemy.has(p) || offFar(p) || offLate(p)) continue;
+      shareBase.set(k, (shareBase.get(k) || 0) + 1);
+    }
+    for (const k of new Set(shareKey.values())) shareCap.set(k, pshCap(shareBase.get(k) || 0, pshGet(k)));
+  }
+  const shareCapped = p => { const k = shareKey.get(p.v.player); return k !== undefined && (shareUsed.get(k) || 0) >= shareCap.get(k); };
+
   // Named off senders fill FIRST among the offs (before the auto pass below claims villages
   // globally), so a manual pin can't be stolen by another target's auto-pick. They draw only
   // from their OWN tier-matching villages and never tier-bump — a shortfall is warned and left
@@ -1124,7 +1180,7 @@ function generatePlan() {
     // The coordination off rides in the SAME wave (`cg`) as the noble it clears for, so the
     // clear and the train can't end up on different days.
     const candsFor = (allow, tt) => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt
-      && allow(p) && okOffDist(p, T.c) && okOffTime(p, T, cg) && !mvBlocked(p, T));
+      && allow(p) && okOffDist(p, T.c) && okOffTime(p, T, cg) && !mvBlocked(p, T) && !shareCapped(p)); // ⚖ a capped conqueror reserves nothing — the auto pass fills the slot
     const reserve = (p, tier) => {
       p.usedOff = true; noteOffUsed(p.v.player); noteMvClaim(p, T);
       namedOffReserved[resKey(T, tier, cg)] = (namedOffReserved[resKey(T, tier, cg)] || 0) + 1;
@@ -1205,13 +1261,15 @@ function generatePlan() {
       // Min. Morale (off) gate leads even here (v5.11.0) — morale outranks the POWER tag: only
       // when no reachable candidate clears minMoraleOff does the pick fall back to the full set
       // (soft, via moraleFirst). Raw off power then ranks the survivors — that's the tag's job.
-      const rawCands = pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
+      const powCands = share => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T) && (!share || !shareCapped(p)));
+      const rawCands = powCands(true); // ⚖ Player Share caps apply (v6.3.0)
       const cands = moraleFirst(T, rawCands);
       remaining[T.i + '|' + g.id]--;
       if (!cands.length) {
         if (!warned.has(T.i)) {
           const inBand = pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c));
-          planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T, g))
+          planWarnings.push(shareCap.size && powCands(false).length ? t('warn_share_open')(t('tier_complete'), T.tg.coord) // only the ⚖ caps left it open
+            : inBand.length && !inBand.some(p => okOffTime(p, T, g))
             ? t('warn_off_too_late')(t('tier_complete'), T.tg.coord)
             : t('warn_missed_off')(t('tier_complete'), T.tg.coord));
           warned.add(T.i);
@@ -1275,7 +1333,8 @@ function generatePlan() {
       // none qualify (soft — a low-morale clear beats an uncleared target; see moraleFirst).
       // Per-PLAYER morale via the source village.
       {
-        const tierCands = tt => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
+        // ⚖ Player Share caps (v6.3.0) apply inside tierCands, so a tier bump sees the capped set too.
+        const tierCands = (tt, share = true) => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T) && (!share || !shareCapped(p)));
         let sent = tier, cands = tierCands(tier);
         for (const alt of [...TIER_UP[tier], ...TIER_DOWN[tier]]) { // stronger first, then (🎚 tierBumpDown) weaker
           if (cands.length) break;
@@ -1284,7 +1343,9 @@ function generatePlan() {
         }
         if (!cands.length) {
           const inBand = pool.filter(p => !p.usedOff && !offBlocked(p) && okOffDist(p, T.c));
-          planWarnings.push(inBand.length && !inBand.some(p => okOffTime(p, T, g))
+          planWarnings.push(shareCap.size && [tier, ...TIER_UP[tier], ...TIER_DOWN[tier]].some(tt => tierCands(tt, false).length)
+            ? t('warn_share_open')(t('tier_' + tier), T.tg.coord) // only the ⚖ caps left it open
+            : inBand.length && !inBand.some(p => okOffTime(p, T, g))
             ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
             : t('warn_missed_off')(t('tier_' + tier), T.tg.coord));
           T.offRows.push({ type: tier, group: g.id, unassigned: true });
@@ -1305,7 +1366,10 @@ function generatePlan() {
         }
         // The bump / downgrade warning only once an off is actually sent — an open destroyer slot
         // above would otherwise read "bumped to Complete" AND "left open" for nothing sent.
-        if (sent !== tier) planWarnings.push(t(TIER_RANK[sent] > TIER_RANK[tier] ? 'warn_tier_bumped' : 'warn_tier_bumped_down')(t('tier_' + tier), t('tier_' + sent), T.tg.coord));
+        // ⚖ When the asked tier has offs that only the Player Share caps hold, say so (the bump itself stands).
+        if (sent !== tier) planWarnings.push(shareCap.size && tierCands(tier, false).length
+          ? t('warn_share_bumped')(t('tier_' + tier), t('tier_' + sent), T.tg.coord)
+          : t(TIER_RANK[sent] > TIER_RANK[tier] ? 'warn_tier_bumped' : 'warn_tier_bumped_down')(t('tier_' + tier), t('tier_' + sent), T.tg.coord));
         const p = pickClustered(dp.cands, T, dp.cmp);
         p.usedOff = true; noteOffUsed(p.v.player); noteMvClaim(p, T);
         const d = distXY(p.c, T.c);
@@ -1530,13 +1594,20 @@ function generatePlan() {
     }
     for (const name of Object.keys(blockedBy)) planWarnings.push(t('warn_sched_blocked')(name, blockedBy[name]));
   }
+  // ⚖ Player Share (v6.3.0): one line per capped player whose cap was reached (the rest of their
+  // free offs stay home) or passed by their own named pins (pins are never barred).
+  for (const [name, cap] of shareCap) {
+    const used = shareUsed.get(name) || 0, base = shareBase.get(name) || 0, pct = pshGet(name);
+    if (used > cap) planWarnings.push(t('warn_share_pins')(name, pct, used, cap));
+    else if (used === cap && base > cap) planWarnings.push(t('warn_share_reached')(name, pct, used, base));
+  }
 
   // Off-pool breakdown for the Plan summary footer, split PER OFF TIER (Complete / 3-4 /
   // 1-2) by each village's OWN tier. Computed HERE (after every off pass) so `usedOff` /
   // `isEscort` are final. Over OFF-CAPABLE villages only (tier !== 'none' — a defensive/empty
   // village isn't an off). The buckets PARTITION each tier's gross village count so the footer
   // reconciles exactly: gross[tier] = assigned + heldDist + heldEnemy + heldNoble + heldSplit + heldLate + far + outside + avail + ignored
-  //   + heldPrior + heldOut.
+  //   + heldPrior + heldOut + heldShare.
   //   • ignored    = excluded from the pool by the Ignore Coordinates / Ignore Players lists
   //   • heldOut    = (v6.2.0) its off is away — held by "Exclude ALL Outbound Offs" (outbound on the
   //                  Outbound Offs tab, in flight or still returning in Returning Offs, and not
@@ -1552,6 +1623,7 @@ function generatePlan() {
   //   • enemy tribes = held by the Enemy Tribes radius (nearEnemy) — a SEPARATE bucket from
   //                  `distance` so the footer says which of the two knobs held the village
   //   • far        = free, in-area, but beyond MAX distance of every target (can't reach anything)
+  //   • heldShare  = (v6.3.0) would be `avail`, but its player reached their ⚖ Player Share cap
   //   • avail      = free, in-area, in-band AND in time for some target → genuinely deployable now
   //                  (the "did I leave usable offs on the table?" number; ideally near 0)
   // A village counts as RESERVED for a split-off / noble launch if it's in the reservation
@@ -1559,26 +1631,7 @@ function generatePlan() {
   // back is off-limits to the off passes (offBlocked), so it's "reserved", NOT "unused".
   // That's why the held buckets key on escortReserved/snobReserved (plus the actual launched
   // escort via isEscort), so `unused` means genuinely free, and the partition still reconciles.
-  // A village is "outside earliest launch date" (heldLate) when it's within off-distance of at
-  // least one target but is too LATE for every such target (fails okOffTime) — i.e. timing is the
-  // ONLY thing stopping it, so pushing the arrival date (or the Earliest send) later would free
-  // it. Villages out of DISTANCE range everywhere go to `far`; the rest (reachable + in time) to `avail`.
-  // With several window groups a village is only "too late" when it misses EVERY wave of every
-  // reachable target — making wave B on Saturday is reason enough not to call it late.
-  // A returning off (v6.2.0) is judged from its home time (okOffTime → floorFor), so one that
-  // gets home too late for every reachable target lands here too.
-  const offLate = p => {
-    let reachable = false;
-    for (const T of targets) {
-      if (!T.c || !okOffDist(p, T.c)) continue;
-      reachable = true;
-      for (const g of otActiveGroups(T.tg)) if (okOffTime(p, T, g)) return false;
-    }
-    return reachable;
-  };
-  // Beyond MAX distance of every target — can't reach anything (the pool loop reaches this
-  // check only after tooClose is already handled, so okOffDist here is pure max-distance).
-  const offFar = p => !targets.some(T => T.c && okOffDist(p, T.c));
+  // (offLate / offFar — the heldLate / far tests — are defined above the ⚖ Player Share block, which uses them too.)
   planStats = emptyPlanStats();
   for (const v of villages) {
     const tier = getOffTier(v.offPow);
@@ -1602,6 +1655,7 @@ function generatePlan() {
     else if (nearEnemy.has(p))                              s.heldEnemy++;     // inside the Enemy Tribes radius
     else if (offLate(p))                                    s.heldLate++;      // reachable by distance but too late everywhere
     else if (offFar(p))                                     s.far++;           // free, in-area, but beyond max distance of every target
+    else if (shareCapped(p))                                s.heldShare++;     // deployable, but its player is at their ⚖ Player Share (v6.3.0)
     else                                                    s.avail++;         // free, in-area, in-band, in time → deployable now
   }
   // ↩ Informational, last in the list (v6.2.0): what the two Returning Offs toggles did. Counted
@@ -1670,12 +1724,12 @@ function renderPlanTable() {
     // One line per off tier, behind a collapsible toggle (native <details>, file://-safe).
     const segs = ['complete', 'tq', 'half'].map(tier => {
       // A plan saved before v5.10.0 has no `heldEnemy` — the string treats it as 0.
-      const s = planStats[tier] || { assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0, heldPrior: 0, heldOut: 0 };
+      const s = planStats[tier] || { assigned: 0, heldDist: 0, heldEnemy: 0, heldNoble: 0, heldSplit: 0, heldLate: 0, far: 0, outside: 0, avail: 0, ignored: 0, heldPrior: 0, heldOut: 0, heldShare: 0 };
       // [N] = gross count of villages of this tier tribe-wide (same denominator as the
       // Offensive Targets footer — total selectable offs, before any holdback/reservation).
       const gross = villages.filter(v => getOffTier(v.offPow) === tier).length;
       return `<span class="badge ${TIER_BADGE[tier]}">${t('tier_' + tier)} [${gross}]</span> `
-        + esc(t('plan_offs_summary')(s.assigned, s.heldDist, s.heldNoble, s.heldSplit, s.heldLate, s.far, s.outside, s.avail, s.ignored, s.heldEnemy, s.heldPrior, s.heldOut));
+        + esc(t('plan_offs_summary')(s.assigned, s.heldDist, s.heldNoble, s.heldSplit, s.heldLate, s.far, s.outside, s.avail, s.ignored, s.heldEnemy, s.heldPrior, s.heldOut, s.heldShare));
     });
     summary += `<details style="margin-top:6px;"><summary style="cursor:pointer;">${esc(t('btn_show_off_counts'))}</summary>`
       + `<div style="margin-top:4px;line-height:1.9;">${segs.join('<br>')}</div></details>`;

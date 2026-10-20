@@ -499,6 +499,7 @@ function parseData(text, filename) {
   if (typeof renderOffBlockPairs === 'function') renderOffBlockPairs(); // Block Pairs picker (own-player side) too
   if (typeof renderDefMvPlayers === 'function') renderDefMvPlayers(); // Plan-Defense MV-pairs picker too
   if (typeof renderPlayerSchedulesModal === 'function') renderPlayerSchedulesModal(); // ⏰ Player Schedules popup lists the loaded players
+  if (typeof renderPlayerSharesModal === 'function') renderPlayerSharesModal(); // ⚖ Player Share popup lists the loaded players + their off counts
   // Plan Defense: the three summaries under the plan (Support per Player / Available Defense /
   // filtered) and the Manage Defense estimates it tail-renders read the troops + station dicts.
   if (typeof renderDefPlanTable === 'function') renderDefPlanTable();

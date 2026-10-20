@@ -264,6 +264,7 @@ function switchTab(id) {
   if (subs) subs.classList.toggle('single', !group || group.tabs.length < 2);
   document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + id));
   if (id === 'map' && typeof onMapTabShown === 'function') onMapTabShown();
+  if (id === 'offtargets' && typeof renderOtOffsSummary === 'function') renderOtOffsSummary(); // its count reads Plan Offensive inputs + Returning Offs (v6.3.0)
   if (typeof riEvTabVisible === 'function') riEvTabVisible(id === 'enemyvillages'); // repaints a stale Enemy Villages table on show
 }
 

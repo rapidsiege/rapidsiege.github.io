@@ -187,6 +187,22 @@ function planOutboundCoords() {
   for (const [coord, s] of roIndex()) if (s.out > 0) set.add(coord);
   return set;
 }
+// The away state of a village under the two Plan Offensive toggles — ONE function for
+// generatePlan's pool build and the Offensive Targets footer (v6.3.0), so the two can't disagree.
+// planAwayState(nowMs) reads the toggles once and returns coord → { floorMs, away, heldOut }:
+// floorMs = the home-time send floor (Include ALL returning offs on + only return rows, else null);
+// away = Exclude ALL outbound offs on + outbound / in flight / still on its way home at nowMs;
+// heldOut = away and NOT re-admitted by a floor. Both toggles off (a headless run) → nothing away.
+function planAwayState(nowMs) {
+  const exclOutbound  = !!(document.getElementById('plan-excl-outbound') || {}).checked;
+  const inclReturning = !!(document.getElementById('plan-incl-returning') || {}).checked;
+  const outboundSet = exclOutbound ? planOutboundCoords() : new Set();
+  return coord => {
+    const floorMs = inclReturning ? roHomeFloorMs(coord) : null;
+    const away = exclOutbound && (outboundSet.has(coord) || roReturning(coord, nowMs));
+    return { floorMs, away, heldOut: away && !(inclReturning && floorMs != null) };
+  };
+}
 // Re-importable JSON of the merged state in the exporters' own field names — the cloud copy of a
 // multi-file import (the N raw files no longer exist as one text). Return rows come back as type
 // 'return' under their home village's block (with its owner), so roParseImport round-trips every
