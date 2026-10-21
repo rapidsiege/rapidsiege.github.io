@@ -537,6 +537,41 @@ function generatePlan() {
   // off has to be home first: the escort reservation and escorted-train origins take the village floor.
   const okEscortTime = (p, T, g) => okTime(p, T, T.snobEnd[g.id], PLAN_BASE_MIN.snob, g.dateISO, floorFor(p));
 
+  // ⚔ Attack ratio (v6.5.0, attack-ratio.js) — the world's newbie points limit: while the DEFENDER
+  // is within ratioDays of registering, nobody with more than ratio × their points may attack them.
+  // A hard gate on EVERY attack pick (offs, escorts, noble trains, fakes, catapults), judged at the
+  // EARLIEST moment the sender could launch into the wave — the window start minus its travel, never
+  // before its send floor. Conservative on purpose: a launch range that straddles the end of the
+  // protection is barred, so the game never refuses a planned attack. Always the LAST clause of a
+  // pick's filter, so ratioHits (target index → { players: raw names, end }) only lists senders that
+  // were otherwise eligible — one warning per target after the passes. ratioCtx is null when the
+  // world has no limit or no DB is loaded: every check is then false and the plan byte-identical.
+  // kind: 'off' (off pace + window, village floor), 'snob' (noble pace + window, global floor),
+  // 'escort' (a split-off: noble pace + window, the village's own floor — like okEscortTime).
+  const ratioCtx = typeof arCtx === 'function' ? arCtx(serverNowMs()) : null;
+  const ratioHits = new Map();
+  const ratioLaunchMs = (p, T, g, kind) => {
+    const floor = kind === 'snob' ? sendFloorMs : floorFor(p);
+    if (!g) return floor;
+    const pw = parseWindowStr(kind === 'off' ? (g.winOff || g.winSnob || '') : (g.winSnob || g.winOff || ''));
+    const startMs = pw ? serverWallMs(g.dateISO, pw.f) : null;
+    if (startMs === null) return floor;
+    const tr = travelTimeMin(distXY(p.c, T.c), kind === 'off' ? PLAN_BASE_MIN.off : PLAN_BASE_MIN.snob, ws, us);
+    return Math.max(floor, startMs - tr * 60000);
+  };
+  // Every recorded player IS barred from T (for that village's launch) — the diagnostic re-checks in
+  // the warning branches may add one that was also share-capped: still a player who can't attack it.
+  const ratioBlk = (p, T, g, kind) => {
+    if (!ratioCtx || !p.c || !T.c) return false;
+    const end = arBlockedAt(ratioCtx, p.v.coord, T.tg.coord, ratioLaunchMs(p, T, g, kind), p.v.player);
+    if (!end) return false;
+    let h = ratioHits.get(T.i); if (!h) ratioHits.set(T.i, h = { players: new Set(), end }); h.players.add(p.v.player);
+    return true;
+  };
+  // A pinned sender barred outright: every village of theirs that could otherwise go is ratio-blocked.
+  const ratioPin = (vills, T, g, kind) => !!ratioCtx && vills.length > 0 && vills.every(p => ratioBlk(p, T, g, kind));
+  const ratioEnd = T => { const h = ratioHits.get(T.i); return h ? fmtServerDT(h.end).slice(0, 16) : ''; };
+
   // ── Sorting: named pins go by distance, auto picks "optimize" ──────────────
   // Morale only helps when the target's defender points are actually known (world
   // DB loaded, non-barbarian); otherwise there's no morale signal and we fall back
@@ -735,7 +770,7 @@ function generatePlan() {
       for (const { name: want } of targetTrainSpec(T.tg, g.id)) {
         const pick = tiers => pool.filter(p => !p.usedOff && !escortReserved.has(p) && !priorReserved.has(p.v.coord) && !tooClose.has(p) && !pairBlocked(p.v.player, T)
           && tiers.includes(p.tier) && okSnobDist(p, T.c) && okEscortTime(p, T, g) && smithOkOrUnknown(p)
-          && (want ? p.v.player === want : (!ignorePlayers.has(p.v.player) && p.snobLeft > 0)))
+          && (want ? p.v.player === want : (!ignorePlayers.has(p.v.player) && p.snobLeft > 0)) && !ratioBlk(p, T, g, 'escort')) // ⚔ last (v6.5.0)
           .sort(schedThen(T, g, 'snob', escortCmp(T)))[0]; // ⏰ schedules lead (v6.1.2; identity without any)
         const p = pick(['complete', 'tq']) || pick(['half']);
         if (p) escortReserved.add(p);
@@ -837,7 +872,8 @@ function generatePlan() {
         p.snobLeft > 0 && okSnobDist(p, T.c) && okSnobTime(p, T, g) && !mvBlocked(p, T) &&
         // a pinned (want) sender may be an ignored player; auto-picks never use ignored players
         (want ? p.v.player === want : (!chosen.has(p.v.player) && !ignorePlayers.has(p.v.player))) &&
-        (mode !== 'escorted' || (!p.usedOff && !priorReserved.has(p.v.coord) && okEscortTime(p, T, g)))); // a split-off also spends the off — never one another offensive holds for a launch, nor one still on its way home (v6.2.0)
+        (mode !== 'escorted' || (!p.usedOff && !priorReserved.has(p.v.coord) && okEscortTime(p, T, g))) && // a split-off also spends the off — never one another offensive holds for a launch, nor one still on its way home (v6.2.0)
+        !ratioBlk(p, T, g, mode === 'escorted' ? 'escort' : 'snob')); // ⚔ attack ratio (v6.5.0), last
       if (mode === 'escorted') {
         // train travels with its own off escort → prefer villages with real off power
         const strong = cands.filter(p => tierAtLeast(p.tier, PARAMS.escortMinTier)); // 🎚 escortMinTier ('none' keeps every candidate)
@@ -868,6 +904,10 @@ function generatePlan() {
         let msg, needNobles = false;
         if (want && pairBlocked(want, T)) {
           msg = t('warn_block_pair')(decode(want), T.tg.coord, mvDef(T)); // a Block Pair forbids this sender → defender outright
+        } else if (want && ratioPin(pool.filter(p => p.v.player === want && okSnobDist(p, T.c) && okSnobTime(p, T, g)), T, g, mode === 'escorted' ? 'escort' : 'snob')) {
+          // ⚔ every village of theirs in noble range is barred by the attack ratio (v6.5.0) — no
+          // amount of recruiting helps (so never a needNobles row), and it isn't an MV conflict
+          msg = t('warn_ratio_pin')(decode(want), T.tg.coord, ratioEnd(T));
         } else if (want && mvWouldBlockPin(want, T)) {
           // an MV-paired partner already attacks this defender → this sender can't (game limit).
           // If this is a manual-vs-manual snob conflict we already reported explicitly up front,
@@ -1075,7 +1115,7 @@ function generatePlan() {
         const want = Math.min(a.count, Math.max(0, N - placed)); // never exceed the tier request
         if (want <= 0) continue;
         const cands = pool.filter(p => !p.usedOff && !offBlocked(p) && p.v.player === a.name && p.tier === tier
-          && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T)).sort(byDist(T));
+          && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T) && !ratioBlk(p, T, g, 'off')).sort(byDist(T)); // ⚔ last (v6.5.0)
         let got = 0;
         for (const p of cands) {
           if (got >= want) break;
@@ -1094,6 +1134,8 @@ function generatePlan() {
             pairBlocked(a.name, T) ? t('warn_block_pair')(decode(a.name), T.tg.coord, mvDef(T))
             : owned.length && !inRange.length ? t('warn_off_range')(decode(a.name), t('tier_' + tier), T.tg.coord)
             : inRange.length && !inRange.some(p => okOffTime(p, T, g)) ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
+            // ⚔ every otherwise-usable village barred by the attack ratio (v6.5.0) — before the MV test
+            : ratioPin(inRangeTime, T, g, 'off') ? t('warn_ratio_pin')(decode(a.name), T.tg.coord, ratioEnd(T))
             // all otherwise-usable villages blocked by an MV pair conflict → say so
             : inRangeTime.length && inRangeTime.every(p => mvBlocked(p, T)) ? t('warn_mv')(decode(a.name), T.tg.coord)
             : t('warn_sender_short_off')(decode(a.name), t('tier_' + tier), T.tg.coord));
@@ -1199,7 +1241,8 @@ function generatePlan() {
     // The coordination off rides in the SAME wave (`cg`) as the noble it clears for, so the
     // clear and the train can't end up on different days.
     const candsFor = (allow, tt) => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt
-      && allow(p) && okOffDist(p, T.c) && okOffTime(p, T, cg) && !mvBlocked(p, T) && !shareCapped(p)); // ⚖ a capped conqueror reserves nothing — the auto pass fills the slot
+      && allow(p) && okOffDist(p, T.c) && okOffTime(p, T, cg) && !mvBlocked(p, T) && !shareCapped(p) // ⚖ a capped conqueror reserves nothing — the auto pass fills the slot
+      && !ratioBlk(p, T, cg, 'off')); // ⚔ attack ratio (v6.5.0), last
     const reserve = (p, tier) => {
       p.usedOff = true; noteOffUsed(p.v.player); noteMvClaim(p, T);
       namedOffReserved[resKey(T, tier, cg)] = (namedOffReserved[resKey(T, tier, cg)] || 0) + 1;
@@ -1280,7 +1323,8 @@ function generatePlan() {
       // Min. Morale (off) gate leads even here (v5.11.0) — morale outranks the POWER tag: only
       // when no reachable candidate clears minMoraleOff does the pick fall back to the full set
       // (soft, via moraleFirst). Raw off power then ranks the survivors — that's the tag's job.
-      const powCands = share => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T) && (!share || !shareCapped(p)));
+      const powCands = (share, ratio = true) => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T) && (!share || !shareCapped(p))
+        && (!ratio || !ratioBlk(p, T, g, 'off'))); // ⚔ attack ratio (v6.5.0), last
       const rawCands = powCands(true); // ⚖ Player Share caps apply (v6.3.0)
       const cands = moraleFirst(T, rawCands);
       remaining[T.i + '|' + g.id]--;
@@ -1288,6 +1332,7 @@ function generatePlan() {
         if (!warned.has(T.i)) {
           const inBand = pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c));
           planWarnings.push(shareCap.size && powCands(false).length ? t('warn_share_open')(t('tier_complete'), T.tg.coord) // only the ⚖ caps left it open
+            : ratioHits.has(T.i) && powCands(false, false).length ? t('warn_ratio_open')(t('tier_complete'), T.tg.coord, ratioEnd(T)) // ⚔ only the attack ratio (+ caps) left it open
             : inBand.length && !inBand.some(p => okOffTime(p, T, g))
             ? t('warn_off_too_late')(t('tier_complete'), T.tg.coord)
             : t('warn_missed_off')(t('tier_complete'), T.tg.coord));
@@ -1353,7 +1398,8 @@ function generatePlan() {
       // Per-PLAYER morale via the source village.
       {
         // ⚖ Player Share caps (v6.3.0) apply inside tierCands, so a tier bump sees the capped set too.
-        const tierCands = (tt, share = true) => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T) && (!share || !shareCapped(p)));
+        const tierCands = (tt, share = true, ratio = true) => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier === tt && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T) && (!share || !shareCapped(p))
+          && (!ratio || !ratioBlk(p, T, g, 'off'))); // ⚔ attack ratio (v6.5.0), last
         let sent = tier, cands = tierCands(tier);
         for (const alt of [...TIER_UP[tier], ...TIER_DOWN[tier]]) { // stronger first, then (🎚 tierBumpDown) weaker
           if (cands.length) break;
@@ -1364,6 +1410,8 @@ function generatePlan() {
           const inBand = pool.filter(p => !p.usedOff && !offBlocked(p) && okOffDist(p, T.c));
           planWarnings.push(shareCap.size && [tier, ...TIER_UP[tier], ...TIER_DOWN[tier]].some(tt => tierCands(tt, false).length)
             ? t('warn_share_open')(t('tier_' + tier), T.tg.coord) // only the ⚖ caps left it open
+            : ratioHits.has(T.i) && [tier, ...TIER_UP[tier], ...TIER_DOWN[tier]].some(tt => tierCands(tt, false, false).length)
+            ? t('warn_ratio_open')(t('tier_' + tier), T.tg.coord, ratioEnd(T)) // ⚔ only the attack ratio (+ caps) left it open
             : inBand.length && !inBand.some(p => okOffTime(p, T, g))
             ? t('warn_off_too_late')(t('tier_' + tier), T.tg.coord)
             : t('warn_missed_off')(t('tier_' + tier), T.tg.coord));
@@ -1424,7 +1472,7 @@ function generatePlan() {
       const anyPool = PARAMS.fakePool === 'any';
       const candsOf = filt => pool.filter(p => (anyPool || tierAtLeast(p.tier, PARAMS.fakeSourceTier)) && (p.fakesSent || 0) < PARAMS.fakesPerVillage
         && (p.v.ram || 0) >= Math.max(1, PARAMS.fakeRams) && !ignorePlayers.has(p.v.player) && !p.prior && !p.heldOut && filt(p) // never a ram-less village (fakeRams min 1); an away off's rams are away too (v6.2.0)
-        && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T));
+        && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T) && !ratioBlk(p, T, g, 'off')); // ⚔ a fake is an attack too (v6.5.0), last
       const realOffs = p => p.usedOff && !p.isEscort;               // assigned real offs
       const escorts  = p => p.isEscort || escortReserved.has(p);    // split-off escorts (riding or reserved)
       let cands;
@@ -1510,7 +1558,8 @@ function generatePlan() {
       const cg = catGroups[placed % catGroups.length];
       const cand = catPool
         .filter(s => s.budget > 0 && (perTarget[s.v.coord] || 0) < PARAMS.catPerSourceMax && distXY(s.c, T.c) <= maxCatDist
-          && !mvBlocked(s, T) && okOffTime(s, T, cg)) // MV pairs + Block Pairs (mvBlocked folds pairBlocked in); launch not in the past
+          && !mvBlocked(s, T) && okOffTime(s, T, cg) // MV pairs + Block Pairs (mvBlocked folds pairBlocked in); launch not in the past
+          && !ratioBlk(s, T, cg, 'off')) // ⚔ attack ratio (v6.5.0), last
         .sort(schedThen(T, cg, 'off', catCmp))[0];
       if (!cand) break; // no eligible cat source left (budget/cap hit, none within the distance lead, MV / too late)
       const cp = decode(cand.v.player);
@@ -1613,6 +1662,15 @@ function generatePlan() {
     }
     for (const name of Object.keys(blockedBy)) planWarnings.push(t('warn_sched_blocked')(name, blockedBy[name]));
   }
+  // ⚔ Attack ratio (v6.5.0): one line per target whose otherwise-eligible senders the limit barred
+  // (who and until when), and one if some pair could not be judged — no registration dates and the
+  // launch is past the world-start window (a later joiner may still be protected).
+  for (const T of targets) {
+    const h = ratioHits.get(T.i);
+    if (h) planWarnings.push(t('warn_ratio_target')(T.tg.coord, T.tg.player || '', h.players.size, ratioCtx.ratio, ratioCtx.days, fmtServerDT(h.end).slice(0, 16)));
+  }
+  if (ratioCtx && ratioCtx.unknownEnd) planWarnings.push(t('warn_ratio_unknown')(twWorld, ratioCtx.ratio, fmtServerDT(ratioCtx.unknownEnd).slice(0, 16)));
+  else if (ratioCtx && ratioCtx.unjudged) planWarnings.push(t('warn_ratio_unjudged')(twWorld, ratioCtx.ratio));
   // ⚖ Player Share (v6.3.0): one line per capped player whose cap was reached (the rest of their
   // free offs stay home) or passed by their own named pins (pins are never barred).
   for (const [name, cap] of shareCap) {
@@ -1728,6 +1786,7 @@ function renderPlanTable() {
   // renderPlanTable runs from changeLang). Guarded + no-ops without its host element.
   if (typeof renderCoordFilters === 'function') renderCoordFilters();
   renderOffPlanSlots();
+  if (typeof renderRatioNote === 'function') renderRatioNote(); // ⚔ the world's attack ratio (v6.5.0)
   // Warnings can be many; render them collapsed (count in the summary) so they
   // don't bury the plan table. Native <details> — no JS, works under file://.
   document.getElementById('plan-warnings').innerHTML = planWarnings.length

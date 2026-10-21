@@ -126,6 +126,7 @@ async function initWorldSelect() {
       twWorldsInfo = info;
       fillWorldSelect();
       applyWorldConfig(twWorldsInfo[twWorld]); // authoritative speeds for the saved world
+      if (typeof renderRatioNote === 'function') renderRatioNote(); // ⚔ worlds.json may carry the attack ratio (v6.5.0)
     }
   } catch {}
 }
@@ -136,7 +137,10 @@ async function loadWorldConfigFromDir() {
   if (!dbDirHandle) return;
   try {
     const f = await dbDirHandle.getFileHandle('get_config.xml').then(h => h.getFile());
-    applyWorldConfig(parseWorldConfig(await f.text()));
+    const xml = await f.text();
+    applyWorldConfig(parseWorldConfig(xml));
+    // ⚔ the newbie attack ratio (v6.5.0) of the folder's world — dev's stand-in for worlds.json
+    if (typeof arDevCfg !== 'undefined') { arDevCfg[twWorld] = parseWorldRatio(xml) || {}; if (typeof renderRatioNote === 'function') renderRatioNote(); }
   } catch {}
 }
 
@@ -199,13 +203,17 @@ async function loadDbFromWeb() {
   const gen = ++dbWebGen;
   try {
     const base = twDataUrl();
-    const [vText, pText, updated, aText] = await Promise.all([
+    const [vText, pText, updated, aText, regText] = await Promise.all([
       fetch(base + 'village.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }),
       fetch(base + 'player.txt').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }),
       fetch(base + 'last-updated.txt').then(r => r.ok ? r.text() : '').catch(() => ''),
       fetch(base + 'ally.txt').then(r => r.ok ? r.text() : '').catch(() => ''),
+      // ⚔ registration dates for the attack ratio (v6.5.0) — optional: a mirror without it just
+      // falls back to the world start (attack-ratio.js)
+      fetch(base + 'registered.json').then(r => r.ok ? r.text() : '').catch(() => ''),
     ]);
     if (gen !== dbWebGen) return; // superseded (world switch) — drop the old world's data
+    if (typeof arSetRegistered === 'function') arSetRegistered(regText || null, twWorld); // before setDbData: its renders show the note
     setDbData(vText, pText, aText);
     if (updated.trim()) {
       document.getElementById('db-status').textContent += ` — ${t('db_web_updated')(fmtUpdatedStamp(updated))}`;
@@ -341,11 +349,13 @@ function refreshTargetsFromDb() {
 async function loadDbFromDir() {
   if (!dbDirHandle) return;
   try {
-    const [vFile, pFile, aFile] = await Promise.all([
+    const [vFile, pFile, aFile, rFile] = await Promise.all([
       dbDirHandle.getFileHandle('village.txt').then(h => h.getFile()),
       dbDirHandle.getFileHandle('player.txt').then(h => h.getFile()),
       dbDirHandle.getFileHandle('ally.txt').then(h => h.getFile()).catch(() => null),
+      dbDirHandle.getFileHandle('registered.json').then(h => h.getFile()).catch(() => null), // ⚔ optional (v6.5.0)
     ]);
+    if (typeof arSetRegistered === 'function') arSetRegistered(rFile ? await rFile.text() : null, twWorld);
     setDbData(await vFile.text(), await pFile.text(), aFile ? await aFile.text() : '');
     try { localStorage.removeItem('tw_tribe_db'); } catch {} // real folder supersedes an imported snapshot
     loadWorldConfigFromDir(); // folder may carry the world's get_config.xml → speeds
