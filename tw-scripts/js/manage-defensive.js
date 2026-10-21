@@ -38,12 +38,13 @@ let mdOrdCoords  = []; // target coords COVERED by the incomingOrders import (in
 let mdGroups   = [];    // last-built village groups (mdBuildRows output)
 let mdExpanded = {};    // coord → true for expanded villages
 let mdVmap     = null;  // Map(order → plan-match verdict) for the current groups
+let mdPlanView = 'all'; // 💾 v6.4.0: 'all' = every defense plan slot merged, or one slot id (number) — header <select>, persisted
 
 // Compressed (lsSaveC). Returns false if even the compressed blob won't fit (QuotaExceededError)
 // so the import callers can show a clear "storage full" message instead of a bogus parse error.
 function saveManageDef() {
   return lsSaveC(MD_STORE_KEY, {
-    supTargets: mdSupTargets, orders: mdOrders, supAt: mdSupAt, ordAt: mdOrdAt, ordCoords: mdOrdCoords,
+    supTargets: mdSupTargets, orders: mdOrders, supAt: mdSupAt, ordAt: mdOrdAt, ordCoords: mdOrdCoords, planView: mdPlanView,
   });
 }
 function loadManageDef() {
@@ -58,8 +59,51 @@ function loadManageDef() {
       // Back-compat: older saves lack ordCoords → derive from the orders' targets.
       mdOrdCoords  = Array.isArray(d.ordCoords) ? d.ordCoords
         : Array.from(new Set(mdOrders.map(o => o.target).filter(Boolean)));
+      mdPlanView   = Number.isInteger(d.planView) ? d.planView : 'all';
     }
   } catch {}
+}
+
+// ── 💾 Defense plan slots in Manage Defense (v6.4.0) ───────────────────────────────────────
+// The plan rows the table checks the imports against. One slot in existence, or one slot picked →
+// that slot's rows untouched (the pre-v6.4.0 behaviour). 'all' with several slots → every slot's
+// rows together, each tagged with its `slot` id (badge on its "Still not sent" row): every plan's
+// orders are real moves, so with Defense 2 active Defense 1's senders must still match (not read as
+// "not in plan" / "extra") and still be chased when missing. mdBuildRows / mdClassifyOrders key by
+// target + origin, so rows of several slots for one target simply add up like rows of one plan.
+function setMdPlanView(v) {
+  const n = parseInt(v, 10);
+  mdPlanView = v === 'all' || !Number.isInteger(n) ? 'all' : n;
+  saveManageDef();
+  renderManageDefTable();
+}
+function mdViewRows() {
+  if (typeof defPlans === 'undefined') return (typeof defPlanRows !== 'undefined') ? defPlanRows : [];
+  defPlanSync();
+  if (mdPlanView !== 'all') {
+    const s = defPlans.find(x => x.id === mdPlanView);
+    if (s) return s.rows || [];
+    mdPlanView = 'all'; // the picked slot was deleted
+  }
+  if (defPlans.length === 1) return defPlans[0].rows || [];
+  return defPlanAllRows();
+}
+function mdMergedView() { return mdPlanView === 'all' && typeof defPlans !== 'undefined' && defPlans.length > 1; }
+// Header <select>: only while there are 2+ defense plan slots (one slot = nothing to pick).
+function renderMdPlanView() {
+  const host = document.getElementById('md-plan-view-host');
+  if (!host) return;
+  if (typeof defPlans === 'undefined' || defPlans.length < 2) { host.innerHTML = ''; return; }
+  const opt = (v, label) => `<option value="${v}"${String(mdPlanView) === String(v) ? ' selected' : ''}>${esc(label)}</option>`;
+  host.innerHTML = `<label class="mo-plan-view">${esc(t('md_plan_view_lbl'))} <select id="md-plan-view" onchange="setMdPlanView(this.value)">`
+    + opt('all', t('md_plan_view_all')) + defPlans.map(s => opt(s.id, defPlanLabel(s))).join('')
+    + `</select></label><span class="map-tb-sep"></span>`;
+}
+function mdSlotBadge(r) {
+  if (!mdMergedView() || r.slot == null) return '';
+  const s = defPlans.find(x => x.id === r.slot);
+  if (!s) return '';
+  return `<span class="mo-slot" title="${esc(t('mo_slot_badge_t')(defPlanLabel(s)))}">${esc(t('def_slot_short')(defPlanIndex(s.id) + 1))}</span>`;
 }
 
 // Empty per-type defensive tally.
@@ -252,6 +296,46 @@ function mdSentOrigins(supTargets, orders) {
   return map;
 }
 
+// v6.4.0: def pop already at / heading to each target, per origin (stationed + inbound orders) — pure.
+function mdSentPop(supTargets, orders) {
+  const map = {};
+  const add = (tgt, origin, units) => {
+    const p = mdPop(units);
+    if (!tgt || p <= 0) return;
+    const m = map[tgt] || (map[tgt] = {});
+    m[origin] = (m[origin] || 0) + p;
+  };
+  for (const tg of (supTargets || [])) for (const sp of (tg.supports || [])) add(tg.coord, sp.originCoord, sp.units);
+  for (const o of (orders || [])) add(o.target, o.originCoord, o.units);
+  return map;
+}
+// The plan rows whose sender has NOT sent yet (pure). One plan holds at most one row per
+// sender→target, and it counts as sent as soon as ANY def units from that sender reached or head to
+// the target (amount ignored, like mdSentOrigins). Several 💾 defense plans (v6.4.0) can each hold a
+// row for the same pair: the pair's sent pop is handed to its rows in plan order — a row counts as
+// sent while some is left, and takes its own pop out of it — so one arrived order no longer clears a
+// second plan's row as well (review HIGH).
+function mdMissingFrom(rows, sentPop) {
+  const left = {};
+  return (rows || []).filter(r => {
+    const k = r.tCoord + '>' + r.srcCoord;
+    if (!(k in left)) left[k] = (sentPop[r.tCoord] && sentPop[r.tCoord][r.srcCoord]) || 0;
+    if (left[k] > 0) { left[k] -= mdPop(r.units); return false; }
+    return true;
+  });
+}
+// The deadline an inbound order is timed against. One plan: every row of a target shares one arrival,
+// so this is the target's deadline as before. Several defense plans can reinforce one target in waves
+// (Defense 1 at 10:00, Defense 2 at 18:00): the order is timed against the LATEST arrival among its own
+// sender's rows there (else among all the target's rows), so a second wave never reads late against
+// the first wave's deadline.
+function mdOrderDeadline(g, o) {
+  const timed = (g.planList || []).filter(r => r.arriveMs != null);
+  const own = timed.filter(r => r.srcCoord === o.originCoord);
+  const pool = own.length ? own : timed;
+  return pool.length ? Math.max(...pool.map(r => r.arriveMs)) : g.deadlineMs;
+}
+
 // ── Plan-match verdicts for inbound support orders (pure — harness-tested) ────
 // Treats the Defense Plan as a set of slots {src→tgt : units}, consumed as matched,
 // and classifies every order against it. Returns a verdict[] aligned to `orders`:
@@ -407,7 +491,7 @@ function mdBuildRows(supTargets, orders, planRows, opts) {
   // ~0 in practice — the .txt can't see foreign support), replaced the moment support is imported.
   // Missing rows = the individual plan senders that have NOT sent yet (neither stationed nor incoming);
   // only meaningful/rendered for order-covered villages (g.hasOrders).
-  const sent = mdSentOrigins(supTargets, orders);
+  const sentPop = mdSentPop(supTargets, orders);
   for (const coord of order) {
     const g = byCoord[coord];
     g.hasOrders = ordCoords.has(coord);
@@ -418,8 +502,7 @@ function mdBuildRows(supTargets, orders, planRows, opts) {
     for (const sp of g.supportRows) if (planned.has(sp.originCoord)) mdAddUnits(covering, sp.units);
     for (const o of g.orderRows)    if (planned.has(o.originCoord))  mdAddUnits(covering, o.units);
     for (const u of DEF_OBJ_UNITS) g.remaining[u] = Math.max(0, g.planNeed[u] - covering[u]);
-    const sset = sent[coord];
-    g.missingRows = g.planList.filter(r => !(sset && sset.has(r.srcCoord)));
+    g.missingRows = mdMissingFrom(g.planList, sentPop);
   }
   // Only surface villages actually relevant to defense coordination: a Defense-Plan
   // target, OR a village holding ally support, OR one with inbound support (ordered or
@@ -494,7 +577,8 @@ function renderManageDefTable() {
   if (!tbody) return;
   const impEl = document.getElementById('md-import-status');
 
-  const planRows = (typeof defPlanRows !== 'undefined') ? defPlanRows : [];
+  renderMdPlanView();
+  const planRows = mdViewRows();
   // Every coord we might infer inbound support for — used to surface support-receiving villages
   // that aren't order-covered. mdInferIncoming is nonzero ONLY where the tribe export has an
   // "incoming" row, so iterate exactly those coords instead of every village in the troop file
@@ -632,7 +716,7 @@ function renderMdTableBody() {
           + `<td class="left">${o.originPlayer ? `<span class="player-tag">${esc(o.originPlayer)}</span>` : '—'}</td>`
           + mdUnitCells(o.units)
           + `<td>${mdArrivalCell(o)}</td>`
-          + `<td>${mdOrderStatus(verdict)}${g.deadlineMs != null ? '<br>' + mdTimingCell(o.arrivalMs, g.deadlineMs) : ''}</td></tr>`);
+          + `<td>${mdOrderStatus(verdict)}${g.deadlineMs != null ? '<br>' + mdTimingCell(o.arrivalMs, mdOrderDeadline(g, o)) : ''}</td></tr>`);
       }
     } else if (mdPop(g.incoming) > 0) {
       cells.push(`<tr>${blankMeta}`
@@ -647,7 +731,7 @@ function renderMdTableBody() {
     if (g.hasPlan && g.hasOrders) {
       for (const r of g.missingRows) {
         cells.push(`<tr style="background:rgba(192,64,32,0.08);">${blankMeta}`
-          + `<td><span class="badge" style="background:#3a1414;color:#e69090;">⚠ ${esc(t('md_ty_not_sent'))}</span></td>`
+          + `<td>${mdSlotBadge(r)}<span class="badge" style="background:#3a1414;color:#e69090;">⚠ ${esc(t('md_ty_not_sent'))}</span></td>`
           + `<td class="left" style="font-family:monospace;">${mdCoordLink(r.srcCoord)}</td>`
           + `<td class="left">${r.srcPlayer ? `<span class="player-tag">${esc(r.srcPlayer)}</span>` : '—'}</td>`
           + mdUnitCells(r.units, 'color:#e69090;')
@@ -808,16 +892,15 @@ function clearManageDef() {
 // ✉ Export PMs (shared defPmMessagesFrom + renderPmModal), so a laggard gets a ready-to-paste
 // nudge with only the orders they still owe.
 function mdMissingPlanRows() {
-  const planRows = (typeof defPlanRows !== 'undefined') ? defPlanRows : [];
+  const planRows = mdViewRows();
   if (!planRows.length) return [];
   // Only villages whose orders were imported can be judged "not sent" (per-village, matching the
   // table). A plan target with no order data is skipped — we can't tell who is en route there.
   const covered = new Set(mdOrdCoords);
-  const sent = mdSentOrigins(mdSupTargets, mdOrders);
-  return planRows.filter(r => covered.has(r.tCoord) && !((sent[r.tCoord]) && sent[r.tCoord].has(r.srcCoord)));
+  return mdMissingFrom(planRows.filter(r => covered.has(r.tCoord)), mdSentPop(mdSupTargets, mdOrders));
 }
 function showMdMissingPmExport() {
-  const hasPlan = (typeof defPlanRows !== 'undefined') && defPlanRows.length;
+  const hasPlan = mdViewRows().length > 0;
   if (!hasPlan) { alert(t('empty_no_def_plan')); return; }
   // "Not sent" can only be judged for villages whose Support Orders were imported (they reveal who
   // is en route); without any, every not-yet-arrived sender would look missing. Require the file.

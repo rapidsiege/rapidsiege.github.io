@@ -130,9 +130,14 @@ function updateBuildingsStatus() {
 // (very large troop file) never breaks the load itself — the data stays shown for
 // this session and the user is told it won't survive a reload.
 const TROOP_KEY = 'tw_tribe_troops';
+// When the troop data in memory was loaded (its persisted savedAt, ISO; '' = unknown / none). 💾 v6.4.0:
+// each defense plan slot stamps it at Generate, so a plan built on an OLDER file can be pointed out —
+// if its support already left, the newer file no longer has those troops (📦 Already sent).
+let troopsSavedAt = '';
 function persistTroops(text, filename) {
   if (!villages.length) return; // don't persist a parse that produced nothing
   const payload = { text, filename, savedAt: new Date().toISOString() };
+  troopsSavedAt = payload.savedAt; // the data in memory is this load's, even if the save below fails
   if (Object.keys(buildingsByCoord).length) payload.buildings = buildingsByCoord; // building levels ride along (from a tribeInfo v3 JSON)
   // compressed — raw troop text is highly compressible; false = even that didn't fit
   if (!lsSaveC(TROOP_KEY, payload) && typeof alert === 'function') alert(t('md_storage_full'));
@@ -150,6 +155,7 @@ function autoloadTroops() {
   const d = lsLoadC(TROOP_KEY); // compressed (LZ1:) or legacy uncompressed JSON
   if (!d || typeof d.text !== 'string' || !d.text) return;
   const label = d.filename || t('imported_troops');
+  troopsSavedAt = typeof d.savedAt === 'string' ? d.savedAt : '';
   let text = d.text;
   parseData(text, label);
   // A text saved before 6.1.3 kept only the FIRST file's header. With a buildings export first,
@@ -187,7 +193,7 @@ function clearData() {
   troopByCoord = {}; defenseByCoord = {}; incomingByCoord = {};
   if (typeof myAllyIds !== 'undefined') myAllyIds = [];
   lastParseStats = null;
-  troopText = ''; troopLabel = '';
+  troopText = ''; troopLabel = ''; troopsSavedAt = '';
   try { localStorage.removeItem(TROOP_KEY); } catch {} // also drop the persisted copy
   document.getElementById('file-dot').className = 'file-status-dot dot-off';
   document.getElementById('file-status-text').textContent = t('status_no_file');

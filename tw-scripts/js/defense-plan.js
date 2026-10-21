@@ -531,6 +531,10 @@ function generateDefPlan() {
   };
   const snipPct  = Math.min(100, Math.max(0, dpNum('plan-def-snip-pct', defSnipPct)));
   const snipDist = Math.max(0, dpNum('plan-def-snip-dist', defSnipDist));
+  // 💾 Defense plan slots (v6.4.0): what the OTHER slots already send, per sender village. Read
+  // before the globals are reset (defPlanOthers syncs the active slot first). With one slot it is
+  // empty and every use below is a no-op — the plan is byte-identical to the slot-less engine.
+  const prior = defPlanPriorUsage();
 
   defPlanRows = []; defPlanWarnings = [];
 
@@ -570,8 +574,14 @@ function generateDefPlan() {
   // sum to the same total as before. `stock` remains the live total and is what `cap`, the
   // PARAMS.defSenderMinPop threshold and Pass A's capacity weights read, so eligibility and player
   // fairness are byte-for-byte unchanged; only the ORDER the buckets are drained in is new.
+  // v6.4.0: both buckets start from what the OTHER defense plans left (defStockAfterPrior) — a unit
+  // already sent there is gone — so `cap`, the min-pop floor and the fairness weights all read the
+  // leftover, like a second offensive counts only the offs the first one left free.
   const senders = villages.map(v => {
-    const stock = defAvailUnits(v), stockFut = defAvailUnitsFuture(v), stockNow = defAvailUnitsNow(v);
+    let stockFut = defAvailUnitsFuture(v), stockNow = defAvailUnitsNow(v);
+    if (prior.now[v.coord]) ({ now: stockNow, fut: stockFut } = defStockAfterPrior(stockNow, stockFut, prior.now[v.coord], prior.fut[v.coord]));
+    const stock = {};
+    for (const u of DEF_OBJ_UNITS) stock[u] = stockNow[u] + stockFut[u];
     return {
       v, c: parseCoordStr(v.coord), tag: dbTribeAt(v.coord),
       stock, stockNow, stockFut,
@@ -602,16 +612,53 @@ function generateDefPlan() {
   // reserve survives as a whole instead of being spent twice.
   const SNIP_UNITS = DEF_OBJ_UNITS.filter(u => u !== 'spy');
   const snipPopOf  = tally => SNIP_UNITS.reduce((a, u) => a + (tally[u] || 0) * POP[u], 0);
-  const snipReserve = {}, snipBudget = {}, snipSentPop = {}, snipOverPop = {};
+  // v6.4.0: what each player already sends in the OTHER defense plans (raw name → non-spy pop).
+  // Senders above read the leftover, so a snip player's reserve would otherwise shrink with every
+  // plan: the base adds their earlier sends back and the budget starts spent by them — the reserve
+  // is kept ONCE across every plan, not once per plan.
+  const priorSnipPop = {};
+  for (const v of villages) {
+    if (!prior.now[v.coord]) continue;
+    priorSnipPop[v.player] = (priorSnipPop[v.player] || 0) + snipPopOf(prior.now[v.coord]) + snipPopOf(prior.fut[v.coord]);
+  }
+  // Villages the other plans DRAINED: they pass every hold on their full stock but are no longer
+  // senders (what is left fell below the floor). drainedPl names their players — the Complete audit's
+  // "nothing left" (not "no eligible villages", and not for a village a filter holds home). For a
+  // snip player, what is left in them is still defense kept home: it stays in the reserve base and
+  // counts as kept, as it did before those plans sent anything.
+  const snipHeld = {}, drainedPl = new Set();
+  if (prior.nOrders) {
+    const inSenders = new Set(senders.map(s => s.v));
+    for (const v of villages) {
+      if (inSenders.has(v) || !prior.now[v.coord]) continue;
+      const a = defAvailUnits(v);
+      if (!holds.mayPass(v, parseCoordStr(v.coord), DEF_OBJ_UNITS.reduce((x, u) => x + a[u] * POP[u], 0))) continue;
+      drainedPl.add(v.player);
+      if (!snipPl.has(v.player)) continue;
+      const rest = defStockAfterPrior(defAvailUnitsNow(v), defAvailUnitsFuture(v), prior.now[v.coord], prior.fut[v.coord]);
+      snipHeld[v.player] = (snipHeld[v.player] || 0) + snipPopOf(rest.now) + snipPopOf(rest.fut);
+    }
+  }
+  const snipKept = P => senders.reduce((a, s) => a + (s.v.player === P ? snipPopOf(s.stock) : 0), 0) + (snipHeld[P] || 0);
+  const snipReserve = {}, snipBudget = {}, snipSentPop = {}, snipOverPop = {}, snipStart = {};
   for (const P of snipPl) {
-    const base = senders.reduce((a, s) => a + (s.v.player === P ? snipPopOf(s.stock) : 0), 0);
+    snipStart[P] = snipKept(P); // what this plan starts from
+    const base = snipStart[P] + (priorSnipPop[P] || 0);
     snipReserve[P] = Math.ceil(base * snipPct / 100);
     snipBudget[P]  = Math.max(0, base - snipReserve[P]);
-    snipSentPop[P] = 0; snipOverPop[P] = 0;
+    snipSentPop[P] = priorSnipPop[P] || 0; snipOverPop[P] = 0;
   }
 
   const tgs = defTargets.map((tg, i) => ({ tg, i, c: parseCoordStr(tg.coord), tag: defTargetTag(tg) })); // live DB tag first
   tgs.filter(T => !T.c).forEach(T => defPlanWarnings.push(t('warn_invalid_coord')(T.tg.coord)));
+  // 📦 v6.4.0: other plans built on an OLDER troop file and not ticked Already sent — if their support
+  // already left, this file no longer has it and subtracting it again counts it twice.
+  const stale = defPlanStale(defPlanOthers());
+  if (stale.length) defPlanWarnings.push(t('def_slot_stale')(stale.map(defPlanLabel).join(', ')));
+  // v6.4.0: a target another defense plan already supports gets its FULL objective again here — the
+  // engine plans each objective as new sends (it never credits support already there or on the way).
+  // Said once per target, so a target carried over from the previous plan by mistake stands out.
+  for (const T of tgs) if (T.c && prior.targets[T.tg.coord]) defPlanWarnings.push(t('warn_def_target_prior')(T.tg.coord, prior.targets[T.tg.coord]));
 
   const dbReady = villageDb.length > 0;
   // Same-tribe gate — the 🎚 PARAMS.defSameTribeOnly parameter (v6.0.3, default ON = the es100 /
@@ -1080,7 +1127,8 @@ function generateDefPlan() {
   // name isn't in the troop file) gets its own line. ──
   for (const P of completePl) {
     const mine = senders.filter(s => s.v.player === P);
-    if (!mine.length) { defPlanWarnings.push(t('warn_def_complete_none')(decode(P))); continue; }
+    // v6.4.0: no sender left because the OTHER defense plans already took everything — not a filter.
+    if (!mine.length) { defPlanWarnings.push(t(drainedPl.has(P) ? 'warn_def_complete_spent' : 'warn_def_complete_none')(decode(P))); continue; }
     const popOf = (s, k) => DEF_OBJ_UNITS.reduce((x, u) => x + s[k][u] * POP[u], 0);
     const leftNow = mine.reduce((a, s) => a + popOf(s, 'stockNow'), 0);
     const leftFut = mine.reduce((a, s) => a + popOf(s, 'stockFut'), 0);
@@ -1099,12 +1147,17 @@ function generateDefPlan() {
   // about what is actually left standing at home. Spies excluded, as in the reserve base.
   const snipAlert = [];
   for (const P of snipPl) {
-    const left = senders.reduce((a, s) => a + (s.v.player === P ? snipPopOf(s.stock) : 0), 0);
+    const left = snipKept(P);
     const want = snipReserve[P] || 0;
     if (left >= want) continue;
     if (snipOverPop[P] > 0) {
       defPlanWarnings.push(t('warn_def_snip_over')(decode(P), want - left, want, snipPct));
       snipAlert.push(decode(P));
+    } else if (snipStart[P] < want) {
+      // v6.4.0: already below the reserve BEFORE this plan — the other defense plans took that part;
+      // whatever this plan's far targets took on top is reported as such.
+      defPlanWarnings.push(t('warn_def_snip_prior')(decode(P), want - snipStart[P], want));
+      if (left < snipStart[P]) defPlanWarnings.push(t('warn_def_snip_far')(decode(P), snipStart[P] - left, snipDist));
     } else {
       defPlanWarnings.push(t('warn_def_snip_far')(decode(P), want - left, snipDist));
     }
@@ -1135,6 +1188,8 @@ function generateDefPlan() {
   // table reads target-first; the per-player BB regroups by sender
   defPlanRows.sort((a, b) => (a.tCoord < b.tCoord ? -1 : a.tCoord > b.tCoord ? 1 : 0)
     || a.srcPlayer.toLowerCase().localeCompare(b.srcPlayer.toLowerCase()));
+  // 💾 the slot remembers the troop file it was built on; a fresh plan is not sent yet
+  { const act = defPlanActiveSlot(); act.troopsAt = typeof troopsSavedAt === 'string' ? troopsSavedAt : ''; act.sent = false; }
 
   saveDefensive();
   renderDefPlanTable();
@@ -1177,7 +1232,32 @@ function defFutCell(fut) {
   return list ? `<div style="color:#e0a020;font-size:11px;margin-top:2px;" title="${esc(t('def_returning_title'))}">⏳ ${list}</div>` : '';
 }
 
+// ── 💾 Defense plan slot bar (Plan Defense, v6.4.0) ────────────────────────────────────────
+// Active-slot <select>, an optional name, ➕ New defense / 🗑 Delete defense and a hint line saying
+// what the OTHER slots already send. Re-rendered with the plan table (so it follows a language
+// switch too). No-op without its host (headless harness).
+function renderDefPlanSlots() {
+  const host = document.getElementById('defplan-slots');
+  if (!host) return;
+  defPlanSync();
+  const act = defPlanActiveSlot();
+  const opts = defPlans.map(s => `<option value="${s.id}"${s.id === defPlanActive ? ' selected' : ''}>${esc(t('def_slot_opt')(defPlanLabel(s), (s.rows || []).length))}</option>`).join('');
+  const prior = defPlanPriorUsage();
+  const hint = (defPlans.length > 1 ? t('def_slot_hint')(prior.nSlots, prior.nOrders, prior.nVillages, prior.pop) : t('def_slot_hint_single'))
+    + (prior.nSent ? ' ' + t('def_slot_hint_sent')(prior.nSent) : '');
+  const stale = defPlanStale();
+  host.innerHTML = `<span class="plan-slots-lbl">${esc(t('def_slot_lbl'))}</span>`
+    + `<select id="defplan-slot-select" onchange="setDefPlanActive(this.value)" title="${esc(t('def_slot_select_t'))}">${opts}</select>`
+    + `<input id="defplan-slot-name" type="text" maxlength="40" value="${esc(act.name || '')}" placeholder="${esc(t('plan_slot_name_ph'))}" title="${esc(t('def_slot_name_t'))}" onchange="renameDefPlan(${act.id}, this.value)">`
+    + `<button class="btn btn-ghost btn-sm" onclick="newDefPlan()" title="${esc(t('btn_def_slot_new_t'))}">${esc(t('btn_def_slot_new'))}</button>`
+    + (defPlans.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="deleteDefPlan(${act.id})" title="${esc(t('btn_def_slot_del_t'))}">${esc(t('btn_def_slot_del'))}</button>` : '')
+    + ((act.rows || []).length ? `<label title="${esc(t('def_slot_sent_t'))}"><input type="checkbox" id="defplan-slot-sent" style="width:auto;"${act.sent ? ' checked' : ''} onchange="setDefPlanSent(${act.id}, this.checked)"> ${esc(t('def_slot_sent_lbl'))}</label>` : '')
+    + `<span class="plan-slots-hint">${esc(hint)}</span>`
+    + (stale.length ? `<span class="plan-slots-hint" style="color:#e0a020;">⚠ ${esc(t('def_slot_stale')(stale.map(defPlanLabel).join(', ')))}</span>` : '');
+}
+
 function renderDefPlanTable() {
+  renderDefPlanSlots();
   const warnEl = document.getElementById('defplan-warnings');
   if (warnEl) warnEl.innerHTML = defPlanWarnings.length
     ? `<details class="warn-box"><summary>${t('plan_warnings_toggle')(defPlanWarnings.length)}</summary>`
@@ -1296,7 +1376,9 @@ function defAvailUnitsNow(v) {
 // Pure seam: [{player, avail:{spear,sword,spy,heavy}, sending:{…}}] for every player with
 // any available defense or any assigned send, biggest available def-pop first. Keyed by
 // DECODED name — plan rows carry a decoded srcPlayer while troop rows are raw.
-function computeDefPlayerSummary(rows, vils) {
+// v6.4.0: `priorRows` (the OTHER defense plans' rows, optional) come off each village's available
+// defense first, clamped at 0 per village — "available" is then what this plan could draw on.
+function computeDefPlayerSummary(rows, vils, priorRows) {
   const by = {};
   const entry = name => by[name] || (by[name] = {
     player: name, tribe: '',
@@ -1306,9 +1388,15 @@ function computeDefPlayerSummary(rows, vils) {
   // v6.0.3: the player's tribe tag (defPlayerTribes — majority vote over their villages' DB
   // tags; '' when the DB isn't loaded) lets the summaries split or filter by tribe.
   const tribes = defPlayerTribes(vils);
+  const priorBy = {};
+  for (const r of priorRows || []) {
+    if (!r || !r.srcCoord) continue;
+    const s = priorBy[r.srcCoord] || (priorBy[r.srcCoord] = { spear: 0, sword: 0, spy: 0, heavy: 0 });
+    for (const u of DEF_OBJ_UNITS) s[u] += (r.units && r.units[u]) || 0;
+  }
   for (const v of vils || []) {
-    const a = defAvailUnits(v), e = entry(decode(v.player));
-    for (const u of DEF_OBJ_UNITS) e.avail[u] += a[u];
+    const a = defAvailUnits(v), e = entry(decode(v.player)), p = priorBy[v.coord];
+    for (const u of DEF_OBJ_UNITS) e.avail[u] += p ? Math.max(0, a[u] - p[u]) : a[u];
     e.tribe = tribes[e.player] || '';
   }
   for (const r of rows || []) {
@@ -1419,7 +1507,7 @@ function defPlayerTribes(vils) {
 
 // ── Summary preferences (v6.0.3): collapsed/open state of the three summary panels and the
 // tribe view. Their own small localStorage key (plain JSON) — UI prefs, not plan data, so they
-// don't ride in the compressed tw_tribe_defensive blob. Loaded lazily on first use.
+// don't ride in the compressed defensive blob (tw_tribe_defensive_slots). Loaded lazily on first use.
 //   open  — { player, left, elig } booleans; every panel starts COLLAPSED (the tables are tall).
 //   tribe — 'combined' (one list, the pre-v6.0.3 view) · 'split' (one block per tribe, each with
 //           its own Total) · 'tag:<TAG>' (only that tribe). Only offered when the loaded troop
@@ -1493,7 +1581,7 @@ function defSumTotalLabel(tag) {
 function renderDefSumTools() {
   const host = document.getElementById('defplan-sum-tools');
   if (!host) return;
-  const tribes = villages.length && defPlanRows.length ? defSumTribes(villages) : [];
+  const tribes = villages.length && defPlanAnyRows() ? defSumTribes(villages) : [];
   if (tribes.length < 2) { host.innerHTML = ''; return; }
   const mode = defSumTribeMode(tribes);
   const opt = (val, label) => `<option value="${esc(val)}"${val === mode ? ' selected' : ''}>${esc(label)}</option>`;
@@ -1535,7 +1623,9 @@ function renderDefPlayerSummary() {
   const host = document.getElementById('defplan-player-summary');
   if (!host) return;
   if (!defPlanRows.length || !villages.length) { host.innerHTML = ''; return; }
-  const data = computeDefPlayerSummary(defPlanRows, villages);
+  // v6.4.0: "available" = what the OTHER defense plans left (the engine drew from exactly that).
+  const priorRows = defPlanOthers().filter(s => !s.sent).flatMap(s => s.rows || []); // 📦 sent plans are already out of the troop file
+  const data = computeDefPlayerSummary(defPlanRows, villages, priorRows);
   if (!data.length) { host.innerHTML = ''; return; }
   const tribes = defSumTribes(villages), mode = defSumTribeMode(tribes);
   const groups = defSumGroups(data, mode, tribes);
@@ -1549,7 +1639,7 @@ function renderDefPlayerSummary() {
     return `<td><span style="${over ? 'color:#e06040;font-weight:600;' : ''}"${over ? ` title="${esc(t('def_sum_over_title'))}"` : ''}>${e.sending[u].toLocaleString()}</span><span style="color:#5a3a18;"> / ${e.avail[u].toLocaleString()}</span></td>`;
   }).join('');
   const shown = groups.reduce((n, gp) => n + gp.rows.length, 0);
-  const body = `<div class="def-sum-note">${esc(t(hasStationData() ? 'def_sum_note' : 'def_sum_note_nostation'))}</div>`
+  const body = `<div class="def-sum-note">${esc(t(hasStationData() ? 'def_sum_note' : 'def_sum_note_nostation'))}${priorRows.length ? ' ' + esc(t('def_sum_note_prior')) : ''}</div>`
     + defSumTableHtml(DEF_OBJ_UNITS.map(u => `<th>${twIcon(u)}</th>`).join(''), groups, cells, totalOf, DEF_OBJ_UNITS.length + 1);
   host.innerHTML = defSumPanel('player', t('def_sum_title'), t('def_sum_hint_players')(shown), body);
 }
@@ -1566,11 +1656,13 @@ function renderDefEligibleSummary() {
 }
 // Shared renderer of the two leftover tables: Player · spear/sword/spy/heavy · Def pop, grouped
 // by the tribe view, each block closed by its Total; the panel hint is the def pop left.
+// v6.4.0: the leftover is after EVERY defense plan (all slots' rows), and the tables stay up while
+// an empty new slot is active — that is exactly when "what is left for the next plan" matters.
 function renderDefLeftoverLike(hostId, key, titleKey, noteKey, compute) {
   const host = document.getElementById(hostId);
   if (!host) return;
-  if (!defPlanRows.length || !villages.length) { host.innerHTML = ''; return; }
-  const data = compute(defPlanRows, villages);
+  if (!defPlanAnyRows() || !villages.length) { host.innerHTML = ''; return; }
+  const data = compute(defPlanCountedRows(), villages); // 📦 a plan ticked Already sent is already out of the troop file
   const tribes = defSumTribes(villages), mode = defSumTribeMode(tribes);
   const groups = defSumGroups(data, mode, tribes);
   const totalOf = rows => {
@@ -1584,7 +1676,7 @@ function renderDefLeftoverLike(hostId, key, titleKey, noteKey, compute) {
   const table = groups.length
     ? defSumTableHtml(DEF_OBJ_UNITS.map(u => `<th>${twIcon(u)}</th>`).join('') + `<th>${t('th_def_left_pop')}</th>`, groups, cells, totalOf, DEF_OBJ_UNITS.length + 2)
     : `<div class="def-sum-empty">${esc(t('def_sum_empty'))}</div>`;
-  const body = `<div class="def-sum-note">${esc(t(noteKey))}</div>` + table;
+  const body = `<div class="def-sum-note">${esc(t(noteKey))}${defPlans.length > 1 ? ' ' + esc(t('def_left_note_slots')) : ''}</div>` + table;
   host.innerHTML = defSumPanel(key, t(titleKey), t('def_sum_hint_pop')(popAll), body);
 }
 

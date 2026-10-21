@@ -6,7 +6,14 @@
 // own villages to meet it. State lives under its own localStorage key so it's fully
 // independent of the offensive plan. (Plan Defense — the allocation engine + per-player
 // BB — lives in js/defense-plan.js; the shared state container is defined here.)
-const DT_STORE_KEY = 'tw_tribe_defensive';
+// v6.4.0: the 💾 defense plan slots live under their OWN key. The pre-v6.4.0 key (DT_LEGACY_KEY) is
+// only READ — and only while DT_STORE_KEY is absent — never written: an older build sharing this
+// storage (a file:// copy of prod, the es103 dist) keeps reading and writing its own copy, so it can
+// never rewrite the slots it does not know about (review HIGH — the 6.1.3 lesson of the offensive
+// slots). The first successful save removes the legacy key (quota relief); an old copy opened after
+// that boots empty, and its fresh legacy save is ignored while DT_STORE_KEY exists.
+const DT_STORE_KEY  = 'tw_tribe_defensive_slots';
+const DT_LEGACY_KEY = 'tw_tribe_defensive';
 
 // The four objective unit types (the only ones the defensive plan sends). Named
 // distinctly from data-load.js's DEF_UNITS (a different, power-scoring list).
@@ -52,26 +59,205 @@ let dpPackWeights    = { ...dpPackDefaults().weights };
 // NOTE: MV (vacation-mode) pairs are SHARED with Plan Offensive — the single source of truth is
 // `mvPairs` (declared + persisted in offensive-targets.js / OT_STORE_KEY). The Defensive-
 // Targets picker below edits that same list; there is deliberately no separate defensive copy.
-let defPlanRows      = []; // generated support assignments (Plan Defense)
+let defPlanRows      = []; // generated support assignments (Plan Defense) — the ACTIVE defense plan slot
 let defPlanWarnings  = [];
 let dtNextId         = 1;
 
+// ── 💾 Defense plan slots (v6.4.0) — the mirror of the offensive slots (v6.1.0) ─────────────
+// Several defense plans ("Defense 1", "Defense 2", …) live side by side, like save slots. The
+// defPlanRows / defPlanWarnings globals ALWAYS hold the ACTIVE slot, so every existing reader (the
+// plan table, the exports, the map overlays) keeps working unchanged; defPlans holds every slot,
+// the active one included — its record is refreshed from the globals by defPlanSync() whenever the
+// plan is saved or another slot is read. generateDefPlan() fills the active slot from what the
+// OTHER slots left (defPlanPriorUsage): every unit another plan already sends is gone from its
+// village — home troops from the home bucket, returning troops from the returning one — so a
+// second plan never counts support that is already moving. Targets and the Plan Defense settings
+// stay global (the user edits them for the next plan); a slot is a frozen snapshot of its rows.
+// What reads EVERY slot: the engine's consumption, Available Defense (both tables) and Manage
+// Defense (all plans merged by default — each slot's real orders keep matching).
+// 📦 Already sent (user decision on review HIGH-3): a slot whose support has really left can be
+// ticked `sent`. A troop file loaded AFTER that no longer has those troops, so subtracting them again
+// would count them twice: a sent slot is no longer subtracted anywhere (engine, Available Defense,
+// Support per Player) but stays in Manage Defense (its orders are real moves). Each slot stamps the
+// troop file it was built on (`troopsAt` = troopsSavedAt at Generate); a newer file loaded since →
+// the slot bar and Generate's warnings name it (defPlanStale). Generate resets the active slot's tick.
+let defPlans      = []; // [{ id, name, createdISO, rows, warnings, sent, troopsAt }]
+let defPlanActive = 1;  // id of the slot the plan globals show
+let defPlanNextId = 2;
+
+function defPlanNew(id) {
+  const now = typeof serverNowMs === 'function' ? serverNowMs() : Date.now();
+  return { id, name: '', createdISO: new Date(now).toISOString().slice(0, 10), rows: [], warnings: [], sent: false, troopsAt: '' };
+}
+// Guarantee at least one slot and a valid active id (fresh install, pre-v6.4.0 save, deleted slot).
+function defPlanEnsure() {
+  if (!Array.isArray(defPlans)) defPlans = [];
+  if (!defPlans.length) defPlans.push(defPlanNew(defPlanActive || 1));
+  if (!defPlans.some(s => s.id === defPlanActive)) defPlanActive = defPlans[0].id;
+  defPlanNextId = Math.max(defPlanNextId || 1, ...defPlans.map(s => s.id + 1));
+}
+function defPlanIndex(id) { return defPlans.findIndex(s => s.id === id); }
+function defPlanActiveSlot() { defPlanEnsure(); return defPlans.find(s => s.id === defPlanActive); }
+// Globals → the active record (before saving, before reading the other slots).
+function defPlanSync() {
+  const s = defPlanActiveSlot();
+  s.rows = defPlanRows; s.warnings = defPlanWarnings;
+}
+// A record → the globals.
+function defPlanLoad(s) {
+  defPlanRows     = Array.isArray(s.rows) ? s.rows : [];
+  defPlanWarnings = Array.isArray(s.warnings) ? s.warnings : [];
+}
+// "Defense 2" (by position) unless the user named it.
+function defPlanLabel(s) {
+  const n = String((s && s.name) || '').trim();
+  return n || t('def_slot_default')(defPlanIndex(s.id) + 1);
+}
+function defPlanOthers() { defPlanSync(); return defPlans.filter(s => s.id !== defPlanActive); }
+// Every slot's rows in slot order, each tagged with its slot id (Available Defense, Manage Defense).
+function defPlanAllRows() { defPlanSync(); return defPlans.flatMap(s => (s.rows || []).map(r => ({ ...r, slot: s.id }))); }
+function defPlanAnyRows() { defPlanSync(); return defPlans.some(s => (s.rows || []).length > 0); }
+// The rows still to be subtracted from the loaded troops: every slot not ticked 📦 Already sent.
+function defPlanCountedRows() { defPlanSync(); return defPlans.filter(s => !s.sent).flatMap(s => s.rows || []); }
+// Slots with rows, not ticked sent, built on an OLDER troop file than the one loaded now (both stamps
+// known) — if their support already left, the loaded file no longer has it. ISO strings compare in order.
+function defPlanStale(slots) {
+  const now = typeof troopsSavedAt === 'string' ? troopsSavedAt : '';
+  return (slots || defPlans).filter(s => !s.sent && (s.rows || []).length && s.troopsAt && now && s.troopsAt < now);
+}
+function setDefPlanSent(id, on) {
+  const s = defPlans.find(x => x.id === parseInt(id, 10));
+  if (!s) return;
+  s.sent = !!on;
+  saveDefensive();
+  if (typeof renderDefPlanTable === 'function') renderDefPlanTable(); // slot bar, summaries, Manage Defense
+}
+// What the OTHER slots already send, per sender village — generateDefPlan() starts its sender stock
+// from here. now / fut = per-unit totals drawn from the village's home troops / its returning troops
+// (a row's futUnits is the returning share of its units) — slots ticked 📦 Already sent are left out
+// (the loaded troop file already lacks those troops). targets = target coord → orders already headed
+// there (every other slot, sent or not). nOrders / nVillages / pop feed the slot-bar hint; nSent =
+// other slots ticked sent.
+function defPlanPriorUsage(others) {
+  const u = { now: {}, fut: {}, targets: {}, nSlots: 0, nSent: 0, nOrders: 0, nVillages: 0, pop: 0 };
+  const zero = () => ({ spear: 0, sword: 0, spy: 0, heavy: 0 });
+  for (const s of (others || defPlanOthers())) {
+    u.nSlots++;
+    if (s.sent) {
+      u.nSent++;
+      for (const r of (s.rows || [])) if (r && r.tCoord) u.targets[r.tCoord] = (u.targets[r.tCoord] || 0) + 1;
+      continue;
+    }
+    for (const r of (s.rows || [])) {
+      if (!r || !r.srcCoord || !r.units) continue;
+      const now = u.now[r.srcCoord] || (u.now[r.srcCoord] = zero());
+      const fut = u.fut[r.srcCoord] || (u.fut[r.srcCoord] = zero());
+      for (const k of DEF_OBJ_UNITS) {
+        const q = Math.max(0, r.units[k] || 0), f = Math.min(q, Math.max(0, (r.futUnits && r.futUnits[k]) || 0));
+        now[k] += q - f; fut[k] += f;
+        u.pop += q * POP[k];
+      }
+      u.nOrders++;
+      if (r.tCoord) u.targets[r.tCoord] = (u.targets[r.tCoord] || 0) + 1;
+    }
+  }
+  u.nVillages = Object.keys(u.now).length;
+  return u;
+}
+// A sender village's home / returning stock minus what other plans already take from it (pure).
+// Each prior share comes off its own bucket first; whatever a bucket can't cover spills onto the
+// other one (troop files re-imported between plans move units between home and returning), so per
+// unit the remaining total is always max(0, available − already sent). Returns fresh objects.
+function defStockAfterPrior(stockNow, stockFut, pNow, pFut) {
+  const now = {}, fut = {};
+  for (const k of DEF_OBJ_UNITS) {
+    let n = stockNow[k] || 0, f = stockFut[k] || 0;
+    let restNow = (pNow && pNow[k]) || 0, restFut = (pFut && pFut[k]) || 0;
+    let take = Math.min(n, restNow); n -= take; restNow -= take;
+    take = Math.min(f, restFut); f -= take; restFut -= take;
+    take = Math.min(f, restNow); f -= take; restNow -= take;
+    take = Math.min(n, restFut); n -= take; restFut -= take;
+    now[k] = n; fut[k] = f;
+  }
+  return { now, fut };
+}
+function defPlanAfterSwitch() {
+  saveDefensive();
+  if (typeof renderDefPlanTable === 'function') renderDefPlanTable(); // also re-renders the summaries + Manage Defense
+  if (typeof repaintMapData === 'function') repaintMapData();         // map overlays read the active slot
+}
+// Show another slot (the plan table, exports and map follow; Manage Defense keeps its own view).
+function setDefPlanActive(id) {
+  id = parseInt(id, 10);
+  if (defPlanIndex(id) < 0 || id === defPlanActive) return;
+  defPlanSync();
+  defPlanActive = id;
+  defPlanLoad(defPlanActiveSlot());
+  defPlanAfterSwitch();
+}
+// Start an empty defense plan next to the existing ones and make it active. Targets and settings
+// are left as they are — the user edits them, then Generate Defense fills the new slot with what
+// the other plans left free.
+function newDefPlan() {
+  defPlanSync();
+  const s = defPlanNew(defPlanNextId++);
+  defPlans.push(s);
+  defPlanActive = s.id;
+  defPlanLoad(s);
+  defPlanAfterSwitch();
+}
+function renameDefPlan(id, name) {
+  const s = defPlans.find(x => x.id === parseInt(id, 10));
+  if (!s) return;
+  s.name = String(name || '').trim().slice(0, 40);
+  saveDefensive();
+  if (typeof renderDefPlanSlots === 'function') renderDefPlanSlots();
+  if (typeof renderManageDefTable === 'function') renderManageDefTable(); // view options + badge tooltips carry the name
+}
+// The last slot can never be deleted (Clear All empties it instead).
+function deleteDefPlan(id) {
+  id = parseInt(id, 10);
+  defPlanEnsure();
+  if (defPlans.length <= 1) return;
+  const s = defPlans.find(x => x.id === id);
+  if (!s) return;
+  defPlanSync();
+  if (!confirm(t('confirm_del_def_slot')(defPlanLabel(s), (s.rows || []).length))) return;
+  defPlans = defPlans.filter(x => x.id !== id);
+  if (defPlanActive === id) { defPlanActive = defPlans[0].id; defPlanLoad(defPlans[0]); }
+  defPlanAfterSwitch();
+}
+
+// Never throws. On a quota failure the plan stays in memory and on screen; the user is told ONCE
+// per session (warn_def_save_failed) — the setting handlers save on every keystroke. Returns whether
+// the save landed; only then is the pre-v6.4.0 key removed (on a failure it may be the only copy).
+let dtSaveWarned = false;
 function saveDefensive() {
-  // Compressed (lsSaveC): this key holds the generated plan (defPlanRows) and is by far the
-  // largest tribe-calculator localStorage tenant (~3 MB uncompressed on a big op) — LZ keeps it
-  // well under the ~5 MB quota. The plan is KEPT verbatim (not regenerated) so a distributed
+  defPlanSync(); // the active slot's record mirrors the plan globals
+  // Compressed (lsSaveC): this key holds the generated plans and is by far the largest
+  // tribe-calculator localStorage tenant (~3 MB uncompressed per big op) — LZ keeps it
+  // well under the ~5 MB quota. The plans are KEPT verbatim (not regenerated) so a distributed
   // plan stays byte-stable across reloads.
-  lsSaveC(DT_STORE_KEY, {
+  const ok = lsSaveC(DT_STORE_KEY, {
     cfg: dtCfg, targets: defTargets, ignore: defIgnore, ignorePlayers: defIgnorePlayers, completePlayers: defCompletePlayers, enemyIds: defEnemyIds, enemyTribes: defEnemyTribes, enemyDist: defEnemyDist, farFirst: defFarFirst, skipKnight: defSkipKnight,
     snipPlayers: defSnipPlayers, snipPct: defSnipPct, snipDist: defSnipDist,
     packMode: dpMode, packSize: dpPackSize, packMax: dpPackMax, packWeights: dpPackWeights,
-    plan: defPlanRows, warnings: defPlanWarnings, nextId: dtNextId,
+    plans: defPlans, planActive: defPlanActive, planNextId: defPlanNextId, nextId: dtNextId,
   });
+  if (!ok) {
+    console.warn('saveDefensive failed (storage full)');
+    if (!dtSaveWarned && typeof alert === 'function') { dtSaveWarned = true; alert(t('warn_def_save_failed')); }
+  } else {
+    try { localStorage.removeItem(DT_LEGACY_KEY); } catch {}
+  }
+  return ok;
 }
 
 function loadDefensive() {
   try {
-    const d = lsLoadC(DT_STORE_KEY); // compressed (LZ1:) or legacy uncompressed JSON — lsLoadC handles both
+    // The slots key; else the pre-v6.4.0 key, read WITHOUT lsLoadC's in-place rewrite (lsPeekC): loading
+    // never writes it, so an older build sharing this storage keeps its copy as it was.
+    const d = lsLoadC(DT_STORE_KEY) || lsPeekC(DT_LEGACY_KEY);
     if (d) {
       dtCfg           = { ...dtCfg, ...(d.cfg || {}) };
       defTargets      = d.targets || [];
@@ -96,8 +282,21 @@ function loadDefensive() {
         const n = parseFloat(d.packWeights[u]);
         if (Number.isFinite(n) && n > 0) dpPackWeights[u] = n;
       }
-      defPlanRows     = d.plan || [];
-      defPlanWarnings = d.warnings || [];
+      // 💾 Slots (v6.4.0): each saved slot coerced (integer id, DEDUPED — first copy wins —,
+      // string name, arrays); a pre-v6.4.0 save's single plan (or a save whose slots are all junk)
+      // becomes slot 1.
+      const seen = new Set();
+      defPlans = (Array.isArray(d.plans) ? d.plans : [])
+        .filter(s => s && typeof s === 'object' && Number.isInteger(s.id) && s.id > 0 && !seen.has(s.id) && seen.add(s.id))
+        .map(s => ({ id: s.id, name: typeof s.name === 'string' ? s.name.slice(0, 40) : '', createdISO: typeof s.createdISO === 'string' ? s.createdISO : '',
+          rows: Array.isArray(s.rows) ? s.rows.filter(r => r && typeof r === 'object') : [], warnings: Array.isArray(s.warnings) ? s.warnings : [],
+          sent: s.sent === true, troopsAt: typeof s.troopsAt === 'string' ? s.troopsAt : '' }));
+      defPlanActive = parseInt(d.planActive, 10) || 1;
+      defPlanNextId = parseInt(d.planNextId, 10) || 2;
+      if (!defPlans.length) {
+        defPlans = [{ ...defPlanNew(1), rows: Array.isArray(d.plan) ? d.plan.filter(r => r && typeof r === 'object') : [], warnings: Array.isArray(d.warnings) ? d.warnings : [] }];
+        defPlanActive = 1;
+      }
       dtNextId        = d.nextId;
     } else {
       // No defensive save yet: the snip / pack starting values come from the 🎚 PARAMS defaults,
@@ -109,6 +308,11 @@ function loadDefensive() {
       dpPackWeights = { ...dpPackDefaults().weights };
     }
   } catch {}
+  // No save at all → one slot holding whatever plan is in memory (empty on a fresh boot); a stale
+  // active id → the first slot. A save always leaves defPlans non-empty, so its slot is loaded.
+  const freshSlots = !Array.isArray(defPlans) || !defPlans.length;
+  defPlanEnsure();
+  if (freshSlots) defPlanSync(); else defPlanLoad(defPlanActiveSlot());
   if (!Array.isArray(defTargets)) defTargets = [];
   defTargets = defTargets.filter(tg => tg && typeof tg === 'object');
   // Target ids are interpolated into the row handlers (updDT(${tg.id}, …)) and matched with ===:
