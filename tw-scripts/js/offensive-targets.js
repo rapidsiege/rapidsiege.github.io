@@ -1005,7 +1005,31 @@ function removeMvPair(idx) {
   saveOffensive(); renderOffMvPlayers();
   if (typeof renderDefMvPlayers === 'function') renderDefMvPlayers();
 }
-// Chip list of pairs ("A ↔ B") + two player pickers and an Add Pair button.
+// Since v6.3.1 a pair's order matters: [main, sitted] — the sitted player's rally links carry
+// their account id (sittedAccountId). Pairs saved before kept the order they were typed in,
+// hence the ⇄ on every chip.
+function swapMvPair(idx) {
+  const p = mvPairs[idx];
+  if (!p) return;
+  mvPairs[idx] = [p[1], p[0]];
+  saveOffensive(); renderOffMvPlayers();
+  if (typeof renderDefMvPlayers === 'function') renderDefMvPlayers();
+}
+// One pair chip, shared by both pickers: "Main – 🏖 Sitted", ⇄ swap, ✕ remove (removeFn per tab).
+function mvPairChip(pr, i, removeFn) {
+  const a = decode(pr[0]), b = decode(pr[1]);
+  return `<span class="chip" title="${esc(t('mv_pair_title')(a, b))}">${esc(a)} – 🏖 ${esc(b)}`
+    + `<span class="chip-x" onclick="swapMvPair(${i})" title="${esc(t('mv_swap_title'))}">⇄</span>`
+    + `<span class="chip-x" onclick="${removeFn}(${i})">✕</span></span>`;
+}
+// The Main / Sitted player pickers + Add Pair, shared by both tabs (ids prefix + add handler).
+function mvPairPickersHtml(prefix, addFn) {
+  const optHtml = mvPlayerOptions().map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('');
+  const sel = (id, ph) => `<select id="${id}" class="cell-input" style="width:150px;"><option value="">${t(ph)}</option>${optHtml}</select>`;
+  return `${sel(prefix + '-a', 'opt_pick_mv_main')}<span style="color:#806030;">–</span>${sel(prefix + '-b', 'opt_pick_mv_sitted')}`
+    + `<button class="btn btn-ghost btn-sm" onclick="${addFn}()">${t('btn_add_mv_pair')}</button>`;
+}
+// Chip list of pairs ("Main – 🏖 Sitted") + the Main / Sitted pickers and an Add Pair button.
 function renderOffMvPlayers() {
   const host = document.getElementById('ot-mv-players-host');
   if (!host) return;
@@ -1013,13 +1037,9 @@ function renderOffMvPlayers() {
     host.innerHTML = `<span class="num-zero" title="${esc(t('senders_need_troops'))}">—</span>`;
     return;
   }
-  const chips = mvPairs.map((pr, i) =>
-    `<span class="chip">${esc(decode(pr[0]))} ↔ ${esc(decode(pr[1]))}<span class="chip-x" onclick="removeMvPair(${i})">✕</span></span>`).join('');
-  const optHtml = mvPlayerOptions().map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('');
-  const sel = id => `<select id="${id}" class="cell-input" style="width:150px;"><option value="">${t('opt_pick_mv_player')}</option>${optHtml}</select>`;
+  const chips = mvPairs.map((pr, i) => mvPairChip(pr, i, 'removeMvPair')).join('');
   host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}`
-    + `${sel('ot-mv-a')}<span style="color:#806030;">↔</span>${sel('ot-mv-b')}`
-    + `<button class="btn btn-ghost btn-sm" onclick="addMvPairFromSelects()">${t('btn_add_mv_pair')}</button></div>`;
+    + `${mvPairPickersHtml('ot-mv', 'addMvPairFromSelects')}</div>`;
 }
 
 // ── Block Pairs (v5.17): one of OUR players never attacks one DEFENDER ─────────

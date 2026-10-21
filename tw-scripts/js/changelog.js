@@ -18,6 +18,18 @@
 // v6 entries into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v6.3.1', date: '2026-10-21',
+    en: [
+      `<b>🏖 Account Sitting</b> (formerly "MV Players", on Offensive and Defensive Targets): a pair is now <b>Main Player – Sitted Player</b>, in that order — the main player is the one sitting the other account. The English wording says account sitting instead of vacation mode (MV). The pairing rules are unchanged: the two never attack the same enemy player, never support the same target and never support each other's villages.`,
+      `<b>?t= in the sitted player's links.</b> Every attack and support rally-point link from a sitted player's village — the plan tables, the BB and per-player exports, Plan Defense, Manage Defensive and Timings — now carries that account's id (<code>game.php?t=…&amp;village=…</code>), so the main player opens it on the sitted account instead of their own. The id comes from the village database, and only when the database's owner of the village is that player. The attack-planner (v1.11.2) keeps it from a per-player import.`,
+      `<b>Check the order of your saved pairs.</b> Pairs saved before v6.3.1 keep the order they were entered in, and the <b>second</b> name now gets the ?t= links. Hover a pair to see who is which; its ⇄ swaps them.`,
+    ],
+    es: [
+      `<b>🏖 Jugadores MV</b> (Objetivos Ofensivos y Defensivos): una pareja es ahora <b>Jugador Principal – Jugador en MV</b>, en ese orden — el jugador principal es quien lleva la otra cuenta en modo vacaciones. En inglés el panel pasa a llamarse Account Sitting. Las reglas de la pareja no cambian: los dos nunca atacan al mismo jugador enemigo, nunca apoyan el mismo objetivo y nunca apoyan las aldeas del otro.`,
+      `<b>?t= en los enlaces del jugador en MV.</b> Todos los enlaces de ataque y de apoyo de la plaza de reuniones de una aldea del jugador en MV — las tablas del plan, las exportaciones BB y por jugador, Planificar Defensa, Gestionar Defensiva y Tiempos — llevan ahora el id de esa cuenta (<code>game.php?t=…&amp;village=…</code>), así el jugador principal lo abre en la cuenta en MV y no en la suya. El id sale de la base de datos de aldeas, y solo cuando el dueño de la aldea en la base de datos es ese jugador. El attack-planner (v1.11.2) lo conserva al importar el plan por jugador.`,
+      `<b>Revisa el orden de tus parejas guardadas.</b> Las parejas guardadas antes de la v6.3.1 conservan el orden en que se introdujeron, y ahora es el <b>segundo</b> nombre el que recibe los enlaces con ?t=. Pasa el ratón por una pareja para ver quién es quién; su ⇄ las intercambia.`,
+    ],
+  },
   { ver: 'v6.3.0', date: '2026-10-20',
     en: [
       `<b>⚖ Player Share</b> (Offensive Targets, next to ⏰ Player Schedules). A new popup lists every player in the loaded files with their off-village count and a <b>share</b> (default 100%). Set a player to e.g. 50% and Generate Plan sends <b>at most half of their available offs</b> — counted after the noble-launch / split-off reservations, other offensives, away offs, the distance holdbacks and the offs that can't reach any target in range or in time, rounded down (50% of 7 = 3; 0% = none). The cap is hard: once reached, no more of that player's offs are taken even if a slot stays open (warned); offs pinned to them by name are always sent but count toward it. Escorts, noble trains, fakes and catapult attacks are not affected. The plan's warnings say whose share was reached, and the off counts gain a "held (player share)" figure.`,

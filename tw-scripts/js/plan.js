@@ -122,12 +122,31 @@ function orderUnitsFor(mode, pace, v) {
   return null;
 }
 
+// Account sitting (v6.3.1): a source village of the SITTED player of an mvPairs pair
+// ([main, sitted]) gets that account's id as t=, so the main player opens the link on the
+// sitted account — without it the game opens it as their own. The id is the world DB's owner
+// of the village, used only when that owner IS the sitted player and the troop file doesn't
+// name someone else there (a stale DB never hands out another player's id). Names line up
+// through decodeName, as in detectMyTribe. '' = a plain link.
+function sittedAccountId(srcCoord, sv) {
+  if (typeof mvPairs === 'undefined' || !mvPairs.length || !sv) return '';
+  const id = String(sv.playerId || '');
+  if (!/^[1-9]\d*$/.test(id)) return '';
+  const owner = String(playerDb[id] || '').toLowerCase().trim();
+  if (!owner) return '';
+  const norm = s => decodeName(s).toLowerCase().trim();
+  const tv = (typeof troopByCoord !== 'undefined') ? troopByCoord[srcCoord] : null;
+  if (tv && norm(tv.player) !== owner) return '';
+  return mvPairs.some(p => Array.isArray(p) && p[1] && norm(p[1]) === owner) ? id : '';
+}
+
 function rallyUrl(srcCoord, tgtCoord, units) {
   const sv = coordDb[srcCoord];
   const tv = coordDb[tgtCoord];
   if (!sv || !tv || !otCfg.serverUrl) return null;
   const host = otCfg.serverUrl.replace(/^https?:\/\//, '');
-  let url = `https://${host}/game.php?village=${sv.id}&screen=place&target=${tv.id}`;
+  const sit = sittedAccountId(srcCoord, sv); // first, as in the game's own links
+  let url = `https://${host}/game.php?${sit ? `t=${sit}&` : ''}village=${sv.id}&screen=place&target=${tv.id}`;
   for (const [u, n] of Object.entries(units || {})) if (n > 0) url += `&${u}=${n}`;
   // NOTE: the catapult/off target building is chosen on the CONFIRM screen and is NOT preselectable
   // via the rally-point URL, so we do NOT append &building=. The target building is surfaced as text
