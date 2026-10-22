@@ -2759,7 +2759,8 @@
     $("groupbytarget").addEventListener("change", function () {
       if (state.rows.length) render();
     });
-    $("hidearrived").addEventListener("change", function () {
+    // Guarded: a cached pre-IF2 incomings.html has no such checkbox.
+    if ($("hidearrived")) $("hidearrived").addEventListener("change", function () {
       if (state.rows.length) render();
     });
     setInterval(tickArrivals, 60000);
