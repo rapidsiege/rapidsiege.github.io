@@ -54,6 +54,7 @@
     byCoord: {},        // "x|y" -> village record {id,name,x,y,points,owner}
     playerIdByName: {}, // attacker name -> player id learned from villages.json (resolvePlayers)
     lastConquer: {},    // village id -> {t, oldOwner, newOwner}
+    conquersById: {},   // village id -> every conquest of it, oldest first
     cfg: null,          // world config (speeds, attack_gap, snob max_dist)
     mode: "coords",     // "coords" | "attacks"
     rows: [],           // last analysis result (all rows)
@@ -376,9 +377,9 @@
     attacks.forEach(function (a) {
       var v = state.byCoord[a.origin.key];
       var owner = v && v.owner && v.owner.id != null && v.owner.name ? v.owner : null;
-      var lc = v && state.lastConquer[v.id];
-      if (owner && lc && a.sent != null && lc.t > a.sent && lc.oldOwner && lc.oldOwner.name) {
-        owner = lc.oldOwner; // launched before the conquest → previous owner
+      var lc = v && a.sent != null ? conquestsAround(v.id, a.sent).after : null;
+      if (owner && lc && lc.oldOwner && lc.oldOwner.name) {
+        owner = lc.oldOwner; // launched before the first later conquest → its previous owner
       }
       if (!owner) return;
       if (!a.playerSource) {
@@ -1022,6 +1023,8 @@
       if (!prev || c.t > prev.t) {
         state.lastConquer[id] = { t: c.t, oldOwner: c.oldOwner, newOwner: c.newOwner };
       }
+      (state.conquersById[id] = state.conquersById[id] || [])
+        .push({ t: c.t, oldOwner: c.oldOwner, newOwner: c.newOwner });
       // Fallback locator: a village missing from villages.json (data lag or
       // deleted) still resolves to an id via its last conquest record.
       if (c.village.x != null && !state.byCoord[c.village.x + "|" + c.village.y]) {
@@ -1031,6 +1034,22 @@
         };
       }
     }
+    Object.keys(state.conquersById).forEach(function (k) {
+      state.conquersById[k].sort(function (a, b) { return a.t - b.t; });
+    });
+  }
+
+  // A village can change hands several times around one attack's flight (a
+  // retake on a front): the conquest judged against `t` is not only the
+  // latest. `before` = the last conquest at or before t, `after` = the FIRST
+  // one strictly after it (the one that took the village from the sender).
+  function conquestsAround(id, t) {
+    var list = state.conquersById[id] || [], before = null, after = null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].t <= t) before = list[i];
+      else { after = list[i]; break; }
+    }
+    return { before: before, after: after };
   }
 
   // Shared reports DB — degrades gracefully: an unreachable Worker only
@@ -1468,28 +1487,38 @@
 
     if (row.conquer && opts.maxDays > 0) {
       var win = opts.maxDays * 86400;
+      // Judged against EVERY conquest (conquestsAround), not only the latest
+      // one shown in the column: taken shortly before the send and retaken
+      // after it is both "new" and "after".
       function verdict(t) {
-        var age = t - row.conquer.t;
-        return age < 0 ? "after" : (age < win ? "new" : "old");
+        var c = conquestsAround(v.id, t);
+        c.isNew = !!c.before && t - c.before.t < win;
+        c.isAfter = !!c.after;
+        return c;
       }
       if (range) {
         // The sent time is only bracketed, so the two ends can disagree. Say
         // "posible" when they do rather than picking an end and sounding sure.
         var vMin = verdict(range.min), vMax = verdict(range.max);
-        if (vMin === vMax && vMin === "new") {
+        var bothNew = vMin.isNew && vMax.isNew, bothAfter = vMin.isAfter && vMax.isAfter;
+        if (bothNew) {
           row.flags.push({ cls: "new", text: "Conquistado poco antes del envío (estimado por distancia)" });
-        } else if (vMin === vMax && vMin === "after") {
+        }
+        if (bothAfter) {
           row.flags.push({ cls: "after", text: "Conquistado tras el envío (estimado por distancia)" });
-        } else if (vMin !== "old" || vMax !== "old") {
+        }
+        if (!bothNew && (vMin.isNew || vMax.isNew || vMin.isAfter !== vMax.isAfter)) {
           row.flags.push({ cls: "maybe", text: "Posiblemente conquistado poco antes del envío (envío solo estimado)" });
         }
       } else {
-        var age = refT - row.conquer.t;
-        if (age < 0) {
+        var at = verdict(refT);
+        if (at.isAfter) {
           // Conquered after this attack left: the troops in the air belong to
           // the previous owner. Not the same as "recently taken".
-          row.flags.push({ cls: "after", text: "Conquistado tras el envío (" + TW.dur(-age) + " después)" });
-        } else if (age < win) {
+          row.flags.push({ cls: "after", text: "Conquistado tras el envío (" + TW.dur(at.after.t - refT) + " después)" });
+        }
+        if (at.isNew) {
+          var age = refT - at.before.t;
           row.flags.push({
             cls: "new",
             text: state.mode === "attacks"
