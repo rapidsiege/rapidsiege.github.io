@@ -27,6 +27,7 @@
         <button type="button" class="tab" data-tab="pueblos">Pueblos</button>
         <button type="button" class="tab" data-tab="miembros">Miembros</button>
         <button type="button" class="tab" data-tab="conquistas">Conquistas</button>
+        <button type="button" class="tab" data-tab="rivales">Rivales</button>
       </nav>
 
       <section class="tab-panel" data-panel="perfil">
@@ -181,6 +182,22 @@
             <span class="pg-info" data-pg="info">—</span>
             <button type="button" data-pg="next">Siguiente ›</button>
           </div>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="rivales" hidden>
+        <div class="scope rival-range">
+          <button type="button" class="seg" data-range="7">7 días</button>
+          <button type="button" class="seg" data-range="30">30 días</button>
+          <button type="button" class="seg active" data-range="0">Todo</button>
+        </div>
+        <div class="box-title sub">Rivales <span id="rivalsCount" class="count"></span></div>
+        <p class="tz-note">Conquistas contra cada tribu (la tribu del jugador el día de la conquista). Las internas no cuentan. Neto = ganados − perdidos. Haz clic en una cabecera para ordenar.</p>
+        <div class="table-wrap">
+          <table class="vis widget sortable">
+            <thead id="rivalsHead"></thead>
+            <tbody id="rivalsBody"></tbody>
+          </table>
         </div>
       </section>
     </div>

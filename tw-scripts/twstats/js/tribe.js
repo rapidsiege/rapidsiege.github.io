@@ -253,6 +253,103 @@
 
   function countNote(list) { return "(" + TW.commas(list.length) + ")"; }
 
+  // Rivales: per opposing tribe, villages won from them (gains by the old
+  // owner's tribe) and lost to them (losses by the new owner's tribe), from the
+  // external lists only (splitConquests drops the internal transfers). The
+  // tribe is the one build.py resolved for the conquest day. Barbarian
+  // villages and tribeless players get one row each. 7/30 days count back from
+  // the newest data point, never from the viewer's clock.
+  var rstate = { gains: [], losses: [], now: 0, days: 0, sort: null, dir: "desc" };
+
+  function rivalKey(o) {
+    if (!o) return { key: "barb", label: '<span class="barb">Bárbaros</span>', sortName: "￿1" };
+    if (!o.tribe) return { key: "none", label: '<span class="barb">Sin tribu</span>', sortName: "￿2" };
+    return { key: "t" + o.tribe.id, label: TW.tribeLink(o.tribe.id, o.tribe.tag),
+      sortName: String(o.tribe.tag || "").toLowerCase() };
+  }
+  function rivalRows() {
+    var since = rstate.days ? rstate.now - rstate.days * 86400 : -Infinity;
+    var by = {}, rows = [];
+    function add(c, owner, field) {
+      if (c.t < since) return;
+      var k = rivalKey(owner), r = by[k.key];
+      if (!r) { r = by[k.key] = { label: k.label, sortName: k.sortName, won: 0, lost: 0, last: 0 }; rows.push(r); }
+      r[field]++;
+      if (c.t > r.last) { r.last = c.t; r.label = k.label; r.sortName = k.sortName; }   // newest tag wins
+    }
+    rstate.gains.forEach(function (c) { add(c, c.oldOwner, "won"); });
+    rstate.losses.forEach(function (c) { add(c, c.newOwner, "lost"); });
+    rows.forEach(function (r) { r.net = r.won - r.lost; });
+    return rows;
+  }
+  var RIVAL_COLS = [
+    { key: "name", label: "Tribu rival", cls: "", dir: "asc", get: function (r) { return r.sortName; } },
+    { key: "won", label: "Ganados a ellos", cls: "col-pts", dir: "desc", get: function (r) { return r.won; } },
+    { key: "lost", label: "Perdidos ante ellos", cls: "col-pts", dir: "desc", get: function (r) { return r.lost; } },
+    { key: "net", label: "Neto", cls: "col-pts", dir: "desc", get: function (r) { return r.net; } },
+    { key: "last", label: "Último", cls: "col-date", dir: "desc", get: function (r) { return r.last; } },
+  ];
+  function renderRivals() {
+    var head = "<tr>";
+    RIVAL_COLS.forEach(function (c) {
+      var arrow = rstate.sort === c.key ? (rstate.dir === "asc" ? " ▲" : " ▼") : "";
+      head += "<th class='" + c.cls + " th-sort' data-rsort='" + c.key + "'>" + c.label +
+        "<span class='arrow'>" + arrow + "</span></th>";
+    });
+    $("rivalsHead").innerHTML = head + "</tr>";
+
+    var rows = rivalRows();
+    var col = RIVAL_COLS.filter(function (c) { return c.key === rstate.sort; })[0];
+    var mul = rstate.dir === "asc" ? 1 : -1;
+    rows.sort(function (a, b) {
+      if (col) {
+        var va = col.get(a), vb = col.get(b);
+        if (va !== vb) return (va < vb ? -1 : 1) * mul;
+      }
+      return (b.won + b.lost) - (a.won + a.lost) || b.last - a.last;   // default: most conquests between both
+    });
+    var html = "";
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      html += "<tr class='" + (i % 2 ? "r2" : "r1") + "'>" +
+        "<td>" + r.label + "</td>" +
+        "<td class='col-pts'>" + TW.commas(r.won) + "</td>" +
+        "<td class='col-pts'>" + TW.commas(r.lost) + "</td>" +
+        "<td class='col-pts'>" + TW.deltaCell(r.net) + "</td>" +
+        "<td class='col-date' title='" + TW.fmtStamp(r.last) + "'>" + TW.relTime(r.last, rstate.now) + "</td></tr>";
+    }
+    $("rivalsBody").innerHTML = html || "<tr class='r1'><td colspan='5' class='status'>Sin conquistas en este periodo.</td></tr>";
+    $("rivalsCount").textContent = "(" + TW.commas(rows.length) + ")";
+    var segs = document.querySelectorAll(".rival-range .seg");
+    for (var j = 0; j < segs.length; j++) {
+      segs[j].classList.toggle("active", +segs[j].getAttribute("data-range") === rstate.days);
+    }
+  }
+  function initRivals(cs, series) {
+    rstate.gains = cs.gains; rstate.losses = cs.losses;
+    var now = series.length ? series[series.length - 1].t : 0;
+    [cs.gains, cs.losses].forEach(function (l) { if (l.length && l[0].t > now) now = l[0].t; });   // newest first
+    rstate.now = now;
+    renderRivals();
+  }
+  function wireRivals() {
+    var segs = document.querySelectorAll(".rival-range .seg");
+    for (var i = 0; i < segs.length; i++) {
+      segs[i].addEventListener("click", function () { rstate.days = +this.getAttribute("data-range"); renderRivals(); });
+    }
+    $("rivalsHead").addEventListener("click", function (e) {
+      var th = e.target.closest ? e.target.closest("[data-rsort]") : null;
+      if (!th) return;
+      var key = th.getAttribute("data-rsort");
+      if (key === rstate.sort) rstate.dir = rstate.dir === "asc" ? "desc" : "asc";
+      else {
+        rstate.sort = key;
+        rstate.dir = RIVAL_COLS.filter(function (c) { return c.key === key; })[0].dir;
+      }
+      renderRivals();
+    });
+  }
+
   // Conquest filter: "all" | "gain" | "lose" | "internal" — show/hide the sections.
   function setConqFilter(mode) {
     var g = $("gainsSection"), l = $("lossesSection"), n = $("internalSection");
@@ -320,12 +417,14 @@
         $("gainsCount").textContent = countNote(cs.gains);
         $("lossesCount").textContent = countNote(cs.losses);
         $("internalCount").textContent = countNote(cs.internal);
+        initRivals(cs, d.series || []);
         $("status").style.display = "none";
         $("content").hidden = false;
         TW.initTabs();
         setConqFilter("all");
         wireInteractions();
         wireMembers();
+        wireRivals();
       })
       .catch(function (e) {
         if (/HTTP 404/.test(e.message)) fail("Tribu no encontrada (id " + id + ").");

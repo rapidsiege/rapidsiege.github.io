@@ -139,7 +139,7 @@ button:disabled { opacity: .45; cursor: default; }
 .scope .seg:first-child { border-radius: 3px 0 0 3px; }
 .scope .seg:last-child { border-radius: 0 3px 3px 0; margin-left: -1px; }
 .scope .seg.active { background: var(--bg-tab-active); }
-.conq-filter { margin-bottom: 10px; }
+.conq-filter, .rival-range { margin-bottom: 10px; }
 /* tribe Miembros «Comparar:» metric select (styled as the filter-bar selects) */
 #memberCompare { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; }
 #memberCompare[hidden] { display: none; }
