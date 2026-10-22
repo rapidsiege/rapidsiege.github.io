@@ -332,6 +332,7 @@
           sent: sent,
           sentSource: sentSource,
           returnT: retExplicit != null ? retExplicit : (durSec != null ? arrival + durSec : null),
+          returnExplicit: retExplicit != null,   // false → deduced (Backtime shows «≈»)
           durationMin: durSec != null ? durSec / 60 : null,
           arrival: arrival,
           arrivalMs: arrivalMs,
@@ -1936,6 +1937,7 @@
       "<tr class='r1'><td colspan='" + cols + "' class='status'>Sin resultados.</td></tr>";
     $("tableWrap").hidden = false;
     updateShowing(shown.length);
+    if (state.mode === "attacks") buildBacktime();
   }
 
   function updateShowing(shownCount) {
@@ -2060,6 +2062,74 @@
     $("combos").innerHTML =
       tbl("Pueblo de origen (" + origins.length + ")", origins, true) +
       tbl("Pueblo objetivo (" + dests.length + ")", dests, true);
+  }
+
+  // «Backtime» (2026-10-22): the rows flagged «⚠ Posible nuke real» (known
+  // origins only, like the summary's «posibles reales»), sorted by the time
+  // their army gets home — when your own attack on that village should land.
+  // Rebuilt by render(), so it follows the applied filters; «Ocultar ya
+  // llegados» does NOT apply here (a landed nuke is exactly the one to backtime).
+  // A return the dump did not state (deduced from duration/arrival) shows «≈».
+  function backtimeRows() {
+    if (state.mode !== "attacks") return [];
+    return state.rows.filter(function (r) {
+      return !r.unknown && r.attack && passesFilters(r, true) &&
+        r.flags.some(function (f) { return f.cls === "nuke"; });
+    }).sort(function (x, y) {
+      var a = x.attack.returnT, b = y.attack.returnT;
+      if (a == null || b == null) return (a == null) - (b == null);
+      return a - b || x.attack.origin.key.localeCompare(y.attack.origin.key);
+    });
+  }
+  function buildBacktime() {
+    var el = $("backtime"), panel = $("panelBacktime");
+    if (!el || !panel) return;
+    var list = backtimeRows(), now = nowSec();
+    panel.querySelector("summary").textContent = "Backtime — posibles nukes reales (" + list.length + ")";
+    if (!list.length) {
+      el.innerHTML = "<p class='tz-note'>Ningún «⚠ Posible nuke real» entre los ataques filtrados.</p>";
+      return;
+    }
+    var bb = [];
+    var body = list.map(function (r, i) {
+      var a = r.attack, v = r.village, tg = a.target, tgv = tg ? state.byCoord[tg.key] : null;
+      var approx = a.returnT != null && !a.returnExplicit;
+      var retTxt = a.returnT == null ? "<span class='barb'>desconocido</span>"
+        : (approx ? "<span class='derived' title='Deducido de la duración (el volcado no trae la hora de regreso)'>≈ "
+          : "<span>") + TW.fmtTime(a.returnT) + "</span>" +
+          "<br><span class='arr-rel" + (a.returnT <= now ? " arr-done" : "") + "'>" +
+          (a.returnT <= now ? "ya volvió" : arrivalRelText({ arrival: a.returnT }, now).replace(/^en /, "vuelve en ")) + "</span>";
+      var off = r.originNote === "OFF" ? " <span class='flag flag-nuke' title='Informe reciente: pueblo OFF'>OFF</span>" : "";
+      var owner = v && v.owner && v.owner.name ? v.owner.name : (a.player && a.player !== "?" ? a.player : "");
+      bb.push("[coord]" + a.origin.key + "[/coord]" + (owner ? " [player]" + owner + "[/player]" : "") +
+        " regreso " + (a.returnT == null ? "?" : (approx ? "≈ " : "") + TW.fmtTime(a.returnT)) +
+        (tg ? " → [coord]" + tg.key + "[/coord]" : ""));
+      return "<tr class='" + (i % 2 ? "r2" : "r1") + "'>" +
+        "<td class='col-rank'>" + (i + 1) + ".</td>" +
+        "<td>" + TW.villageCell(v) + off + "</td>" +
+        "<td>" + TW.ownerCell(v.owner) + "</td>" +
+        "<td>" + TW.esc(a.speed ? a.speed.label : "?") + "</td>" +
+        "<td class='col-date'>" + retTxt + "</td>" +
+        "<td>" + (tgv ? TW.villageCell(tgv) : tg ? TW.esc(tg.key) : "<span class='barb'>—</span>") + "</td></tr>";
+    }).join("");
+    el.innerHTML = "<div class='table-wrap'><table class='vis widget'><thead><tr>" +
+      "<th class='col-rank'>#</th><th>Pueblo de origen</th><th>Propietario</th><th>Tropa</th>" +
+      "<th class='col-date'>Regreso</th><th>Objetivo</th></tr></thead><tbody>" + body + "</tbody></table></div>" +
+      "<p class='tz-note'>Ordenado por hora de regreso (hora del servidor). Respeta los filtros aplicados.</p>" +
+      "<label class='tz-note' for='backtimeBB'>Coords + regreso (BB-code):</label>" +
+      "<textarea id='backtimeBB' class='coord-dump' rows='4' readonly spellcheck='false'>" + TW.esc(bb.join("\n")) + "</textarea>" +
+      "<div class='scope'><button type='button' id='backtimeCopy' class='seg'>Copiar coords + regreso</button></div>" +
+      "<div id='backtimeNote' class='tz-note' hidden></div>";
+    $("backtimeCopy").addEventListener("click", function () {
+      var text = $("backtimeBB").value, note = $("backtimeNote");
+      copyText(text, function () {
+        note.textContent = "Copiado — " + list.length + " pueblo" + (list.length === 1 ? "" : "s") + " con su hora de regreso.";
+        note.hidden = false;
+      }, function () {
+        note.textContent = "No se pudo copiar automáticamente; selecciona el texto de arriba y cópialo a mano.";
+        note.hidden = false;
+      });
+    });
   }
 
   // Wall / loyalty / troops come from the dump itself — a SNAPSHOT as of export,
@@ -2452,6 +2522,7 @@
           // possible nuke a probable fake.
           var rt = reportTypeOf(a.origin.key);
           var originNote = (rt && !rt.stale && rt.sure) ? rt.type : null;
+          row.originNote = originNote;
           // CATAS (2026-08-06): the origin has qualifying catapult strikes on
           // record (sentCat: ≥50 cats, no regular ram off) AND this command
           // travels at a pace that could carry them (siege/noble speed; an
