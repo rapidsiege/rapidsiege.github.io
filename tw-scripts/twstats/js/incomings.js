@@ -865,8 +865,9 @@
     btn.textContent = "Copiar IDs fakes" + (n ? " (" + n + ")" : "");
     btn.title = n
       ? "Copia los IDs de los " + n + " ataques que el .json confirma como fake (≤ " + IGNORE_MAX_UNITS +
-        " unidades, sin noble). En el juego, en Resumen → Entrantes, ejecuta «Script ignorar fakes», pega los IDs y pulsa «Seleccionar» o «Seleccionar y renombrar»; luego pulsa el botón Ignorar del juego."
-      : "Se activa cuando algún ataque emparejado con el .json tiene ≤ " + IGNORE_MAX_UNITS + " unidades y ningún noble.";
+        " unidades visibles, sin noble y sin icono de ataque mediano/grande). En el juego, en Resumen → Entrantes, ejecuta «Script ignorar fakes», pega los IDs y pulsa «Seleccionar» o «Seleccionar y renombrar»; luego pulsa el botón Ignorar del juego."
+      : "Se activa cuando algún ataque emparejado con el .json tiene ≤ " + IGNORE_MAX_UNITS +
+        " unidades visibles, ningún noble y no lleva icono de ataque mediano/grande.";
     var note = $("ignoreNote");
     if (note && !n) note.hidden = true;
   }
@@ -952,7 +953,7 @@
     var list = ids.join(",");
     copyText(list, function () {
       ignoreNoteShow("IDs copiados — " + ids.length + " ataque" + (ids.length === 1 ? "" : "s") +
-        " fake (≤ " + IGNORE_MAX_UNITS + " unidades según el .json). En el juego abre Resumen → Entrantes, " +
+        " fake (≤ " + IGNORE_MAX_UNITS + " unidades visibles según el .json, sin noble ni icono mediano/grande). En el juego abre Resumen → Entrantes, " +
         "ejecuta «Script ignorar fakes» desde la barra rápida, pega los IDs en la ventana y pulsa «Seleccionar» (o «Seleccionar y renombrar»); luego pulsa el botón Ignorar del juego.");
     }, function () {
       // No clipboard (permissions / old browser): show the list so it can be copied by hand.
