@@ -2446,7 +2446,10 @@
     return opts;
   }
 
+  // Both drop the previous analysis: the minute tick and the table toggles
+  // re-show whatever state.rows holds.
   function fail(msg) {
+    state.rows = []; state.arrivedN = 0;
     $("status").textContent = msg;
     $("status").style.display = "";
     $("summary").hidden = true;
@@ -2460,6 +2463,7 @@
   // like the button did nothing. Anything that goes wrong must SAY so.
   function reportError(e) {
     if (window.console) console.error("Entrantes:", e);
+    state.rows = []; state.arrivedN = 0;
     var stale = typeof TW.srvEpoch !== "function" || typeof TW.apiFetch !== "function";
     $("status").textContent = stale
       ? "Tu navegador está usando una versión antigua de js/common.js en caché. " +
