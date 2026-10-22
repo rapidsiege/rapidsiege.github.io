@@ -605,6 +605,12 @@
         '.webp" alt="' + c.size + '" title="Ataque ' + ORD_SIZE_ES[c.size] +
         ' (icono del juego)">'
       : "";
+    // Troops not shared with you: the exporter writes every unit as 0, so
+    // "no chips" here means UNKNOWN, never an empty command.
+    if (ordHidden(c)) {
+      chips = ['<span class="ord-unit ord-hidden" title="El .json no trae las tropas de este comando ' +
+        '(no compartidas): se desconocen">tropas ocultas</span>'];
+    }
     if (!chips.length && !size) return "";
     return '<span class="ord-units" title="Unidades según el .json de órdenes' +
       (c.label ? " · " + TW.esc(c.label) : "") + '">' + size + chips.join("") + "</span>";
@@ -626,15 +632,19 @@
     { key: "multi", label: "Más de 2 unidades",
       title: "Más de 2 unidades en total según el .json: no puede ser el fake típico de 1 espía + 1 ariete/catapulta" },
     { key: "unknown", label: "Tropas desconocidas",
-      title: "Sin orden emparejada en el .json: las tropas del comando se desconocen" },
+      title: "Sin orden emparejada en el .json, o emparejada con las tropas ocultas: las tropas del comando se desconocen" },
   ];
   function ordUnitTotal(c) {
     var n = 0;
     for (var u in c.units) n += c.units[u] || 0;
     return n;
   }
+  // The exporter has no field for "troops not shared": it writes every unit as
+  // 0 (incomingOrdersv2-2.js ioBuildJson). A real command always carries at
+  // least one unit, so all-zero units = the army is unknown.
+  function ordHidden(c) { return ordUnitTotal(c) === 0; }
   function ordFilterHit(a, want) {
-    if (want === "unknown") return !a.order;
+    if (want === "unknown") return !a.order || ordHidden(a.order);
     if (!a.order) return false;
     if (want === "multi") return ordUnitTotal(a.order) > 2;
     return a.order.size === want;
@@ -688,6 +698,9 @@
       var o = r.attack && r.attack.order;
       if (!o || o.id == null || o.id === "" || o.contains_snob) return;
       if ((o.units.snob || 0) > 0 || ordUnitTotal(o) > IGNORE_MAX_UNITS) return;
+      // Hidden troops (all zero) are unknown, not a token fake; and the game's
+      // own medium/large size icon contradicts a ≤ 2-unit army — never ignore.
+      if (ordHidden(o) || o.size === "medium" || o.size === "large") return;
       var id = String(o.id);
       if (!/^\d+$/.test(id) || seen[id]) return;   // ids are numeric in-game; never inject text
       seen[id] = true;
