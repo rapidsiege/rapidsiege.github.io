@@ -62,8 +62,8 @@
   ];
 
   function renderCharts(series) {
-    TW.metricChart($("perfilChart"), series, METRICS, { width: 460, height: 200 });
-    TW.metricChart($("histChart"), series, METRICS, { width: 900, height: 280 });
+    TW.metricChart($("perfilChart"), series, METRICS, { width: 460, height: 200, daily: true });
+    TW.metricChart($("histChart"), series, METRICS, { width: 900, height: 280, daily: true });
   }
 
   // OD history cell. The kill files list only OD > 0, so an absent OD is 0;
@@ -78,7 +78,7 @@
     for (var i = series.length - 1, k = 0; i >= 0; i--, k++) {
       var s = series[i], prev = i > 0 ? series[i - 1] : null;
       html += "<tr class='" + (k % 2 ? "r2" : "r1") + "'>" +
-        "<td>" + TW.fmtDate(s.t) + "</td>" +
+        "<td>" + TW.fmtDayUTC(s.t) + "</td>" +
         TW.changeCell(s.rank, prev && prev.rank, { invert: true }) +
         TW.changeCell(s.points, prev && prev.points) +
         TW.changeCell(s.villages, prev && prev.villages) +

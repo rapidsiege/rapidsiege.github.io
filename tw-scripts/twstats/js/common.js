@@ -52,10 +52,19 @@
   }
 
   var WD_FMT = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", weekday: "short" });
-  function weekday(t) {       // "Lun", "Mar", … (Spanish, server tz)
-    var s = WD_FMT.format(new Date(t * 1000)).replace(/\.$/, "");
+  var WD_FMT_UTC = new Intl.DateTimeFormat("es-ES", { timeZone: "UTC", weekday: "short" });
+  function wdName(fmt, t) {
+    var s = fmt.format(new Date(t * 1000)).replace(/\.$/, "");
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
+  function weekday(t) { return wdName(WD_FMT, t); }   // "Lun", "Mar", … (Spanish, server tz)
+
+  // DAILY-bucket labels. build.py keeps the latest snapshot of each UTC day
+  // (typically 21:00-23:59Z = already tomorrow in Madrid), so a daily point is
+  // labelled by its UTC day — in Madrid time two buckets could share a date.
+  // Real moments (conquests, first seen, village changes) stay in Madrid.
+  function fmtDayUTC(t) { return new Date(t * 1000).toISOString().slice(0, 10); }  // "YYYY-MM-DD"
+  function weekdayUTC(t) { return wdName(WD_FMT_UTC, t); }
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
@@ -262,6 +271,7 @@
     WORLD: WORLD, DATA: DATA, GAME: GAME, SRV_FMT: SRV_FMT,
     apiFetch: apiFetch,
     fmtTime: fmtTime, fmtStamp: fmtStamp, fmtDate: fmtDate, fmtDateTime: fmtDateTime, weekday: weekday,
+    fmtDayUTC: fmtDayUTC, weekdayUTC: weekdayUTC,
     srvEpoch: srvEpoch,
     esc: esc, commas: commas, continent: continent, loadJSON: loadJSON,
     playerLink: playerLink, tribeLink: tribeLink,
