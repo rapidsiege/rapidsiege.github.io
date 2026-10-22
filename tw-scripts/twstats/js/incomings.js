@@ -253,9 +253,17 @@
   // "[b]<label>:[/b] <numbers>" — wall level, loyalty, or the defender troop row.
   var TARGET_FIELD_RE = /\[b\]([^\[]*)\[\/b\]\s*([\d\s]+)\s*$/i;
 
+  // The same export pasted twice (or a re-export overlapping an earlier one)
+  // would double every command into a false «Tren ×2» and double AS i/n. A
+  // line WITH milliseconds is identified by target + origin + exact arrival —
+  // the identity orderFor uses; labels may differ between exports. Without
+  // milliseconds a same-second train from one village prints identical lines,
+  // so those are dropped only when their whole target block repeats: a line
+  // in a repeated block consumes one identical line of the earlier block(s).
   function parseAttacks(text) {
     var lines = text.split(/\r?\n/), out = [], targets = {}, cur = null;
-    var skipped = [], inconsistent = 0;
+    var skipped = [], inconsistent = 0, duplicates = 0;
+    var seenMs = {}, linesByTarget = {}, earlier = {};
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
 
@@ -271,6 +279,20 @@
         var aMonth = Number(arrM[2]);
         var arrival = TW.srvEpoch(aYear, aMonth, Number(arrM[1]),
           Number(arrM[4]), Number(arrM[5]), Number(arrM[6]));
+        var arrivalMs = arrM[7] ? Number((arrM[7] + "00").slice(0, 3)) : 0;
+
+        var oKey = Number(origin[1]) + "|" + Number(origin[2]);
+        var tKey = cur ? cur.key : "";
+        if (arrM[7]) {
+          var idKey = tKey + ">" + oKey + "@" + arrival + ":" + arrivalMs;
+          if (seenMs[idKey]) { duplicates++; continue; }
+          seenMs[idKey] = true;
+        } else {
+          var txt = line.trim();
+          if (earlier[txt] > 0) { earlier[txt]--; duplicates++; continue; }
+          var own = linesByTarget[tKey] || (linesByTarget[tKey] = {});
+          own[txt] = (own[txt] || 0) + 1;
+        }
 
         var sm = RE_SENT.exec(line), rm = RE_RETURN.exec(line), dm = RE_DURATION.exec(line);
         var sentExplicit = sm ? datedAgainst(sm, aYear, aMonth, -1) : null;
@@ -298,14 +320,14 @@
           label: lm ? lm[1] : "",
           player: playerName || "?",
           playerSource: playerName ? (tm ? "tag" : "label") : null,
-          origin: { key: Number(origin[1]) + "|" + Number(origin[2]), x: Number(origin[1]), y: Number(origin[2]) },
+          origin: { key: oKey, x: Number(origin[1]), y: Number(origin[2]) },
           target: cur,
           sent: sent,
           sentSource: sentSource,
           returnT: retExplicit != null ? retExplicit : (durSec != null ? arrival + durSec : null),
           durationMin: durSec != null ? durSec / 60 : null,
           arrival: arrival,
-          arrivalMs: arrM[7] ? Number((arrM[7] + "00").slice(0, 3)) : 0,
+          arrivalMs: arrivalMs,
         });
         continue;
       }
@@ -313,6 +335,12 @@
       var t = TARGET_RE.exec(line);
       if (t) {
         var key = Number(t[1]) + "|" + Number(t[2]);
+        // The ms-less lines this target collected so far are what a repeat of
+        // its block may consume (a copy of them, so the new block's own lines
+        // are never matched against each other).
+        var prev = linesByTarget[key] || {};
+        earlier = {};
+        for (var p in prev) earlier[p] = prev[p];
         cur = targets[key] || (targets[key] = {
           key: key, x: Number(t[1]), y: Number(t[2]),
           wall: null, loyalty: null, def: null,
@@ -332,7 +360,8 @@
         else if (cur.loyalty == null) cur.loyalty = nums[0];
       }
     }
-    return { attacks: out, targets: targets, skipped: skipped, inconsistent: inconsistent };
+    return { attacks: out, targets: targets, skipped: skipped, inconsistent: inconsistent,
+             duplicates: duplicates };
   }
 
   // === derived attack facts ================================================
@@ -2191,6 +2220,11 @@
     if (parsed && parsed.inconsistent) {
       warns.push("⚠ " + parsed.inconsistent + " ataque" + (parsed.inconsistent === 1 ? "" : "s") +
         " con envío + duración que no cuadran con la llegada");
+    }
+    if (parsed && parsed.duplicates) {
+      warns.push(parsed.duplicates + " línea" + (parsed.duplicates === 1 ? "" : "s") +
+        " duplicada" + (parsed.duplicates === 1 ? "" : "s") + " ignorada" + (parsed.duplicates === 1 ? "" : "s") +
+        " (el mismo comando pegado dos veces)");
     }
     var trains = {};
     attacks.forEach(function (a) { if (a.train && a.train.noble) trains[a.train.id] = a.train.size; });
