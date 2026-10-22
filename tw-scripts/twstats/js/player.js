@@ -6,6 +6,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var CONQ_PAGE = 200;  // conquest rows per page (tribes can have 8,000+)
   var GPROF = "https://" + TW.WORLD + ".guerrastribales.es/page.php?page=inbound&screen=info_player&id=";
+  var arch = null;  // TW.playerArchive() map: archived owners link to their page here
 
   function qid() {
     var m = /[?&]id=([^&]+)/.exec(location.search);
@@ -23,18 +24,22 @@
       (conq ? ' data-conq="' + conq + '"' : "") + ">" + text + "</a>";
   }
 
-  function renderProfile(p) {
+  // An archived player (left / deleted, p.current false) keeps the values of
+  // the last snapshot: the rows say «Último …» and when that was.
+  function renderProfile(p, lastSeen) {
+    var gone = !p.current;
     var tribe = p.tribe ? TW.tribeLink(p.tribe.id, p.tribe.tag) : '<span class="barb">Sin tribu</span>';
     var total = (p.conquests || 0) + (p.lost || 0);
     var conq = jump("conquistas", "all", TW.commas(total)) +
       " (" + jump("conquistas", "gain", "+" + TW.commas(p.conquests)) +
       " " + jump("conquistas", "lose", "−" + TW.commas(p.lost)) + ")";
     var html = "";
-    html += row("Ranking", p.rank + ".");
+    html += row(gone ? "Último ranking" : "Ranking", p.rank + ".");
     html += row("Nombre", TW.esc(p.name));
-    html += row("Tribu", tribe);
-    html += row("Puntos", TW.commas(p.points));
-    html += row("Pueblos", jump("pueblos", null, TW.commas(p.villages)));
+    html += row(gone ? "Última tribu" : "Tribu", tribe);
+    html += row(gone ? "Últimos puntos" : "Puntos", TW.commas(p.points));
+    html += row(gone ? "Últimos pueblos" : "Pueblos", gone ? TW.commas(p.villages) : jump("pueblos", null, TW.commas(p.villages)));
+    if (gone && lastSeen) html += row("Visto por última vez", TW.fmtDayUTC(lastSeen));
     html += row("Promedio de puntos por pueblo", TW.commas(p.avg));
     html += row("Cambios de tribu", TW.commas(p.tribeChanges), true);
     html += row("Conquistas", conq);
@@ -114,8 +119,8 @@
       html += "<tr class='" + (i % 2 ? "r2" : "r1") + "'>" +
         "<td>" + TW.villageCell(r.village) + "</td>" +
         "<td class='col-pts'>" + pts + "</td>" +
-        "<td>" + TW.ownerCell(r.oldOwner) + "</td>" +
-        "<td>" + TW.ownerCell(r.newOwner) + "</td>" +
+        "<td>" + TW.ownerCell(r.oldOwner, arch) + "</td>" +
+        "<td>" + TW.ownerCell(r.newOwner, arch) + "</td>" +
         "<td class='col-date'>" + TW.fmtStamp(r.t) + "</td></tr>";
     }
     return html || "<tr class='r1'><td colspan='5' class='status'>Ninguno.</td></tr>";
@@ -164,14 +169,16 @@
     var id = qid();
     if (!id) { fail("Jugador no encontrado: falta el parámetro ?id."); return; }
 
-    TW.loadJSON("players/" + encodeURIComponent(id) + ".json")
-      .then(function (d) {
-        var p = d.profile;
+    Promise.all([TW.loadJSON("players/" + encodeURIComponent(id) + ".json"), TW.playerArchive()])
+      .then(function (res) {
+        var d = res[0], p = d.profile, series = d.series || [];
+        arch = res[1];
+        var lastSeen = series.length ? series[series.length - 1].t : null;
         document.title = "es100 · " + p.name;
-        var badge = p.current ? "" :
-          ' <span class="archived">(jugador archivado / ya no existe)</span>';
+        var badge = p.current ? "" : ' <span class="archived">(Archivado' +
+          (lastSeen ? " — visto por última vez " + TW.fmtDayUTC(lastSeen) : "") + ")</span>";
         $("pageTitle").innerHTML = "Perfil del Jugador: " + TW.esc(p.name) + badge;
-        renderProfile(p);
+        renderProfile(p, lastSeen);
         renderCharts(d.series || []);
         renderHistory(d.series || []);
         renderVillages(d.villages || []);

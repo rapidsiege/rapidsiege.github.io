@@ -113,6 +113,7 @@ a:hover, a:active { color: var(--link-hover); text-decoration: none; }
   padding: 8px; margin-bottom: 10px; font-weight: 700;
 }
 .conquer-filters .f { display: flex; flex-direction: column; gap: 2px; font-size: 11px; }
+.conquer-filters .f[hidden] { display: none; }  /* rankings OD / Archivo segs outside their mode */
 .conquer-filters label { color: var(--text-muted); }
 .conquer-filters input[type="text"],
 .conquer-filters input[type="search"],

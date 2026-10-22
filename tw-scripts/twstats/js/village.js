@@ -6,6 +6,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var vid = null;   // current village id (localStorage key prefix)
   var nowUnix = 0;  // "now" for relative times (meta.pulledUnix, else latest t)
+  var arch = null;  // TW.playerArchive() map: archived owners link to their page here
 
   function qid() {
     var m = /[?&]id=([^&]+)/.exec(location.search);
@@ -120,8 +121,8 @@
       var r = list[i];
       html += "<tr class='" + (i % 2 ? "r2" : "r1") + "'>" +
         "<td class='col-date'>" + TW.fmtStamp(r.t) + "</td>" +
-        "<td>" + TW.ownerCell(r.newOwner) + "</td>" +
-        "<td>" + TW.ownerCell(r.oldOwner) + "</td></tr>";
+        "<td>" + TW.ownerCell(r.newOwner, arch) + "</td>" +
+        "<td>" + TW.ownerCell(r.oldOwner, arch) + "</td></tr>";
     }
     $("conquestsBody").innerHTML = html ||
       "<tr class='r1'><td colspan='3' class='status'>Sin conquistas registradas.</td></tr>";
@@ -141,9 +142,10 @@
 
     // meta.json gives "now" for relative times; tolerate its absence.
     var meta = TW.loadJSON("meta.json").catch(function () { return null; });
-    Promise.all([TW.loadJSON("villages/" + encodeURIComponent(id) + ".json"), meta])
+    Promise.all([TW.loadJSON("villages/" + encodeURIComponent(id) + ".json"), meta, TW.playerArchive()])
       .then(function (res) {
         var d = res[0], m = res[1];
+        arch = res[2];
         var series = d.series || [];
         nowUnix = (m && m.pulledUnix) ? m.pulledUnix
           : (series.length ? series[series.length - 1].t : Math.floor(Date.now() / 1000));

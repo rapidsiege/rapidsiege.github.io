@@ -8,6 +8,7 @@
   var GALLY = "https://" + TW.WORLD + ".guerrastribales.es/page.php?page=inbound&screen=info_ally&id=";
   var vstate = { list: [], page: 0 };
   var hasInternal = false;  // any member→member transfer (shows the Internas section under "Todo")
+  var arch = null;  // TW.playerArchive() map: archived owners link to their page here
 
   function qid() {
     var m = /[?&]id=([^&]+)/.exec(location.search);
@@ -39,20 +40,23 @@
   }
 
   // Conquistas = external gains + external losses + internal transfers; each
-  // number opens the section that lists exactly those rows.
-  function renderProfile(p, cs) {
+  // number opens the section that lists exactly those rows. An archived tribe
+  // (p.current false) keeps its last snapshot: «Último …» rows and its date.
+  function renderProfile(p, cs, lastSeen) {
+    var gone = !p.current;
     var nG = cs.gains.length, nL = cs.losses.length, nI = cs.internal.length;
     var conq = jump("conquistas", "all", TW.commas(nG + nL + nI)) +
       " (" + jump("conquistas", "gain", "+" + TW.commas(nG)) +
       " " + jump("conquistas", "lose", "−" + TW.commas(nL)) +
       (nI ? " " + jump("conquistas", "internal", "⟳" + TW.commas(nI)) : "") + ")";
     var html = "";
-    html += row("Ranking", p.rank + ".");
+    html += row(gone ? "Último ranking" : "Ranking", p.rank + ".");
     html += row("Nombre", TW.esc(p.name));
     html += row("Tag", TW.esc(p.tag));
-    html += row("Miembros", jump("miembros", null, TW.commas(p.members)));
-    html += row("Puntos", TW.commas(p.points));
-    html += row("Pueblos", jump("pueblos", null, TW.commas(p.villages)));
+    html += row(gone ? "Últimos miembros" : "Miembros", gone ? TW.commas(p.members) : jump("miembros", null, TW.commas(p.members)));
+    html += row(gone ? "Últimos puntos" : "Puntos", TW.commas(p.points));
+    html += row(gone ? "Últimos pueblos" : "Pueblos", gone ? TW.commas(p.villages) : jump("pueblos", null, TW.commas(p.villages)));
+    if (gone && lastSeen) html += row("Visto por última vez", TW.fmtDayUTC(lastSeen));
     html += row("Promedio de puntos por pueblo", TW.commas(p.avg));
     html += row("Conquistas", conq);
     html += row("Primera vez visto", TW.fmtDayUTC(p.firstSeen), true);  // = first daily bucket
@@ -244,8 +248,8 @@
       html += "<tr class='" + (i % 2 ? "r2" : "r1") + "'>" +
         "<td>" + TW.villageCell(r.village) + "</td>" +
         "<td class='col-pts'>" + pts + "</td>" +
-        "<td>" + TW.ownerCell(r.oldOwner) + "</td>" +
-        "<td>" + TW.ownerCell(r.newOwner) + "</td>" +
+        "<td>" + TW.ownerCell(r.oldOwner, arch) + "</td>" +
+        "<td>" + TW.ownerCell(r.newOwner, arch) + "</td>" +
         "<td class='col-date'>" + TW.fmtStamp(r.t) + "</td></tr>";
     }
     return html || "<tr class='r1'><td colspan='5' class='status'>Ninguno.</td></tr>";
@@ -395,17 +399,19 @@
     var id = qid();
     if (!id) { fail("Tribu no encontrada: falta el parámetro ?id."); return; }
 
-    TW.loadJSON("tribes/" + encodeURIComponent(id) + ".json")
-      .then(function (d) {
-        var p = d.profile;
+    Promise.all([TW.loadJSON("tribes/" + encodeURIComponent(id) + ".json"), TW.playerArchive()])
+      .then(function (res) {
+        var d = res[0], p = d.profile, series = d.series || [];
+        arch = res[1];
+        var lastSeen = series.length ? series[series.length - 1].t : null;
         document.title = "es100 · " + p.tag;
-        var badge = p.current ? "" :
-          ' <span class="archived">(tribu archivada / ya no existe)</span>';
+        var badge = p.current ? "" : ' <span class="archived">(Archivada' +
+          (lastSeen ? " — vista por última vez " + TW.fmtDayUTC(lastSeen) : "") + ")</span>";
         $("pageTitle").innerHTML = "Perfil de la Tribu: " + TW.esc(p.name) +
           ' <span class="tag-br">[' + TW.esc(p.tag) + "]</span>" + badge;
         var cs = splitConquests(d, p.id);
         hasInternal = cs.internal.length > 0;
-        renderProfile(p, cs);
+        renderProfile(p, cs, lastSeen);
         renderCharts(d.series || []);
         renderHistory(d.series || []);
         initMembers(d.memberList, d.weekDays);

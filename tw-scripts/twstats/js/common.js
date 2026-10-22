@@ -81,6 +81,23 @@
     });
   }
 
+  // players-archive.json (build.py: the players who left the world, with an
+  // archived page) as { id: row }, fetched once per page. Resolves null when
+  // the file is missing (data built before it) or unreadable, so callers
+  // simply render without it.
+  var playerArchiveP = null;
+  function playerArchive() {
+    if (!playerArchiveP) {
+      playerArchiveP = loadJSON("players-archive.json").then(function (rows) {
+        if (!Array.isArray(rows)) return null;
+        var map = {};
+        for (var i = 0; i < rows.length; i++) map[rows[i].id] = rows[i];
+        return map;
+      }, function () { return null; });
+    }
+    return playerArchiveP;
+  }
+
   // --- internal navigation links (to our own profile pages) ---
   function playerLink(id, name) {
     var label = name ? esc(name) : "jugador " + esc(id);
@@ -101,11 +118,19 @@
     var loc = ' <span class="coord">(' + v.x + "|" + v.y + ')</span> <span class="cont">' + continent(v.x, v.y) + "</span>";
     return '<a href="village.html?id=' + encodeURIComponent(v.id) + '">' + name + "</a>" + loc;
   }
-  function ownerCell(o) {
+  // `arch` (optional, from playerArchive()): an owner who left the world but
+  // has an archived page links to player.html (the game's page is gone) under
+  // the name the archive knows, instead of a bare '— (id X)'.
+  function ownerCell(o, arch) {
     if (!o) return '<span class="barb">Bárbaro</span>';
-    if (!o.name) return '<span class="gone">— (id ' + esc(o.id) + ")</span>";
-    var out = '<a class="playerlink" href="' + GAME + "info_player&id=" + esc(o.id) +
-      '" target="_blank" rel="noopener">' + esc(o.name) + "</a>";
+    var a = arch && o.id != null ? arch[o.id] : null;
+    if (!o.name && !a) return '<span class="gone">— (id ' + esc(o.id) + ")</span>";
+    var out = a
+      ? '<a class="playerlink" href="player.html?id=' + encodeURIComponent(o.id) +
+        '" title="Archivado — visto por última vez ' + fmtDayUTC(a.lastSeen) + '">' + esc(o.name || a.name) +
+        '</a> <span class="gone">(archivado)</span>'
+      : '<a class="playerlink" href="' + GAME + "info_player&id=" + esc(o.id) +
+        '" target="_blank" rel="noopener">' + esc(o.name) + "</a>";
     if (o.tribe) {
       out += ' <span class="tribe-br">[<a class="tribelink" href="' + GAME + "info_ally&id=" +
         esc(o.tribe.id) + '" target="_blank" rel="noopener">' + esc(o.tribe.tag) + "</a>]</span>";
@@ -295,7 +320,7 @@
     fmtTime: fmtTime, fmtStamp: fmtStamp, fmtDate: fmtDate, fmtDateTime: fmtDateTime, weekday: weekday,
     fmtDayUTC: fmtDayUTC, weekdayUTC: weekdayUTC,
     srvEpoch: srvEpoch,
-    esc: esc, commas: commas, continent: continent, loadJSON: loadJSON,
+    esc: esc, commas: commas, continent: continent, loadJSON: loadJSON, playerArchive: playerArchive,
     playerLink: playerLink, tribeLink: tribeLink,
     villageCell: villageCell, ownerCell: ownerCell, deltaCell: deltaCell,
     changeCell: changeCell, relTime: relTime, dur: dur, initTabs: initTabs, pagedTable: pagedTable,

@@ -81,25 +81,58 @@
     }
   }
 
+  // Archivo mode (?mode=archive&who=players|tribes): the players / tribes that
+  // left the world, from players-archive.json / tribes-archive.json (build.py:
+  // last snapshot + bests), newest «Visto por última vez» first. lastSeen is a
+  // daily bucket, so it is labelled by its UTC day. Names open the archived page.
+  function lastSeenCol() {
+    return { label: "Visto por última vez", cls: "col-date", dir: "desc",
+      get: function (r) { return r.lastSeen; },
+      cell: function (r) { return "<td class='col-date'>" + TW.fmtDayUTC(r.lastSeen) + "</td>"; } };
+  }
+  function numCol(label, key, dir) {
+    return { label: label, cls: "col-pts", dir: dir || "desc", get: function (r) { return r[key]; },
+      cell: function (r) { return numTd(r[key]); } };
+  }
+  var ARCH_TAIL = [
+    numCol("Últimos puntos", "lastPoints"), numCol("Últimos pueblos", "lastVillages"),
+    { label: "Mejor ranking", cls: "col-rank", dir: "asc", get: function (r) { return r.bestRank; },
+      cell: function (r) { return "<td class='col-rank'>" + r.bestRank + ".</td>"; } },
+    numCol("Máx. puntos", "maxPoints"), numCol("Conquistas", "conquests"), numCol("Perdidos", "lost"),
+  ];
+  var ARCH_COLS = {
+    players: [lastSeenCol(), COLS.players[1],
+      { label: "Última tribu", dir: "asc", get: function (r) { return r.lastTribe ? (r.lastTribe.tag || "").toLowerCase() : "￿"; },
+        cell: function (r) { return "<td>" + (r.lastTribe ? TW.tribeLink(r.lastTribe.id, r.lastTribe.tag) : '<span class="barb">—</span>') + "</td>"; } },
+    ].concat(ARCH_TAIL),
+    tribes: [lastSeenCol(), COLS.tribes[1],
+      { label: "Nombre", dir: "asc", get: function (r) { return (r.name || "").toLowerCase(); },
+        cell: function (r) { return "<td>" + TW.esc(r.name || "") + "</td>"; } },
+    ].concat(ARCH_TAIL),
+  };
+
   var state = { mode: "players", who: "players", kind: "all", cols: null, data: [], filtered: [], sort: 0, dir: "asc", query: "", page: 0 };
 
   function readParam(name, allowed, dflt) {
     var m = new RegExp("[?&]" + name + "=(\\w+)").exec(location.search);
     return (m && allowed.indexOf(m[1]) !== -1) ? m[1] : dflt;
   }
-  function readMode() { return readParam("mode", ["players", "tribes", "od"], "players"); }
-  // players.json or tribes.json — in OD mode the «OD de» seg picks it.
-  function entity() { return state.mode === "od" ? state.who : state.mode; }
+  function readMode() { return readParam("mode", ["players", "tribes", "od", "archive"], "players"); }
+  // players or tribes — in OD and Archivo mode the «… de» seg picks it.
+  function entity() { return state.mode === "od" || state.mode === "archive" ? state.who : state.mode; }
+  function fileName() { return entity() + (state.mode === "archive" ? "-archive" : "") + ".json"; }
   function modeUrl() {
     return "rankings.html?mode=" + state.mode +
-      (state.mode === "od" ? "&who=" + state.who + "&kind=" + state.kind : "");
+      (state.mode === "od" ? "&who=" + state.who + "&kind=" + state.kind : "") +
+      (state.mode === "archive" ? "&who=" + state.who : "");
   }
 
   function matches(r) {
     if (!state.query) return true;
+    var tribe = r.tribe || r.lastTribe;   // archived players carry their last tribe
     var hay = (entity() === "tribes")
       ? (r.tag || "") + " " + (r.name || "")
-      : (r.name || "") + " " + (r.tribe ? r.tribe.tag : "");
+      : (r.name || "") + " " + (tribe ? tribe.tag : "");
     return hay.toLowerCase().indexOf(state.query) !== -1;
   }
 
@@ -111,7 +144,7 @@
       if (col.nullLast && (va == null) !== (vb == null)) return va == null ? 1 : -1;
       if (va < vb) return -1 * mul;
       if (va > vb) return 1 * mul;
-      return a.rank - b.rank; // stable tiebreak
+      return (a.rank || 0) - (b.rank || 0) || (+a.id) - (+b.id); // stable tiebreak (archive rows have no rank)
     });
   }
 
@@ -160,17 +193,21 @@
 
   function setMode(mode) {
     state.mode = mode;
-    var od = mode === "od", ent = entity();
-    state.cols = od ? odCols(state.who, state.kind) : COLS[mode];
+    var od = mode === "od", archive = mode === "archive", ent = entity();
+    state.cols = od ? odCols(state.who, state.kind) : archive ? ARCH_COLS[ent] : COLS[mode];
     state.sort = 0; state.dir = state.cols[0].dir;
     $("modeTitle").textContent = od
       ? "Adversarios vencidos (" + OD_KINDS[state.kind].label.toLowerCase() + ") — " + (ent === "tribes" ? "tribus" : "jugadores")
+      : archive ? "Archivo — " + (ent === "tribes" ? "tribus" : "jugadores")
       : (mode === "tribes" ? "Clasificación de tribus" : "Clasificación de jugadores");
-    document.title = "es100 · " + (od ? "OD " + OD_KINDS[state.kind].label + " · " : "") + (ent === "tribes" ? "Tribus" : "Jugadores");
+    document.title = "es100 · " + (od ? "OD " + OD_KINDS[state.kind].label + " · " : archive ? "Archivo · " : "") +
+      (ent === "tribes" ? "Tribus" : "Jugadores");
     $("modePlayers").classList.toggle("active", mode === "players");
     $("modeTribes").classList.toggle("active", mode === "tribes");
     if ($("modeOd")) $("modeOd").classList.toggle("active", od);
+    if ($("modeArchive")) $("modeArchive").classList.toggle("active", archive);
     ["odWho", "odKind", "odNote"].forEach(function (id) { if ($(id)) $(id).hidden = !od; });
+    ["archWho", "archNote"].forEach(function (id) { if ($(id)) $(id).hidden = !archive; });
     var segs = document.querySelectorAll("[data-who], [data-kind]");
     for (var i = 0; i < segs.length; i++) {
       var w = segs[i].getAttribute("data-who"), k = segs[i].getAttribute("data-kind");
@@ -183,16 +220,24 @@
     setMode(mode);
     $("status").style.display = "block";
     $("status").textContent = "Cargando…";
-    var file = entity() + ".json";
+    var file = fileName();
     TW.loadJSON(file)
       .then(function (d) {
-        if (entity() + ".json" !== file) return;   // a newer switch is loading
+        if (fileName() !== file) return;   // a newer switch is loading
         state.data = d;
         if (state.mode === "od") rankByOd(state.data);
         applyFilter();
         render();
       })
       .catch(function (e) {
+        if (fileName() !== file) return;
+        // Data built before the archive files existed: say so, empty table.
+        if (state.mode === "archive" && /HTTP 404/.test(e.message)) {
+          state.data = []; applyFilter(); render();
+          $("status").style.display = "block";
+          $("status").textContent = "El archivo aún no está disponible: se publica con la próxima actualización de los datos.";
+          return;
+        }
         $("status").textContent = "No se pudieron cargar los datos: " + e.message +
           "  (¿sirviendo por HTTP? file:// bloquea fetch)";
       });
@@ -205,14 +250,14 @@
     state.query = ""; $("search").value = "";
     load(mode);
   }
-  // OD segs: a new «OD de» reloads the other file; a new «Tipo» only re-ranks
-  // the loaded rows (same file). The search box is kept.
+  // OD / Archivo segs: a new «OD de» / «Archivo de» reloads the other file; a
+  // new «Tipo» only re-ranks the loaded rows (same file). The search box is kept.
   function setOd(who, kind) {
-    if (state.mode !== "od" || (who === state.who && kind === state.kind)) return;
+    if ((state.mode !== "od" && state.mode !== "archive") || (who === state.who && kind === state.kind)) return;
     var reload = who !== state.who;
     state.who = who; state.kind = kind;
     history.replaceState(null, "", modeUrl());
-    if (reload) { state.data = []; load("od"); return; }
+    if (reload) { state.data = []; load(state.mode); return; }
     setMode("od");
     rankByOd(state.data);
     applyFilter();
@@ -236,6 +281,7 @@
     $("modePlayers").addEventListener("click", function () { switchMode("players"); });
     $("modeTribes").addEventListener("click", function () { switchMode("tribes"); });
     if ($("modeOd")) $("modeOd").addEventListener("click", function () { switchMode("od"); });
+    if ($("modeArchive")) $("modeArchive").addEventListener("click", function () { switchMode("archive"); });
     var segs = document.querySelectorAll("[data-who], [data-kind]");
     for (var i = 0; i < segs.length; i++) {
       segs[i].addEventListener("click", function () {
