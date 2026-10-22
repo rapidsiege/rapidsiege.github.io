@@ -66,6 +66,12 @@
     TW.metricChart($("histChart"), series, METRICS, { width: 900, height: 280 });
   }
 
+  // OD history cell. The kill files list only OD > 0, so an absent OD is 0;
+  // only the oldest row (no prev) keeps changeCell's "+" baseline.
+  function odCell(s, prev, key) {
+    return TW.changeCell(s[key] || 0, prev ? (prev[key] || 0) : null);
+  }
+
   // History rows newest→oldest; change prefixes vs the previous (older) snapshot.
   function renderHistory(series) {
     var html = "";
@@ -76,10 +82,8 @@
         TW.changeCell(s.rank, prev && prev.rank, { invert: true }) +
         TW.changeCell(s.points, prev && prev.points) +
         TW.changeCell(s.villages, prev && prev.villages) +
-        TW.changeCell(s.od_total, prev && prev.od_total) +
-        TW.changeCell(s.od_att, prev && prev.od_att) +
-        TW.changeCell(s.od_def, prev && prev.od_def) +
-        TW.changeCell(s.od_sup, prev && prev.od_sup) +
+        odCell(s, prev, "od_total") + odCell(s, prev, "od_att") +
+        odCell(s, prev, "od_def") + odCell(s, prev, "od_sup") +
         "</tr>";
     }
     $("historyBody").innerHTML = html || "<tr class='r1'><td colspan='8' class='status'>Sin datos.</td></tr>";
