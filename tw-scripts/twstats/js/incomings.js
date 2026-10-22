@@ -902,9 +902,12 @@
   // target, a time window…) can feed «Script ignorar fakes» or anything else.
   // Ids exist only for rows matched to the .json de órdenes (the BBCode dump has
   // none); unmatched rows are counted and reported, never invented.
+  // Hidden-troop orders (all units 0, e.g. via «Tropas desconocidas») are
+  // copied too — the user picked the filter — but counted, so the note can say
+  // that those ids may be real attacks.
   function filteredOrderIds() {
-    var seen = {}, ids = [], unmatched = 0;
-    if (state.mode !== "attacks") return { ids: ids, unmatched: 0 };
+    var seen = {}, ids = [], unmatched = 0, hidden = 0;
+    if (state.mode !== "attacks") return { ids: ids, unmatched: 0, hidden: 0 };
     state.rows.forEach(function (r) {
       if (!passesFilters(r)) return;
       var o = r.attack && r.attack.order;
@@ -913,8 +916,9 @@
       if (seen[id]) return;
       seen[id] = true;
       ids.push(id);
+      if (ordHidden(o)) hidden++;
     });
-    return { ids: ids, unmatched: unmatched };
+    return { ids: ids, unmatched: unmatched, hidden: hidden };
   }
   function fCopyNoteShow(msg) {
     var note = $("fCopyNote");
@@ -931,8 +935,10 @@
     var list = res.ids.join(",");
     copyText(list, function () {
       fCopyNoteShow("IDs copiados — " + res.ids.length + " ataque" + (res.ids.length === 1 ? "" : "s") +
-        " que pasan los filtros aplicados" +
+        (res.ids.length === 1 ? " que pasa" : " que pasan") + " los filtros aplicados" +
         (res.unmatched ? " (" + res.unmatched + " más sin ID: no emparejados con el .json)" : "") +
+        (res.hidden ? ". ⚠ " + res.hidden + " con tropas ocultas: " +
+          (res.hidden === 1 ? "puede ser un ataque real" : "pueden ser ataques reales") : "") +
         ". Pégalos en «Script ignorar fakes» o donde los necesites.");
     }, function () {
       fCopyNoteShow("No se pudo copiar automáticamente; copia los IDs a mano: " + list);
