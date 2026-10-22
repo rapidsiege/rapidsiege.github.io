@@ -140,6 +140,14 @@ button:disabled { opacity: .45; cursor: default; }
 .scope .seg:last-child { border-radius: 0 3px 3px 0; margin-left: -1px; }
 .scope .seg.active { background: var(--bg-tab-active); }
 .conq-filter { margin-bottom: 10px; }
+/* tribe Miembros «Comparar:» metric select (styled as the filter-bar selects) */
+#memberCompare { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; }
+#memberCompare[hidden] { display: none; }
+#memberCompare select {
+  background: var(--bg-input); color: var(--text-primary);
+  border: 1px solid var(--border-secondary); border-radius: 3px;
+  padding: 3px 6px; font-family: Verdana, Arial, sans-serif; font-size: 12px;
+}
 
 .tz-note { margin: 0 0 8px; color: var(--text-muted); font-size: 11px; font-weight: 400; }
 .status { margin: 6px 2px; color: var(--text-muted); font-size: 12px; }

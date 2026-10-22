@@ -110,30 +110,93 @@
   }
 
   // Members summary (twstats "miembros" page): position-in-tribe, name, points,
-  // villages, per-weekday point gain (last 7 days) + 7-day total.
-  function renderMembers(list, weekDays) {
-    weekDays = weekDays || [];
-    var head = "<tr><th class='col-rank'>Pos.</th><th>Nombre</th>" +
-      "<th class='col-pts'>Puntos</th><th class='col-pts'>Pueblos</th>";
+  // villages, per-weekday gain (last 7 days) + 7-day total of the «Comparar»
+  // metric. Each row's w7[metric] = {d7, t7} (build.py); a file without w7
+  // (built before it) only has the points d7/t7 and hides the select.
+  var COMPARE = {
+    points: "puntos", villages: "pueblos", od_total: "OD (adversarios vencidos)",
+    od_att: "ODA (OD atacante)", od_def: "ODD (OD defensor)", od_sup: "ODS (OD apoyo)",
+  };
+  var mstate = { list: [], weekDays: [], metric: "points", sort: "pos", dir: "asc" };
+
+  function memberWeek(m) {
+    var w = m.w7 && m.w7[mstate.metric];
+    return w || { d7: m.d7 || [], t7: m.t7 };
+  }
+  // Sort keys of the clickable headers; Pos. = the rank in the tribe (list order).
+  var MEMBER_SORT = {
+    pos: function (m) { return m._pos; },
+    points: function (m) { return m.points; },
+    total: function (m) { var t = memberWeek(m).t7; return t == null ? -Infinity : t; },
+  };
+
+  function memberHeadCell(key, label, cls) {
+    var arrow = mstate.sort === key ? (mstate.dir === "asc" ? " ▲" : " ▼") : "";
+    return "<th class='" + cls + " th-sort' data-msort='" + key + "'>" + label +
+      "<span class='arrow'>" + arrow + "</span></th>";
+  }
+
+  function renderMembers() {
+    var weekDays = mstate.weekDays;
+    var head = "<tr>" + memberHeadCell("pos", "Pos.", "col-rank") + "<th>Nombre</th>" +
+      memberHeadCell("points", "Puntos", "col-pts") + "<th class='col-pts'>Pueblos</th>";
     for (var w = 0; w < weekDays.length; w++) {
       head += "<th class='col-pts'>" + TW.weekdayUTC(weekDays[w]) + "</th>";
     }
-    head += "<th class='col-pts'>Total</th></tr>";
+    head += memberHeadCell("total", "Total", "col-pts") + "</tr>";
     $("membersHead").innerHTML = head;
+    $("membersNote").textContent = "Columnas de día = ganancia de " + COMPARE[mstate.metric] +
+      " ese día (últimos 7 días); Total = ganancia de 7 días.";
 
+    var get = MEMBER_SORT[mstate.sort], mul = mstate.dir === "asc" ? 1 : -1;
+    var list = mstate.list.slice().sort(function (a, b) {
+      return (get(a) - get(b)) * mul || a._pos - b._pos;
+    });
     var html = "";
     for (var i = 0; i < list.length; i++) {
-      var m = list[i], d7 = m.d7 || [], cells = "";
+      var m = list[i], wk = memberWeek(m), d7 = wk.d7 || [], cells = "";
       for (var j = 0; j < d7.length; j++) cells += "<td class='col-pts'>" + TW.deltaCell(d7[j]) + "</td>";
       html += "<tr class='" + (i % 2 ? "r2" : "r1") + "'>" +
-        "<td class='col-rank'>" + (i + 1) + ".</td>" +
+        "<td class='col-rank'>" + m._pos + ".</td>" +
         "<td>" + TW.playerLink(m.id, m.name) + "</td>" +
         "<td class='col-pts'>" + TW.commas(m.points) + "</td>" +
         "<td class='col-pts'>" + TW.commas(m.villages) + "</td>" +
-        cells + "<td class='col-pts'>" + TW.deltaCell(m.t7) + "</td></tr>";
+        cells + "<td class='col-pts'>" + TW.deltaCell(wk.t7) + "</td></tr>";
     }
     var span = 5 + weekDays.length;
     $("membersBody").innerHTML = html || "<tr class='r1'><td colspan='" + span + "' class='status'>Sin miembros.</td></tr>";
+  }
+
+  // ?cmp=<metric> keeps the «Comparar» choice in the URL (the hash is the tab's).
+  function readCompare() {
+    var m = /[?&]cmp=(\w+)/.exec(location.search);
+    return m && COMPARE[m[1]] ? m[1] : "points";
+  }
+  function initMembers(list, weekDays) {
+    mstate.list = (list || []).map(function (m, i) { return Object.assign({ _pos: i + 1 }, m); });
+    mstate.weekDays = weekDays || [];
+    var hasW7 = mstate.list.some(function (m) { return !!m.w7; });
+    mstate.metric = hasW7 ? readCompare() : "points";
+    $("memberCompare").hidden = !hasW7;
+    $("memberMetric").value = mstate.metric;
+    renderMembers();
+  }
+  function wireMembers() {
+    $("memberMetric").addEventListener("change", function () {
+      mstate.metric = COMPARE[this.value] ? this.value : "points";
+      var q = location.search.replace(/([?&])cmp=\w*&?/, "$1").replace(/[?&]$/, "");
+      if (mstate.metric !== "points") q += (q ? "&" : "?") + "cmp=" + mstate.metric;
+      if (history.replaceState) history.replaceState(null, "", location.pathname + q + location.hash);
+      renderMembers();
+    });
+    $("membersHead").addEventListener("click", function (e) {
+      var th = e.target.closest ? e.target.closest("[data-msort]") : null;
+      if (!th) return;
+      var key = th.getAttribute("data-msort");
+      if (key === mstate.sort) mstate.dir = mstate.dir === "asc" ? "desc" : "asc";
+      else { mstate.sort = key; mstate.dir = key === "pos" ? "asc" : "desc"; }
+      renderMembers();
+    });
   }
 
   // Paginated Pueblos table (tribes can have 2000+ villages). Extra Jugador
@@ -248,7 +311,7 @@
         renderProfile(p, cs);
         renderCharts(d.series || []);
         renderHistory(d.series || []);
-        renderMembers(d.memberList || [], d.weekDays || []);
+        initMembers(d.memberList, d.weekDays);
         $("memberCount").textContent = "(" + TW.commas((d.memberList || []).length) + ")";
         initVillages(d.villages || []);
         TW.pagedTable($("gainsBody"), $("gainsPager"), CONQ_PAGE, conquestRows).set(cs.gains);
@@ -262,6 +325,7 @@
         TW.initTabs();
         setConqFilter("all");
         wireInteractions();
+        wireMembers();
       })
       .catch(function (e) {
         if (/HTTP 404/.test(e.message)) fail("Tribu no encontrada (id " + id + ").");
