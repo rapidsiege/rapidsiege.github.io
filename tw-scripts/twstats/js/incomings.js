@@ -259,8 +259,14 @@
   // line WITH milliseconds is identified by target + origin + exact arrival —
   // the identity orderFor uses; labels may differ between exports. Without
   // milliseconds a same-second train from one village prints identical lines,
-  // so those are dropped only when their whole target block repeats: a line
-  // in a repeated block consumes one identical line of the earlier block(s).
+  // so they are deduped PER LINE, never within one block: each time a target's
+  // header appears again, every ms-less line that target already collected
+  // becomes consumable once, and an identical line under the new header
+  // consumes one copy (counted as a duplicate). That is the overlapping
+  // re-export: [X,X] then [X,X,Z] → X,X,Z. The new block is NOT checked to be
+  // a full repeat — so two partial exports of one ms-less same-second train,
+  // each under its own header, fold together too (a multiset-containment rule
+  // would bring the false trains back for re-exports, the common case).
   function parseAttacks(text) {
     var lines = text.split(/\r?\n/), out = [], targets = {}, cur = null;
     var skipped = [], inconsistent = 0, duplicates = 0;
