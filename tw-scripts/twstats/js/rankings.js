@@ -57,15 +57,15 @@
   function odCols(who, kind) {
     var nameCol = who === "tribes" ? COLS.tribes[1] : COLS.players[1];
     var cols = [
-      { label: "Rango OD", cls: "col-rank", dir: "asc",
-        get: function (r) { return r._odRank == null ? Infinity : r._odRank; },
+      { label: "Rango OD", cls: "col-rank", dir: "asc", nullLast: true,
+        get: function (r) { return r._odRank; },
         cell: function (r) { return "<td class='col-rank'>" + (r._odRank == null ? '<span class="barb">—</span>' : r._odRank + ".") + "</td>"; } },
       nameCol,
     ];
     if (who === "players") cols.push(COLS.players[2]);   // Tribu
     cols.push({
-      label: "OD " + OD_KINDS[kind].label, cls: "col-pts", dir: "desc",
-      get: function (r) { var v = odVal(r); return v == null ? -Infinity : v; },
+      label: "OD " + OD_KINDS[kind].label, cls: "col-pts", dir: "desc", nullLast: true,
+      get: odVal,
       cell: function (r) { var v = odVal(r); return v == null ? "<td class='col-pts'><span class='barb'>—</span></td>" : numTd(v); },
     });
     cols.push({ label: "Puntos", cls: "col-pts", dir: "desc", get: function (r) { return r.points; }, cell: ptsCell });
@@ -107,6 +107,8 @@
     var col = state.cols[state.sort], mul = state.dir === "asc" ? 1 : -1;
     state.filtered.sort(function (a, b) {
       var va = col.get(a), vb = col.get(b);
+      // nullLast: a null value sinks in both directions (OD mode's «—» rows).
+      if (col.nullLast && (va == null) !== (vb == null)) return va == null ? 1 : -1;
       if (va < vb) return -1 * mul;
       if (va > vb) return 1 * mul;
       return a.rank - b.rank; // stable tiebreak
