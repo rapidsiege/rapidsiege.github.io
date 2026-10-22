@@ -2170,12 +2170,16 @@
     var n = { low: 0, "new": 0, after: 0, maybe: 0, stale: 0, nosent: 0, blindado: 0, esquivar: 0, media: 0, nuke: 0, notedef: 0, catas: 0, dead: 0, landed: 0 };
     for (var i = 0; i < total; i++) {
       var r = state.rows[i];
-      // An unknown origin stays out of «marcados», but its target-side flags
-      // (Esquivar / Blindado describe YOUR village) are counted like any row's.
+      // An unknown origin stays out of «marcados», and only its target-side
+      // flags (the STATUS_TEXT verdicts — Blindado / Esquivar / Defensa media
+      // describe YOUR village) are counted. Its attacker-side badges (e.g. the
+      // nuke one, which no fake signal can veto without world data) stay out.
       if (r.unknown) unknown++;
       else if (isAlert(r)) flagged++;
       for (var j = 0; j < r.flags.length; j++) {
-        if (n[r.flags[j].cls] != null) n[r.flags[j].cls]++;
+        var fc = r.flags[j].cls;
+        if (r.unknown && !STATUS_TEXT[fc]) continue;
+        if (n[fc] != null) n[fc]++;
       }
     }
     var parts;
