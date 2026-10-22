@@ -1764,10 +1764,56 @@
     }
   }
 
-  function passesFilters(r) {
+  // «Llega en» (2026-10-22): dumps get re-pasted hours later, so each arrival
+  // also says how far off it is against the REAL clock (both are true epochs,
+  // no timezone maths). Not a flag: it never marks a row or counts as alert.
+  function nowSec() { return Date.now() / 1000; }
+  function hasArrived(a, now) {
+    return a.arrival + (a.arrivalMs || 0) / 1000 <= (now == null ? nowSec() : now);
+  }
+  // "en 3h 12m" / "en 2d 4h" / "en 45m" / "ya llegó" (TW.dur drops minutes).
+  function arrivalRelText(a, now) {
+    if (hasArrived(a, now)) return "ya llegó";
+    var s = a.arrival + (a.arrivalMs || 0) / 1000 - (now == null ? nowSec() : now);
+    var m = Math.floor(s / 60), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mi = m % 60;
+    if (d) return "en " + d + "d " + h + "h";
+    if (h) return "en " + h + "h " + mi + "m";
+    return m ? "en " + m + "m" : "en <1m";
+  }
+  function arrivedCount() {
+    if (state.mode !== "attacks") return 0;
+    var now = nowSec(), k = 0;
+    state.rows.forEach(function (r) { if (r.attack && hasArrived(r.attack, now)) k++; });
+    return k;
+  }
+  // Every minute: refresh the countdown texts in place (no re-analysis). Only
+  // when a command lands in the meantime are the summary (and, with «Ocultar
+  // ya llegados» on, the table) rebuilt.
+  function tickArrivals() {
+    if (!state.rows.length || state.mode !== "attacks") return;
+    var now = nowSec();
+    var spans = document.querySelectorAll("#rows .arr-rel[data-arr]");
+    for (var i = 0; i < spans.length; i++) {
+      var a = { arrival: +spans[i].getAttribute("data-arr"), arrivalMs: 0 };
+      var done = hasArrived(a, now);
+      spans[i].textContent = arrivalRelText(a, now);
+      spans[i].classList.toggle("arr-done", done);
+    }
+    var k = arrivedCount();
+    if (k !== state.arrivedN) {
+      summarize();
+      if ($("hidearrived") && $("hidearrived").checked) render();
+      else updateShowing(state.rows.filter(function (r) { return passesFilters(r); }).length);
+    }
+  }
+
+  // keepArrived: the Backtime panel reads the same filters but must keep the
+  // commands that already landed — those are exactly the ones to backtime.
+  function passesFilters(r, keepArrived) {
     if ($("onlyflagged").checked && !isAlert(r)) return false;
     if (state.mode !== "attacks") return true;
     var f = state.filters, a = r.attack;
+    if (keepArrived !== true && $("hidearrived") && $("hidearrived").checked && hasArrived(a)) return false;
     // «Filtros de aviso»: when any flag classes are checked, keep only rows
     // carrying at least one of them (OR semantics; `unknown` is its own class).
     if (f.flags && f.flags.length) {
@@ -1797,12 +1843,12 @@
 
   function render() {
     var grouped = state.mode === "attacks" && $("groupbytarget").checked;
-    var shown = sortRows(state.rows.filter(passesFilters));
+    var shown = sortRows(state.rows.filter(function (r) { return passesFilters(r); }));
     if (grouped) shown = groupRows(shown);
     var cols = HEADS[state.mode].length;
     renderHead();
 
-    var html = "", n = 0, lastTarget = null;
+    var html = "", n = 0, lastTarget = null, nowT = nowSec();
     for (var i = 0; i < shown.length; i++) {
       var r = shown[i];
       var cls = (n % 2 ? "r2" : "r1") + (isAlert(r) ? " row-flagged" : "") + (r.unknown ? " row-unknown" : "");
@@ -1866,7 +1912,10 @@
         }
         timeCell = "<td class='col-date'>" + sentTxt +
           "<br><span class='conq-ago'>→ " + TW.fmtTime(r.attack.arrival) +
-          "." + String(r.attack.arrivalMs).padStart(3, "0") + "</span>" + tr + "</td>";
+          "." + String(r.attack.arrivalMs).padStart(3, "0") + "</span>" + tr +
+          "<br><span class='arr-rel" + (hasArrived(r.attack, nowT) ? " arr-done" : "") +
+          "' data-arr='" + (r.attack.arrival + (r.attack.arrivalMs || 0) / 1000) + "'>" +
+          arrivalRelText(r.attack, nowT) + "</span></td>";
       }
 
       html += "<tr class='" + cls + "'>" +
@@ -2206,6 +2255,9 @@
         Object.keys(targets).length + " objetivo" + (Object.keys(targets).length === 1 ? "" : "s"),
         Object.keys(origins).length + " pueblo" + (Object.keys(origins).length === 1 ? "" : "s") + " de origen",
         flagged + " marcado" + (flagged === 1 ? "" : "s")];
+      // Against the real clock (not a flag): how much of the dump is history.
+      state.arrivedN = arrivedCount();
+      if (state.arrivedN) parts.push(state.arrivedN + " ya llegado" + (state.arrivedN === 1 ? "" : "s"));
     } else {
       parts = [total + " coordenada" + (total === 1 ? "" : "s"),
         flagged + " marcada" + (flagged === 1 ? "" : "s")];
@@ -2636,6 +2688,10 @@
     $("groupbytarget").addEventListener("change", function () {
       if (state.rows.length) render();
     });
+    $("hidearrived").addEventListener("change", function () {
+      if (state.rows.length) render();
+    });
+    setInterval(tickArrivals, 60000);
     // Re-run on setting change so the thresholds feel live once analysed.
     $("minpoints").addEventListener("change", function () { if (state.rows.length) analyze(); });
     $("maxdays").addEventListener("change", function () { if (state.rows.length) analyze(); });
