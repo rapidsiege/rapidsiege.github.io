@@ -512,6 +512,9 @@ function otCleanPlanRows(rows) {
   return rows.filter(r => r && typeof r === 'object' && !Array.isArray(r) && typeof r.type === 'string').map(r => {
     r = { ...r };
     fix(r, ['tCoord', 'tPlayer', 'srcCoord', 'srcPlayer'], v => typeof v === 'string', '');
+    // canonical "x|y" like the targets' coords (O2): a save from before that fix holds '500 | 500'
+    // in tCoord, which Manage Offensive / the plan keys never matched; unparseable values stay
+    for (const k of ['tCoord', 'srcCoord']) if (r[k]) { const c = parseCoordStr(r[k]); if (c) r[k] = `${c.x}|${c.y}`; }
     // an assigned, non-snob row always has both (the table shows timing for it); others may lack them
     if (r.type !== 'snob' && !r.unassigned) { if (!('dist' in r)) r.dist = 0; if (!('travel' in r)) r.travel = 0; }
     fix(r, ['dist', 'travel'], v => Number.isFinite(v), 0);
@@ -547,10 +550,12 @@ function loadOffensive() {
           .map(g => ({ ...g, dateISO: typeof g.dateISO === 'string' ? g.dateISO : '', winOff: typeof g.winOff === 'string' ? g.winOff : '', winSnob: typeof g.winSnob === 'string' ? g.winSnob : '' }));
       }
       // Element-wise too: a null / non-object / coord-less target is dropped (the rest of the list survives);
-      // the fields the renderers assume are coerced, ids are made unique integers.
+      // the fields the renderers assume are coerced, ids are made unique integers. A coord typed into
+      // the Coord cell before it was normalised ("500 | 500") heals to "x|y"; an unparseable one is kept.
+      const otCoordFix = s => { const c = parseCoordStr(s); return c ? `${c.x}|${c.y}` : s; };
       offTargets   = Array.isArray(d.targets)
         ? d.targets.filter(x => x && typeof x === 'object' && !Array.isArray(x) && typeof x.coord === 'string' && x.coord)
-          .map(x => ({ ...x, player: typeof x.player === 'string' ? x.player : '', id: Number.isFinite(+x.id) ? +x.id : 0 }))
+          .map(x => ({ ...x, coord: otCoordFix(x.coord), player: typeof x.player === 'string' ? x.player : '', id: Number.isFinite(+x.id) ? +x.id : 0 }))
         : [];
       { const tseen = new Set(); let tmax = Math.max(0, ...offTargets.map(x => x.id));
         for (const x of offTargets) { if (!x.id || tseen.has(x.id)) x.id = ++tmax; tseen.add(x.id); } }
@@ -1313,6 +1318,18 @@ function updOTSnobMode(id, gid, val) {
 function updOT(id, field, val) {
   const tg = offTargets.find(x => x.id === id);
   if (!tg) return;
+  if (field === 'coord') {
+    // Stored in the canonical "x|y" form like addOffTarget / bulkAddTargets (the DB lookups, the
+    // plan keys, Manage Offensive and dedupe all match on it) — same rule as updDT on the defense
+    // side; anything unparseable is refused and the cell repainted with the previous value.
+    const c = parseCoordStr(val);
+    if (!c) {
+      if (typeof alert === 'function') alert(t('warn_invalid_coord')(String(val).trim()));
+      renderOffTargets();
+      return;
+    }
+    val = `${c.x}|${c.y}`;
+  }
   if (field === 'catapult') tg[field] = Math.max(0, parseInt(val) || 0);
   else tg[field] = val.trim();
   if (field === 'coord') {
@@ -2628,7 +2645,7 @@ function copyObjectives() {
   ta.select();
   document.execCommand('copy');
   const btn = document.getElementById('obj-copy-btn');
-  btn.textContent = '✓ Copied!';
+  btn.textContent = t('btn_copied');
   setTimeout(() => { btn.textContent = t('bb_copy_btn'); }, 2000);
 }
 

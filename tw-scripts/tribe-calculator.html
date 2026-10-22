@@ -30,6 +30,7 @@
   <div class="file-status-dot dot-off" id="file-dot"></div>
   <span id="file-status-text">No file loaded — drag &amp; drop a tribe info .txt file or use Load File</span>
   <span id="file-summary" style="color:#706050;"></span>
+  <span id="file-age" class="troop-age"></span>
 </div>
 
 <!-- ═══════════════════════════ TABS ═══════════════════════════ -->
@@ -101,12 +102,12 @@
   <div class="section-header">
     <h2 data-i18n="sec_player_summary">Player Summary</h2>
     <div style="display:flex;gap:8px;">
-      <button class="btn btn-ghost btn-sm" onclick="exportTable('players-table','tribe_players.csv')">⬇ Export CSV</button>
-      <button class="btn btn-ghost btn-sm" onclick="showPlayersBBTable()">⬇ Export BB Table</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportTable('players-table','tribe_players.csv')" data-i18n="btn_export_csv">⬇ Export CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="showPlayersBBTable()" data-i18n="btn_export_bb_table">⬇ Export BB Table</button>
     </div>
   </div>
   <div class="filter-row">
-    <input type="text" id="player-search" placeholder="Search player…" oninput="renderPlayersTable()">
+    <input type="text" id="player-search" placeholder="Search player…" data-i18n-placeholder="ph_player_search" oninput="renderPlayersTable()">
     <label data-i18n="lbl_show">Show:</label>
     <select id="player-filter-type" onchange="renderPlayersTable()">
       <option value="all" data-i18n="opt_all_villages">All villages</option>
@@ -132,13 +133,13 @@
           <th onclick="sortTable('players',11)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
           <th onclick="sortTable('players',12)" data-i18n-th="th_off_power">Off Power <span class="sort-arrow"></span></th>
           <th onclick="sortTable('players',13)" data-i18n-th="th_def_power">Def Power <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('players',14)" title="Villages with Complete Off offensive power"><span class="badge badge-complete" style="cursor:pointer;">Complete</span> <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('players',15)" title="Villages with 3/4 offensive power"><span class="badge badge-tq" style="cursor:pointer;">3/4</span> <span class="sort-arrow"></span></th>
-          <th onclick="sortTable('players',16)" title="Villages with 1/2 offensive power"><span class="badge badge-half" style="cursor:pointer;">1/2</span> <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',14)" title="Villages with Complete Off offensive power" data-i18n-title="th_tier_complete_title"><span class="badge badge-complete" style="cursor:pointer;" data-i18n="th_complete">Complete</span> <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',15)" title="Villages with 3/4 offensive power" data-i18n-title="th_tier_tq_title"><span class="badge badge-tq" style="cursor:pointer;">3/4</span> <span class="sort-arrow"></span></th>
+          <th onclick="sortTable('players',16)" title="Villages with 1/2 offensive power" data-i18n-title="th_tier_half_title"><span class="badge badge-half" style="cursor:pointer;">1/2</span> <span class="sort-arrow"></span></th>
         </tr>
       </thead>
       <tbody id="players-tbody">
-        <tr class="empty-row"><td colspan="17">Load a file to see player data</td></tr>
+        <tr class="empty-row"><td colspan="17" data-i18n="empty_load_players">Load a file to see player data</td></tr>
       </tbody>
     </table>
   </div>
@@ -152,6 +153,12 @@
     <span id="map-count" style="font-size:12px;color:#806030;"></span>
   </div>
   <div id="map-toolbar" class="map-toolbar">
+    <span class="map-goto">
+      <input type="text" id="map-goto" spellcheck="false" placeholder="Go to x|y, village or player" data-i18n-placeholder="map_goto_ph" data-i18n-title="map_goto_t" title="Type or paste a coordinate (x|y), a village name or a player name, then press Enter." onkeydown="if(event.key==='Enter'){event.preventDefault();mapGotoSubmit();}" oninput="mapGotoNote('')">
+      <button class="btn btn-ghost btn-sm" onclick="mapGotoSubmit()" data-i18n="map_goto_btn">🔎 Go</button>
+      <span id="map-goto-note" class="map-goto-note"></span>
+    </span>
+    <span class="map-tb-sep"></span>
     <button id="map-extract-btn" class="btn btn-ghost btn-sm" onclick="toggleExtractMode()" data-i18n="map_extract">Extract Coordinates</button>
     <span class="map-tb-sep"></span>
     <button id="map-drawfilter-btn" class="btn btn-ghost btn-sm" onclick="toggleDrawFilterMode()" data-i18n="map_drawfilter">🎯 Draw Coordinate Filter</button>
@@ -326,10 +333,10 @@
   <div id="villages-params" class="param-panel-host"></div>
   <div class="section-header">
     <h2 data-i18n="sec_village_detail">Village Detail</h2>
-    <button class="btn btn-ghost btn-sm" onclick="exportTable('villages-table','tribe_villages.csv')">⬇ Export CSV</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportTable('villages-table','tribe_villages.csv')" data-i18n="btn_export_csv">⬇ Export CSV</button>
   </div>
   <div class="filter-row">
-    <input type="text" id="village-search" placeholder="Search player or coord…" oninput="renderVillagesTable()">
+    <input type="text" id="village-search" placeholder="Search player or coord…" data-i18n-placeholder="ph_village_search" oninput="renderVillagesTable()">
     <label data-i18n="lbl_type">Type:</label>
     <select id="village-filter-type" onchange="renderVillagesTable()">
       <option value="all" data-i18n="opt_all">All</option>
@@ -359,11 +366,11 @@
           <th onclick="sortTable('villages',13)" data-i18n-th="th_snob">Snob <span class="sort-arrow"></span></th>
           <th onclick="sortTable('villages',14)" data-i18n-th="th_off">Off <span class="sort-arrow"></span></th>
           <th onclick="sortTable('villages',15)" data-i18n-th="th_def">Def Power <span class="sort-arrow"></span></th>
-          <th data-i18n="th_edit">Edit</th>
+          <th data-i18n="th_edit" data-noexport>Edit</th>
         </tr>
       </thead>
       <tbody id="villages-tbody">
-        <tr class="empty-row"><td colspan="17">Load a file to see village data</td></tr>
+        <tr class="empty-row"><td colspan="17" data-i18n="empty_load_villages">Load a file to see village data</td></tr>
       </tbody>
     </table>
   </div>
@@ -401,7 +408,7 @@
         </tr>
       </thead>
       <tbody id="outbound-tbody">
-        <tr class="empty-row"><td colspan="13">Load a file to see outbound offs</td></tr>
+        <tr class="empty-row"><td colspan="13" data-i18n="empty_load_outbound">Load a file to see outbound offs</td></tr>
       </tbody>
     </table>
   </div>
@@ -410,7 +417,7 @@
 <!-- ═══════════════════════════ RANKINGS ═══════════════════════════ -->
 <div class="tab-content" id="tab-rankings">
   <div id="rankings-content">
-    <div style="color:#5a3a18;padding:36px;text-align:center;">Load a file to see rankings</div>
+    <div style="color:#5a3a18;padding:36px;text-align:center;" data-i18n="empty_load_rankings">Load a file to see rankings</div>
   </div>
 </div>
 
@@ -433,6 +440,33 @@
     <span id="ev-summary" style="font-size:12px;color:#a08050;font-weight:600;"></span>
     <span id="ev-shared" style="font-size:12px;color:#4a70b0;font-weight:600;margin-left:auto;"></span>
     <button class="btn btn-ghost btn-sm" onclick="riFetchShared()" title="Refresh shared DB" data-i18n-title="ev_shared_refresh">🔄</button>
+  </div>
+  <!-- Filters + 📋 Copy coords of every filtered row (riFilter / riCopyCoords, js/reports-ui.js) -->
+  <div class="filter-row ev-filter-row">
+    <span class="ev-f-lbl" data-i18n="ev_f_verdict">Verdict:</span>
+    <button class="btn btn-ghost btn-sm ev-chip" id="ev-chip-off" onclick="riToggleCls('off')">OFF</button>
+    <button class="btn btn-ghost btn-sm ev-chip" id="ev-chip-def" onclick="riToggleCls('def')">DEF</button>
+    <button class="btn btn-ghost btn-sm ev-chip" id="ev-chip-mixed" onclick="riToggleCls('mixed')">MIX</button>
+    <button class="btn btn-ghost btn-sm ev-chip" id="ev-chip-spy" onclick="riToggleCls('spy')">👁 SPY</button>
+    <button class="btn btn-ghost btn-sm ev-chip" id="ev-chip-unknown" onclick="riToggleCls('unknown')" data-i18n-title="ev_f_unknown_t" title="Nothing seen yet">?</button>
+    <button class="btn btn-ghost btn-sm ev-chip" id="ev-chip-empty" onclick="riToggleCls('empty')" data-i18n-title="ev_f_empty_t" title="Seen empty">—</button>
+    <label class="map-tb-check" data-i18n-title="ev_f_sure_t" title="Hide the verdicts marked ? (the away troops were never seen)."><input type="checkbox" id="ev-f-sure" onchange="riSetFilter('sure', this.checked)"><span data-i18n="ev_f_sure">Sure only</span></label>
+    <label class="map-tb-check"><input type="checkbox" id="ev-f-stale" onchange="riSetFilter('hideStale', this.checked)"><span data-i18n="ev_f_hide_stale">Hide ⌛ old owner</span></label>
+    <select id="ev-f-age" onchange="riSetFilter('maxAge', this.value)">
+      <option value="0" data-i18n="ev_f_age_all">Any age</option>
+      <option value="1" data-i18n="ev_f_age_1">Last day</option>
+      <option value="3" data-i18n="ev_f_age_3">Last 3 days</option>
+      <option value="7" data-i18n="ev_f_age_7">Last 7 days</option>
+    </select>
+    <button class="btn btn-ghost btn-sm" onclick="riResetFilter()" data-i18n="ev_f_reset">✕ Reset filters</button>
+    <span class="ev-f-copy">
+      <select id="ev-copy-sep" onchange="riSetFilter('sep', this.value)" data-i18n-title="map_extract_sep_t" title="How the copied coordinates are separated.">
+        <option value="nl" data-i18n="map_extract_sep_nl">Line break</option>
+        <option value="space" data-i18n="map_extract_sep_space">Space</option>
+        <option value="fake" data-i18n="map_extract_sep_fake">Fake script</option>
+      </select>
+      <button class="btn btn-sm" id="ev-copy-btn" onclick="riCopyCoords()">📋 Copy coords</button>
+    </span>
   </div>
   <div class="table-wrap">
     <table id="ev-table">
@@ -469,11 +503,11 @@
   <div class="section-header">
     <h2 data-i18n="sec_target">Distance to Target</h2>
     <div style="display:flex;gap:8px;">
-      <button class="btn btn-ghost btn-sm" onclick="showBBTable('target-table')">⬇ Export Forum Table</button>
+      <button class="btn btn-ghost btn-sm" onclick="showBBTable('target-table')" data-i18n="btn_export_forum_table">⬇ Export Forum Table</button>
       <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="showTargetTimingBB()" data-i18n="btn_export_player_bb">⬇ Export Per-Player BB</button>
       <span class="map-tb-sep"></span>
-      <button class="btn btn-ghost btn-sm" onclick="exportTable('target-table','tribe_target.csv')">⬇ Export CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportTable('target-table','tribe_target.csv')" data-i18n="btn_export_csv">⬇ Export CSV</button>
       <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="clearTimings()" data-i18n="btn_clear_targets">✕ Clear All</button>
     </div>
@@ -491,7 +525,7 @@
     <select id="target-pace-unit" onchange="renderTargetTable()"></select>
   </div>
   <div class="filter-row" style="margin-top:10px;">
-    <input type="text" id="target-search" placeholder="Search player or coord…" oninput="renderTargetTable()">
+    <input type="text" id="target-search" placeholder="Search player or coord…" data-i18n-placeholder="ph_village_search" oninput="renderTargetTable()">
     <label data-i18n="lbl_min_power">Min power:</label>
     <input type="number" id="target-min-power" value="50000" placeholder="0" style="width:110px;" oninput="renderTargetTable()">
     <label data-i18n="lbl_min_points">Min points:</label>
@@ -693,7 +727,7 @@
       <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="showUnusedOffsBB()" data-i18n="btn_export_unused_offs">⬇ Export Unused Offs</button>
       <span class="map-tb-sep"></span>
-      <button class="btn btn-ghost btn-sm" onclick="exportTable('plan-table','tribe_plan.csv')">⬇ Export CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportTable('plan-table','tribe_plan.csv')" data-i18n="btn_export_csv">⬇ Export CSV</button>
       <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="clearPlan()" data-i18n="btn_clear_targets">✕ Clear All</button>
     </div>
@@ -711,7 +745,7 @@
     <input type="number" id="plan-max-dist" value="0" min="0" style="width:70px;" title="0 = unlimited" oninput="saveSettings()">
     <label data-i18n="lbl_snob_max">Snob max distance:</label>
     <input type="number" id="plan-snob-max" value="70" min="0" style="width:70px;" title="0 = unlimited" oninput="saveSettings()">
-    <label data-i18n="lbl_cat_count"><img class="tw-ic" src="icons/units/catapult.png" alt="">Number of catapults:</label>
+    <label><img class="tw-ic" src="icons/units/catapult.png" alt=""><span data-i18n="lbl_cat_count">Number of catapults:</span></label>
     <input type="number" id="plan-cat-count" value="20" min="1" style="width:70px;" data-i18n-title="cat_count_title" title="Catapults per catapult attack. Each catapult target's wanted attacks are sourced from your defensive villages that own catapults; a source village provides floor(catapults / this) attacks." oninput="saveSettings()">
   </div>
   <div class="filter-row plan-row">
@@ -770,6 +804,7 @@
   <div class="filter-row plan-row">
     <span style="font-size:12px;color:#5a3a18;" data-i18n="plan_optimize_note">Auto-optimizes by morale × off power vs. distance. Pin senders per target or tag a target POWER in Offensive Targets.</span>
     <button class="btn btn-primary btn-sm" onclick="generatePlan()" data-i18n="btn_generate">⚡ Generate Plan</button>
+    <span id="plan-troop-age" class="troop-age"></span>
   </div>
   </div>
   <div style="margin-top:8px;">
@@ -805,7 +840,7 @@
           <th data-i18n="th_travel">Travel</th>
           <th data-i18n="th_launch">Launch Window</th>
           <th data-i18n="th_order">Order</th>
-          <th></th>
+          <th data-noexport></th>
         </tr>
       </thead>
       <tbody id="plan-tbody"></tbody>
@@ -827,6 +862,8 @@
       <span class="map-tb-sep"></span>
       <button class="btn btn-primary btn-sm" onclick="toggleMoImport()" data-i18n="btn_mo_import">📥 Import Incoming Orders</button>
       <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="moShowReminders()" data-i18n="btn_mo_reminders" data-i18n-title="mo_rem_title" title="One message per player with the orders they have not sent yet.">✉ Export Reminder PMs</button>
+      <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="clearManage()" data-i18n="btn_mo_clear">✕ Clear Import</button>
     </div>
   </div>
@@ -843,6 +880,31 @@
   </div>
   <div id="mo-import-status" style="font-size:12px;color:#5a3a18;margin-top:10px;"></div>
   <div id="mo-summary" style="font-size:12px;color:#806030;margin:10px 0;"></div>
+  <!-- 📊 Per-player compliance (renderMoCompliance — shown once an import exists) -->
+  <details id="mo-compliance" class="def-sum-panel mo-comp" style="display:none;">
+    <summary><span data-i18n="mo_comp_title">📊 Per-player compliance</span><span id="mo-comp-hint" class="def-sum-hint"></span></summary>
+    <div class="def-sum-body">
+      <div class="table-wrap">
+        <table id="mo-comp-table">
+          <thead>
+            <tr>
+              <th class="left" data-i18n="th_player">Player</th>
+              <th data-i18n="mo_st_exact">✓ Sent</th>
+              <th data-i18n="mo_st_player">↷ Sent (other village)</th>
+              <th data-i18n="mo_comp_nobles">👑 Nobles</th>
+              <th data-i18n="mo_tm_in">✓ in window</th>
+              <th data-i18n="mo_comp_early">▲ Early</th>
+              <th data-i18n="mo_comp_late">▼ Late</th>
+              <th data-i18n="mo_st_pending">⏳ Not sent yet</th>
+              <th data-i18n="mo_st_missing">✗ Missing</th>
+              <th data-i18n="mo_st_extra">+ Extra</th>
+            </tr>
+          </thead>
+          <tbody id="mo-comp-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </details>
   <div class="table-wrap">
     <table id="mo-table">
       <thead>
@@ -1014,7 +1076,7 @@
       <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="showDefScriptExport()" data-i18n="btn_export_script">📜 Export supportSender</button>
       <span class="map-tb-sep"></span>
-      <button class="btn btn-ghost btn-sm" onclick="exportTable('defplan-table','tribe_def_plan.csv')">⬇ Export CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportTable('defplan-table','tribe_def_plan.csv')" data-i18n="btn_export_csv">⬇ Export CSV</button>
       <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="clearDefPlan()" data-i18n="btn_clear_targets">✕ Clear All</button>
     </div>
@@ -1040,6 +1102,7 @@
     <input type="number" id="plan-def-snip-dist" value="100" min="0" style="width:70px;" oninput="updDefSnipDist()">
     <button class="btn btn-ghost btn-sm" id="dp-packcfg-btn" onclick="toggleDpPackCfg()" data-i18n-title="dp_packcfg_t" title="Choose how support orders are sized: Max Efficiency (precise, many small orders) or Support Packs (chunky orders of at least a chosen farm size).">⚙ Config Support Size</button>
     <button class="btn btn-primary btn-sm" onclick="generateDefPlan()" data-i18n="btn_def_generate">🛡 Generate Defense</button>
+    <span id="dp-troop-age" class="troop-age"></span>
     <span id="dp-poly-note" style="font-size:12px;color:#4fd0c0;font-weight:600;"></span>
   </div>
   <div id="dp-packcfg-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
@@ -1091,7 +1154,7 @@
           <th data-i18n="th_distance">Distance</th>
           <th data-i18n="th_travel">Travel</th>
           <th data-i18n="th_depart_arrive">Depart / Arrive</th>
-          <th></th>
+          <th data-noexport></th>
         </tr>
       </thead>
       <tbody id="defplan-tbody"></tbody>
@@ -1191,11 +1254,11 @@
     <table id="db-table">
       <thead>
         <tr>
-          <th class="left" onclick="sortDb('coord')" data-i18n="th_coord">Coord <span class="sort-arrow"></span></th>
-          <th class="left" onclick="sortDb('name')" data-i18n="th_village">Village <span class="sort-arrow"></span></th>
-          <th class="left" onclick="sortDb('player')" data-i18n="th_player">Player <span class="sort-arrow"></span></th>
-          <th class="left" onclick="sortDb('tribe')" data-i18n="th_tribe">Tribe <span class="sort-arrow"></span></th>
-          <th onclick="sortDb('points')" data-i18n="th_points">Points <span class="sort-arrow"></span></th>
+          <th class="left" onclick="sortDb('coord')" data-i18n-th="th_coord">Coord <span class="sort-arrow"></span></th>
+          <th class="left" onclick="sortDb('name')" data-i18n-th="th_village">Village <span class="sort-arrow"></span></th>
+          <th class="left" onclick="sortDb('player')" data-i18n-th="th_player">Player <span class="sort-arrow"></span></th>
+          <th class="left" onclick="sortDb('tribe')" data-i18n-th="th_tribe">Tribe <span class="sort-arrow"></span></th>
+          <th onclick="sortDb('points')" data-i18n-th="th_points">Points <span class="sort-arrow"></span></th>
           <th></th>
         </tr>
       </thead>
@@ -1256,7 +1319,7 @@
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.5.1 &nbsp;·&nbsp; 2026-10-22</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.6.0 &nbsp;·&nbsp; 2026-10-22</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->
@@ -1620,6 +1683,9 @@ bootStep('server clock', () => {
   if (typeof setInterval === 'function') setInterval(updateServerNow, 1000);
 });
 
+// File bar: the age of the loaded troop data ticks on once a minute (data-load.js renderTroopAge)
+bootStep('troop age', () => { if (typeof setInterval === 'function') setInterval(renderTroopAge, 60000); });
+
 // World dropdown: loadSettings() above restored twWorld, so the DB/config loads
 // below already point at the right data/<world>/ folder. In production the option
 // list is then extended asynchronously from data/worlds.json.
@@ -1645,9 +1711,25 @@ bootStep('database', () => {
 // DOM, sets the active flag button, and repaints every tab in the restored language.
 bootStep('language', () => changeLang(lang));
 
-// Initialise the two-level nav: open the first group (Troops Overview → Overview).
-// Single source of truth for the group/sub-tab active state (see switchTab in util.js).
-bootStep('navigation', () => switchTab('overview'));
+// Initialise the two-level nav: open a #tab deep link, else the last tab opened, else Overview
+// (initialTab in util.js). Single source of truth for the group/sub-tab active state: switchTab.
+bootStep('navigation', () => {
+  // A hash edited by hand (or a #tab link followed on the open page) switches the tab too.
+  if (typeof window.addEventListener === 'function')
+    window.addEventListener('hashchange', () => { const id = location.hash.slice(1); if (tabGroupOf(id)) switchTab(id); });
+  // (A map opened before the async village DB is re-shown by mapRefresh itself — map-render.js.)
+  // A remembered tab whose show throws must not fail the boot on every reload: back to Overview.
+  const first = initialTab();
+  try { switchTab(first); }
+  catch (e) {
+    console.error('[boot] tab ' + first + ' failed to open, back to Overview:', e);
+    try { localStorage.removeItem(LAST_TAB_KEY); } catch {}
+    switchTab('overview');
+  }
+});
+
+// Keyboard access: focusable tabs / sort headers / drop zone, Enter/Space, Esc closes modals (util.js)
+bootStep('keyboard', kbdInit);
 
 // Allow dropping files anywhere on the page
 bootStep('drop handlers', () => {

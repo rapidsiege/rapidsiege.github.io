@@ -125,6 +125,13 @@ function defPlanStale(slots) {
   const now = typeof troopsSavedAt === 'string' ? troopsSavedAt : '';
   return (slots || defPlans).filter(s => !s.sent && (s.rows || []).length && s.troopsAt && now && s.troopsAt < now);
 }
+// The opposite slip: ticked 📦 Already sent while the loaded troop file is still the one the slot was
+// planned on — that file still holds the troops, so they count as available again (warning only; the
+// tick keeps its meaning).
+function defPlanSentSameFile(slots) {
+  const now = typeof troopsSavedAt === 'string' ? troopsSavedAt : '';
+  return (slots || defPlans).filter(s => s.sent && (s.rows || []).length && s.troopsAt && now && s.troopsAt === now);
+}
 function setDefPlanSent(id, on) {
   const s = defPlans.find(x => x.id === parseInt(id, 10));
   if (!s) return;
@@ -229,10 +236,30 @@ function deleteDefPlan(id) {
 }
 
 // Never throws. On a quota failure the plan stays in memory and on screen; the user is told ONCE
-// per session (warn_def_save_failed) — the setting handlers save on every keystroke. Returns whether
+// per session (warn_def_save_failed) — the setting handlers save on every typing pause. Returns whether
 // the save landed; only then is the pre-v6.4.0 key removed (on a failure it may be the only copy).
 let dtSaveWarned = false;
+// The oninput setting handlers (objectives, Ignore box, Snip %, distances) save through
+// saveDefensiveSoon(): one save after a ~400 ms typing pause instead of one per keystroke — the
+// blob holds every slot's plan rows, so a save costs 100 ms to seconds on a big op. Their in-memory
+// state and live summary still update on every key. Any direct saveDefensive() cancels the pending
+// one (it writes the full state itself); flushDefensiveSave() writes it NOW and runs wherever
+// localStorage is read raw (buildDebugDump: debug export + cloud sync) and when the page is hidden.
+let dtSaveTimer = null;
+function saveDefensiveSoon() {
+  if (dtSaveTimer !== null) clearTimeout(dtSaveTimer);
+  dtSaveTimer = setTimeout(saveDefensive, 400);
+}
+// Only when a save is pending: an idle flush must never write (a reset that just cleared the
+// storage before reloading would get its data back on pagehide).
+function flushDefensiveSave() {
+  if (dtSaveTimer !== null) saveDefensive();
+}
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') window.addEventListener('pagehide', flushDefensiveSave);
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function')
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDefensiveSave(); });
 function saveDefensive() {
+  if (dtSaveTimer !== null) { clearTimeout(dtSaveTimer); dtSaveTimer = null; } // this save covers a pending one
   defPlanSync(); // the active slot's record mirrors the plan globals
   // Compressed (lsSaveC): this key holds the generated plans and is by far the largest
   // tribe-calculator localStorage tenant (~3 MB uncompressed per big op) — LZ keeps it
@@ -359,7 +386,7 @@ function loadDefensive() {
   }
 }
 
-function updDTCfgInt(k, v) { dtCfg[k] = Math.max(0, parseInt(v, 10) || 0); saveDefensive(); }
+function updDTCfgInt(k, v) { dtCfg[k] = Math.max(0, parseInt(v, 10) || 0); saveDefensiveSoon(); } // oninput
 
 // Normalize a target saved by (or pasted from) an older/partial version.
 function normalizeDefTarget(tg) {
@@ -523,13 +550,23 @@ function refreshDefTargetsFromDb() {
   renderDefTargets();
 }
 
+// Coords listed more than once → how many times (target entries are independent: each gets its full
+// objective). Flagged, never blocked — two entries can be a deliberate two-wave setup (own arrival).
+function defTargetDupCoords() {
+  const n = {};
+  for (const tg of defTargets) if (tg && tg.coord) n[tg.coord] = (n[tg.coord] || 0) + 1;
+  for (const c in n) if (n[c] < 2) delete n[c];
+  return n;
+}
 function renderDefTargets() {
   defTargets.forEach(normalizeDefTarget);
 
-  // Coords the world DB doesn't recognize (only meaningful once a DB is loaded)
+  // Coords the world DB doesn't recognize (only meaningful once a DB is loaded), then coords listed twice
   const warnEl = document.getElementById('dt-warnings');
+  const dups = defTargetDupCoords();
   const warns = (villageDb.length ? defTargets.filter(tg => !coordDb[tg.coord]) : [])
-    .map(tg => t('warn_target_not_in_db')(tg.coord));
+    .map(tg => t('warn_target_not_in_db')(tg.coord))
+    .concat(Object.keys(dups).map(c => t('warn_def_target_dup')(c, dups[c])));
   if (warnEl) warnEl.innerHTML = warns.length
     ? `<details class="warn-box"><summary>${t('plan_warnings_toggle')(warns.length)}</summary>`
       + `<div class="warn-list">${warns.map(esc).join('<br>')}</div></details>` : '';
@@ -557,7 +594,7 @@ function renderDefTargets() {
     return `
     <tr>
       <td style="color:#806030;">${i + 1}</td>
-      <td class="left"><input class="cell-input mono" style="width:74px;${isUnknown ? 'border-color:#b02010;' : ''}" value="${esc(tg.coord)}" title="${dbTitle}" onchange="updDT(${tg.id},'coord',this.value)"></td>
+      <td class="left"><input class="cell-input mono" style="width:74px;${isUnknown ? 'border-color:#b02010;' : dups[tg.coord] ? 'border-color:#e0a020;' : ''}" value="${esc(tg.coord)}" title="${dbTitle}" onchange="updDT(${tg.id},'coord',this.value)"></td>
       <td class="left" title="${dbTitle}">${tg.defender ? `<span class="player-tag">${esc(tg.defender)}</span>` : '<span class="num-zero">—</span>'}</td>
       <td class="left">${tg.tribe ? `<span class="player-tag">${esc(tg.tribe)}</span>` : '<span class="num-zero">—</span>'}</td>
       ${numInput('spear')}${numInput('sword')}${numInput('spy')}${numInput('heavy')}

@@ -34,6 +34,34 @@ function serverWallMs(dateISO, minutes) {
 function windowEndMin(w) { return w ? w.to + (w.to < w.f ? 1440 : 0) : null; }
 // Epoch ms of that end on the server clock (null without a valid date / window).
 function windowEndMs(dateISO, w) { return w ? serverWallMs(dateISO, windowEndMin(w)) : null; }
+// True when minute `min` of dateISO does not exist on the server clock: the hour a spring DST
+// switch skips (02:00–02:59 when the clocks jump to 03:00, automatic offset only). serverWallMs
+// reads such a time an hour late, onto the same instant as 03:xx.
+function serverWallSkipped(dateISO, min) {
+  if (!(min >= 0 && min < 1440)) return false;
+  const ms = serverWallMs(dateISO, min);
+  if (ms === null) return false;
+  const p = n => String(n).padStart(2, '0');
+  return fmtServerDT(ms).slice(0, 16) !== `${dateISO} ${p(Math.floor(min / 60))}:${p(min % 60)}`;
+}
+// Epoch ms of a landing window's START — the one reading for the display (launch times,
+// planRowAbsTimes), the engine (the ⚔ ratio launch moment, the ⏰ schedule trim and psLaunchRange)
+// and Manage Offensive (moTimingVerdict). A start inside the skipped spring hour starts at the
+// first valid instant after it — the switch itself, 03:00 — instead of serverWallMs's hour-late
+// reading (which collapsed '02:48/03:48' onto 03:48 and showed a reversed launch span). Every
+// other start is serverWallMs's; generatePlan warns about such a window (warn_window_skipped).
+function windowStartMs(dateISO, w) {
+  const ms = w ? serverWallMs(dateISO, w.f) : null;
+  if (ms === null || !serverWallSkipped(dateISO, w.f)) return ms;
+  let lo = ms - 3 * 3600000, hi = ms; // the offset changes somewhere in between: find the minute it does
+  const offLo = serverUtcOffset(lo);
+  if (offLo === serverUtcOffset(hi)) return ms;
+  while (hi - lo > 60000) {
+    const mid = lo + Math.floor((hi - lo) / 120000) * 60000;
+    if (serverUtcOffset(mid) === offLo) lo = mid; else hi = mid;
+  }
+  return hi;
+}
 // Epoch ms of the optional "Earliest send" datetime-local (Plan Offensive), read on the SAME
 // server wall clock as the windows. null when unset/malformed → the plan uses serverNowMs() as
 // the only send floor (original behaviour). When set, it raises that floor, shrinking range for
@@ -70,7 +98,7 @@ function launchWindowCalc(winStr, travelMin, dateISO) {
   const single = w.f === w.to;
   const trSec = Math.round((travelMin || 0) * 60); // the game's travel times are whole seconds (also drops float noise)
   const iso = String(dateISO === undefined ? (otGroups()[0].dateISO || '') : (dateISO || ''));
-  const arrMs = serverWallMs(iso, w.f);
+  const arrMs = windowStartMs(iso, w);
   if (arrMs === null) {
     const p = n => String(n).padStart(2, '0');
     const fm = m => { const x = ((m % 1440) + 1440 * 100) % 1440; return `${p(Math.floor(x / 60))}:${p(x % 60)}`; };
@@ -78,9 +106,10 @@ function launchWindowCalc(winStr, travelMin, dateISO) {
     const span = single ? fm(f) : `${fm(f)}–${fm(Math.floor((w.to * 60 - trSec) / 60))}`;
     return { span, single, days: f < 0 ? Math.ceil(-f / 1440) : 0, launchISO: null };
   }
-  const S = fmtServerDT(launchStartMs(arrMs, w, travelMin));
+  const startMs = launchStartMs(arrMs, w, travelMin), S = fmtServerDT(startMs);
+  // the end never precedes the start (a window squeezed by the skipped spring hour)
   const span = single ? S.slice(11, 16)
-    : `${S.slice(11, 16)}–${fmtServerDT(Math.floor((windowEndMs(iso, w) - trSec * 1000) / 60000) * 60000).slice(11, 16)}`;
+    : `${S.slice(11, 16)}–${fmtServerDT(Math.max(startMs, Math.floor((windowEndMs(iso, w) - trSec * 1000) / 60000) * 60000)).slice(11, 16)}`;
   const day = x => Date.parse(`${x}T00:00:00Z`);
   return { span, single, days: Math.round((day(iso) - day(S.slice(0, 10))) / 86400000), launchISO: S.slice(0, 10) };
 }
@@ -571,7 +600,7 @@ function generatePlan() {
     const floor = kind === 'snob' ? sendFloorMs : floorFor(p);
     if (!g) return floor;
     const pw = parseWindowStr(kind === 'off' ? (g.winOff || g.winSnob || '') : (g.winSnob || g.winOff || ''));
-    const startMs = pw ? serverWallMs(g.dateISO, pw.f) : null;
+    const startMs = pw ? windowStartMs(g.dateISO, pw) : null; // the shown start (03:00 for one in the skipped spring hour)
     if (startMs === null) return floor;
     const tr = travelTimeMin(distXY(p.c, T.c), kind === 'off' ? PLAN_BASE_MIN.off : PLAN_BASE_MIN.snob, ws, us);
     return Math.max(floor, startMs - tr * 60000);
@@ -667,7 +696,7 @@ function generatePlan() {
   // `floorMs` = the sender's own floor (a returning off's home time, v6.2.0) — the launch moments
   // before it are just as impossible as those before now.
   const schedSkip = (dateISO, pw, travel, floorMs) => {
-    const startMs = serverWallMs(dateISO, pw.f);
+    const startMs = windowStartMs(dateISO, pw); // the shown start, like psLaunchRange
     if (startMs === null) return 0;
     const past = floorMs - (startMs - Math.round(travel || 0) * 60000);
     return past > 0 ? Math.ceil(past / 60000) : 0;
@@ -1649,6 +1678,19 @@ function generatePlan() {
     if (h != null) { r.returning = true; r.homeMs = h; }
   }
   const rowFloorMs = r => r.returning ? Math.max(sendFloorMs, r.homeMs || 0) : sendFloorMs;
+  // A window group with orders but neither an off nor a snob window: the gates let every pick
+  // through (no end to miss), but its orders print ??:?? with no launch time — say so, once per group.
+  const noWindow = new Set(planRows.filter(r => !parseWindowStr(r.window)).map(r => otGroupIndex(r.group)));
+  [...noWindow].sort((a, b) => a - b).forEach(i => planWarnings.push(t('warn_no_window')(otGroupLabel(i))));
+  // A window that STARTS inside the hour a spring DST switch skips: its launch times are shown
+  // from the switch (03:00, windowStartMs) — say so, once per window and date.
+  const skippedWin = new Set();
+  for (const r of planRows) {
+    const w = parseWindowStr(r.window), iso = planRowDateISO(r), key = `${r.window}|${iso}`;
+    if (!w || skippedWin.has(key) || !serverWallSkipped(iso, w.f)) continue;
+    skippedWin.add(key);
+    planWarnings.push(t('warn_window_skipped')(r.window, iso, fmtServerDT(windowStartMs(iso, w)).slice(11, 16)));
+  }
   // A row can still be impossible when its assigned window is earlier than
   // the latest one its source was vetted against — flag it instead of hiding it.
   // Snob trains are skipped: they carry no prescribed origin/launch, so there's
@@ -2443,7 +2485,7 @@ function planRowTableType(r) {
 // cells blank.
 function planRowAbsTimes(r) {
   const w = parseWindowStr(r.window);
-  const arrMs = w ? serverWallMs(planRowDateISO(r), w.f) : null;
+  const arrMs = w ? windowStartMs(planRowDateISO(r), w) : null;
   if (arrMs === null) return null;
   const sendMs = launchStartMs(arrMs, w, r.travel);
   return { sendMs, send: fmtServerDT(sendMs), arrival: fmtServerDT(arrMs) };

@@ -64,13 +64,17 @@ function psSegments(r) { return r.f <= r.to ? [[r.f, r.to]] : [[r.f, 1440], [0, 
 // `skip` (optional, minutes) trims the START of that range — the part already behind the send floor
 // (now / Earliest send, computed by the engine), so a past moment never grades as free / preferred.
 // `dateISO` (optional, the window's arrival date): the start is read on the server clock at the
-// launch INSTANT, so a travel across a DST switch shifts it by that hour like the gates do.
+// launch INSTANT, so a travel across a DST switch shifts it by that hour like the gates do. The
+// start is the plan's own (windowStartMs): one in the hour a spring switch skips opens at the
+// switch, and the range then runs to the window's end instant (windowEndMs), as the display does.
 function psLaunchRange(win, travel, skip, dateISO) {
-  let span = win.to >= win.f ? win.to - win.f : win.to + 1440 - win.f;
+  const arrMs = dateISO ? windowStartMs(dateISO, win) : null;
+  let span = arrMs !== null && serverWallSkipped(dateISO, win.f)
+    ? Math.max(0, Math.round((windowEndMs(dateISO, win) - arrMs) / 60000))
+    : win.to >= win.f ? win.to - win.f : win.to + 1440 - win.f;
   const cut = Math.max(0, Math.min(span, Math.round(skip || 0)));
   span -= cut;
   if (span >= 1440) return { f: 0, to: 1440 };
-  const arrMs = dateISO ? serverWallMs(dateISO, win.f) : null;
   const S = arrMs === null ? '' : fmtServerDT(arrMs - (Math.round(travel || 0) - cut) * 60000);
   const f = S ? +S.slice(11, 13) * 60 + +S.slice(14, 16)
     : ((win.f - Math.round(travel || 0) + cut) % 1440 + 1440) % 1440;

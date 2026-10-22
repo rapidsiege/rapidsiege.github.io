@@ -701,18 +701,30 @@ function offTierFiltered(v) {
 // other village (enemy, barbarian, unloaded) is always shown. Among the troop-info villages,
 // only the matching badge role stays — the rest fade (an off-only/def-only/empty village under
 // the opposite filter). Pure read of troopByCoord + villageTroopBadge + the toggles + plans.
+// renderMapOffscreen sets mapRoleSets (plan lookups built ONCE per render) so the per-village
+// call is a Set lookup, not a plan scan; outside a render it is null and the plans are scanned.
+let mapRoleSets = null;
+function buildMapRoleSets() {
+  return {
+    supportTargets: new Set(typeof defPlanRows !== 'undefined' ? defPlanRows.map(r => r.tCoord) : []),
+    snobReserved: new Set(typeof planReserved !== 'undefined' ? planReserved : []),
+  };
+}
 function villageRoleFiltered(v) {
   if (!mapShowDefVillagesOnly && !mapShowOffVillagesOnly) return false; // no focus filter active
   const coord = v.x + '|' + v.y;
   if (typeof troopByCoord === 'undefined' || !troopByCoord[coord]) return false; // no troop info → always shown
   const badge = (typeof villageTroopBadge === 'function') ? villageTroopBadge(coord) : null;
   const role = badge ? badge.offdef : null; // 'off' | 'def' | null
+  const sets = mapRoleSets;
   if (mapShowDefVillagesOnly && role !== 'def') {
-    const isSupportTarget = mapShowDefPlan && typeof defPlanRows !== 'undefined' && defPlanRows.some(r => r.tCoord === coord);
+    const isSupportTarget = mapShowDefPlan && (sets ? sets.supportTargets.has(coord)
+      : typeof defPlanRows !== 'undefined' && defPlanRows.some(r => r.tCoord === coord));
     if (!isSupportTarget) return true;
   }
   if (mapShowOffVillagesOnly && role !== 'off') {
-    const isSnobReserved = typeof planReserved !== 'undefined' && planReserved.indexOf(coord) !== -1;
+    const isSnobReserved = sets ? sets.snobReserved.has(coord)
+      : typeof planReserved !== 'undefined' && planReserved.indexOf(coord) !== -1;
     if (!isSnobReserved) return true;
   }
   return false;
@@ -770,6 +782,41 @@ function extractCoords(coords, sep) {
 }
 // The Extract bar's separator choice ('nl' | 'space') → the actual join string.
 function extractSepChar(mode) { return mode === 'space' ? ' ' : '\n'; }
+
+// ── 🔎 Go to (pure, harness-tested) ──────────────────────────────────────────────────────────
+// The toolbar box's text → a coord: 'x|y', '(x|y)', 'x y' or 'x,y' on its own, else the first
+// x|y found inside pasted text ("Aldea (500|500) K55"). Never part of a longer number.
+function mapGotoCoord(q) {
+  const s = String(q == null ? '' : q).trim();
+  const m = s.match(/^\(?\s*(\d{1,3})\s*[|\s,]\s*(\d{1,3})\s*\)?$/) || s.match(/(?<!\d)(\d{1,3})\|(\d{1,3})(?!\d)/);
+  return m ? `${+m[1]}|${+m[2]}` : null;
+}
+// What the box points at, in this order: a coord; ONE village whose name matches exactly
+// (case-insensitive — barbarian names repeat, so several exact hits fall through); a player named
+// exactly (world DB, then the loaded troop file); ONE player whose name contains the text.
+//   {kind:'coord', coord} | {kind:'village', coord, name} | {kind:'player', name, coords:[…]}
+//   | {kind:'many', n} (several players contain it) | {kind:'none'}
+function mapGotoResolve(q) {
+  const s = String(q == null ? '' : q).trim();
+  if (!s) return { kind: 'none' };
+  const coord = mapGotoCoord(s);
+  if (coord) return { kind: 'coord', coord };
+  const low = s.toLowerCase();
+  const vdb = typeof villageDb !== 'undefined' ? villageDb : [];
+  const pdb = typeof playerDb !== 'undefined' ? playerDb : {};
+  const vh = vdb.filter(v => String(v.name || '').trim().toLowerCase() === low);
+  if (vh.length === 1) return { kind: 'village', coord: vh[0].x + '|' + vh[0].y, name: vh[0].name };
+  const dbPlayer = id => ({ kind: 'player', name: pdb[id], coords: vdb.filter(v => v.playerId === id).map(v => v.x + '|' + v.y) });
+  for (const id in pdb) if (String(pdb[id]).toLowerCase() === low) return dbPlayer(id);
+  const tp = typeof players !== 'undefined' ? players : {};
+  for (const raw in tp) {
+    if (decode(raw).toLowerCase() === low) return { kind: 'player', name: decode(raw), coords: tp[raw].villages.map(v => v.coord) };
+  }
+  const part = Object.keys(pdb).filter(id => String(pdb[id]).toLowerCase().includes(low));
+  if (part.length === 1) return dbPlayer(part[0]);
+  if (part.length > 1) return { kind: 'many', n: part.length };
+  return { kind: 'none' };
+}
 
 // ── Barb Finder (pure, harness-tested) ───────────────────────────────────────
 // Pick a loaded tribe-troop player who owns snobs, then rank barbarian villages by how

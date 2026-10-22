@@ -216,7 +216,8 @@ function renderTargetTable() {
     if (c.noSort) return `<th class="${c.left ? 'left' : ''}">${c.label}</th>`;
     const sortCls = targetSort.key === c.key ? (targetSort.dir === -1 ? ' sort-desc' : ' sort-asc') : '';
     const titleAttr = c.travel ? ` title="${t('tt_title')}"` : (c.title ? ` title="${esc(c.title)}"` : '');
-    return `<th class="${c.left ? 'left' : ''}${sortCls}"${titleAttr} onclick="sortTarget('${c.key}')">${c.label} <span class="sort-arrow"></span></th>`;
+    // tabindex: this row is rebuilt on every sort / filter / language switch, after kbdInit ran
+    return `<th class="${c.left ? 'left' : ''}${sortCls}"${titleAttr} tabindex="0" onclick="sortTarget('${c.key}')">${c.label} <span class="sort-arrow"></span></th>`;
   }).join('');
 
   const tbody = document.getElementById('target-tbody');

@@ -54,7 +54,7 @@ function parseDefIgnoreSet() { return coordSetOf(defIgnore); }
 function updDefIgnore() {
   const el = document.getElementById('dp-ignore-input');
   defIgnore = el ? el.value : '';
-  saveDefensive(); renderDefEligibleSummary();
+  saveDefensiveSoon(); renderDefEligibleSummary(); // oninput: save after a typing pause
 }
 function toggleDefIgnore() {
   const el = document.getElementById('dp-ignore-wrap');
@@ -232,13 +232,13 @@ function updDefSnipPct() {
   const el = document.getElementById('plan-def-snip-pct');
   const n = el ? parseFloat(el.value) : NaN;
   defSnipPct = Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : defSnipDefaults().pct;
-  saveDefensive();
+  saveDefensiveSoon(); // oninput
 }
 function updDefSnipDist() {
   const el = document.getElementById('plan-def-snip-dist');
   const n = el ? parseFloat(el.value) : NaN;
   defSnipDist = Number.isFinite(n) ? Math.max(0, n) : defSnipDefaults().dist;
-  saveDefensive();
+  saveDefensiveSoon(); // oninput
 }
 
 // ── Enemy Tribes: bar senders too close to a hostile tribe's villages ──
@@ -352,7 +352,7 @@ function renderDefEnemyTribes() {
 function updDefEnemyDist() {
   const el = document.getElementById('plan-def-enemy-dist');
   defEnemyDist = el ? Math.max(0, parseInt(el.value, 10) || 0) : 0;
-  saveDefensive(); renderDefEligibleSummary();
+  saveDefensiveSoon(); renderDefEligibleSummary(); // oninput
 }
 function updDefFarFirst() {
   const el = document.getElementById('plan-def-far-first');
@@ -649,16 +649,24 @@ function generateDefPlan() {
     snipSentPop[P] = priorSnipPop[P] || 0; snipOverPop[P] = 0;
   }
 
-  const tgs = defTargets.map((tg, i) => ({ tg, i, c: parseCoordStr(tg.coord), tag: defTargetTag(tg) })); // live DB tag first
+  // arr: the target's arrival (epoch ms or null), computed ONCE — the checks below run per sender ×
+  // target × unit. cutMs: the latest departure still in time, from ONE clock read per Generate.
+  const tgs = defTargets.map((tg, i) => ({ tg, i, c: parseCoordStr(tg.coord), tag: defTargetTag(tg), arr: defArrivalMs(tg) })); // live DB tag first
+  const cutMs = serverNowMs() + PARAMS.departMargin * 60000; // 🎚 departMargin
   tgs.filter(T => !T.c).forEach(T => defPlanWarnings.push(t('warn_invalid_coord')(T.tg.coord)));
   // 📦 v6.4.0: other plans built on an OLDER troop file and not ticked Already sent — if their support
   // already left, this file no longer has it and subtracting it again counts it twice.
   const stale = defPlanStale(defPlanOthers());
   if (stale.length) defPlanWarnings.push(t('def_slot_stale')(stale.map(defPlanLabel).join(', ')));
+  const sentSame = defPlanSentSameFile(defPlanOthers());
+  if (sentSame.length) defPlanWarnings.push(t('def_slot_sent_same')(sentSame.map(defPlanLabel).join(', ')));
   // v6.4.0: a target another defense plan already supports gets its FULL objective again here — the
   // engine plans each objective as new sends (it never credits support already there or on the way).
   // Said once per target, so a target carried over from the previous plan by mistake stands out.
   for (const T of tgs) if (T.c && prior.targets[T.tg.coord]) defPlanWarnings.push(t('warn_def_target_prior')(T.tg.coord, prior.targets[T.tg.coord]));
+  // The same within this plan: a coord listed twice gets each entry's full objective.
+  const dups = defTargetDupCoords();
+  for (const c in dups) defPlanWarnings.push(t('warn_def_target_dup')(c, dups[c]));
 
   const dbReady = villageDb.length > 0;
   // Same-tribe gate — the 🎚 PARAMS.defSameTribeOnly parameter (v6.0.3, default ON = the es100 /
@@ -686,11 +694,11 @@ function generateDefPlan() {
   // Per-type arrival feasibility, gated at THAT type's own pace (generous). The exact
   // bundled-pace check happens after allocation (a row is late-flagged if its slowest
   // unit can't make the deadline) — mirrors the offensive engine's vet-then-flag split.
-  const arrMs = T => defArrivalMs(T.tg);
+  const arrMs = T => T.arr;
   const typeArriveOk = (s, T, u) => {
     const a = arrMs(T);
     if (a === null) return true;
-    return a - travelTimeMin(dist(s, T), UNIT_BASE_MIN[u], ws, us) * 60000 >= serverNowMs() + PARAMS.departMargin * 60000; // 🎚 departMargin
+    return a - travelTimeMin(dist(s, T), UNIT_BASE_MIN[u], ws, us) * 60000 >= cutMs;
   };
 
   // Targets are filled deadline-first (earliest arrival), then no-deadline by descending
@@ -722,6 +730,15 @@ function generateDefPlan() {
       let d = mvPartnersDecoded.get(x); if (!d) mvPartnersDecoded.set(x, d = new Set()); d.add(decode(y));
     };
     link(a, b); link(b, a);
+  }
+  // Rule 1 holds per VILLAGE, not per target entry: target coord → Set<decoded sender player>
+  // already supporting it. Seeded from every OTHER defense plan (ticked sent or not — that
+  // support is still at or on its way to the village) and grown by commit(), so a later entry
+  // of the same coord sees who this run already sent there.
+  const mvClaims = {};
+  const mvClaimWarned = new Set(); // `${player}#${coord}` — one warning per player and village
+  if (mvPartners.size) for (const s of defPlanOthers()) for (const r of (s.rows || [])) {
+    if (r && r.tCoord && r.srcPlayer) (mvClaims[r.tCoord] || (mvClaims[r.tCoord] = new Set())).add(r.srcPlayer);
   }
 
   // "Support Packs" sizing mode — see setDpMode. 'eff' leaves the allocation byte-for-byte.
@@ -759,6 +776,7 @@ function generateDefPlan() {
       units: { spear: 0, sword: 0, spy: 0, heavy: 0 }, fut: { spear: 0, sword: 0, spy: 0, heavy: 0 } });
     pk.units[u] += q;
     if (view === 'stockFut') pk.fut[u] += q;
+    if (mvPartners.size) (mvClaims[T.tg.coord] || (mvClaims[T.tg.coord] = new Set())).add(decode(senders[si].v.player));
   };
 
   for (const T of order) {
@@ -783,6 +801,17 @@ function generateDefPlan() {
       if (def) for (const P in demandPop) {
         const partners = mvPartnersDecoded.get(P);
         if (partners && partners.has(def)) mvExcluded.add(P);
+      }
+      // Rule 1 across entries and plans (unconditional, like rule 2): a partner already
+      // supports this village — in another defense plan or an earlier entry of the same coord.
+      const claimed = mvClaims[T.tg.coord];
+      if (claimed) for (const P in demandPop) {
+        if (mvExcluded.has(P)) continue;
+        const by = [...(mvPartnersDecoded.get(P) || [])].find(d => claimed.has(d));
+        if (by === undefined) continue;
+        mvExcluded.add(P);
+        const wk = P + '#' + T.tg.coord;
+        if (!mvClaimWarned.has(wk)) { mvClaimWarned.add(wk); defPlanWarnings.push(t('warn_def_mv_claimed')(decode(P), by, T.tg.coord)); }
       }
       for (const pair of mvPairs) {
         const [a, b] = pair;
@@ -1168,9 +1197,9 @@ function generateDefPlan() {
     if (DEF_OBJ_UNITS.reduce((a, u) => a + pk.units[u], 0) <= 0) continue;
     const d = distXY(s.c, T.c);
     const travel = travelTimeMin(d, defPacketBaseMin(pk.units), ws, us);
-    const arriveMs = defArrivalMs(T.tg);
+    const arriveMs = T.arr;
     const departMs = arriveMs !== null ? arriveMs - travel * 60000 : null;
-    const late = arriveMs !== null && departMs < serverNowMs() + PARAMS.departMargin * 60000; // 🎚 departMargin
+    const late = arriveMs !== null && departMs < cutMs;
     // futUnits: the share of this order that is still EN ROUTE to the sender (round-2 fill).
     // Independent of `late`: `late` = the trip can't reach the deadline even leaving now,
     // futUnits = part of the army isn't home to leave with yet (no ETA exists for it).
@@ -1246,6 +1275,7 @@ function renderDefPlanSlots() {
   const hint = (defPlans.length > 1 ? t('def_slot_hint')(prior.nSlots, prior.nOrders, prior.nVillages, prior.pop) : t('def_slot_hint_single'))
     + (prior.nSent ? ' ' + t('def_slot_hint_sent')(prior.nSent) : '');
   const stale = defPlanStale();
+  const sentSame = defPlanSentSameFile();
   host.innerHTML = `<span class="plan-slots-lbl">${esc(t('def_slot_lbl'))}</span>`
     + `<select id="defplan-slot-select" onchange="setDefPlanActive(this.value)" title="${esc(t('def_slot_select_t'))}">${opts}</select>`
     + `<input id="defplan-slot-name" type="text" maxlength="40" value="${esc(act.name || '')}" placeholder="${esc(t('plan_slot_name_ph'))}" title="${esc(t('def_slot_name_t'))}" onchange="renameDefPlan(${act.id}, this.value)">`
@@ -1253,7 +1283,8 @@ function renderDefPlanSlots() {
     + (defPlans.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="deleteDefPlan(${act.id})" title="${esc(t('btn_def_slot_del_t'))}">${esc(t('btn_def_slot_del'))}</button>` : '')
     + ((act.rows || []).length ? `<label title="${esc(t('def_slot_sent_t'))}"><input type="checkbox" id="defplan-slot-sent" style="width:auto;"${act.sent ? ' checked' : ''} onchange="setDefPlanSent(${act.id}, this.checked)"> ${esc(t('def_slot_sent_lbl'))}</label>` : '')
     + `<span class="plan-slots-hint">${esc(hint)}</span>`
-    + (stale.length ? `<span class="plan-slots-hint" style="color:#e0a020;">⚠ ${esc(t('def_slot_stale')(stale.map(defPlanLabel).join(', ')))}</span>` : '');
+    + (stale.length ? `<span class="plan-slots-hint" style="color:#e0a020;">⚠ ${esc(t('def_slot_stale')(stale.map(defPlanLabel).join(', ')))}</span>` : '')
+    + (sentSame.length ? `<span class="plan-slots-hint" style="color:#e0a020;">⚠ ${esc(t('def_slot_sent_same')(sentSame.map(defPlanLabel).join(', ')))}</span>` : '');
 }
 
 function renderDefPlanTable() {
@@ -1281,17 +1312,23 @@ function renderDefPlanTable() {
     return;
   }
   let lastT = null;
+  // A plan is often reopened hours after Generate: an order whose departure has passed since is
+  // late NOW too (r.late itself stays as generated — it is what Generate's warnings said).
+  // Not for a slot ticked 📦 Already sent: its support left, a passed departure is expected there.
+  const cutNow = serverNowMs() + PARAMS.departMargin * 60000; // 🎚 departMargin
+  const slotSent = !!defPlanActiveSlot().sent;
   tbody.innerHTML = defPlanRows.map((r, i) => {
     const first = r.tCoord !== lastT;
     lastT = r.tCoord;
     const url = rallyUrl(r.srcCoord, r.tCoord, r.units);
+    const late = r.late || (!slotSent && r.departMs != null && r.departMs < cutNow);
     const times = r.arriveMs !== null
-      ? `<span style="color:${r.late ? '#e06040' : '#2e7d32'};">${esc(t('def_col_arrive'))} ${esc(fmtServerDT(r.arriveMs))}</span><br>`
-        + `<span style="color:#e0a020;${r.late ? 'font-weight:600;' : ''}">${r.late ? '⚠ ' : ''}${esc(t('def_col_depart'))} ${esc(fmtServerDT(r.departMs))}</span>`
+      ? `<span style="color:${late ? '#e06040' : '#2e7d32'};">${esc(t('def_col_arrive'))} ${esc(fmtServerDT(r.arriveMs))}</span><br>`
+        + `<span style="color:#e0a020;${late ? 'font-weight:600;' : ''}">${late ? '⚠ ' : ''}${esc(t('def_col_depart'))} ${esc(fmtServerDT(r.departMs))}</span>`
       : '—';
     const trStyle = [
       first && i > 0 ? 'border-top:2px solid #7a5c10' : '',
-      r.late ? 'background:rgba(192,64,32,0.08)' : '',
+      late ? 'background:rgba(192,64,32,0.08)' : '',
     ].filter(Boolean).join(';');
     return `
     <tr${trStyle ? ` style="${trStyle}"` : ''}>
@@ -1870,7 +1907,10 @@ function defPmMessagesFrom(planRows, maxBrackets) {
         if (now.length) lines[0] = `[b]${t('def_bb_group_now')}[/b]\n` + lines[0];
       }
       lines[0] = `========== ${name} (${rows.length}) ==========\n` + lines[0];
-      return { player: name, parts: pmSplitParts(lines, maxBrackets) };
+      const parts = pmSplitParts(lines, maxBrackets);
+      // orderCounts[k]: the numbered order lines in part k (the header and group labels are glued-on
+      // lines, not orders) — counted before any template wraps the part, for the modal's meta line.
+      return { player: name, parts, orderCounts: parts.map(p => (p.match(/^\d+\. /gm) || []).length) };
     });
 }
 function defPmMessages(maxBrackets) { return defPmMessagesFrom(defPlanRows, maxBrackets); }
@@ -1890,10 +1930,11 @@ function renderPmModal(messages, hint, topHtml) {
   body.innerHTML = `<div class="pm-hint">${esc(hint || t('pm_hint'))}</div>` + (topHtml || '') + defPmExport.map((m, pi) =>
     m.parts.map((text, k) => {
       const label = m.parts.length > 1 ? `${m.player} (${k + 1}/${m.parts.length})` : m.player;
-      // Order count: defense messages are one order per line, so the line count is exact and
-      // is used by default. A caller whose block isn't line-per-order (the offensive Orders PM:
-      // header + blank lines + objective context) passes an explicit orderCount to override it.
-      const orders = m.orderCount != null ? m.orderCount : text.split('\n').length;
+      // Order count: per part from orderCounts (defense Orders PMs, raw or template-wrapped — the
+      // header / group labels / template lines are not orders), else the message's explicit
+      // orderCount (offensive Orders PM, summary tables), else one order per line.
+      const orders = m.orderCounts && m.orderCounts[k] != null ? m.orderCounts[k]
+        : m.orderCount != null ? m.orderCount : text.split('\n').length;
       return `<div class="pm-row">
         <button class="btn btn-ghost btn-sm pm-player-btn" onclick="copyDefPm(${pi}, ${k}, this)">📋 ${esc(label)}</button>
         <span class="pm-meta">${esc(t('pm_meta')(orders, text.length, pmBracketCount(text)))}</span>

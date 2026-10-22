@@ -316,24 +316,35 @@ function renderReturningTable() {
   const now = serverNowMs();
   const stamp = sec => sec ? new Date(sec * 1000).toLocaleString() : '?';
 
+  // An attack whose arrival time has passed still counts as in flight until its file is removed
+  // (PLAN-tribe-calculator-v6-features: the user drops old files) — flagged here, never changed.
+  const landed = ms => typeof ms === 'number' && isFinite(ms) && ms < now;
+  const fileLanded = f => {
+    const outs = roCommands.filter(c => c.fileId === f.id && c.kind === 'out');
+    return outs.length > 0 && outs.every(c => landed(c.arrivalMs));
+  };
   const filesEl = document.getElementById('ro-files');
   if (filesEl) filesEl.innerHTML = roFiles.map(f => {
     const name = f.source === 'manageoff' ? t('ro_file_manage') : (f.name || t('ro_file_paste'));
-    return `<div class="ro-file"><span>${esc(t('ro_file_line')(name, stamp(f.exportedAt || f.importedAt), f.nOut || 0, f.nHome || 0))}</span>`
+    const old = fileLanded(f);
+    return `<div class="ro-file${old ? ' ro-file-landed' : ''}"><span>${esc(t('ro_file_line')(name, stamp(f.exportedAt || f.importedAt), f.nOut || 0, f.nHome || 0))}</span>`
+      + (old ? ` <span class="ro-landed-note">${esc(t('ro_file_landed'))}</span>` : '')
       + ` <button class="btn btn-ghost btn-sm" onclick="roRemoveFileUi(${Number(f.id)})" title="${esc(t('btn_remove'))}">✕</button></div>`;
   }).join('');
   const impEl = document.getElementById('ro-import-status');
   if (impEl) impEl.textContent = roFiles.length ? t('ro_imported')(roFiles.length, roCommands.length) : '';
 
   const states = roVillageStates(roCommands, now);
-  let nOut = 0, nHome = 0, nBack = 0, nextHome = null;
+  let nOut = 0, nHome = 0, nBack = 0, nextHome = null, nLanded = 0;
   for (const s of states.values()) {
-    if (s.state === 'out') nOut++;
+    if (s.state === 'out') { nOut++; if (landed(s.outLatestMs)) nLanded++; }
     else if (s.state === 'home') { nHome++; if (nextHome === null || s.homeMs < nextHome) nextHome = s.homeMs; }
     else nBack++;
   }
   const sumEl = document.getElementById('ro-summary');
-  if (sumEl) sumEl.textContent = roFiles.length ? t('ro_summary')(nOut, nHome, nBack, nextHome === null ? '—' : roFmtTime(nextHome)) : t('ro_empty_hint');
+  if (sumEl) sumEl.textContent = roFiles.length
+    ? t('ro_summary')(nOut, nHome, nBack, nextHome === null ? '—' : roFmtTime(nextHome)) + (nLanded ? ' · ' + t('ro_sum_landed')(nLanded) : '')
+    : t('ro_empty_hint');
 
   // Per OUR village: the reporting player (first named command, else the troop file's owner), the
   // distinct targets its in-flight attacks are heading to, and the attacked villages its return
@@ -375,7 +386,8 @@ function renderReturningTable() {
       <td>${esc(t('ro_cmds')(r.s.out, r.s.home))}</td>
       <td class="left" style="font-family:monospace;">${tgt || '—'}</td>
       <td style="font-family:monospace;color:#60a0e0;">${esc(roFmtTime(r.time))}</td>
-      <td style="font-family:monospace;">${roFmtIn(r.time, now)}</td>
+      <td style="font-family:monospace;">${r.s.state === 'out' && landed(r.time)
+        ? `<span class="ro-landed" title="${esc(t('ro_landed_title'))}">${esc(t('ro_landed'))}</span>` : roFmtIn(r.time, now)}</td>
       <td>${stationOut.has(r.coord) ? '✓' : ''}</td>
     </tr>`;
   }).join('') || `<tr class="empty-row"><td colspan="9">${esc(t('ro_table_empty'))}</td></tr>`;

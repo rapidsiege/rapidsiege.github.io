@@ -8,7 +8,8 @@
 // switch offs when timings suit them better). Leftover attacks on planned
 // targets are listed as EXTRAS (with a why), attacks on coords the plan
 // doesn't know become an "unplanned targets" block at the end.
-// Support/returning commands and FAKES (see moIsFake) are ignored outright.
+// Support/returning commands are ignored outright; FAKES (see moIsFake) only fill the plan's
+// own fake rows, the rest are ignored.
 // v6.2.0: a successful JSON import is also handed to ↩ Returning Offs (roIngestFromManage,
 // returning-offs.js), which reads the RAW text itself — it needs the return rows this tab drops
 // (an off's home time) and the attacks still in flight; ✕ Clear Import drops that feed too.
@@ -228,11 +229,13 @@ function moParseImport(text) {
 // {status:'in'|'early'|'late'|'unknown', deltaMin}. Window times live on the ROW's arrival
 // date — the date of its off window group since v5.9 — in server wall time, the same clock the
 // arrival was parsed on. A plan spanning several days would otherwise judge every wave against
-// the first one and call the later ones days late.
+// the first one and call the later ones days late. The start is the plan's own (windowStartMs):
+// a window starting in the hour a spring DST switch skips opens at the switch, where its launch
+// times are shown from.
 function moTimingVerdict(windowStr, arrivalMs, dateISO) {
   const w = parseWindowStr(windowStr);
   if (!w || arrivalMs == null) return { status: 'unknown', deltaMin: 0 };
-  const from = serverWallMs(dateISO, w.f), to = windowEndMs(dateISO, w); // a window wrapping past midnight ends the next day
+  const from = windowStartMs(dateISO, w), to = windowEndMs(dateISO, w); // a window wrapping past midnight ends the next day
   if (from === null) return { status: 'unknown', deltaMin: 0 };
   const tol = PARAMS.moWindowTol * 60000; // 🎚 minutes of slack on either side of the window
   if (arrivalMs < from - tol) return { status: 'early', deltaMin: (from - arrivalMs) / 60000 };
@@ -246,42 +249,56 @@ function moTimingVerdict(windowStr, arrivalMs, dateISO) {
 function moCmdScore(cmd, r) {
   const SIZE = { large: 0, medium: 1, small: 2 };
   let sz = cmd.size in SIZE ? SIZE[cmd.size] : 1.5;
-  if (r.type === 'catapult') sz = 2 - sz;
+  if (r.type === 'catapult' || r.type === 'fake') sz = 2 - sz;
   const v = moTimingVerdict(r.window, cmd.arrivalMs, planRowDateISO(r));
   return sz * 10000 + (v.status === 'unknown' ? 5000 : v.deltaMin);
 }
 
 // ── The matcher (pure — harness-tested) ───────────────────────────────────────
-// rows = planRows, commands = imported commands. Fakes are dropped up front
-// (tallied for the summary); anything not type 'attack' is ignored defensively
-// (the parser already keeps attacks only). Per planned target, three passes:
+// rows = planRows, commands = imported commands. Fakes are split off up front:
+// only the plan's own FAKE rows may claim them (the rest are tallied for the
+// summary as ignored noise). A planned small catapult strike is not a fake: on a
+// target with a catapult row, a command carrying at least that row's cats stays
+// a real attack. Anything not type 'attack' is ignored defensively (the parser
+// already keeps attacks only). Per planned target, these passes:
 //   1 exact  — an off/catapult row with a prescribed source claims a non-noble
-//              attack launched from EXACTLY that village
+//              attack launched from EXACTLY that village; a fake row claims a
+//              fake (or a small hidden-units attack — a tribe mate's command)
+//              from that village
 //   2 snob   — a snob row soaks up to `count` noble attacks from its assigned
 //              player (named trains first, engine-unassigned trains take leftovers);
 //              each noble goes to the row whose landing window it is closest to
 //   3 player — an unmatched off/catapult row claims a non-noble attack from its
-//              player's OTHER villages (off-switching for better timings is fine)
+//              player's OTHER villages (off-switching for better timings is fine);
+//              an unmatched fake row a fake from its player's other villages
+// A fake row never claims a real (visible-units or large) attack.
 // Returns:
 //   rowMatch  — aligned to rows: null | {kind:'exact'|'player', cmd} | {kind:'snob', cmds:[…]}
 //   extrasBy  — tCoord → [{cmd, reason:'extra_assigned'|'extra_other_target'|'extra_foreign'}]
 //   unplanned — [{coord, cmds}] attacks on coords the plan doesn't target
-//   nAttacks / nFakes — import tallies for the summary
+//   nAttacks / nFakes — import tallies for the summary (nFakes = fakes no fake row claimed)
 function moMatchPlan(rows, commands) {
-  const atk = commands.filter(c => c.type === 'attack' && !moIsFake(c.units));
-  const nFakes = commands.filter(c => c.type === 'attack' && moIsFake(c.units)).length;
-  const used = new Array(atk.length).fill(false);
+  const rowsBy = {}, catMinBy = {};
+  rows.forEach((r, i) => {
+    (rowsBy[r.tCoord] = rowsBy[r.tCoord] || []).push(i);
+    if (r.type === 'catapult' && r.cats > 0) catMinBy[r.tCoord] = Math.min(catMinBy[r.tCoord] || Infinity, r.cats);
+  });
+  const isFake = c => moIsFake(c.units) && !((c.units.catapult || 0) >= (catMinBy[c.target] || Infinity));
+  const attacks = commands.filter(c => c.type === 'attack');
+  const atk = attacks.filter(c => !isFake(c));
+  const fk  = attacks.filter(isFake);
+  const used = new Array(atk.length).fill(false), fkUsed = new Array(fk.length).fill(false);
   const rowMatch = rows.map(r => (r.type === 'snob' ? { kind: 'snob', cmds: [] } : null));
 
-  const rowsBy = {}, cmdsBy = {};
-  rows.forEach((r, i) => { (rowsBy[r.tCoord] = rowsBy[r.tCoord] || []).push(i); });
+  const cmdsBy = {}, fakesBy = {};
   atk.forEach((c, i) => { (cmdsBy[c.target] = cmdsBy[c.target] || []).push(i); });
+  fk.forEach((c, i) => { (fakesBy[c.target] = fakesBy[c.target] || []).push(i); });
   const senderAll = new Set(rows.map(r => moNorm(r.srcPlayer)).filter(Boolean));
 
   const extrasBy = {};
   for (const coord of Object.keys(rowsBy)) {
     const ri = rowsBy[coord];
-    const ci = cmdsBy[coord] || [];
+    const ci = cmdsBy[coord] || [], fi = fakesBy[coord] || [];
     const free = () => ci.filter(k => !used[k]);
     const claim = (i, cand, kind) => {
       if (!cand.length) return;
@@ -290,11 +307,23 @@ function moMatchPlan(rows, commands) {
       used[best] = true;
       rowMatch[i] = { kind, cmd: atk[best] };
     };
+    // A fake row's candidates: the fakes on this target, then (units hidden, can't be judged)
+    // small / unsized non-noble attacks. `from` picks the origin: exact village or same player.
+    const claimFake = (i, from, kind) => {
+      const cand = [...fi.filter(k => !fkUsed[k] && from(fk[k])).map(k => ({ c: fk[k], k, fake: true })),
+                    ...free().filter(k => !atk[k].units && !atk[k].snob && (atk[k].size === 'small' || !atk[k].size) && from(atk[k])).map(k => ({ c: atk[k], k, fake: false }))];
+      if (!cand.length) return;
+      let best = cand[0];
+      for (const x of cand) if (moCmdScore(x.c, rows[i]) < moCmdScore(best.c, rows[i])) best = x;
+      (best.fake ? fkUsed : used)[best.k] = true;
+      rowMatch[i] = { kind, cmd: best.c };
+    };
 
     for (const i of ri) { // pass 1 — exact origin village
       const r = rows[i];
       if (r.type === 'snob' || !r.srcCoord) continue;
-      claim(i, free().filter(k => !atk[k].snob && atk[k].originCoord === r.srcCoord), 'exact');
+      if (r.type === 'fake') claimFake(i, c => c.originCoord === r.srcCoord, 'exact');
+      else claim(i, free().filter(k => !atk[k].snob && atk[k].originCoord === r.srcCoord), 'exact');
     }
     // pass 2 — noble trains. Since v5.16 a player can noble the same target in SEVERAL waves (one
     // snob row per wave), so a noble must go to the row whose landing window + date it is closest
@@ -326,7 +355,13 @@ function moMatchPlan(rows, commands) {
     for (const i of ri) { // pass 3 — same player, another of their villages
       const r = rows[i];
       if (r.type === 'snob' || rowMatch[i] || !r.srcPlayer) continue;
+      if (r.type === 'fake') continue; // after every off row, below: an off row's player pick goes first
       claim(i, free().filter(k => !atk[k].snob && moNorm(atk[k].originPlayer) === moNorm(r.srcPlayer)), 'player');
+    }
+    for (const i of ri) { // pass 3 for fake rows
+      const r = rows[i];
+      if (r.type !== 'fake' || rowMatch[i] || !r.srcPlayer) continue;
+      claimFake(i, c => moNorm(c.originPlayer) === moNorm(r.srcPlayer), 'player');
     }
     // leftovers on this planned target = extra attacks nobody planned
     const here = new Set(ri.map(i => moNorm(rows[i].srcPlayer)).filter(Boolean));
@@ -341,7 +376,7 @@ function moMatchPlan(rows, commands) {
     if (rowsBy[coord]) continue;
     unplanned.push({ coord, cmds: cmdsBy[coord].map(k => atk[k]) });
   }
-  return { rowMatch, extrasBy, unplanned, nAttacks: atk.length, nFakes };
+  return { rowMatch, extrasBy, unplanned, nAttacks: atk.length, nFakes: fkUsed.filter(u => !u).length };
 }
 
 // A still-unmatched row is PENDING while its latest launch moment (window end minus
@@ -427,6 +462,7 @@ function moTypeBadge(r, j, n) {
     return `<span class="badge badge-snob"${r.fake ? ' style="background:#0a1828;color:#5fb85f;border:1px solid #2e7d2e;"' : ''}>👑 ${t(r.fake ? 'type_snob_fake' : r.escorted ? 'type_snob_split' : 'type_snob')}${n > 1 ? ` ${j + 1}/${n}` : ''}</span>`;
   if (r.type === 'catapult')
     return `<span class="badge" style="background:#5a3f6a;color:#e8d8f0;">${twIcon('catapult')} ${r.cats}</span>`;
+  if (r.type === 'fake') return `<span class="badge ttype-fake">${t('ttype_fake')}</span>`; // the plan table's Fake badge
   return `<span class="badge badge-${r.type === 'complete' ? 'complete' : r.type === 'tq' ? 'tq' : 'half'}">${t('tier_' + r.type)}</span>`;
 }
 // Actual distance · travel from a real origin (base pace: snob for nobles, ram/off
@@ -484,12 +520,14 @@ function renderManageTable() {
     sumEl.innerHTML = '';
     if (impEl) impEl.textContent = '';
     tbody.innerHTML = `<tr class="empty-row"><td colspan="14">${t('mo_need_plan')}</td></tr>`;
+    renderMoCompliance(null, null);
     return;
   }
 
   const ownerBy = {};
   for (const tg of moTargets) ownerBy[tg.coord] = tg;
   const M = moMatchPlan(rows, moCommands);
+  renderMoCompliance(rows, M);
 
   // summary tallies — snob trains count PER NOBLE (they render per noble too)
   let nExact = 0, nPlayer = 0, nNoble = 0, nMiss = 0, nPend = 0, total = 0;
@@ -618,6 +656,131 @@ function renderManageTable() {
   }
 
   tbody.innerHTML = cells.join('') || `<tr class="empty-row"><td colspan="14">${t('mo_need_import')}</td></tr>`;
+}
+
+// ── 📊 Per-player compliance (pure — harness-tested) ──────────────────────────────────────
+// Who follows orders and who freelances, from the SAME match result the table renders (the
+// matcher itself is untouched). One entry per plan sender, keyed by moNorm (the matcher compares
+// names that way) and shown with the first spelling met: exact / switched (the player's other
+// village) / noble counts, the in / early / late timing of those matched attacks (unknown
+// timing counted as sent only), pending vs missing for what is not there yet — a snob train
+// counts PER NOBLE, like the summary line — and the EXTRA attacks M.extrasBy attributes to the
+// attack's origin player (a player outside the plan gets an entry of their own). Rows without a
+// sender (unassigned offs, engine-unassigned noble trains) share one entry with name ''.
+// Sorted by missing (most first), then A→Z, the '' entry last among equals.
+function moPlayerCompliance(rows, M) {
+  const by = {};
+  const blank = name => ({ name, exact: 0, switched: 0, noble: 0,
+    in: 0, early: 0, late: 0, pending: 0, missing: 0, extra: 0 });
+  const get = name => {
+    const k = moNorm(name);
+    return by[k] || (by[k] = blank(k ? String(name).trim() : ''));
+  };
+  const timed = (e, r, cmd) => {
+    const s = moTimingVerdict(r.window, cmd.arrivalMs, planRowDateISO(r)).status;
+    if (s !== 'unknown') e[s]++;
+  };
+  (rows || []).forEach((r, i) => {
+    const m = M.rowMatch[i], e = get(r.srcPlayer);
+    if (r.type === 'snob') {
+      const cmds = m ? m.cmds : [];
+      e.noble += cmds.length;
+      cmds.forEach(c => timed(e, r, c));
+      const unfilled = (r.count || 1) - cmds.length;
+      if (unfilled > 0) e[moRowPending(r) ? 'pending' : 'missing'] += unfilled;
+    } else if (m) {
+      e[m.kind === 'exact' ? 'exact' : 'switched']++;
+      timed(e, r, m.cmd);
+    } else e[moRowPending(r) ? 'pending' : 'missing']++;
+  });
+  // An extra whose import names no origin player is not the unassigned rows' doing ('' is
+  // their bucket): its own entry, keyed by a sentinel moNorm never yields, name '' (no player).
+  for (const list of Object.values(M.extrasBy || {})) for (const x of list) {
+    if (moNorm(x.cmd.originPlayer)) { get(x.cmd.originPlayer).extra++; continue; }
+    (by['\u0000'] || (by['\u0000'] = { ...blank(''), noSender: true })).extra++;
+  }
+  return Object.values(by).sort((a, b) => (b.missing - a.missing) || ((!a.name) - (!b.name))
+    || a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+}
+// The collapsible panel above the table (static markup in tribe-calculator.html: the headers
+// translate through data-i18n). Hidden until an import exists — without one every row would
+// read pending/missing and the table would say nothing.
+function renderMoCompliance(rows, M) {
+  const host = document.getElementById('mo-compliance');
+  const body = document.getElementById('mo-comp-tbody');
+  if (!host || !body) return;
+  if (!rows || !M || !moCommands.length) { host.style.display = 'none'; body.innerHTML = ''; return; }
+  host.style.display = '';
+  const list = moPlayerCompliance(rows, M);
+  const num = (v, color) => v ? `<td style="color:${color};font-weight:600;">${v}</td>` : '<td class="num-zero">0</td>';
+  body.innerHTML = list.map(e => `<tr>`
+    + `<td class="left">${e.name ? `<span class="player-tag">${esc(e.name)}</span>`
+      : e.noSender ? `<span style="color:#a08050;">${esc(t('mo_comp_nosender'))}</span>`
+      : `<span style="color:#e06040;">${esc(t('bb_unassigned'))}</span>`}</td>`
+    + num(e.exact, '#40c060') + num(e.switched, '#e0a020') + num(e.noble, '#40c060')
+    + num(e.in, '#40c060') + num(e.early, '#e0a020') + num(e.late, '#e06040')
+    + num(e.pending, '#a08050') + num(e.missing, '#e06040') + num(e.extra, '#e0a020')
+    + `</tr>`).join('');
+  const hint = document.getElementById('mo-comp-hint');
+  if (hint) hint.textContent = t('mo_comp_hint')(list.filter(e => e.name).length, list.filter(e => e.name && e.missing).length);
+}
+
+// ── ✉ Reminder PMs: per player, the orders still NOT sent (pure seam + modal) ─────────────
+// The renderPmModal() shape [{player, parts:[text], orderCount}], players A→Z (plan spelling),
+// built from the same match result as the table: rows with no matched attack, and the unfilled
+// part of a noble train (a copy carrying count = nobles still missing). Each message =
+//   a bold headline (still to send / missed counts — no [coord], no header: importers skip it)
+//   + the PENDING orders as the player's normal Per-Player Orders block (playerPlanBBBlock,
+//     byte-for-byte the plan export, so it re-imports into the Attack Planner unchanged)
+//   + a "missed" list for orders whose launch moment has passed: plain lines with no [coord]
+//     tag, so no importer ever reads them back as fresh orders.
+// Rows without a sender ride a final catch-all entry (unassignedPlanBBBlock), as in the plan's
+// own PM export. `rows` = the Manage view (moViewRows: one slot or every slot merged).
+function moMissedLineBB(r, withDay) {
+  const n = r.type === 'snob' && r.count > 1 ? `${r.count}x ` : '';
+  const cats = r.type === 'catapult' ? ` (${r.cats})` : '';
+  return `${n}${planRowIconBB(r)}${cats} ${r.srcCoord ? r.srcCoord + ' → ' : ''}${r.tCoord}`
+    + `${r.tPlayer ? ` (${r.tPlayer})` : ''} · ${planRowWindowBB(r, withDay)}`;
+}
+function moReminderMessages(rows, M) {
+  const by = {}, unassigned = [];
+  (rows || []).forEach((r, i) => {
+    const m = M.rowMatch[i];
+    let rest = r;
+    if (r.type === 'snob') {
+      const want = r.count || 1, unfilled = want - (m ? m.cmds.length : 0);
+      if (unfilled <= 0) return;
+      if (unfilled !== want) rest = { ...r, count: unfilled };
+    } else if (m) return;
+    if (!r.srcPlayer) { unassigned.push(rest); return; }
+    const k = moNorm(r.srcPlayer);
+    const p = by[k] || (by[k] = { name: String(r.srcPlayer).trim(), pending: [], missing: [] });
+    p[moRowPending(r) ? 'pending' : 'missing'].push(rest);
+  });
+  const groups = planGroups(rows || []);
+  const msgs = Object.values(by)
+    .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+    .map(p => {
+      let txt = `[b]${t('mo_rem_head')(p.pending.length, p.missing.length)}[/b]\n\n`;
+      if (p.pending.length) txt += playerPlanBBBlock(p.name, p.pending, groups).trimEnd();
+      if (p.missing.length) {
+        const withDay = planRowsMultiDate(p.missing);
+        txt += (p.pending.length ? '\n\n' : '') + `[b]${t('mo_rem_missed')}[/b]\n`
+          + p.missing.map(r => moMissedLineBB(r, withDay)).join('\n');
+      }
+      return { player: p.name, parts: [txt.trimEnd()], orderCount: p.pending.length + p.missing.length };
+    });
+  if (unassigned.length)
+    msgs.push({ player: t('bb_unassigned'), parts: [unassignedPlanBBBlock(unassigned).trimEnd()], orderCount: unassigned.length, unassigned: true });
+  return msgs;
+}
+function moShowReminders() {
+  const rows = moViewRows();
+  if (!rows.length) { alert(t('mo_need_plan')); return; }
+  if (!moCommands.length) { alert(t('mo_need_import')); return; } // no import → everything would look unsent
+  const msgs = moReminderMessages(rows, moMatchPlan(rows, moCommands));
+  if (!msgs.length) { alert(t('mo_rem_none')); return; }
+  renderPmModal(msgs, t('mo_rem_hint'));
 }
 
 // One EXTRA attack row (an unclaimed attack on a planned target), amber-tinted like

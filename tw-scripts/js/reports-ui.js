@@ -122,6 +122,9 @@ function riFetchShared() {
     return;
   }
   if (el) el.textContent = '☁ …';
+  // A refresh (🔄, or after our own share) also drops the cached full-report DB, so the next
+  // 📄 View report refetches it once and shows the reports just shared (M2).
+  riFullDbP = null;
   const w = riActiveWorld();
   cloudFetchReportsDb().then(db => {
     if (w !== riActiveWorld()) return; // world switched meanwhile — that world's own fetch owns the view
@@ -179,7 +182,9 @@ function riViewVillages() {
 function riMapView() { return riViewVillages(); }
 function riInvalidateView() {
   riViewCache = null;
-  if (typeof repaintMapData === 'function') repaintMapData();
+  // A map render bug must never block ingestion (status, table, share upload) — log it instead.
+  try { if (typeof repaintMapData === 'function') repaintMapData(); }
+  catch (e) { console.error('[reports] map repaint failed:', e); }
 }
 
 function riPersist() {
@@ -349,14 +354,93 @@ function riOffPow(units) {
 // <tr> — the full set is still filtered/sorted, the summary says how many are shown.
 const EV_ROW_CAP = 200;
 
-function renderEnemyVillagesTable() {
-  const tbody = document.getElementById('ev-tbody');
-  if (!tbody) return;
-  riEvStale = false;
-  const summary = document.getElementById('ev-summary');
+// ── Enemy Villages filters (verdict chips, sure only, hide ⌛ old owner, max age) + the Copy
+// coords format. Per viewer: kept in localStorage (try/catch — a blocked storage just means
+// session-only), read lazily on the first render. Its own key OUTSIDE tw_tribe* (like
+// LAST_TAB_KEY): a view preference never rides in a debug dump or a cloud push. No chip on =
+// every verdict.
+const EV_FILTER_KEY = 'tw_tc_evfilter';
+const RI_FILTER_CLS = ['off', 'def', 'mixed', 'spy', 'unknown', 'empty']; // riClassify's classes, one chip each
+const RI_FILTER_AGES = [0, 1, 3, 7];                                     // days; 0 = any age
+const RI_COPY_MODES = ['nl', 'space', 'fake'];                           // as the map's Extract → Copy
+let riFilter = null;
+function riFilterNorm(d) {
+  d = d || {};
+  return {
+    cls: Array.isArray(d.cls) ? RI_FILTER_CLS.filter(c => d.cls.includes(c)) : [],
+    sure: !!d.sure, hideStale: !!d.hideStale,
+    maxAge: RI_FILTER_AGES.includes(+d.maxAge) ? +d.maxAge : 0,
+    sep: RI_COPY_MODES.includes(d.sep) ? d.sep : 'nl',
+  };
+}
+function riFilterState() {
+  if (!riFilter) {
+    let d = null;
+    try { d = JSON.parse(localStorage.getItem(EV_FILTER_KEY) || 'null'); } catch {}
+    riFilter = riFilterNorm(d);
+  }
+  return riFilter;
+}
+function riSaveFilter() { try { localStorage.setItem(EV_FILTER_KEY, JSON.stringify(riFilter)); } catch {} }
+function riSetFilter(key, val) {
+  riFilterState();
+  riFilter = riFilterNorm({ ...riFilter, [key]: val });
+  riSaveFilter();
+  renderEnemyVillagesTable();
+}
+function riToggleCls(c) {
+  const f = riFilterState();
+  riSetFilter('cls', f.cls.includes(c) ? f.cls.filter(x => x !== c) : [...f.cls, c]);
+}
+function riResetFilter() { riFilter = riFilterNorm({ sep: riFilterState().sep }); riSaveFilter(); renderEnemyVillagesTable(); } // the copy format stays
+// Pure: the rows passing filter `f`. Age = server-wall "now" minus the newest report (both
+// encoded the riServerNow way); a village with no report time fails any max age. A ⌛ stale
+// row's verdict is the PREVIOUS owner's (intel is strictly current-owner), so it never
+// matches a verdict chip or Sure only — it shows only in the verdict-unfiltered view.
+// Sure only hides what RI_BADGE marks '?': OFF?/DEF?/MIX? and the bare '?' (unknown). A
+// 👁 SPY or a plain '—' (empty) carries no '?' whatever its sure flag, so it passes.
+const riMarkedUnsure = v => v.cls === 'unknown' || (!v.sure && ['off', 'def', 'mixed'].includes(v.cls));
+function riFilterRows(rows, f, now) {
+  const cls = new Set(f.cls || []), maxMs = f.maxAge > 0 ? f.maxAge * 86400000 : 0;
+  const byVerdict = cls.size > 0 || !!f.sure;
+  return rows.filter(r => (!r.stale || (!byVerdict && !f.hideStale))
+    && (!cls.size || cls.has(r.verdict.cls)) && (!f.sure || !riMarkedUnsure(r.verdict))
+    && (!maxMs || (!!r.v.lastT && now - r.v.lastT <= maxMs)));
+}
+// The controls are static markup (translated by data-i18n); this mirrors the state onto them.
+function riSyncFilterUi(nRows) {
+  const f = riFilterState();
+  for (const c of RI_FILTER_CLS) {
+    const b = document.getElementById('ev-chip-' + c);
+    if (b) b.classList.toggle('active', f.cls.includes(c));
+  }
+  const set = (id, prop, v) => { const e = document.getElementById(id); if (e) e[prop] = v; };
+  set('ev-f-sure', 'checked', f.sure);
+  set('ev-f-stale', 'checked', f.hideStale);
+  set('ev-f-age', 'value', String(f.maxAge));
+  set('ev-copy-sep', 'value', f.sep);
+  set('ev-copy-btn', 'textContent', t('ev_copy_coords')(nRows));
+}
+// Copy the coords of EVERY filtered row (not just the EV_ROW_CAP drawn ones), in the chosen
+// format: line break / space / the quickbar fake script (split over several when it would not
+// fit one quickbar entry — the map's split modal).
+function riCopyCoords() {
   const search = (document.getElementById('ev-search')?.value || '').toLowerCase();
-  const now = riServerNow(); // report timestamps are server wall clock (riServerNow)
+  const coords = riEvRows(search, riServerNow()).map(r => r.coord);
+  if (!coords.length) { alert(t('ev_copy_none')); return; }
+  const f = riFilterState();
+  if (f.sep === 'fake') {
+    const parts = splitFakeScripts(coords);
+    if (parts.length === 1) { mapCopyText(parts[0].script, () => alert(t('map_copied_fake')(coords.length, parts[0].chars))); return; }
+    openFakeSplitModal(parts);
+    return;
+  }
+  mapCopyText(extractCoords(coords, extractSepChar(f.sep)), () => alert(t('map_copied')(coords.length)));
+}
 
+// Every village the table would list — hidden ones out, search + filters applied, sorted —
+// before the EV_ROW_CAP cut. Shared by the table and 📋 Copy coords.
+function riEvRows(search, now) {
   let rows = Object.entries(riViewVillages()).map(([coord, v]) => {
     const cv = (typeof coordDb !== 'undefined' && coordDb[coord]) || null;
     const ownerName = cv ? (dbOwnerName(coord) || v.playerName || '') : (v.playerName || '');
@@ -369,6 +453,7 @@ function renderEnemyVillagesTable() {
       (r.ownerName || '').toLowerCase().includes(search) ||
       (r.v.playerName || '').toLowerCase().includes(search));
   }
+  rows = riFilterRows(rows, riFilterState(), now);
 
   const dir = riSort.dir;
   const cmp = {
@@ -378,6 +463,29 @@ function renderEnemyVillagesTable() {
     type:   (a, b) => dir * (a.verdict.cls + (a.verdict.sure ? 0 : 1)).localeCompare(b.verdict.cls + (b.verdict.sure ? 0 : 1)),
   }[riSort.key] || ((a, b) => (b.v.lastT || 0) - (a.v.lastT || 0));
   rows.sort(cmp);
+  return rows;
+}
+
+function renderEnemyVillagesTable() {
+  const tbody = document.getElementById('ev-tbody');
+  if (!tbody) return;
+  riEvStale = false;
+  const summary = document.getElementById('ev-summary');
+  const search = (document.getElementById('ev-search')?.value || '').toLowerCase();
+  const now = riServerNow(); // report timestamps are server wall clock (riServerNow)
+  const rows = riEvRows(search, now);
+  riSyncFilterUi(rows.length);
+  // Header arrows (th.sort-asc/-desc, like the other sortable tables). 'last' with dir 1 is
+  // newest first, i.e. descending in time.
+  const evTable = document.getElementById('ev-table');
+  if (evTable) {
+    const shownDir = riSort.key === 'last' ? -riSort.dir : riSort.dir;
+    for (const th of evTable.querySelectorAll('thead th')) {
+      th.classList.remove('sort-asc', 'sort-desc');
+      const m = (th.getAttribute('onclick') || '').match(/riSortBy\('(\w+)'\)/);
+      if (m && m[1] === riSort.key) th.classList.add(shownDir === -1 ? 'sort-desc' : 'sort-asc');
+    }
+  }
 
   const cells = [];
   let first = true;
@@ -466,8 +574,8 @@ function renderEnemyVillagesTable() {
 // Mirror of the twstats Entrantes badge-click modal: the shared FULL-report
 // store (db-full.json — newest raw report per village: rep = newest
 // defender-side report, sentRep = largest off it sent) is heavier than the
-// facts DB, so it is fetched lazily on the first click and cached for the
-// session. Rendered by js/report-render.js (TWRR) — the same file the twstats
+// facts DB, so it is fetched lazily on the first click and cached until the
+// next shared-DB refresh (riFetchShared: 🔄 / after a share). Rendered by js/report-render.js (TWRR) — the same file the twstats
 // pages load, so the two sites render identically. Hosted site only (the
 // facts-store table keeps working offline; this modal needs the Worker).
 let riFullDbP = null;
@@ -500,9 +608,12 @@ function riFreshFullReports(v, curId) {
 }
 
 function riCloseReportModal() {
+  document.removeEventListener('keydown', riReportModalKey);
   const bg = document.getElementById('ev-report-modal');
   if (bg) bg.parentNode.removeChild(bg);
 }
+// Esc closes the modal (added by riOpenReportModal, removed by every close path).
+function riReportModalKey(e) { if (e.key === 'Escape') riCloseReportModal(); }
 
 function riOpenReportModal(coord) {
   riCloseReportModal();
@@ -514,6 +625,7 @@ function riOpenReportModal(coord) {
     + `<div id="ev-report-body"></div></div>`;
   bg.addEventListener('click', e => { if (e.target === bg) riCloseReportModal(); });
   document.body.appendChild(bg);
+  document.addEventListener('keydown', riReportModalKey);
   const body = document.getElementById('ev-report-body');
   // Protected village (v5.8.0): don't even ask the Worker — the endpoint is
   // stripped anyway; this shows an honest message instead of "no reports".

@@ -98,10 +98,12 @@ function renderPlayersTable() {
     const tierComplete = p.villages.filter(v => getOffTier(v.offPow) === 'complete').length;
     const tierTq       = p.villages.filter(v => getOffTier(v.offPow) === 'tq').length;
     const tierHalf     = p.villages.filter(v => getOffTier(v.offPow) === 'half').length;
-    return { name, vilCount: p.villages.length, offVilCount, defVilCount, ...p.totals, offPow: p.offPow, defInf: p.defInf, defCav: p.defCav, tierComplete, tierTq, tierHalf };
+    // dname = the name as displayed (troop files keep it URL-encoded): search + sort run on it,
+    // the encoded key stays the identity everything else matches on
+    return { name, dname: decode(name), vilCount: p.villages.length, offVilCount, defVilCount, ...p.totals, offPow: p.offPow, defInf: p.defInf, defCav: p.defCav, tierComplete, tierTq, tierHalf };
   });
 
-  if (search) data = data.filter(r => r.name.toLowerCase().includes(search));
+  if (search) data = data.filter(r => r.dname.toLowerCase().includes(search));
   if (typeFilter === 'off') data = data.filter(r => r.offVilCount > 0);
   if (typeFilter === 'def') data = data.filter(r => r.defVilCount > 0);
 
@@ -109,8 +111,8 @@ function renderPlayersTable() {
   const { col, dir } = sortState.players;
   if (col >= 0) {
     data.sort((a,b) => {
-      const vals = [a.name, a.vilCount, ...UNITS.map(u=>a[u]), a.offPow, a.defInf + a.defCav, a.tierComplete, a.tierTq, a.tierHalf];
-      const bvals= [b.name, b.vilCount, ...UNITS.map(u=>b[u]), b.offPow, b.defInf + b.defCav, b.tierComplete, b.tierTq, b.tierHalf];
+      const vals = [a.dname, a.vilCount, ...UNITS.map(u=>a[u]), a.offPow, a.defInf + a.defCav, a.tierComplete, a.tierTq, a.tierHalf];
+      const bvals= [b.dname, b.vilCount, ...UNITS.map(u=>b[u]), b.offPow, b.defInf + b.defCav, b.tierComplete, b.tierTq, b.tierHalf];
       const av = vals[col], bv = bvals[col];
       if (typeof av === 'string') return dir * av.localeCompare(bv);
       return dir * (bv - av);
@@ -124,14 +126,14 @@ function renderPlayersTable() {
 
   const rows = data.map(r => `
     <tr>
-      <td class="left"><span class="player-tag">${esc(decode(r.name))}</span></td>
+      <td class="left"><span class="player-tag">${esc(r.dname)}</span></td>
       <td>${r.vilCount}</td>
       ${UNITS.map(u => numCell(r[u])).join('')}
-      <td style="color:#e06040;font-weight:600;">${fmtM(r.offPow)}</td>
-      <td style="color:#60a0e0;font-weight:600;" title="${esc(t('def_inf_cav')(fmtM(r.defInf), fmtM(r.defCav)))}">${fmtM(r.defInf + r.defCav)}</td>
-      <td style="color:#ff6040;font-weight:${r.tierComplete>0?'700':'400'};${r.tierComplete===0?'color:#4a3010;':''}">${r.tierComplete||'—'}</td>
-      <td style="color:#f0a030;font-weight:${r.tierTq>0?'700':'400'};${r.tierTq===0?'color:#4a3010;':''}">${r.tierTq||'—'}</td>
-      <td style="color:#d8d030;font-weight:${r.tierHalf>0?'700':'400'};${r.tierHalf===0?'color:#4a3010;':''}">${r.tierHalf||'—'}</td>
+      <td style="color:#e06040;font-weight:600;" data-v="${r.offPow}">${fmtM(r.offPow)}</td>
+      <td style="color:#60a0e0;font-weight:600;" data-v="${r.defInf + r.defCav}" title="${esc(t('def_inf_cav')(fmtM(r.defInf), fmtM(r.defCav)))}">${fmtM(r.defInf + r.defCav)}</td>
+      <td style="color:#ff6040;font-weight:${r.tierComplete>0?'700':'400'};${r.tierComplete===0?'color:#4a3010;':''}" data-v="${r.tierComplete}">${r.tierComplete||'—'}</td>
+      <td style="color:#f0a030;font-weight:${r.tierTq>0?'700':'400'};${r.tierTq===0?'color:#4a3010;':''}" data-v="${r.tierTq}">${r.tierTq||'—'}</td>
+      <td style="color:#d8d030;font-weight:${r.tierHalf>0?'700':'400'};${r.tierHalf===0?'color:#4a3010;':''}" data-v="${r.tierHalf}">${r.tierHalf||'—'}</td>
     </tr>
   `).join('');
 
@@ -143,16 +145,17 @@ function renderPlayersTable() {
     <tr class="total-row">
       <td class="left">${t('tribe_total')}</td>
       <td>${villages.length}</td>
-      ${UNITS.map(u => `<td>${fmt(tribeTotals[u])}</td>`).join('')}
-      <td>${fmtM(tribeOff)}</td>
-      <td>${fmtM(tribeDef)}</td>
-      <td>${tribeComplete||'—'}</td>
-      <td>${tribeTq||'—'}</td>
-      <td>${tribeHalfTier||'—'}</td>
+      ${UNITS.map(u => `<td data-v="${tribeTotals[u]}">${fmt(tribeTotals[u])}</td>`).join('')}
+      <td data-v="${tribeOff}">${fmtM(tribeOff)}</td>
+      <td data-v="${tribeDef}">${fmtM(tribeDef)}</td>
+      <td data-v="${tribeComplete}">${tribeComplete||'—'}</td>
+      <td data-v="${tribeTq}">${tribeTq||'—'}</td>
+      <td data-v="${tribeHalfTier}">${tribeHalfTier||'—'}</td>
     </tr>
   `;
 
-  document.getElementById('players-tbody').innerHTML = rows + totalRow ||
+  // (totalRow is never empty, so the empty state has to test the player rows themselves)
+  document.getElementById('players-tbody').innerHTML = rows ? rows + totalRow :
     `<tr class="empty-row"><td colspan="17">${t('empty_no_players')}</td></tr>`;
 
   // sync sort arrows
@@ -233,33 +236,47 @@ function loadSettings() {
   let s;
   try { s = JSON.parse(localStorage.getItem(TRIBE_SETTINGS_KEY) || 'null'); } catch {}
   paramsResetAll(); // 🎚 the saved overrides (if any) land on top of the defaults
-  if (!s) return;
+  if (!s || typeof s !== 'object') return;
+  // Language + world FIRST: a malformed field further down (a hand-edited or version-skewed debug
+  // dump) must not lose them — the boot's changeLang() would then save the defaults over them.
+  // The init block applies the language via changeLang(lang) after loadSettings() sets the global.
+  if (s.lang === 'en' || s.lang === 'es') lang = s.lang;
+  // Restore the selected world before the init block builds the dropdown / loads the DB,
+  // and its cached speeds for the window until worlds.json (prod) / the folder's
+  // get_config.xml (dev) delivers the authoritative values.
+  if (s.world && typeof s.world === 'string') twWorld = s.world;
+  if (s.speeds) {
+    if (parseFloat(s.speeds.world) > 0) twWorldSpeed = parseFloat(s.speeds.world);
+    if (parseFloat(s.speeds.unit)  > 0) twUnitSpeed  = parseFloat(s.speeds.unit);
+  }
+  // saveSettings always writes `plan` as an object; anything else is ignored (`in` throws on a primitive).
+  const plan = (s.plan && typeof s.plan === 'object' && !Array.isArray(s.plan)) ? s.plan : null;
   const set = (id, val) => { const e = document.getElementById(id); if (e && val != null && val !== '') e.value = val; };
   // 🎚 Parameters (v6.0.0). A pre-v5.18 save carried the three tier thresholds under
   // `thresholds` (input strings) — migrate them once; from then on `params` is the only source.
   if (s.params) paramsApply(s.params);
   else if (s.thresholds) paramsApply({ tierComplete: s.thresholds.complete, tierTq: s.thresholds.tq, tierHalf: s.thresholds.half });
-  if (s.plan) for (const id of PLAN_SETTING_IDS) set(id, s.plan[id]);
+  if (plan) for (const id of PLAN_SETTING_IDS) set(id, plan[id]);
   // 🎭 Morale strategy radios/chip mirror the restored hidden #plan-morale-mode value.
   if (typeof syncMoraleModeUi === 'function') syncMoraleModeUi();
   // Cluster launch times / Don't reserve villages checkboxes (stored as booleans, restored via .checked).
-  if (s.plan && 'plan-cluster' in s.plan) {
+  if (plan && 'plan-cluster' in plan) {
     const clusterEl = document.getElementById('plan-cluster');
-    if (clusterEl) clusterEl.checked = !!s.plan['plan-cluster'];
+    if (clusterEl) clusterEl.checked = !!plan['plan-cluster'];
   }
-  if (s.plan && 'plan-no-reserve' in s.plan) {
+  if (plan && 'plan-no-reserve' in plan) {
     const noResEl = document.getElementById('plan-no-reserve');
-    if (noResEl) noResEl.checked = !!s.plan['plan-no-reserve'];
+    if (noResEl) noResEl.checked = !!plan['plan-no-reserve'];
   }
-  if (s.plan && 'plan-snob-own-off' in s.plan) {
+  if (plan && 'plan-snob-own-off' in plan) {
     const snobOwnEl = document.getElementById('plan-snob-own-off');
-    if (snobOwnEl) snobOwnEl.checked = !!s.plan['plan-snob-own-off'];
+    if (snobOwnEl) snobOwnEl.checked = !!plan['plan-snob-own-off'];
   }
   // ↩ Returning Offs toggles (v6.2.0): only when saved — a save from before 6.2.0 keeps the HTML default (ON).
   for (const id of ['plan-excl-outbound', 'plan-incl-returning']) {
-    if (!(s.plan && id in s.plan)) continue;
+    if (!(plan && id in plan)) continue;
     const e = document.getElementById(id);
-    if (e) e.checked = !!s.plan[id];
+    if (e) e.checked = !!plan[id];
   }
   // Offensive Targets hidden columns — drop keys OT_COLS no longer knows (renamed/removed).
   // Default-hidden columns (OT_COLS_HIDDEN_DEFAULT) stay hidden unless `otColsShown` lists them.
@@ -279,16 +296,6 @@ function loadSettings() {
       pts: (typeof f.pts === 'string' || typeof f.pts === 'number') ? String(f.pts) : '', type: TARGET_TYPES.includes(f.type) ? f.type : '',
       tribe: typeof f.tribe === 'string' ? f.tribe : '' };
     if (typeof syncOtFilterUi === 'function') syncOtFilterUi();
-  }
-  // The init block applies this via changeLang(lang) after loadSettings() sets the global.
-  if (s.lang === 'en' || s.lang === 'es') lang = s.lang;
-  // Restore the selected world before the init block builds the dropdown / loads the DB,
-  // and its cached speeds for the window until worlds.json (prod) / the folder's
-  // get_config.xml (dev) delivers the authoritative values.
-  if (s.world && typeof s.world === 'string') twWorld = s.world;
-  if (s.speeds) {
-    if (parseFloat(s.speeds.world) > 0) twWorldSpeed = parseFloat(s.speeds.world);
-    if (parseFloat(s.speeds.unit)  > 0) twUnitSpeed  = parseFloat(s.speeds.unit);
   }
 }
 
@@ -351,9 +358,10 @@ function renderVillagesTable() {
   const search     = (document.getElementById('village-search').value || '').toLowerCase();
   const typeFilter = document.getElementById('village-filter-type').value;
 
-  let data = villages.map(v => ({ ...v, tier: getOffTier(v.offPow) }));
+  // dname = the player as displayed (URL-decoded): search + sort run on it, like By Player
+  let data = villages.map(v => ({ ...v, tier: getOffTier(v.offPow), dname: decode(v.player) }));
 
-  if (search) data = data.filter(v => v.player.toLowerCase().includes(search) || v.coord.includes(search));
+  if (search) data = data.filter(v => v.dname.toLowerCase().includes(search) || v.coord.includes(search));
   if (typeFilter !== 'all') data = data.filter(v => v.type === typeFilter);
 
   const { col, dir } = sortState.villages;
@@ -361,13 +369,13 @@ function renderVillagesTable() {
     // Index layout must match the <th> order: coord, player, type, TIER, 10 units, off, def, edit.
     // Tier (3) + edit (16) aren't clickable, but keep placeholders so clickable columns line up.
     data.sort((a, b) => {
-      const vilVals = v => [v.coord, v.player, v.type, v.tier, ...UNITS.map(u => v[u]), v.offPow, v.defInf + v.defCav, ''];
+      const vilVals = v => [v.coord, v.dname, v.type, v.tier, ...UNITS.map(u => v[u]), v.offPow, v.defInf + v.defCav, ''];
       const av = vilVals(a)[col], bv = vilVals(b)[col];
       if (typeof av === 'string') return dir * av.localeCompare(bv);
       return dir * (bv - av);
     });
   } else {
-    data.sort((a,b) => a.player.localeCompare(b.player) || a.coord.localeCompare(b.coord));
+    data.sort((a,b) => a.dname.localeCompare(b.dname) || a.coord.localeCompare(b.coord));
   }
 
   // Coord links to the village's in-game info page when the world DB is loaded
@@ -382,12 +390,12 @@ function renderVillagesTable() {
   const rows = data.map(v => `
     <tr>
       <td class="left" style="font-family:monospace;">${coordCell(v.coord)}</td>
-      <td class="left"><span class="player-tag">${esc(decode(v.player))}</span></td>
+      <td class="left"><span class="player-tag">${esc(v.dname)}</span></td>
       <td>${vilTypeBadge(v.type)}</td>
       <td>${tierBadge(v.tier)}</td>
       ${UNITS.map(u => numCell(v[u])).join('')}
-      <td style="color:#e06040;">${fmtM(v.offPow)}</td>
-      <td style="color:#60a0e0;" title="${esc(t('def_inf_cav')(fmtM(v.defInf), fmtM(v.defCav)))}">${fmtM(v.defInf + v.defCav)}</td>
+      <td style="color:#e06040;" data-v="${v.offPow}">${fmtM(v.offPow)}</td>
+      <td style="color:#60a0e0;" data-v="${v.defInf + v.defCav}" title="${esc(t('def_inf_cav')(fmtM(v.defInf), fmtM(v.defCav)))}">${fmtM(v.defInf + v.defCav)}</td>
       <td>${TROOP_COORD_RE.test(v.coord) ? `<button class="btn btn-edit btn-sm" onclick="editByVillage('${v.coord}')">✎ ${t('btn_edit')}</button>` : ''}</td>
     </tr>
   `).join('');
@@ -485,15 +493,19 @@ function renderOutboundTable() {
   // Tier reflects the OUTBOUND army's off power (what's flying right now), not the
   // village's identity tier. tgt = the Plan-Offensive target this village's off was
   // assigned to (null when no plan / not a sender in it).
-  const tgtBy = outboundOffTargets(typeof planRows !== 'undefined' ? planRows : []);
+  // Every 💾 offensive slot counts — offs sent for Offensive 1 are still flying while Offensive 2
+  // is planned — the ACTIVE slot first, so a village planned in both shows its current target.
+  // The other slots are read as stored (no offPlanSync: a render must never write a slot).
+  const tgtBy = outboundOffTargets(typeof planRows === 'undefined' ? []
+    : typeof offPlans !== 'undefined' ? [...planRows, ...offPlans.filter(s => s.id !== offPlanActive).flatMap(s => s.rows || [])] : planRows);
   let data = computeOutboundOffs(villages, defenseByCoord, incomingByCoord, PARAMS.outboundMinAxe, PARAMS.outboundFraction)
-    .map(r => ({ ...r, tier: getOffTier(r.outOffPow), tgt: tgtBy[r.coord] || null }));
+    .map(r => ({ ...r, tier: getOffTier(r.outOffPow), tgt: tgtBy[r.coord] || null, dname: decode(r.player) }));
   const totalOut = data.length;
   // Villages computeOutboundOffs had to skip in a mixed batch: enough axes to be listed, but no
   // defense / incoming row of their own (e.g. a plain tribe_troops file next to an all_troops one).
   const noGarrison = villages.filter(v => (v.axe || 0) >= PARAMS.outboundMinAxe && !(v.coord in defenseByCoord) && !(v.coord in incomingByCoord)).length;
 
-  if (search) data = data.filter(r => r.player.toLowerCase().includes(search) || r.coord.includes(search));
+  if (search) data = data.filter(r => r.dname.toLowerCase().includes(search) || r.coord.includes(search)); // decoded, as displayed
 
   // Sort — column layout mirrors the <th> order: coord, player, Off Target, Target
   // Player, type, TIER, 6 units, Off (out). Tier (5) isn't clickable but keeps its
@@ -501,14 +513,14 @@ function renderOutboundTable() {
   const { col, dir } = sortState.outbound;
   if (col >= 0) {
     data.sort((a, b) => {
-      const vals = r => [r.coord, r.player, r.tgt ? r.tgt.coord : '', r.tgt ? r.tgt.player : '',
+      const vals = r => [r.coord, r.dname, r.tgt ? r.tgt.coord : '', r.tgt ? r.tgt.player : '',
                          r.type, r.tier, ...OUTBOUND_UNITS.map(u => r.out[u]), r.outOffPow];
       const av = vals(a)[col], bv = vals(b)[col];
       if (typeof av === 'string') return dir * av.localeCompare(bv);
       return dir * (bv - av);
     });
   } else {
-    data.sort((a, b) => a.player.localeCompare(b.player) || a.coord.localeCompare(b.coord));
+    data.sort((a, b) => a.dname.localeCompare(b.dname) || a.coord.localeCompare(b.coord));
   }
 
   // Off Target links to the target's in-game info page when the world DB is loaded
@@ -522,13 +534,13 @@ function renderOutboundTable() {
   const rows = data.map(r => `
     <tr>
       <td class="left" style="font-family:monospace;">${esc(r.coord)}</td>
-      <td class="left"><span class="player-tag">${esc(decode(r.player))}</span></td>
+      <td class="left"><span class="player-tag">${esc(r.dname)}</span></td>
       <td style="font-family:monospace;">${tgtCell(r.tgt)}</td>
       <td class="left">${r.tgt && r.tgt.player ? `<span class="player-tag">${esc(r.tgt.player)}</span>` : '—'}</td>
       <td>${vilTypeBadge(r.type)}</td>
       <td>${tierBadge(r.tier)}</td>
       ${OUTBOUND_UNITS.map(u => numCell(r.out[u])).join('')}
-      <td style="color:#e06040;">${fmtM(r.outOffPow)}</td>
+      <td style="color:#e06040;" data-v="${r.outOffPow}">${fmtM(r.outOffPow)}</td>
     </tr>
   `).join('');
 
@@ -551,7 +563,7 @@ function renderOutboundTable() {
 function exportOutboundCoords() {
   if (!hasStationData()) { alert(t('outbound_need_everything')); return; }
   const rows = computeOutboundOffs(villages, defenseByCoord, incomingByCoord, PARAMS.outboundMinAxe, PARAMS.outboundFraction)
-    .sort((a, b) => a.player.localeCompare(b.player) || a.coord.localeCompare(b.coord));
+    .sort((a, b) => decode(a.player).localeCompare(decode(b.player)) || a.coord.localeCompare(b.coord)); // the table's default order
   if (!rows.length) { alert(t('outbound_none')); return; }
   const txt = rows.map(r => r.coord).join('\n');
   const done = () => alert(t('outbound_copied')(rows.length));

@@ -28,6 +28,17 @@ function changeLang(l) {
   }
   repaint(renderTargetTable);
   repaint(renderOffTargets);
+  // the player / tribe pickers (their '—' empty-state titles and option labels are translated at render)
+  if (typeof renderOffIgnorePlayers === 'function')   repaint(renderOffIgnorePlayers);
+  if (typeof renderOffForcePlayers === 'function')    repaint(renderOffForcePlayers);
+  if (typeof renderOffMvPlayers === 'function')       repaint(renderOffMvPlayers);
+  if (typeof renderOffBlockPairs === 'function')      repaint(renderOffBlockPairs);
+  if (typeof renderOffEnemyTribes === 'function')     repaint(renderOffEnemyTribes);
+  if (typeof renderDefIgnorePlayers === 'function')   repaint(renderDefIgnorePlayers);
+  if (typeof renderDefCompletePlayers === 'function') repaint(renderDefCompletePlayers);
+  if (typeof renderDefSnipPlayers === 'function')     repaint(renderDefSnipPlayers);
+  if (typeof renderDefMvPlayers === 'function')       repaint(renderDefMvPlayers);
+  if (typeof renderDefEnemyTribes === 'function')     repaint(renderDefEnemyTribes);
   repaint(renderPlanTable); // tail-calls renderManageTable, so Manage Offensive re-translates too
   if (typeof renderDefTargets === 'function') repaint(renderDefTargets);
   if (typeof renderDefPlanTable === 'function') repaint(renderDefPlanTable);
@@ -85,7 +96,7 @@ function applyLang() {
   });
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
     const v = t(el.dataset.i18nPlaceholder);
-    if (v) el.placeholder = v;
+    if (v) { el.placeholder = v; el.setAttribute('aria-label', v); } // most search inputs have no <label>
   });
   document.querySelectorAll('[data-i18n-title]').forEach(el => {
     const v = t(el.dataset.i18nTitle);

@@ -21,16 +21,31 @@ function sortTable(tableId, col) {
 // ══════════════════════════════════════════════════════════════
 // EXPORT
 // ══════════════════════════════════════════════════════════════
+// Reads the rendered DOM generically, so a new column rides into the export for free. A cell's
+// data-v (raw number: numCell, the Off/Def power cells) wins over its display text ("6,500",
+// "650.6K"); a column whose <th> carries data-noexport (Edit / action buttons) is skipped in
+// every row (positions follow colspan, so a full-width message row is kept). Quotes are doubled,
+// and the UTF-8 BOM makes Excel on Windows read accented names right (no sep= line: Excel then
+// ignores the BOM).
 function exportTable(tableId, filename) {
   const table = document.getElementById(tableId);
   const rows = [...table.querySelectorAll('tr')];
+  const skip = new Set();
+  const cellsOf = row => {
+    let pos = 0;
+    return [...row.querySelectorAll('th,td')].map(cell => { const at = pos; pos += cell.colSpan || 1; return { cell, at }; });
+  };
+  for (const row of rows) cellsOf(row).forEach(({ cell, at }) => {
+    if (cell.tagName === 'TH' && cell.dataset && cell.dataset.noexport !== undefined) skip.add(at);
+  });
   const csv = rows.map(row =>
-    [...row.querySelectorAll('th,td')].map(cell => {
-      const t = cell.innerText.replace(/[,\n]/g, ' ').trim();
-      return `"${t}"`;
+    cellsOf(row).filter(({ cell, at }) => !(skip.has(at) && (cell.colSpan || 1) === 1)).map(({ cell }) => {
+      const raw = cell.dataset && cell.dataset.v;
+      const t = raw != null ? raw : cell.innerText.replace(/[,\n]/g, ' ').trim();
+      return `"${t.replace(/"/g, '""')}"`;
     }).join(',')
   ).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;
@@ -56,6 +71,7 @@ function appVersion() {
 // round-trips the whole database, not just the referenced-coord subset. It's off by default
 // so the prod cloud-sync plan dump (which calls this with no args) stays lean.
 function buildDebugDump(opts) {
+  if (typeof flushDefensiveSave === 'function') flushDefensiveSave(); // a debounced Plan Defense setting save lands first
   // every tw_tribe* localStorage key (forward-compatible if more are added later)
   const storage = {};
   for (let i = 0; i < localStorage.length; i++) {
@@ -250,10 +266,25 @@ function switchGroup(gid) {
   const g = TAB_GROUPS.find(grp => grp.id === gid);
   if (g) switchTab(g.tabs[0]);
 }
+// The tab switchTab last opened, so a reload (F5, an import, a deploy) lands back on it. Its own key,
+// outside tw_tribe*: it never rides in a debug dump or a cloud push and an import doesn't wipe it.
+const LAST_TAB_KEY = 'tw_tc_last_tab';
+// The tab to open at boot: a #tab deep link (#plan, #map …), else the last tab opened, else Overview.
+function initialTab() {
+  const hash = (typeof location !== 'undefined' && location && location.hash) ? location.hash.slice(1) : ''; // tab ids are plain ASCII: no decode (a stray '%' would throw)
+  if (tabGroupOf(hash)) return hash;
+  let saved = null;
+  try { saved = localStorage.getItem(LAST_TAB_KEY); } catch {}
+  return tabGroupOf(saved) ? saved : 'overview';
+}
 function switchTab(id) {
   if (typeof document === 'undefined' || !document.querySelectorAll) return;
   const gid = tabGroupOf(id);
   const group = TAB_GROUPS.find(grp => grp.id === gid);
+  if (gid) {
+    try { localStorage.setItem(LAST_TAB_KEY, id); } catch {}
+    try { if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id); } catch {} // no history entry per tab
+  }
   document.querySelectorAll('.tabgroup').forEach(t =>
     t.classList.toggle('active', t.dataset.group === gid));
   document.querySelectorAll('.tab-subs .tab').forEach(t => {
@@ -268,6 +299,42 @@ function switchTab(id) {
   if (typeof riEvTabVisible === 'function') riEvTabVisible(id === 'enemyvillages'); // repaints a stale Enemy Villages table on show
 }
 
+// Keyboard access (no visual change; boot step 'keyboard'): the nav tabs, the static sortable
+// headers, the map tier badges and the drop zone become focusable and Enter/Space clicks the
+// focused one; Esc closes the open .modal-overlay through its own backdrop handler, so its
+// closeXxx() runs exactly as on a backdrop click.
+const KBD_CLICKABLE = '.tabgroup, .tab-subs .tab, th[onclick], .drop-zone, .map-tier-tag';
+function kbdInit() {
+  if (typeof document === 'undefined' || !document.querySelectorAll) return;
+  document.querySelectorAll('.tab-groups, .tab-subs').forEach(el => el.setAttribute('role', 'tablist'));
+  document.querySelectorAll(KBD_CLICKABLE).forEach(el => {
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+    if (el.matches('.tabgroup, .tab')) el.setAttribute('role', 'tab');
+    else if (!el.matches('th')) el.setAttribute('role', 'button');
+  });
+  document.addEventListener('keydown', kbdKey);
+}
+function kbdKey(e) {
+  if (e.key === 'Escape') {
+    if (document.getElementById('ev-report-modal')) return; // View report closes itself (riReportModalKey)
+    const open = [...document.querySelectorAll('.modal-overlay.open')].pop(); // the last one is on top
+    // Esc in a field of the open modal only leaves the field (Edit Village / Mass Edit hold the
+    // typed value until Save / Apply); the next Esc closes it.
+    const f = e.target;
+    if (open && f && f !== open && /^(INPUT|TEXTAREA|SELECT)$/.test(f.tagName || '') && open.contains(f) && typeof f.blur === 'function') {
+      f.blur();
+      return;
+    }
+    if (open && typeof open.onclick === 'function') open.onclick({ target: open });
+    return;
+  }
+  const el = e.target;
+  if ((e.key === 'Enter' || e.key === ' ') && el && el.matches && el.matches(KBD_CLICKABLE)) {
+    e.preventDefault(); // Space would scroll the page
+    el.click();
+  }
+}
+
 // ══════════════════════════════════════════════════════════════
 // HELPERS
 // ══════════════════════════════════════════════════════════════
@@ -277,10 +344,11 @@ function fmtM(n) { // format large numbers as K/M
   if (n >= 1_000)     return (n/1_000).toFixed(1) + 'K';
   return n.toLocaleString();
 }
+// data-v = the raw number for the CSV export (exportTable); the cell shows the localized one.
 function numCell(n) {
-  if (n === 0) return '<td class="num-zero">0</td>';
-  if (n >= PARAMS.numHigh) return `<td class="num-high">${n.toLocaleString()}</td>`;
-  return `<td>${n.toLocaleString()}</td>`;
+  if (n === 0) return '<td class="num-zero" data-v="0">0</td>';
+  if (n >= PARAMS.numHigh) return `<td class="num-high" data-v="${n}">${n.toLocaleString()}</td>`;
+  return `<td data-v="${n}">${n.toLocaleString()}</td>`;
 }
 function decode(s) { // URL-decode player names like "Vitrocer%C3%A1mica"
   try { return decodeURIComponent(s); } catch { return s; }
@@ -359,7 +427,7 @@ function copyBBTable() {
   ta.select();
   document.execCommand('copy');
   const btn = document.getElementById('bb-copy-btn');
-  btn.textContent = '✓ Copied!';
+  btn.textContent = t('btn_copied');
   setTimeout(() => { btn.textContent = t('bb_copy_btn'); }, 2000);
 }
 

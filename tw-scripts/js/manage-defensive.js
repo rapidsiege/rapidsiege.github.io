@@ -563,8 +563,17 @@ function mdPlanArrivalCell(ms) {
 }
 // "Still not sent" verdict for a missing plan row, with the pre-filled rally-point send link
 // (degrades to plain text when the world DB / server URL isn't available — same as the plan table).
+// A dated order whose departure (minus 🎚 departMargin) has passed by now can no longer arrive on
+// time: said in red under the label, so a laggard isn't chased with a link that is already too late.
 function mdNotSentStatus(r) {
-  const label = `<span style="color:#e69090;font-weight:600;">${esc(t('md_st_not_sent'))}</span>`;
+  let label = `<span style="color:#e69090;font-weight:600;">${esc(t('md_st_not_sent'))}</span>`;
+  if (r.departMs != null && typeof serverNowMs === 'function') {
+    const now = serverNowMs();
+    if (r.departMs < now + PARAMS.departMargin * 60000) {
+      const note = r.departMs < now ? t('md_st_depart_passed')(fmtTime((now - r.departMs) / 60000)) : t('md_st_depart_now');
+      label += `<br><span style="color:#e06040;font-weight:600;">⚠ ${esc(note)}</span>`;
+    }
+  }
   const url = (typeof rallyUrl === 'function') ? rallyUrl(r.srcCoord, r.tCoord, r.units) : null;
   return url
     ? label + `<br><a href="${esc(url)}" target="_blank" rel="noopener" style="color:#7fb8e6;">${esc(t('md_send'))}</a>`

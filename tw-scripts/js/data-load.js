@@ -2,12 +2,14 @@
 // FILE HANDLING
 // ══════════════════════════════════════════════════════════════
 function handleFileInput(input) {
-  if (input.files && input.files.length) loadFiles(input.files);
+  if (input.files && input.files.length) loadFiles(input.files); // loadFiles copies the FileList synchronously
+  input.value = ''; // else picking the same file again (after Clear / a re-export) fires no change event
 }
 function onDragOver(e)  { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
 function onDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
 function onDrop(e) {
   e.preventDefault();
+  e.stopPropagation(); // the page-wide drop listener (inline block) would load the files a second time
   e.currentTarget.classList.remove('drag-over');
   if (e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
 }
@@ -37,7 +39,7 @@ function loadFiles(fileList) {
         // Merge: every file KEEPS its own header line — parseData maps each file's unit columns
         // by the header above them (column order differs between exports and on archer worlds).
         const merged = texts.join('\n');
-        const label = files.length === 1 ? files[0].name : `${files.length} files`;
+        const label = files.length === 1 ? files[0].name : t('lbl_n_files')(files.length);
         finishTroopLoad(merged, label, sawJson, bldgs);
       }
     };
@@ -51,7 +53,7 @@ function loadFromPaste() {
   const bldgs = {};
   let merged = text, sawJson = false;
   if (ej) { sawJson = true; Object.assign(bldgs, ej.buildings); merged = ej.csv; }
-  finishTroopLoad(merged, 'pasted data', sawJson, bldgs);
+  finishTroopLoad(merged, t('lbl_pasted_data'), sawJson, bldgs);
 }
 
 // Shared tail of loadFiles/loadFromPaste. `merged` is already in the CSV shape parseData reads
@@ -82,6 +84,19 @@ function finishTroopLoad(merged, label, sawJson, bldgs) {
   let text = merged, lbl = label;
   const newDef = defenseByCoord, newInc = incomingByCoord;
   const nStation = Object.keys(newDef).length + Object.keys(newInc).length, nBldgs = Object.keys(bldgs).length;
+  if (!villages.length && hadArmy && !nStation && !nBldgs && !lastParseStats.rejected) {
+    // Not a troop file at all (BB orders, a report JSON, the debug export dropped on another tab):
+    // re-show the loaded army instead of blanking it. Nothing is persisted or synced and troopText
+    // stays, so the screen matches a reload and a later station file still merges into the army.
+    const junk = lastParseStats;
+    buildingsByCoord = prevBldgs;
+    parseData(troopText, troopLabel);
+    lastParseStats.ignored = { file: label, n: junk.badCoord + junk.badNum };
+    renderFileSummary();
+    updateBuildingsStatus();
+    return;
+  }
+  let ownedAt = ''; // a merge keeps the owned troops' age (the chip), troopsSavedAt still advances
   if (!villages.length && (nStation || nBldgs || lastParseStats.rejected)) {
     if (hadArmy) {
       // No owned troops in this batch: it used to blank the army on screen while the stored copy
@@ -98,6 +113,7 @@ function finishTroopLoad(merged, label, sawJson, bldgs) {
       buildingsByCoord = nBldgs ? { ...prevBldgs, ...bldgs } : prevBldgs;
       parseData(text, lbl);
       lastParseStats.merged = { file: label, n: nStation };
+      ownedAt = troopsOwnedAt || troopsSavedAt;
       renderFileSummary();
       if (!nStation && !nBldgs) { updateBuildingsStatus(); return; } // the stored army is unchanged
     } else if (nStation || nBldgs) {
@@ -105,7 +121,7 @@ function finishTroopLoad(merged, label, sawJson, bldgs) {
       renderFileSummary();
     }
   }
-  persistTroops(text, lbl);
+  persistTroops(text, lbl, ownedAt);
   troopText = villages.length ? text : ''; troopLabel = villages.length ? lbl : '';
   updateBuildingsStatus();
   // hosted-site cloud save (CSV; the raw JSON is not synced) — like persistTroops, never for a
@@ -134,10 +150,35 @@ const TROOP_KEY = 'tw_tribe_troops';
 // each defense plan slot stamps it at Generate, so a plan built on an OLDER file can be pointed out —
 // if its support already left, the newer file no longer has those troops (📦 Already sent).
 let troopsSavedAt = '';
-function persistTroops(text, filename) {
+// When the OWNED troops in memory were loaded, if older than troopsSavedAt ('' = same): a lone
+// station / buildings file merged into the army restamps troopsSavedAt, but the owned rows that
+// Generate allocates from are still the old export — the age chips below show this one.
+let troopsOwnedAt = '';
+// The file bar's "· loaded 5 h ago" (#file-age): plans are only as good as the troop export behind
+// them, and a restored session otherwise looks just like a fresh upload. Amber from
+// TROOP_AGE_WARN_H hours, red from TROOP_AGE_OLD_H; refreshed once a minute (boot step 'troop age').
+const TROOP_AGE_WARN_H = 6, TROOP_AGE_OLD_H = 24;
+// Shown in the file bar and next to the Plan Offensive / Plan Defense Generate buttons.
+const TROOP_AGE_EL_IDS = ['file-age', 'plan-troop-age', 'dp-troop-age'];
+function renderTroopAge() {
+  const at = Date.parse(troopsOwnedAt || troopsSavedAt);
+  const min = villages.length && !isNaN(at) ? Math.max(0, Math.floor((Date.now() - at) / 60000)) : -1;
+  const lvl = min >= TROOP_AGE_OLD_H * 60 ? ' troop-age-old' : min >= TROOP_AGE_WARN_H * 60 ? ' troop-age-warn' : '';
+  for (const id of TROOP_AGE_EL_IDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.textContent = min < 0 ? '' : (id === 'file-age' ? '· ' : '') + t('troops_age')(min);
+    el.className = 'troop-age' + lvl;
+    el.title = min < 0 ? '' : new Date(at).toLocaleString();
+  }
+}
+function persistTroops(text, filename, ownedAt) {
   if (!villages.length) return; // don't persist a parse that produced nothing
   const payload = { text, filename, savedAt: new Date().toISOString() };
+  if (ownedAt) payload.ownedAt = ownedAt; // a merge: the owned rows are older than this save
   troopsSavedAt = payload.savedAt; // the data in memory is this load's, even if the save below fails
+  troopsOwnedAt = ownedAt || '';
+  renderTroopAge();
   if (Object.keys(buildingsByCoord).length) payload.buildings = buildingsByCoord; // building levels ride along (from a tribeInfo v3 JSON)
   // compressed — raw troop text is highly compressible; false = even that didn't fit
   if (!lsSaveC(TROOP_KEY, payload) && typeof alert === 'function') alert(t('md_storage_full'));
@@ -156,6 +197,7 @@ function autoloadTroops() {
   if (!d || typeof d.text !== 'string' || !d.text) return;
   const label = d.filename || t('imported_troops');
   troopsSavedAt = typeof d.savedAt === 'string' ? d.savedAt : '';
+  troopsOwnedAt = typeof d.ownedAt === 'string' ? d.ownedAt : ''; // '' (older saves) = savedAt
   let text = d.text;
   parseData(text, label);
   // A text saved before 6.1.3 kept only the FIRST file's header. With a buildings export first,
@@ -193,22 +235,25 @@ function clearData() {
   troopByCoord = {}; defenseByCoord = {}; incomingByCoord = {};
   if (typeof myAllyIds !== 'undefined') myAllyIds = [];
   lastParseStats = null;
-  troopText = ''; troopLabel = ''; troopsSavedAt = '';
+  troopText = ''; troopLabel = ''; troopsSavedAt = ''; troopsOwnedAt = '';
   try { localStorage.removeItem(TROOP_KEY); } catch {} // also drop the persisted copy
   document.getElementById('file-dot').className = 'file-status-dot dot-off';
   document.getElementById('file-status-text').textContent = t('status_no_file');
   document.getElementById('file-status-text').className = '';
   document.getElementById('file-summary').textContent = '';
+  renderTroopAge(); // troopsSavedAt is '' now → empty
   document.getElementById('paste-input').value = '';
+  document.getElementById('file-input').value = ''; // the same file can be loaded again
   document.getElementById('overview-drop').style.display = '';
   document.getElementById('overview-content').style.display = 'none';
-  document.getElementById('players-tbody').innerHTML = `<tr class="empty-row"><td colspan="17">${t('empty_load_players')}</td></tr>`;
-  document.getElementById('villages-tbody').innerHTML = `<tr class="empty-row"><td colspan="17">${t('empty_load_villages')}</td></tr>`;
+  // data-i18n like the static markup, so a later language switch (applyLang) translates them
+  document.getElementById('players-tbody').innerHTML = `<tr class="empty-row"><td colspan="17" data-i18n="empty_load_players">${t('empty_load_players')}</td></tr>`;
+  document.getElementById('villages-tbody').innerHTML = `<tr class="empty-row"><td colspan="17" data-i18n="empty_load_villages">${t('empty_load_villages')}</td></tr>`;
   const outboundTbody = document.getElementById('outbound-tbody');
-  if (outboundTbody) outboundTbody.innerHTML = `<tr class="empty-row"><td colspan="13">${t('empty_load_villages')}</td></tr>`;
+  if (outboundTbody) outboundTbody.innerHTML = `<tr class="empty-row"><td colspan="13" data-i18n="empty_load_outbound">${t('empty_load_outbound')}</td></tr>`;
   const outboundSummary = document.getElementById('outbound-summary');
   if (outboundSummary) outboundSummary.textContent = '';
-  document.getElementById('rankings-content').innerHTML = `<div style="color:#5a3a18;padding:36px;text-align:center;">${t('empty_load_rankings')}</div>`;
+  document.getElementById('rankings-content').innerHTML = `<div style="color:#5a3a18;padding:36px;text-align:center;" data-i18n="empty_load_rankings">${t('empty_load_rankings')}</div>`;
   renderTargetTable();
   // Plan Defense: its three summaries (and the Manage Defense table it tail-renders) read the
   // troops + station dicts — with them gone the summaries clear and the estimates drop out.
@@ -405,7 +450,9 @@ function renderFileSummary() {
   if (s.badNum)   parts.push(t('load_warn_bad_nums')(s.badNum));
   if (s.merged)   parts.push(t('load_merged_into_army')(s.merged.file, s.merged.n)); // finishTroopLoad merge
   if (s.alone)    parts.push(t('load_station_alone'));
+  if (s.ignored)  parts.push(t('load_ignored_file')(s.ignored.file, s.ignored.n)); // finishTroopLoad: no troop rows
   el.textContent = parts.join(' · ');
+  renderTroopAge();
 }
 
 function parseData(text, filename) {

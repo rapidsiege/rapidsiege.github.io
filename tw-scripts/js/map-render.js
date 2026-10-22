@@ -9,6 +9,8 @@ let mapInited = false;
 let mapFitted = false;
 let mapCanvas = null, mapCtx = null;
 let mapOffscreen = null, mapOffCtx = null;
+// HiDPI (M7): the map's CSS size, which all geometry uses; both backing stores hold it × mapDpr.
+let mapW = 0, mapH = 0, mapDpr = 1;
 let mapHoverCoord = null;
 let mapDrag = null; // { x, y, panX0, panY0, moved }
 
@@ -541,10 +543,8 @@ function initMap() {
   canvas.addEventListener('mouseup', onMapMouseUp);
   canvas.addEventListener('mouseleave', onMapMouseLeave);
   canvas.addEventListener('wheel', onMapWheel, { passive: false });
-  if (typeof window !== 'undefined' && window.addEventListener)
-    window.addEventListener('resize', () => {
-      if (mapInited && isMapTabActive() && villageDb.length) { resizeMapCanvas(); renderMapOffscreen(); paintMap(); }
-    });
+  if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', mapRedrawResized);
+  watchMapDpr();
 
   mapInited = true;
   loadMapPrefs();
@@ -558,19 +558,38 @@ function initMap() {
 function resizeMapCanvas() {
   if (!mapCanvas) return;
   const wrap = document.getElementById('map-wrap');
-  const w = Math.max(200, wrap ? wrap.clientWidth : 800);
-  const h = Math.max(200, wrap ? wrap.clientHeight : 600);
-  mapCanvas.width = w; mapCanvas.height = h;
-  mapOffscreen.width = w; mapOffscreen.height = h;
+  mapW = Math.max(200, wrap ? wrap.clientWidth : 800);
+  mapH = Math.max(200, wrap ? wrap.clientHeight : 600);
+  // The CSS (#map-canvas 100% of the wrap) keeps the on-screen size; the backing stores get one
+  // pixel per device pixel so sprites and badges stay crisp at 125-200% scaling. Setting the size
+  // resets a context, so the scale goes on after it.
+  mapDpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  for (const [c, ctx] of [[mapCanvas, mapCtx], [mapOffscreen, mapOffCtx]]) {
+    c.width = Math.round(mapW * mapDpr); c.height = Math.round(mapH * mapDpr);
+    ctx.setTransform(mapDpr, 0, 0, mapDpr, 0, 0);
+  }
+}
+function mapRedrawResized() {
+  if (mapInited && isMapTabActive() && villageDb.length) { resizeMapCanvas(); renderMapOffscreen(); paintMap(); }
+}
+// Moving the window to a monitor with another scaling changes devicePixelRatio without a resize
+// event: a one-shot listener on the current resolution redraws and re-arms on the new one.
+// (Browser zoom fires resize, which re-reads the ratio anyway.)
+function watchMapDpr() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+  const mq = window.matchMedia('(resolution: ' + (window.devicePixelRatio || 1) + 'dppx)');
+  if (mq && mq.addEventListener) mq.addEventListener('change', () => { mapRedrawResized(); watchMapDpr(); }, { once: true });
 }
 
 // Render all village dots to the offscreen buffer for the CURRENT view.
 // Called on view change (zoom / pan / resize) and data load — NOT on hover.
 function renderMapOffscreen() {
   if (!mapOffCtx || !mapOffscreen) return;
-  const w = mapOffscreen.width, h = mapOffscreen.height;
+  const w = mapW, h = mapH;
   const spriteMode = mapSpritesReady && mapView.scale >= MAP_SPRITE_MIN_SCALE;
   const margin = Math.max(6, mapView.scale); // field-filling dots/sprites can be ~scale wide
+  // focus-filter plan lookups for this render only (villageRoleFiltered); cleared at the end
+  mapRoleSets = (mapShowDefVillagesOnly || mapShowOffVillagesOnly) ? buildMapRoleSets() : null;
   mapOffCtx.clearRect(0, 0, w, h);
   if (spriteMode) { mapOffCtx.fillStyle = mapNightMode ? MAP_GRASS_NIGHT : MAP_GRASS_DAY; mapOffCtx.fillRect(0, 0, w, h); } // continuous terrain (matches sprites' baked-in background)
   drawMapGrid(mapOffCtx, w, h, spriteMode);
@@ -650,8 +669,9 @@ function renderMapOffscreen() {
       const rb = reportBadgeFor(coord);
       if (rb) (rb.cls === 'off' ? offC : defC)[coord] = 1;
     }
-    if (Object.keys(offC).length) drawPlanHaloPass(offC, '#e0403a', w, h, margin);
-    if (Object.keys(defC).length) drawPlanHaloPass(defC, '#2e6fc0', w, h, margin);
+    // drawPlanHalo takes [r,g,b], never a hex string ('rgba(#,e,0,…)' made addColorStop throw)
+    if (Object.keys(offC).length) drawPlanHaloPass(offC, hexToRgb('#e0403a'), w, h, margin);
+    if (Object.keys(defC).length) drawPlanHaloPass(defC, hexToRgb('#2e6fc0'), w, h, margin);
   }
   // Plan-Offensive objective halos (neon green) + Plan-Defense support halos (dark blue),
   // each a post-pass like incoming, gated by its Show … toggle. Iterate the plan rows (a
@@ -683,6 +703,7 @@ function renderMapOffscreen() {
   // Plan-Defense support-travel lines (blue), same faint base pass, gated by its own toggle.
   if (mapShowDefLines && typeof coordDb !== 'undefined' && typeof defPlanRows !== 'undefined' && defPlanRows.length)
     drawPlanLinePass(plannedSupportLines(), mc('defLine'), w, h, margin);
+  mapRoleSets = null;
   const count = document.getElementById('map-count');
   if (count) count.textContent = t('map_villages_shown')(villageDb.length);
 }
@@ -806,11 +827,13 @@ function drawMapGrid(ctx, w, h, spriteMode) {
 // Blit cached offscreen + draw the hover ring. Cheap → safe on every mousemove.
 function paintMap() {
   if (!mapCtx || !mapOffscreen) return;
-  const w = mapCanvas.width, h = mapCanvas.height;
+  const w = mapW, h = mapH;
   mapCtx.clearRect(0, 0, w, h);
   mapCtx.fillStyle = '#0b0802';
   mapCtx.fillRect(0, 0, w, h);
-  mapCtx.drawImage(mapOffscreen, 0, 0);
+  // 1:1 device pixels: the backing store is round(w × mapDpr) wide, which at 125%/150% is not
+  // exactly w × mapDpr, so blit at its own size (a w×h destination would resample it, blurred).
+  mapCtx.drawImage(mapOffscreen, 0, 0, mapOffscreen.width / mapDpr, mapOffscreen.height / mapDpr);
   // Extract-mode selection rings (overlay; cheap — only the selected coords)
   if (mapSelection.size) {
     mapCtx.strokeStyle = '#ff3b6b';
@@ -858,6 +881,7 @@ function paintMap() {
       drawPlanLine(mapCtx, ln.from, ln.to, true, mc('defLine'));
     }
   }
+  if (mapGotoMark) drawGotoMark(w, h); // 🔎 Go to: pulsing ring(s) on what the box found
   if (mapHoverCoord && coordDb[mapHoverCoord]) {
     const v = coordDb[mapHoverCoord];
     const s = worldToScreen(v.x, v.y);
@@ -880,7 +904,7 @@ function onMapTabShown() {
   if (toolbar) toolbar.style.display = has ? '' : 'none';
   if (!has) return;
   resizeMapCanvas();
-  if (!mapFitted) { fitMapView(mapCanvas.width, mapCanvas.height); mapFitted = true; }
+  if (!mapFitted) { fitMapView(mapW, mapH); mapFitted = true; }
   mapDetectAndSeed();
   renderMapOffscreen();
   paintMap();
@@ -890,11 +914,16 @@ function onMapTabShown() {
 
 // Called by setDbData() (world DB load) and parseData() (troop file load). Guarded:
 // no-op until the map tab has been opened (and in the test sandbox, mapInited stays false).
+// The map tab shown BEFORE the village DB arrived (production loads it async) hid its canvas for
+// the empty state: the first refresh with a DB re-runs the full tab show — whether the tab was
+// opened at boot, by a click or by a #map hashchange.
 function mapRefresh() {
   if (!mapInited) return;
   if (isMapTabActive() && villageDb.length) {
+    const { canvas } = mapEls();
+    if (canvas && canvas.style && canvas.style.display === 'none') { onMapTabShown(); return; }
     resizeMapCanvas();
-    if (!mapFitted) { fitMapView(mapCanvas.width, mapCanvas.height); mapFitted = true; }
+    if (!mapFitted) { fitMapView(mapW, mapH); mapFitted = true; }
     mapDetectAndSeed();
     renderMapOffscreen();
     paintMap();
@@ -965,9 +994,14 @@ function onMapMouseLeave() { mapDrag = null; mapHoverCoord = null; mapDrawCursor
 
 function onMapWheel(e) {
   e.preventDefault();
+  // Zoom by the wheel distance, not a fixed step per event: a touchpad sends many small deltas
+  // and used to fly through the whole range in one gesture. Lines/pages → px, clamped to one
+  // 100px mouse notch (≈ the old 15% step); a zero delta (horizontal scroll) does nothing.
+  const d = Math.max(-100, Math.min(100, (e.deltaY || 0) * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1)));
+  if (!d) return;
+  const factor = Math.exp(-d * 0.0014);
   const p = mapEventXY(e);
   const wpt = screenToWorld(p.x, p.y);
-  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
   mapView.scale = clampMapScale(mapView.scale * factor);
   mapView.panX = p.x - wpt.x * mapView.scale; // keep world point under cursor fixed
   mapView.panY = p.y - wpt.y * mapScaleY();   // (vertical uses the compressed scale)
@@ -992,9 +1026,18 @@ function showMapTip(coord, e) {
   if (!tip || !wrap) return;
   tip.innerHTML = villageTooltipHtml(coord);
   tip.style.display = 'block';
+  // 14px right of / below the cursor, but kept inside #map-wrap (overflow:hidden would cut
+  // off the last blocks — report intel, buildings): flip to the cursor's left near the right
+  // edge, move up near the bottom, never above/left of the wrap.
+  tip.style.left = '0px'; tip.style.top = '0px'; // measure unsqueezed (width:auto shrinks near the edge)
   const wr = wrap.getBoundingClientRect();
-  tip.style.left = (e.clientX - wr.left + 14) + 'px';
-  tip.style.top  = (e.clientY - wr.top + 14) + 'px';
+  const x = e.clientX - wr.left, y = e.clientY - wr.top;
+  const tw = tip.offsetWidth || 0, th = tip.offsetHeight || 0;
+  let left = x + 14;
+  if (left + tw > wrap.clientWidth) left = x - tw - 14;
+  const top = Math.min(y + 14, wrap.clientHeight - th - 4);
+  tip.style.left = Math.max(0, left) + 'px';
+  tip.style.top  = Math.max(0, top) + 'px';
 }
 
 function hideMapTip() {
@@ -1785,8 +1828,8 @@ function pfFocusPlayer() {
   let sx = 0, sy = 0;
   for (const c of playerFilterCoords) { const m = c.split('|'); sx += +m[0]; sy += +m[1]; }
   const n = playerFilterCoords.size;
-  mapView.panX = mapCanvas.width / 2 - (sx / n) * mapView.scale;
-  mapView.panY = mapCanvas.height / 2 - (sy / n) * mapScaleY();
+  mapView.panX = mapW / 2 - (sx / n) * mapView.scale;
+  mapView.panY = mapH / 2 - (sy / n) * mapScaleY();
 }
 
 function setBarbPlayer(v) { barbPlayer = v; updateBarbResults(); }
@@ -1858,11 +1901,84 @@ function updateBarbResults() {
 function focusBarb(coord) {
   const v = coordDb[coord];
   if (!v || !mapCanvas) return;
-  mapView.panX = mapCanvas.width / 2 - v.x * mapView.scale;
-  mapView.panY = mapCanvas.height / 2 - v.y * mapScaleY();
+  mapView.panX = mapW / 2 - v.x * mapView.scale;
+  mapView.panY = mapH / 2 - v.y * mapScaleY();
   mapHoverCoord = coord;
   renderMapOffscreen();
   paintMap();
+}
+
+// ── 🔎 Go to (toolbar box; resolution is pure — mapGotoResolve in map.js) ──
+// A coord or a village → centre it, zoomed in to at least the sprite view, and pulse a ring on
+// it for a few seconds. A player → centre on their villages (zoom kept, like the player filter)
+// and pulse every village of theirs; the filter's isolation is NOT switched on. Several players
+// containing the text → the Filter Player panel opens with the text as its search, to pick one.
+// Nothing found → a short note beside the box.
+let mapGotoMark = null;  // {coords:[…], until, t0} — the pulse painted by paintMap
+let mapGotoTimer = null;
+const MAP_GOTO_PULSE_MS = 4000;
+function mapGotoNote(msg) {
+  const n = document.getElementById('map-goto-note');
+  if (n) n.textContent = msg || '';
+}
+function mapGotoCentre(x, y, zoom) {
+  if (zoom) mapView.scale = clampMapScale(Math.max(mapView.scale, MAP_SPRITE_MIN_SCALE)); // scale first: mapScaleY depends on it
+  mapView.panX = mapW / 2 - x * mapView.scale;
+  mapView.panY = mapH / 2 - y * mapScaleY();
+}
+function mapGotoSubmit() {
+  const inp = document.getElementById('map-goto');
+  const r = mapGotoResolve(inp ? inp.value : '');
+  mapGotoNote('');
+  if (!mapCanvas) return;
+  let coords = [];
+  if (r.kind === 'coord' || r.kind === 'village') {
+    const [x, y] = r.coord.split('|').map(Number);
+    mapGotoCentre(x, y, true);
+    coords = [r.coord];
+  } else if (r.kind === 'player' && r.coords.length) {
+    let sx = 0, sy = 0;
+    for (const c of r.coords) { const m = c.split('|'); sx += +m[0]; sy += +m[1]; }
+    mapGotoCentre(sx / r.coords.length, sy / r.coords.length, false);
+    coords = r.coords;
+    mapGotoNote(t('map_goto_player')(r.name, r.coords.length));
+  } else if (r.kind === 'player') {
+    mapGotoNote(t('map_goto_no_vills')(r.name)); return;
+  } else if (r.kind === 'many') {
+    if (!playerFilterActive || playerFilterMode !== 'db') togglePlayerFilter('db');
+    playerFilterQuery = inp ? inp.value.trim() : '';
+    renderPlayerFilter();
+    mapGotoNote(t('map_goto_many')(r.n)); return;
+  } else {
+    if (inp && inp.value.trim()) mapGotoNote(t('map_goto_none'));
+    return;
+  }
+  const now = Date.now();
+  mapGotoMark = { coords, t0: now, until: now + MAP_GOTO_PULSE_MS };
+  renderMapOffscreen();
+  paintMap();
+  clearTimeout(mapGotoTimer);
+  const tick = () => {
+    if (!mapGotoMark || Date.now() >= mapGotoMark.until) { mapGotoMark = null; mapGotoTimer = null; paintMap(); return; }
+    paintMap();
+    mapGotoTimer = setTimeout(tick, 80);
+  };
+  mapGotoTimer = setTimeout(tick, 80);
+}
+// Rings breathe between 0.8× and 1.4× of a field and fade out over the pulse.
+function drawGotoMark(w, h) {
+  const k = Math.max(0, Math.min(1, (Date.now() - mapGotoMark.t0) / MAP_GOTO_PULSE_MS));
+  const r = Math.max(9, mapView.scale * 0.9) * (1.1 + 0.3 * Math.sin(k * Math.PI * 8));
+  mapCtx.strokeStyle = `rgba(80,220,255,${(1 - k * 0.7).toFixed(2)})`;
+  mapCtx.lineWidth = 3;
+  for (const c of mapGotoMark.coords) {
+    const [x, y] = c.split('|').map(Number);
+    const s = worldToScreen(x, y);
+    if (s.px < -r || s.py < -r || s.px > w + r || s.py > h + r) continue;
+    mapCtx.beginPath();
+    mapCtx.arc(s.px, s.py, r, 0, Math.PI * 2);
+    mapCtx.stroke();
+  }
 }
 
 function copyBarbCoords() {

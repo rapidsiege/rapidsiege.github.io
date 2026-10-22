@@ -47,6 +47,11 @@
     .dot-off  { background: #806030; }
     #file-status-text { color: #907050; }
     #file-status-text.connected { color: #70c080; }
+    .troop-age { color: #706050; font-size: 12px; } /* data-load.js renderTroopAge */
+    .troop-age:empty { display: none; }
+    .troop-age.troop-age-warn { color: #f0a030; }
+    .troop-age.troop-age-old  { color: #e06040; font-weight: bold; }
+    #file-age { margin-left: -6px; } /* reads as the tail of #file-summary */
     .file-bar-actions { display: flex; gap: 8px; margin-left: auto; }
 
     /* ── Tabs (two-level: menu-group row + sub-tab row) ── */
@@ -878,6 +883,19 @@
     .plan-slots-hint { flex-basis: 100%; font-size: 11px; color: #806030; }
     .mo-plan-view { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #a08050; white-space: nowrap; }
     .mo-plan-view select { font-size: 12px; }
+    .map-goto { display: inline-flex; align-items: center; gap: 4px; }
+    .map-goto input { width: 160px; font-size: 12px; padding: 4px 7px; background: #1a1008; border: 1px solid #4a3010; color: #d4b483; border-radius: 4px; }
+    .map-goto input:focus { outline: none; border-color: #c0900a; }
+    .map-goto-note { font-size: 11px; color: #e0a020; max-width: 220px; }
+    .map-goto-note:empty { display: none; }
+    .ev-filter-row { flex-wrap: wrap; }
+    .ev-f-lbl { font-size: 12px; color: #806030; }
+    .ev-filter-row input[type=checkbox] { padding: 0; }
+    .ev-chip { min-width: 34px; }
+    .ev-chip.active { background: #3a2808; color: #f0c040; border-color: #7a5018; }
+    .ev-f-copy { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+    .mo-comp { margin: 0 0 10px; }
+    .mo-comp table { width: auto; }
     .mo-slot { display: inline-block; margin-right: 4px; padding: 0 5px; border-radius: 3px; background: #2a1c06; border: 1px solid #5a3a10; color: #c09040; font-size: 10px; font-weight: 600; vertical-align: middle; }
 
     /* ⏰ Player Schedules popup (v6.1.2) */
@@ -902,4 +920,8 @@
     #ro-files { margin-top: 6px; }
     .ro-file { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #a08050; padding: 2px 0; border-bottom: 1px solid #2a1c06; }
     .ro-file .btn { padding: 0 6px; }
+    /* an attack (file) whose arrival time has passed: still counted in flight until the file is removed */
+    .ro-landed, .ro-file-landed .ro-landed-note { color: #e0a020; font-weight: 600; }
+    .ro-file-landed { background: rgba(224,160,32,0.10); }
+    .ro-landed { cursor: help; }
     .plan-returning { color: #f0a030; font-weight: 600; cursor: help; }
