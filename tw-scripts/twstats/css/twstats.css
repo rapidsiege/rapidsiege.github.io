@@ -171,7 +171,8 @@ table.vis tbody tr:hover td { background-color: var(--bg-tab-active); }
 
 /* Pager */
 .pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 0 2px; }
-#pageInfo { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.pager[hidden] { display: none; }
+#pageInfo, .pg-info { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .foot { text-align: center; color: var(--text-muted); font-size: 11px; padding: 12px 8px 4px; }
 

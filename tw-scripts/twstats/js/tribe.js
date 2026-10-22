@@ -3,7 +3,7 @@
 (function () {
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
-  var CONQ_CAP = 200;
+  var CONQ_PAGE = 200;  // conquest rows per page (tribes can have 8,000+)
   var PAGE_SIZE = 100;
   var GALLY = "https://" + TW.WORLD + ".guerrastribales.es/page.php?page=inbound&screen=info_ally&id=";
   var vstate = { list: [], page: 0 };
@@ -155,9 +155,9 @@
     renderVillages();
   }
 
-  function conquestRows(list) {
+  // One page of conquest rows (TW.pagedTable hands in the slice).
+  function conquestRows(slice) {
     var html = "";
-    var slice = list.slice(0, CONQ_CAP);
     for (var i = 0; i < slice.length; i++) {
       var r = slice[i];
       var pts = r.village.points != null ? TW.commas(r.village.points) : "?";
@@ -171,10 +171,7 @@
     return html || "<tr class='r1'><td colspan='5' class='status'>Ninguno.</td></tr>";
   }
 
-  function countNote(list) {
-    if (list.length > CONQ_CAP) return "(mostrando " + CONQ_CAP + " de " + TW.commas(list.length) + ")";
-    return "(" + TW.commas(list.length) + ")";
-  }
+  function countNote(list) { return "(" + TW.commas(list.length) + ")"; }
 
   // Conquest filter: "all" | "gain" | "lose" — show/hide the two sections.
   function setConqFilter(mode) {
@@ -234,8 +231,8 @@
         renderMembers(d.memberList || [], d.weekDays || []);
         $("memberCount").textContent = "(" + TW.commas((d.memberList || []).length) + ")";
         initVillages(d.villages || []);
-        $("gainsBody").innerHTML = conquestRows(d.gains || []);
-        $("lossesBody").innerHTML = conquestRows(d.losses || []);
+        TW.pagedTable($("gainsBody"), $("gainsPager"), CONQ_PAGE, conquestRows).set(d.gains);
+        TW.pagedTable($("lossesBody"), $("lossesPager"), CONQ_PAGE, conquestRows).set(d.losses);
         $("gainsCount").textContent = countNote(d.gains || []);
         $("lossesCount").textContent = countNote(d.losses || []);
         $("status").style.display = "none";

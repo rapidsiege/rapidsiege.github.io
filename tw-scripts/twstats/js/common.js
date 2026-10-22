@@ -170,6 +170,28 @@
     return h ? d + "d " + h + "h" : d + "d";
   }
 
+  // Paged table: `size` rows of a list per page into <tbody> `body`, rendered
+  // by rowsHtml(slice) — which must also return the "empty" row for []. The
+  // `pager` element holds [data-pg=prev|info|next] and hides itself when the
+  // list fits on one page. Returns { set(list) } (back to page 1).
+  function pagedTable(body, pager, size, rowsHtml) {
+    var st = { list: [], page: 0 };
+    var q = function (w) { return pager.querySelector('[data-pg="' + w + '"]'); };
+    function render() {
+      var total = st.list.length, pages = Math.max(1, Math.ceil(total / size));
+      st.page = Math.max(0, Math.min(st.page, pages - 1));
+      var start = st.page * size;
+      body.innerHTML = rowsHtml(st.list.slice(start, start + size));
+      q("info").textContent = (start + 1) + "–" + Math.min(start + size, total) + " de " + commas(total);
+      q("prev").disabled = st.page <= 0;
+      q("next").disabled = st.page >= pages - 1;
+      pager.hidden = pages <= 1;
+    }
+    q("prev").addEventListener("click", function () { st.page--; render(); });
+    q("next").addEventListener("click", function () { st.page++; render(); });
+    return { set: function (list) { st.list = list || []; st.page = 0; render(); } };
+  }
+
   // Wire twstats-style tabs: [data-tab] buttons toggle sibling [data-panel]
   // sections. Default = first tab; honours & reflects location.hash.
   function initTabs(root) {
@@ -276,7 +298,7 @@
     esc: esc, commas: commas, continent: continent, loadJSON: loadJSON,
     playerLink: playerLink, tribeLink: tribeLink,
     villageCell: villageCell, ownerCell: ownerCell, deltaCell: deltaCell,
-    changeCell: changeCell, relTime: relTime, dur: dur, initTabs: initTabs,
+    changeCell: changeCell, relTime: relTime, dur: dur, initTabs: initTabs, pagedTable: pagedTable,
     renderNav: renderNav,
   };
 })();
