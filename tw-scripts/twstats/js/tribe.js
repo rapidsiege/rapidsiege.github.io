@@ -62,9 +62,10 @@
     { key: "rank", label: "Ranking", invert: true },
   ];
 
+  // timeX: points sit at their time, so days without a snapshot stay a gap.
   function renderCharts(series) {
-    TW.metricChart($("perfilChart"), series, METRICS, { width: 460, height: 200, daily: true });
-    TW.metricChart($("histChart"), series, METRICS, { width: 900, height: 280, daily: true });
+    TW.metricChart($("perfilChart"), series, METRICS, { width: 460, height: 200, timeX: true, daily: true });
+    TW.metricChart($("histChart"), series, METRICS, { width: 900, height: 280, timeX: true, daily: true });
   }
 
   // OD history cell. The kill files list only OD > 0, so an absent OD is 0;
