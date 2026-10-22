@@ -150,12 +150,14 @@
   }
 
   // Compact duration for the village "Tiempo" column: "45m", "2h", "3d 4h".
+  // Rounds ONCE at the output unit, then splits — so 59m50s is "1h" (not
+  // "60m"), 23h50m is "1d" and 1d 23h40m is "2d" (not "24h" / "1d 24h").
   function dur(seconds) {
     var s = Math.max(0, Math.round(seconds));
-    if (s < 3600) return Math.max(1, Math.round(s / 60)) + "m";
-    if (s < 86400) return Math.round(s / 3600) + "h";
-    var d = Math.floor(s / 86400);
-    var h = Math.round((s % 86400) / 3600);
+    if (s < 3570) return Math.max(1, Math.round(s / 60)) + "m";
+    var hrs = Math.round(s / 3600);
+    if (hrs < 24) return hrs + "h";
+    var d = Math.floor(hrs / 24), h = hrs % 24;
     return h ? d + "d " + h + "h" : d + "d";
   }
 
