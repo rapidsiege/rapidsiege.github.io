@@ -55,7 +55,7 @@
     html += row("Pueblos", jump("pueblos", null, TW.commas(p.villages)));
     html += row("Promedio de puntos por pueblo", TW.commas(p.avg));
     html += row("Conquistas", conq);
-    html += row("Primera vez visto", TW.fmtDate(p.firstSeen), true);
+    html += row("Primera vez visto", TW.fmtDayUTC(p.firstSeen), true);  // = first daily bucket
     html += row("Mejor clasificación", p.bestRank + ".", true);
     html += row("Mayoría de puntos", TW.commas(p.maxPoints), true);
     html += row("Mayoría de pueblos", TW.commas(p.maxVillages), true);
