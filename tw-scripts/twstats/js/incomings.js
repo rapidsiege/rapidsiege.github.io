@@ -1781,6 +1781,10 @@
     if (h) return "en " + h + "h " + mi + "m";
     return m ? "en " + m + "m" : "en <1m";
   }
+  // Backtime's "vuelve en 2d 11h" / "ya volvió" — built and ticked from here.
+  function returnRelText(t, now) {
+    return t <= now ? "ya volvió" : arrivalRelText({ arrival: t }, now).replace(/^en /, "vuelve en ");
+  }
   function arrivedCount() {
     if (state.mode !== "attacks") return 0;
     var now = nowSec(), k = 0;
@@ -1799,6 +1803,12 @@
       var done = hasArrived(a, now);
       spans[i].textContent = arrivalRelText(a, now);
       spans[i].classList.toggle("arr-done", done);
+    }
+    var rets = document.querySelectorAll("#backtime .arr-rel[data-ret]");
+    for (var j = 0; j < rets.length; j++) {
+      var t = +rets[j].getAttribute("data-ret");
+      rets[j].textContent = returnRelText(t, now);
+      rets[j].classList.toggle("arr-done", t <= now);
     }
     var k = arrivedCount();
     if (k !== state.arrivedN) {
@@ -2097,8 +2107,8 @@
       var retTxt = a.returnT == null ? "<span class='barb'>desconocido</span>"
         : (approx ? "<span class='derived' title='Deducido de la duración (el volcado no trae la hora de regreso)'>≈ "
           : "<span>") + TW.fmtTime(a.returnT) + "</span>" +
-          "<br><span class='arr-rel" + (a.returnT <= now ? " arr-done" : "") + "'>" +
-          (a.returnT <= now ? "ya volvió" : arrivalRelText({ arrival: a.returnT }, now).replace(/^en /, "vuelve en ")) + "</span>";
+          "<br><span class='arr-rel" + (a.returnT <= now ? " arr-done" : "") + "' data-ret='" + a.returnT + "'>" +
+          returnRelText(a.returnT, now) + "</span>";
       var off = r.originNote === "OFF" ? " <span class='flag flag-nuke' title='Informe reciente: pueblo OFF'>OFF</span>" : "";
       var owner = v && v.owner && v.owner.name ? v.owner.name : (a.player && a.player !== "?" ? a.player : "");
       bb.push("[coord]" + a.origin.key + "[/coord]" + (owner ? " [player]" + owner + "[/player]" : "") +
