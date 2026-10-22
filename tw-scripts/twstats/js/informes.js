@@ -75,8 +75,9 @@
   // Read + parse the chosen files AND the pasted JSON (2026-08-06) into one
   // record array (shared by Subir/Ver). Resolves null only when NEITHER source
   // has anything — a paste alone is a full-fledged input, like the calculator's.
-  // Otherwise { records, bad }: `bad` names every input that is not JSON, so
-  // the status line never lets a skipped file pass unmentioned.
+  // Otherwise { records, bad }: `bad` names every file that is not JSON (and
+  // bad.paste is set when the pasted text is not), so the status line never
+  // lets a skipped input pass unmentioned.
   function readChosen() {
     var input = $("repFiles");
     var files = input && input.files ? [].slice.call(input.files) : [];
@@ -85,18 +86,20 @@
     return Promise.all(files.map(function (f) { return f.text(); })).then(function (texts) {
       var all = [], bad = [];
       var names = files.map(function (f) { return f.name; });
-      if (pasted) { texts = texts.concat([pasted]); names.push("texto pegado"); }
+      if (pasted) texts = texts.concat([pasted]);
       texts.forEach(function (t, i) {
-        try { var d = JSON.parse(t); all = all.concat(Array.isArray(d) ? d : [d]); } catch (e) { bad.push(names[i]); }
+        try { var d = JSON.parse(t); all = all.concat(Array.isArray(d) ? d : [d]); }
+        catch (e) { if (i < names.length) bad.push(names[i]); else bad.paste = true; }
       });
       return { records: all, bad: bad };
     });
   }
+  // The paste is not a file: it gets its own wording, not «archivo ilegible».
   function badNote(bad) {
-    return bad.length
+    return (bad.length
       ? " · " + bad.length + " archivo" + (bad.length === 1 ? "" : "s") + " ilegible" +
         (bad.length === 1 ? "" : "s") + ": " + bad.join(", ")
-      : "";
+      : "") + (bad.paste ? " · el texto pegado no es JSON válido" : "");
   }
 
   // One upload at a time: a second click would start a second Turnstile run
