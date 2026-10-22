@@ -57,36 +57,53 @@ function updateServerNow() {
 // Launch window = landing window minus travel time (wraps past midnight). `dateISO` is the
 // arrival date the window sits on — the row's own window group's since v5.9; omitted, it falls
 // back to the first group's, which is the only date a single-wave plan has.
-function launchWindowStr(winStr, travelMin, dateISO) {
+// With a date, the edges are server-clock INSTANTS (arrival instant − travel), so a travel that
+// crosses a DST switch shifts the launch by that hour exactly as the gates (serverWallMs /
+// windowEndMs) see it, and the −Nd count + launch day are the server calendar's. The edges round
+// TOWARD the window — start up, end down to the minute — so a launch at either shown edge still
+// lands inside it; a single exact-time window (f === to) shows its nearest minute. Without a
+// date: the same arithmetic on wall minutes, and no launch day.
+// Returns { span, single, days, launchISO } (launchISO null without a date) or null.
+function launchWindowCalc(winStr, travelMin, dateISO) {
   const w = parseWindowStr(winStr);
-  if (!w) return '—';
-  const tr = Math.round(travelMin);
-  const p = n => String(n).padStart(2, '0');
-  const fm = m => { const x = ((m % 1440) + 1440 * 100) % 1440; return `${p(Math.floor(x / 60))}:${p(x % 60)}`; };
-  const days = w.f - tr < 0 ? Math.ceil((tr - w.f) / 1440) : 0;
-  const span = w.f === w.to ? fm(w.f - tr) : `${fm(w.f - tr)}–${fm(w.to - tr)}`;
-  if (!days) return span;
+  if (!w) return null;
+  const single = w.f === w.to;
+  const trSec = Math.round((travelMin || 0) * 60); // the game's travel times are whole seconds (also drops float noise)
+  const iso = String(dateISO === undefined ? (otGroups()[0].dateISO || '') : (dateISO || ''));
+  const arrMs = serverWallMs(iso, w.f);
+  if (arrMs === null) {
+    const p = n => String(n).padStart(2, '0');
+    const fm = m => { const x = ((m % 1440) + 1440 * 100) % 1440; return `${p(Math.floor(x / 60))}:${p(x % 60)}`; };
+    const f = single ? w.f - Math.round(travelMin || 0) : Math.ceil((w.f * 60 - trSec) / 60);
+    const span = single ? fm(f) : `${fm(f)}–${fm(Math.floor((w.to * 60 - trSec) / 60))}`;
+    return { span, single, days: f < 0 ? Math.ceil(-f / 1440) : 0, launchISO: null };
+  }
+  const S = fmtServerDT(launchStartMs(arrMs, w, travelMin));
+  const span = single ? S.slice(11, 16)
+    : `${S.slice(11, 16)}–${fmtServerDT(Math.floor((windowEndMs(iso, w) - trSec * 1000) / 60000) * 60000).slice(11, 16)}`;
+  const day = x => Date.parse(`${x}T00:00:00Z`);
+  return { span, single, days: Math.round((day(iso) - day(S.slice(0, 10))) / 86400000), launchISO: S.slice(0, 10) };
+}
+// Epoch ms of the launch for a window START that lands at `arrMs`: rounded UP to the minute (into
+// the window), or to the nearest minute for a single exact time. Shared by launchWindowCalc and
+// planRowAbsTimes so the plan table, the BB and the Per-Player Table agree.
+function launchStartMs(arrMs, w, travelMin) {
+  return w.f === w.to ? arrMs - Math.round(travelMin || 0) * 60000
+    : Math.ceil((arrMs - Math.round((travelMin || 0) * 60) * 1000) / 60000) * 60000;
+}
+function launchWindowStr(winStr, travelMin, dateISO) {
+  const c = launchWindowCalc(winStr, travelMin, dateISO);
+  if (!c) return '—';
+  if (!c.days) return c.span;
   // with an arrival date set, name the actual launch day next to the −Nd marker
-  const m = String(dateISO === undefined ? (otGroups()[0].dateISO || '') : (dateISO || '')).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]) - days * 86400000) : null;
-  const ds = d ? ` · ${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}` : '';
-  return `${span} (−${days}d${ds})`;
+  return `${c.span} (−${c.days}d${c.launchISO ? ` · ${c.launchISO}` : ''})`;
 }
 
 // Same launch-window math as launchWindowStr, but returns the parts the per-player BB needs
 // separately: the time span and the launch day-of-month (null when no arrival date is set).
 function launchWindowParts(winStr, travelMin, dateISO) {
-  const w = parseWindowStr(winStr);
-  if (!w) return null;
-  const tr = Math.round(travelMin);
-  const p = n => String(n).padStart(2, '0');
-  const fm = m => { const x = ((m % 1440) + 1440 * 100) % 1440; return `${p(Math.floor(x / 60))}:${p(x % 60)}`; };
-  const days = w.f - tr < 0 ? Math.ceil((tr - w.f) / 1440) : 0;
-  const single = w.f === w.to;
-  const span = single ? fm(w.f - tr) : `${fm(w.f - tr)}–${fm(w.to - tr)}`;
-  const m = String(dateISO === undefined ? (otGroups()[0].dateISO || '') : (dateISO || '')).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]) - days * 86400000) : null;
-  return { span, single, day: d ? d.getUTCDate() : null };
+  const c = launchWindowCalc(winStr, travelMin, dateISO);
+  return c ? { span: c.span, single: c.single, day: c.launchISO ? +c.launchISO.slice(8, 10) : null } : null;
 }
 
 // English ordinal for the launch day (1st, 2nd, 3rd, 4th … 11th–13th th, 21st …).
@@ -658,7 +675,7 @@ function generatePlan() {
   const schedTierOf = (p, T, pw, kind, dateISO) => {
     if (!pw) return 1;
     const tr = travelTimeMin(distXY(p.c, T.c), kind === 'snob' ? PLAN_BASE_MIN.snob : PLAN_BASE_MIN.off, ws, us);
-    return psLaunchTier(decode(p.v.player), pw, tr, schedMode, schedSkip(dateISO, pw, tr, kind === 'snob' ? sendFloorMs : floorFor(p)));
+    return psLaunchTier(decode(p.v.player), pw, tr, schedMode, schedSkip(dateISO, pw, tr, kind === 'snob' ? sendFloorMs : floorFor(p)), dateISO);
   };
   const schedGrader = (T, g, kind) => { // one grade per candidate per pick
     const pw = schedWin(g, kind), memo = new Map();
@@ -1656,7 +1673,7 @@ function generatePlan() {
       if (r.unassigned || !r.srcCoord || !r.srcPlayer || typeof r.travel !== 'number') continue;
       const pw = parseWindowStr(r.window);
       if (!pw) continue;
-      const tier = psLaunchTier(r.srcPlayer, pw, r.travel, schedMode, schedSkip(planRowDateISO(r), pw, r.travel, rowFloorMs(r))); // same past-trim as the picks
+      const tier = psLaunchTier(r.srcPlayer, pw, r.travel, schedMode, schedSkip(planRowDateISO(r), pw, r.travel, rowFloorMs(r)), planRowDateISO(r)); // same past-trim as the picks
       if (tier === 0) { r.sched = 'blocked'; blockedBy[r.srcPlayer] = (blockedBy[r.srcPlayer] || 0) + 1; }
       else if (tier === 2) r.sched = 'preferred';
     }
@@ -2419,20 +2436,17 @@ function planRowTableType(r) {
 
 // Absolute send/arrival server-wall times for a plan row. Arrival = the window's START
 // (a single value for the table cell, matching the in-game export shape); send = arrival −
-// travel (minute-rounded, like launchWindowStr, so times end in :00). Day-wrap is handled
-// by working in absolute epoch ms. Returns null if no arrival date is set or the window is
-// unparseable — the caller then leaves the time cells blank.
+// travel, rounded like launchWindowStr's start (up into the window; nearest for a single
+// exact time), so times end in :00. Both are real epoch instants shown on the server clock at
+// that instant (DST-aware, like the gates); day-wrap falls out of the epoch math. Returns null
+// if no arrival date is set or the window is unparseable — the caller then leaves the time
+// cells blank.
 function planRowAbsTimes(r) {
-  const md = String(planRowDateISO(r) || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const w  = parseWindowStr(r.window);
-  if (!md || !w) return null;
-  const p = n => String(n).padStart(2, '0');
-  const fmt = ms => { const d = new Date(ms);
-    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} `
-         + `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`; };
-  const arrMs  = Date.UTC(+md[1], +md[2] - 1, +md[3]) + w.f * 60000;
-  const sendMs = arrMs - Math.round(r.travel || 0) * 60000;
-  return { sendMs, send: fmt(sendMs), arrival: fmt(arrMs) };
+  const w = parseWindowStr(r.window);
+  const arrMs = w ? serverWallMs(planRowDateISO(r), w.f) : null;
+  if (arrMs === null) return null;
+  const sendMs = launchStartMs(arrMs, w, r.travel);
+  return { sendMs, send: fmtServerDT(sendMs), arrival: fmtServerDT(arrMs) };
 }
 
 // One BB [table] row for a plan row. Snob trains have no origin village in this tool, so

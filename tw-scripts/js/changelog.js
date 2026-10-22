@@ -18,6 +18,14 @@
 // v6 entries into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v6.5.1', date: '2026-10-22',
+    en: [
+      `<b>⏰ Launch times across the clock change.</b> With the automatic server offset, the plan's launch times (the Launch Window column, the per-player LAUNCH TIME line and its day, the Per-Player Table send time and its order) now follow the server clock across a daylight-saving switch. A launch on 24 October that lands after the 25 October switch used to be shown an hour early — the attack would have landed before its window — and in spring an hour late. ⏰ Player Schedules read the real launch time too. Launch windows now also round their edges inward (start up, end down to the minute), so launching at either shown minute always lands inside the window.`,
+    ],
+    es: [
+      `<b>⏰ Horas de envío con el cambio de hora.</b> Con el desfase del servidor en automático, las horas de envío del plan (la columna Ventana de Envío, la línea HORA DE LANZAMIENTO por jugador y su día, la hora de envío de la Tabla por Jugador y su orden) siguen ahora el reloj del servidor a través de un cambio de horario. Un envío el 24 de octubre que llega después del cambio del 25 de octubre se mostraba una hora antes —el ataque habría llegado antes de su ventana— y en primavera una hora tarde. Los ⏰ Horarios Jugadores leen también la hora real de envío. Las ventanas de envío redondean ahora sus extremos hacia dentro (el inicio hacia arriba y el final hacia abajo, al minuto), así enviar en cualquiera de los dos minutos mostrados siempre llega dentro de la ventana.`,
+    ],
+  },
   { ver: 'v6.5.0', date: '2026-10-22',
     en: [
       `<b>⚔ Attack ratio.</b> Generate Plan now respects the world's newbie points limit (es103: 20:1 during a player's first 60 days after registering; es100: 20:1 for 10 days): no off, split-off escort, noble train, fake or catapult attack is planned from a player with more than 20× the target owner's points while the owner is protected. It is judged at the earliest moment the sender could launch into the wave, so an attack the game would refuse is never planned. A pinned sender that can't attack is warned, and each affected target lists how many players are barred and until when. Support is never limited.`,
