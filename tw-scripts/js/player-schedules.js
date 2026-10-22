@@ -63,12 +63,17 @@ function psSegments(r) { return r.f <= r.to ? [[r.f, r.to]] : [[r.f, 1440], [0, 
 // same span shifted earlier by the travel time, as a daily range (a 24h+ window covers the day).
 // `skip` (optional, minutes) trims the START of that range — the part already behind the send floor
 // (now / Earliest send, computed by the engine), so a past moment never grades as free / preferred.
-function psLaunchRange(win, travel, skip) {
+// `dateISO` (optional, the window's arrival date): the start is read on the server clock at the
+// launch INSTANT, so a travel across a DST switch shifts it by that hour like the gates do.
+function psLaunchRange(win, travel, skip, dateISO) {
   let span = win.to >= win.f ? win.to - win.f : win.to + 1440 - win.f;
   const cut = Math.max(0, Math.min(span, Math.round(skip || 0)));
   span -= cut;
   if (span >= 1440) return { f: 0, to: 1440 };
-  const f = ((win.f - Math.round(travel || 0) + cut) % 1440 + 1440) % 1440;
+  const arrMs = dateISO ? serverWallMs(dateISO, win.f) : null;
+  const S = arrMs === null ? '' : fmtServerDT(arrMs - (Math.round(travel || 0) - cut) * 60000);
+  const f = S ? +S.slice(11, 13) * 60 + +S.slice(14, 16)
+    : ((win.f - Math.round(travel || 0) + cut) % 1440 + 1440) % 1440;
   const e = f + span;
   return { f, to: e > 1440 ? e - 1440 : e }; // a range ending exactly at midnight ends at 1440, not at the instant 0
 }
@@ -91,12 +96,13 @@ function psSchedSegs(s) {
 // 0 = EVERY launch moment falls inside the player's blocked time (no free moment), 1 = neutral (no
 // schedule, or a free moment outside both ranges), 2 = some free launch moment lies inside the
 // preferred time. `mode` is the 🎚 scheduleMode: 'preferredThenBlocked' | 'blockedOnly' | 'off'.
-// `skip` = minutes at the start of the launch range already in the past (see psLaunchRange).
-function psLaunchTier(name, win, travel, mode, skip) {
+// `skip` = minutes at the start of the launch range already in the past; `dateISO` = the arrival
+// date (both: see psLaunchRange).
+function psLaunchTier(name, win, travel, mode, skip, dateISO) {
   if (mode === 'off' || !win) return 1;
   const sc = psGet(name);
   if (!sc) return 1;
-  const L = psSegments(psLaunchRange(win, travel, skip));
+  const L = psSegments(psLaunchRange(win, travel, skip, dateISO));
   const B = sc.block ? psSchedSegs(sc.block) : [];
   if (B.length && L.every(l => psSegCoveredBy(l, B))) return 0;
   if (mode === 'blockedOnly' || !sc.pref) return 1;
