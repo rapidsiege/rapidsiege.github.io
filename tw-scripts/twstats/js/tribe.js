@@ -7,6 +7,7 @@
   var PAGE_SIZE = 100;
   var GALLY = "https://" + TW.WORLD + ".guerrastribales.es/page.php?page=inbound&screen=info_ally&id=";
   var vstate = { list: [], page: 0 };
+  var hasInternal = false;  // any member→member transfer (shows the Internas section under "Todo")
 
   function qid() {
     var m = /[?&]id=([^&]+)/.exec(location.search);
@@ -24,11 +25,27 @@
       (conq ? ' data-conq="' + conq + '"' : "") + ">" + text + "</a>";
   }
 
-  function renderProfile(p) {
-    var total = (p.conquests || 0) + (p.lost || 0);
-    var conq = jump("conquistas", "all", TW.commas(total)) +
-      " (" + jump("conquistas", "gain", "+" + TW.commas(p.conquests)) +
-      " " + jump("conquistas", "lose", "−" + TW.commas(p.lost)) + ")";
+  // build.py files a village passed between two members of the tribe in BOTH
+  // gains and losses (the same record): show it once, as an internal transfer,
+  // so the total doesn't count it twice and the losses are real losses.
+  function splitConquests(d, id) {
+    function tid(o) { return o && o.tribe ? o.tribe.id : null; }
+    var gains = d.gains || [], losses = d.losses || [];
+    return {
+      gains: gains.filter(function (c) { return tid(c.oldOwner) !== id; }),
+      losses: losses.filter(function (c) { return tid(c.newOwner) !== id; }),
+      internal: gains.filter(function (c) { return tid(c.oldOwner) === id; }),
+    };
+  }
+
+  // Conquistas = external gains + external losses + internal transfers; each
+  // number opens the section that lists exactly those rows.
+  function renderProfile(p, cs) {
+    var nG = cs.gains.length, nL = cs.losses.length, nI = cs.internal.length;
+    var conq = jump("conquistas", "all", TW.commas(nG + nL + nI)) +
+      " (" + jump("conquistas", "gain", "+" + TW.commas(nG)) +
+      " " + jump("conquistas", "lose", "−" + TW.commas(nL)) +
+      (nI ? " " + jump("conquistas", "internal", "⟳" + TW.commas(nI)) : "") + ")";
     var html = "";
     html += row("Ranking", p.rank + ".");
     html += row("Nombre", TW.esc(p.name));
@@ -173,11 +190,12 @@
 
   function countNote(list) { return "(" + TW.commas(list.length) + ")"; }
 
-  // Conquest filter: "all" | "gain" | "lose" — show/hide the two sections.
+  // Conquest filter: "all" | "gain" | "lose" | "internal" — show/hide the sections.
   function setConqFilter(mode) {
-    var g = $("gainsSection"), l = $("lossesSection");
-    if (g) g.hidden = (mode === "lose");
-    if (l) l.hidden = (mode === "gain");
+    var g = $("gainsSection"), l = $("lossesSection"), n = $("internalSection");
+    if (g) g.hidden = !(mode === "all" || mode === "gain");
+    if (l) l.hidden = !(mode === "all" || mode === "lose");
+    if (n) n.hidden = !(mode === "internal" || (mode === "all" && hasInternal));
     var segs = document.querySelectorAll(".conq-filter .seg");
     for (var i = 0; i < segs.length; i++) {
       segs[i].classList.toggle("active", segs[i].getAttribute("data-conq") === mode);
@@ -225,16 +243,20 @@
           ' <span class="archived">(tribu archivada / ya no existe)</span>';
         $("pageTitle").innerHTML = "Perfil de la Tribu: " + TW.esc(p.name) +
           ' <span class="tag-br">[' + TW.esc(p.tag) + "]</span>" + badge;
-        renderProfile(p);
+        var cs = splitConquests(d, p.id);
+        hasInternal = cs.internal.length > 0;
+        renderProfile(p, cs);
         renderCharts(d.series || []);
         renderHistory(d.series || []);
         renderMembers(d.memberList || [], d.weekDays || []);
         $("memberCount").textContent = "(" + TW.commas((d.memberList || []).length) + ")";
         initVillages(d.villages || []);
-        TW.pagedTable($("gainsBody"), $("gainsPager"), CONQ_PAGE, conquestRows).set(d.gains);
-        TW.pagedTable($("lossesBody"), $("lossesPager"), CONQ_PAGE, conquestRows).set(d.losses);
-        $("gainsCount").textContent = countNote(d.gains || []);
-        $("lossesCount").textContent = countNote(d.losses || []);
+        TW.pagedTable($("gainsBody"), $("gainsPager"), CONQ_PAGE, conquestRows).set(cs.gains);
+        TW.pagedTable($("lossesBody"), $("lossesPager"), CONQ_PAGE, conquestRows).set(cs.losses);
+        TW.pagedTable($("internalBody"), $("internalPager"), CONQ_PAGE, conquestRows).set(cs.internal);
+        $("gainsCount").textContent = countNote(cs.gains);
+        $("lossesCount").textContent = countNote(cs.losses);
+        $("internalCount").textContent = countNote(cs.internal);
         $("status").style.display = "none";
         $("content").hidden = false;
         TW.initTabs();

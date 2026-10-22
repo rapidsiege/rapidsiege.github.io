@@ -100,6 +100,7 @@
           <button type="button" class="seg active" data-conq="all">Todo</button>
           <button type="button" class="seg" data-conq="gain">Ganados</button>
           <button type="button" class="seg" data-conq="lose">Perdidos</button>
+          <button type="button" class="seg" data-conq="internal" title="Pueblos que pasaron de un miembro de la tribu a otro">Internas</button>
         </div>
 
         <div id="gainsSection">
@@ -142,6 +143,28 @@
             </table>
           </div>
           <div class="pager" id="lossesPager" hidden>
+            <button type="button" data-pg="prev">‹ Anterior</button>
+            <span class="pg-info" data-pg="info">—</span>
+            <button type="button" data-pg="next">Siguiente ›</button>
+          </div>
+
+        <div id="internalSection">
+          <div class="box-title sub">Internas <span id="internalCount" class="count"></span></div>
+          <div class="table-wrap">
+            <table class="vis widget">
+              <thead>
+                <tr>
+                  <th class="c-vil">Pueblos</th>
+                  <th class="c-pts">Puntos</th>
+                  <th class="c-old">Antiguo Dueño</th>
+                  <th class="c-new">Nuevo Dueño</th>
+                  <th class="c-date">Fecha/Tiempo</th>
+                </tr>
+              </thead>
+              <tbody id="internalBody"></tbody>
+            </table>
+          </div>
+          <div class="pager" id="internalPager" hidden>
             <button type="button" data-pg="prev">‹ Anterior</button>
             <span class="pg-info" data-pg="info">—</span>
             <button type="button" data-pg="next">Siguiente ›</button>
