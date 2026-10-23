@@ -2024,9 +2024,9 @@ function planGroups(rows) {
 }
 // ── Window groups present in the plan, as export sections ─────────────────────
 // Returns [{g, label, rows}] in group order, skipping groups this plan has no rows for.
-// A single-group plan yields exactly one section. Since v5.12 only the Forum export still
-// sections per wave — the per-player exports merge every wave into one block and use
-// planRowDatesOf() / planRowsMultiDate() instead.
+// A single-group plan yields exactly one section. Since v6.6.1 no export prints a section per
+// wave any more — the Forum export only uses the section order to list each objective's rows
+// wave by wave, and every export dates its lines with planRowDatesOf() / planRowsMultiDate().
 function planWindowSections(rows) {
   const src = rows || planRows;
   const known = new Set(otGroups().map(g => g.id));
@@ -2062,8 +2062,11 @@ function planRowsMultiDate(rows) {
 // call-out (the target is the group header above). `bare` (the Plan Offensive Forum export)
 // drops the "Villages in snob range" trailing line — that detail lives in the Per-Player Orders
 // export, so the tribe-wide Forum post shows just the snob + the assigned player + window. The
-// per-player objective-context dump leaves `bare` false and keeps the range line.
-function planRowForumBB(r, multiSnob, bare) {
+// per-player objective-context dump leaves `bare` false and keeps the range line. `withDay`
+// prefixes the window with its landing day-of-month ("25 · 10:00/20:00", planRowDayStamp) —
+// the Forum post lists every wave of an objective together, so a multi-date plan must say per
+// line which day it lands on.
+function planRowForumBB(r, multiSnob, bare, withDay) {
   const iconBB = planRowIconBB(r);
   const prefix = r.type === 'snob' && multiSnob ? `${r.count}x ` : '';
   const who    = r.srcPlayer ? `[player]${r.srcPlayer}[/player]` : t('bb_unassigned');
@@ -2074,7 +2077,7 @@ function planRowForumBB(r, multiSnob, bare) {
   // the bare X|Y coords — no "→"/[coord] — are ignored by both BB importers).
   const rt     = bare ? '' : snobRangeText(r);
   const range  = rt ? `\n${rt}` : '';
-  return `${prefix}${iconBB} ${who}${prep} [b][color=#0000a5]${fmtWindow(r.window) || '??:??'}[/color][/b]${range}`;
+  return `${prefix}${iconBB} ${who}${prep} [b][color=#0000a5]${planRowDayStamp(r, fmtWindow(r.window) || '??:??', withDay)}[/color][/b]${range}`;
 }
 
 // ── Forum BB export (matches the tribe's offensive post format) ──
@@ -2084,19 +2087,18 @@ function showPlanBB() {
   const nobleCounts = [...new Set(offTargets.flatMap(x => otGroups().map(g => otSnobCount(x, g.id, 'nobles'))).filter(Boolean))].sort((a, b) => a - b);
   const noblesLabel = nobleCounts.length ? nobleCounts.join(' ó ') : String(PARAMS.noblesDefault);
 
-  // With several window groups the objective list is repeated once per wave, each under its own
-  // ARRIVAL DATE header — the header is the only place a date is stated, so a wave must never
-  // share one with another. Every header (the first included) is taken from the section it
-  // actually heads: planWindowSections skips empty groups, so the first section is not
-  // necessarily group A. A single-group plan prints exactly one section, as it always did.
+  // Every target is ONE objective, whatever the number of window groups (v6.6.1 — the per-wave
+  // sections repeated an objective once per wave it is hit in). The single ARRIVAL DATE header
+  // lists every date the plan lands on (" & "-joined, chronological, like the per-player blocks),
+  // and when there are several, each line's window carries its landing day-of-month. The dates
+  // are the ones the ROWS were stamped with at generation (planRowDateISO), so a frozen offensive
+  // slot (v6.1.0) keeps its own dates after the groups were re-dated for the next offensive.
+  // A single-date plan prints no day prefixes; a single-group plan's output is unchanged.
   const sections = planWindowSections();
   if (!sections.length) { alert(t('empty_no_plan')); return; }
-  // A section's date is the one its ROWS were stamped with at generation (planRowDateISO) — the
-  // live group's date only for pre-v5.9 rows that carry none. The two agree for a freshly generated
-  // plan; they differ for a frozen offensive slot (v6.1.0) after the groups were re-dated for the
-  // next offensive, and the rows are the truth about when those orders land.
-  const secDate = sec => planRowDatesOf(sec.rows)[0] || sec.g.dateISO;
-  let bb = `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabelOf(secDate(sections[0]))}[/size]\n\n`;
+  const dates   = planRowDatesOf(planRows);
+  const withDay = planRowsMultiDate(planRows);
+  let bb = `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${dates.length ? dates.map(bbDateLabelOf).join(' & ') : bbDateLabelOf(sections[0].g.dateISO)}[/size]\n\n`;
   bb += `[unit]ram[/unit] --> ${t('bb_legend_ram')}\n`;
   if (planRows.some(r => r.type === 'tq')) bb += `[unit]axe[/unit] (${t('tier_tq')}) --> ${t('bb_legend_tq')}\n`;
   if (planRows.some(r => r.type === 'half')) bb += `[unit]axe[/unit] (${t('tier_half')}) --> ${t('bb_legend_axe')}\n`;
@@ -2107,15 +2109,16 @@ function showPlanBB() {
   if (planRows.some(r => r.type === 'snob' && r.fake)) bb += `[unit]snob[/unit] [b][color=#0e8f0e](${t('ttype_fake')})[/color][/b] --> ${t('bb_legend_snob_fake')(noblesLabel)}\n`;
   bb += '\n';
 
-  sections.forEach((sec, si) => {
-    // The first section's date is already in the header above; later waves announce their own.
-    if (si > 0) bb += `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${bbDateLabelOf(secDate(sec))}[/size]\n\n`;
-    planGroups(sec.rows).forEach((g, gi) => {
-      bb += `${gi + 1}. ${g.coord}${g.player ? ` - [player]${g.player}[/player]` : ''}\n`;
-      const multiSnob = g.rows.filter(x => x.type === 'snob').length > 1;
-      for (const r of g.rows) bb += planRowForumBB(r, multiSnob, true) + '\n';
-      bb += '\n';
-    });
+  // Objectives keep the plan's target order; inside one, its rows run wave by wave in group
+  // order (planWindowSections — rows of a deleted or pre-v5.9 group count as the first wave).
+  const wave = new Map();
+  sections.forEach((sec, si) => sec.rows.forEach(r => wave.set(r, si)));
+  planGroups(planRows).forEach((g, gi) => {
+    g.rows.sort((a, b) => wave.get(a) - wave.get(b)); // stable: a wave keeps its own row order
+    bb += `${gi + 1}. ${g.coord}${g.player ? ` - [player]${g.player}[/player]` : ''}\n`;
+    const multiSnob = g.rows.filter(x => x.type === 'snob').length > 1;
+    for (const r of g.rows) bb += planRowForumBB(r, multiSnob, true, withDay) + '\n';
+    bb += '\n';
   });
 
   document.getElementById('bb-output').value = bb.trimEnd() + '\n';
@@ -2134,14 +2137,16 @@ function showPlanBB() {
 // continuation line (rally URL → village-ID pins), and snob order lines ("Prepare Snob Train
 // for [coord]…", detected by [unit]snob[/unit] + a [coord] tag; same "<day> · " prefix rule).
 // parseOffPlanBB() likewise parses the Forum BB export (showPlanBB's "N. X|Y - Player."
-// groups). Lines meant to be IGNORED by the importer rely on staying structurally distinct:
-// objective-context rows have no "→ [coord]" and their snob rows have no [coord]; snob-range
-// and UNASSIGNED lines use bare coords only.
+// groups — one per target since v6.6.1, under ONE ARRIVAL DATE header that " & "-joins every
+// date; in a multi-date plan each row's blue window carries the same "<day> · " prefix, see
+// planRowDayStamp, which dates that row individually). Lines meant to be IGNORED by the
+// importer rely on staying structurally distinct: objective-context rows have no "→ [coord]"
+// and their snob rows have no [coord]; snob-range and UNASSIGNED lines use bare coords only.
 // → If you change the SHAPE of anything emitted here (playerPlanBBBlock, planRowWindowBB,
-//   snobOrderLineBB, planRowForumBB, unassignedPlanBBBlock, bbDateLabelOf, showPlanBB), update
-//   the attack-planner importer + tests/test_attack_import.js in the same change. Cosmetic
-//   changes (colors, bold, labels) are safe — the importer anchors on structure, never on
-//   presentation tags.
+//   planRowDayStamp, snobOrderLineBB, planRowForumBB, unassignedPlanBBBlock, bbDateLabelOf,
+//   showPlanBB), update the attack-planner importer + tests/test_attack_import.js in the same
+//   change. Cosmetic changes (colors, bold, labels) are safe — the importer anchors on
+//   structure, never on presentation tags.
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
 // ── Grouping shared by all three per-player exports (Orders BB, Table, combined All):
@@ -2182,7 +2187,13 @@ function snobOrderLineBB(r, withDay) {
 // ⚠ FORMAT CONTRACT: windowAfterCoord() in the attack-planner importer parses this exact
 // "<day> · " prefix to date each requirement individually — change the two in lockstep.
 function planRowWindowBB(r, withDay) {
-  const win = (fmtWindow(r.window) || '??:??').replace('/', '-');
+  return planRowDayStamp(r, (fmtWindow(r.window) || '??:??').replace('/', '-'), withDay);
+}
+// `win` prefixed with the row's landing day-of-month ("12 · …") when `withDay`. Shared by the
+// per-player lines (planRowWindowBB) and the Forum rows (planRowForumBB, which keep their "/").
+// ⚠ FORMAT CONTRACT: windowAfterCoord() and parseOffPlanBB() in the attack-planner importer
+// read this "<day> · " prefix.
+function planRowDayStamp(r, win, withDay) {
   const day = withDay ? parseInt(String(planRowDateISO(r) || '').slice(8), 10) : NaN;
   return isNaN(day) ? win : `${day} · ${win}`;
 }

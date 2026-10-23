@@ -18,6 +18,14 @@
 // v6 entries into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v6.6.1', date: '2026-10-23',
+    en: [
+      `<b>📋 Export Objectives (Forum): one objective per target.</b> With several window groups, a target used to appear once per wave it is hit in, each copy under its own ARRIVAL DATE. Now every target is listed once, with all its orders together (wave by wave), under one ARRIVAL DATE header that names every date. When the plan lands on more than one day, each line's arrival window starts with its day of the month (<b>26 · 05:00/10:00</b>), as in the per-player exports. A plan with one window group looks exactly as before; several waves on the same day are merged without day prefixes. Importing the post into the attack planner (v1.12.1) dates each attack from that day.`,
+    ],
+    es: [
+      `<b>📋 Exportar Objetivos (Foro): un objetivo por pueblo.</b> Con varios grupos de ventanas, un objetivo salía una vez por cada oleada que lo ataca, cada copia bajo su propia FECHA DE LLEGADA. Ahora cada objetivo sale una sola vez, con todas sus órdenes juntas (oleada por oleada), bajo una única cabecera FECHA DE LLEGADA que nombra todas las fechas. Cuando el plan llega en más de un día, la ventana de llegada de cada línea empieza con su día del mes (<b>26 · 05:00/10:00</b>), como en las exportaciones por jugador. Un plan con un solo grupo de ventanas sale exactamente igual que antes; varias oleadas el mismo día se juntan sin prefijo de día. Al importar el post en el planificador de ataques (v1.12.1) cada ataque toma la fecha de ese día.`,
+    ],
+  },
   { ver: 'v6.6.0', date: '2026-10-22',
     en: [
       `<b>⏰ Launch times across the clock change.</b> With the automatic server offset, the plan's launch times (the Launch Window column, the per-player LAUNCH TIME line and its day, the Per-Player Table send time and its order) now follow the server clock across a daylight-saving switch. A launch on 24 October that lands after the 25 October switch used to be shown an hour early — the attack would have landed before its window — and in spring an hour late. ⏰ Player Schedules read the real launch time too. Launch windows now round their edges inward (start up, end down to the minute), so launching at either shown minute always lands inside the window. Generate warns when a window group has orders but no landing window (they print ??:??) and when a window starts inside the hour the spring switch skips; such a window is read from 03:00 everywhere — the shown launch, the plan and Manage Offensive.`,
