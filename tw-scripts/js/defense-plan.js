@@ -1922,11 +1922,18 @@ let defPmExport = [];
 // Shared modal renderer: one copy-button per message part. `messages` is the
 // defPmMessagesFrom() shape; `hint` overrides the default header line (Manage
 // Defense's "Export Missing PMs" uses its own). `topHtml` is optional extra markup
-// between the hint and the rows (Plan Offensive's 📝 Template bar + editor).
-function renderPmModal(messages, hint, topHtml) {
+// between the hint and the rows (Plan Offensive's 📝 Template bar + editor). `titleKey`
+// overrides the modal title's i18n key (Plan Offensive's split Forum post); every render
+// sets it, so the next PM export shows the default title again.
+function renderPmModal(messages, hint, topHtml, titleKey) {
   defPmExport = messages || [];
   const body = document.getElementById('pm-modal-body');
   if (!body) return;
+  const h = document.getElementById('pm-modal-title');
+  if (h) {
+    if (h.dataset) h.dataset.i18n = titleKey || 'pm_modal_title';
+    h.textContent = t(titleKey || 'pm_modal_title');
+  }
   body.innerHTML = `<div class="pm-hint">${esc(hint || t('pm_hint'))}</div>` + (topHtml || '') + defPmExport.map((m, pi) =>
     m.parts.map((text, k) => {
       const label = m.parts.length > 1 ? `${m.player} (${k + 1}/${m.parts.length})` : m.player;

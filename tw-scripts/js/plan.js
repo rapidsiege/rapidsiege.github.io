@@ -2081,8 +2081,14 @@ function planRowForumBB(r, multiSnob, bare, withDay) {
 }
 
 // ── Forum BB export (matches the tribe's offensive post format) ──
-function showPlanBB() {
-  if (!planRows.length) { alert(t('empty_no_plan')); return; }
+// Pure seam: the post as [{text, rows}] — one block per objective, in post order, `rows` = its
+// order lines. The ARRIVAL DATE header + legend are GLUED onto objective 1 (like the player
+// header in defPmMessagesFrom), so they open the first post and never become a post of their
+// own. Every block text ends in '\n', so joining them with '\n' rebuilds the unsplit post
+// byte for byte. [] when the plan has no rows.
+function planForumBlocks(rows) {
+  const sections = planWindowSections(rows);
+  if (!sections.length) return [];
 
   const nobleCounts = [...new Set(offTargets.flatMap(x => otGroups().map(g => otSnobCount(x, g.id, 'nobles'))).filter(Boolean))].sort((a, b) => a - b);
   const noblesLabel = nobleCounts.length ? nobleCounts.join(' ó ') : String(PARAMS.noblesDefault);
@@ -2094,35 +2100,79 @@ function showPlanBB() {
   // are the ones the ROWS were stamped with at generation (planRowDateISO), so a frozen offensive
   // slot (v6.1.0) keeps its own dates after the groups were re-dated for the next offensive.
   // A single-date plan prints no day prefixes; a single-group plan's output is unchanged.
-  const sections = planWindowSections();
-  if (!sections.length) { alert(t('empty_no_plan')); return; }
-  const dates   = planRowDatesOf(planRows);
-  const withDay = planRowsMultiDate(planRows);
-  let bb = `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${dates.length ? dates.map(bbDateLabelOf).join(' & ') : bbDateLabelOf(sections[0].g.dateISO)}[/size]\n\n`;
-  bb += `[unit]ram[/unit] --> ${t('bb_legend_ram')}\n`;
-  if (planRows.some(r => r.type === 'tq')) bb += `[unit]axe[/unit] (${t('tier_tq')}) --> ${t('bb_legend_tq')}\n`;
-  if (planRows.some(r => r.type === 'half')) bb += `[unit]axe[/unit] (${t('tier_half')}) --> ${t('bb_legend_axe')}\n`;
-  if (planRows.some(r => r.type === 'catapult')) bb += `[unit]catapult[/unit] --> ${t('bb_legend_cat')}\n`;
-  if (planRows.some(r => r.type === 'fake')) bb += `[unit]spy[/unit][unit]ram[/unit] [b](${t('ttype_fake')})[/b] --> ${t('bb_legend_fake')}\n`;
-  if (planRows.some(r => r.type === 'snob' && !r.escorted && !r.fake)) bb += `[unit]snob[/unit] --> ${t('bb_legend_snob')(noblesLabel)}\n`;
-  if (planRows.some(r => r.type === 'snob' && r.escorted)) bb += `[unit]axe[/unit][unit]snob[/unit] --> ${t('bb_legend_split')(noblesLabel)}\n`;
-  if (planRows.some(r => r.type === 'snob' && r.fake)) bb += `[unit]snob[/unit] [b][color=#0e8f0e](${t('ttype_fake')})[/color][/b] --> ${t('bb_legend_snob_fake')(noblesLabel)}\n`;
-  bb += '\n';
+  const dates   = planRowDatesOf(rows);
+  const withDay = planRowsMultiDate(rows);
+  let head = `[size=16][b][u]${t('bb_arrival_date')}:[/u][/b] ${dates.length ? dates.map(bbDateLabelOf).join(' & ') : bbDateLabelOf(sections[0].g.dateISO)}[/size]\n\n`;
+  head += `[unit]ram[/unit] --> ${t('bb_legend_ram')}\n`;
+  if (rows.some(r => r.type === 'tq')) head += `[unit]axe[/unit] (${t('tier_tq')}) --> ${t('bb_legend_tq')}\n`;
+  if (rows.some(r => r.type === 'half')) head += `[unit]axe[/unit] (${t('tier_half')}) --> ${t('bb_legend_axe')}\n`;
+  if (rows.some(r => r.type === 'catapult')) head += `[unit]catapult[/unit] --> ${t('bb_legend_cat')}\n`;
+  if (rows.some(r => r.type === 'fake')) head += `[unit]spy[/unit][unit]ram[/unit] [b](${t('ttype_fake')})[/b] --> ${t('bb_legend_fake')}\n`;
+  if (rows.some(r => r.type === 'snob' && !r.escorted && !r.fake)) head += `[unit]snob[/unit] --> ${t('bb_legend_snob')(noblesLabel)}\n`;
+  if (rows.some(r => r.type === 'snob' && r.escorted)) head += `[unit]axe[/unit][unit]snob[/unit] --> ${t('bb_legend_split')(noblesLabel)}\n`;
+  if (rows.some(r => r.type === 'snob' && r.fake)) head += `[unit]snob[/unit] [b][color=#0e8f0e](${t('ttype_fake')})[/color][/b] --> ${t('bb_legend_snob_fake')(noblesLabel)}\n`;
+  head += '\n';
 
   // Objectives keep the plan's target order; inside one, its rows run wave by wave in group
   // order (planWindowSections — rows of a deleted or pre-v5.9 group count as the first wave).
   const wave = new Map();
   sections.forEach((sec, si) => sec.rows.forEach(r => wave.set(r, si)));
-  planGroups(planRows).forEach((g, gi) => {
+  return planGroups(rows).map((g, gi) => {
     g.rows.sort((a, b) => wave.get(a) - wave.get(b)); // stable: a wave keeps its own row order
+    let bb = gi === 0 ? head : '';
     bb += `${gi + 1}. ${g.coord}${g.player ? ` - [player]${g.player}[/player]` : ''}\n`;
     const multiSnob = g.rows.filter(x => x.type === 'snob').length > 1;
     for (const r of g.rows) bb += planRowForumBB(r, multiSnob, true, withDay) + '\n';
-    bb += '\n';
+    return { text: bb, rows: g.rows.length };
   });
+}
 
-  document.getElementById('bb-output').value = bb.trimEnd() + '\n';
-  document.getElementById('bb-modal').classList.add('open');
+// The post packed into forum messages under the bracket budget (v6.6.2, 🎚 PARAMS.forumMaxBrackets,
+// default 4950 — the game refuses a post with more than 5,000 "[", "Demasiados corchetes").
+// Same greedy packer as the defense PMs (pmSplitParts), on whole objectives only, so an objective
+// never straddles two posts and the numbering runs straight through them. The FEWEST posts the
+// budget allows, then evened out: the smallest budget that still packs into that many, so the
+// last post isn't a stub of a few objectives. An objective alone over the budget ships as its own
+// post (nothing smaller to split to) — then plain greedy, since evening out would start above the
+// budget. Returns [{text, orders}] (orders = order lines in that post). Pure.
+function planForumParts(blocks, maxBrackets) {
+  maxBrackets = maxBrackets || PARAMS.forumMaxBrackets;
+  const texts = blocks.map(b => b.text);
+  let parts = pmSplitParts(texts, maxBrackets);
+  const biggest = texts.reduce((m, s) => Math.max(m, pmBracketCount(s)), 0);
+  if (parts.length > 1 && biggest <= maxBrackets) {
+    let lo = biggest, hi = maxBrackets;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (pmSplitParts(texts, mid).length <= parts.length) hi = mid; else lo = mid + 1;
+    }
+    parts = pmSplitParts(texts, lo);
+  }
+  // A post is consecutive blocks joined by '\n': walk the blocks by length to count its orders.
+  let bi = 0;
+  return parts.map(text => {
+    let len = -1, orders = 0;
+    while (bi < blocks.length && len < text.length) { len += blocks[bi].text.length + 1; orders += blocks[bi++].rows; }
+    return { text, orders };
+  });
+}
+
+function showPlanBB() {
+  if (!planRows.length) { alert(t('empty_no_plan')); return; }
+  const blocks = planForumBlocks(planRows);
+  if (!blocks.length) { alert(t('empty_no_plan')); return; }
+  const posts = planForumParts(blocks);
+  if (posts.length === 1) {
+    document.getElementById('bb-output').value = posts[0].text.trimEnd() + '\n';
+    document.getElementById('bb-modal').classList.add('open');
+    return;
+  }
+  // Too many brackets for one post: one copy button per post, in posting order, plus the whole
+  // list in one piece — the Attack Planner import has no bracket limit and reads it in one paste.
+  renderPmModal([
+    { player: t('forum_post_label'), parts: posts.map(p => p.text.trimEnd()), orderCounts: posts.map(p => p.orders) },
+    { player: t('forum_whole_label'), parts: [blocks.map(b => b.text).join('\n').trimEnd()], orderCount: blocks.reduce((n, b) => n + b.rows, 0) },
+  ], t('forum_split_hint')(posts.length, PARAMS.forumMaxBrackets), '', 'forum_split_title');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

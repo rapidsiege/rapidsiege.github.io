@@ -114,6 +114,9 @@ const PARAM_DEFS = [
   // Roster balance: the auto "optimize" score is damped by (1 − d) + d × remaining fraction of
   // the sender's roster, so already-used players slide down. 0 = off, 1 = strongest.
   { key: 'rosterDamping',      sec: 'off', def: 0.5,  min: 0, max: 1, step: 0.05 },
+  // Bracket budget per forum post of Export Objectives (Forum) — the game refuses a post with
+  // more than 5,000 "["; a longer list is split into several posts by whole objectives (v6.6.2).
+  { key: 'forumMaxBrackets',   sec: 'off', def: 4950, min: 100, step: 50, unit: 'brackets' },
   // ── Plan Defense ──
   // Support may only go to villages of the SENDER'S OWN TRIBE (the es100 / es103 rule; the
   // pre-v6.0.3 behaviour). Off: any tribe may be supported, for worlds that allow cross-tribe

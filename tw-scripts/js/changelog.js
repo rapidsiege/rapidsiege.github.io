@@ -18,6 +18,14 @@
 // v6 entries into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v6.6.2', date: '2026-10-23',
+    en: [
+      `<b>📋 Export Objectives (Forum): split into several posts under the bracket limit.</b> The game refuses a forum post with more than 5,000 <b>[</b> ("Too many brackets"). A longer list is now split into as few posts as it takes, each with at most 4,950 brackets (🎚 new parameter <b>Forum post bracket budget</b>, Plan Offensive), cut only between objectives and evened out in size. You get one copy button per post, plus one that copies the whole list in one piece for the Attack Planner import. Post them in order: the first one carries the arrival date and the legend, and the numbering runs on across posts. A list that fits in one post opens exactly as before.`,
+    ],
+    es: [
+      `<b>📋 Exportar Objetivos (Foro): dividido en varios mensajes bajo el límite de corchetes.</b> El juego rechaza un mensaje del foro con más de 5.000 <b>[</b> ("Demasiados corchetes"). Una lista más larga se divide ahora en los menos mensajes posibles, cada uno con 4.950 corchetes como máximo (🎚 nuevo parámetro <b>Presupuesto de corchetes por mensaje del foro</b>, Planificar Ofensiva), cortando solo entre objetivos y con tamaños parecidos. Tienes un botón de copiar por mensaje, más uno que copia la lista entera de una vez para importarla en el Planificador de Ataques. Publícalos en orden: el primero lleva la fecha de llegada y la leyenda, y la numeración sigue de un mensaje a otro. Una lista que cabe en un mensaje se abre igual que antes.`,
+    ],
+  },
   { ver: 'v6.6.1', date: '2026-10-23',
     en: [
       `<b>📋 Export Objectives (Forum): one objective per target.</b> With several window groups, a target used to appear once per wave it is hit in, each copy under its own ARRIVAL DATE. Now every target is listed once, with all its orders together (wave by wave), under one ARRIVAL DATE header that names every date. When the plan lands on more than one day, each line's arrival window starts with its day of the month (<b>26 · 05:00/10:00</b>), as in the per-player exports. A plan with one window group looks exactly as before; several waves on the same day are merged without day prefixes. Importing the post into the attack planner (v1.12.1) dates each attack from that day.`,
