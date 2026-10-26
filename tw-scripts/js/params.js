@@ -138,4 +138,7 @@ function paramsChanged(keys) {
   // tables; the same-tribe gate and the sender floor only change the filtered one.
   if (has(/^spyPerRam$/) && typeof renderDefSummaries === 'function') renderDefSummaries();
   else if (has(/^(defSameTribeOnly|defSenderMinPop)$/) && typeof renderDefEligibleSummary === 'function') renderDefEligibleSummary();
+  // Manage Defense (v6.6.3): the stationed-support floor decides which villages get a row (and the
+  // tab header's own field shows the value, refreshed by the render).
+  if (has(/^mdStationedMinPop$/) && typeof renderManageDefTable === 'function') renderManageDefTable();
 }

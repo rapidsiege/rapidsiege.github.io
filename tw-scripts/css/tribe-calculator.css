@@ -883,6 +883,10 @@
     .plan-slots-hint { flex-basis: 100%; font-size: 11px; color: #806030; }
     .mo-plan-view { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #a08050; white-space: nowrap; }
     .mo-plan-view select { font-size: 12px; }
+    /* Manage Defense header: the stationed-support floor (a second view of 🎚 mdStationedMinPop, v6.6.3) */
+    .md-stmin { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #a08050; white-space: nowrap; }
+    .md-stmin input[type=number] { width: 76px; font-size: 12px; padding: 3px 6px; background: #1a1008; border: 1px solid #4a3010; color: #d4b483; border-radius: 4px; }
+    .md-stmin input[type=number]:focus { outline: none; border-color: #c0900a; }
     .map-goto { display: inline-flex; align-items: center; gap: 4px; }
     .map-goto input { width: 160px; font-size: 12px; padding: 4px 7px; background: #1a1008; border: 1px solid #4a3010; color: #d4b483; border-radius: 4px; }
     .map-goto input:focus { outline: none; border-color: #c0900a; }

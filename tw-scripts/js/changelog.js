@@ -18,6 +18,16 @@
 // v6 entries into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v6.6.3', date: '2026-10-26',
+    en: [
+      `<b>🛡 Manage Defense: villages holding stationed support are listed too.</b> A village with no plan, no import and nothing incoming used to be left out even with a big ally stack sitting in it. It now gets a row when the tribe export shows at least <b>5,000</b> def farm pop of ally support stationed there (its <b>Support (est.)</b> line). Set the floor in the new <b>Min. stationed (est.)</b> field in the tab header or in 🎚 Parameters → Manage Defense (new parameter <b>List villages with stationed support (est.) ≥</b>; 0 = off) — both are the same value. A new summary chip counts the villages listed this way. A village an Import Support file has seen keeps its exact figure and is not re-added from the estimate.`,
+      `<b>🛡 Manage Defense: the Defender column is filled for villages listed from the tribe export alone</b> (estimated incoming and stationed support) — it used to be blank. Accented names come out decoded ("ñ", not "%C3%B1").`,
+    ],
+    es: [
+      `<b>🛡 Gestionar Defensa: también salen los pueblos con apoyo estacionado.</b> Un pueblo sin plan, sin importación y sin nada entrante quedaba fuera aunque tuviera un gran stack aliado dentro. Ahora sale cuando la exportación de la tribu muestra al menos <b>5.000</b> de granja def. de apoyo aliado estacionado (su línea <b>Apoyo (est.)</b>). El mínimo se ajusta en el nuevo campo <b>Mín. estacionado (est.)</b> de la cabecera de la pestaña o en 🎚 Parámetros → Gestionar Defensa (nuevo parámetro <b>Listar pueblos con apoyo estacionado (est.) ≥</b>; 0 = desactivado) — los dos son el mismo valor. Un nuevo indicador del resumen cuenta los pueblos listados así. Un pueblo que ya ha visto un archivo de Importar Apoyo conserva su cifra exacta y no se vuelve a añadir desde la estimación.`,
+      `<b>🛡 Gestionar Defensa: la columna Defensor se rellena en los pueblos listados solo desde la exportación de la tribu</b> (entrante estimado y apoyo estacionado) — salía vacía. Los nombres con acentos salen decodificados («ñ», no «%C3%B1»).`,
+    ],
+  },
   { ver: 'v6.6.2', date: '2026-10-23',
     en: [
       `<b>📋 Export Objectives (Forum): split into several posts under the bracket limit.</b> The game refuses a forum post with more than 5,000 <b>[</b> ("Too many brackets"). A longer list is now split into as few posts as it takes, each with at most 4,950 brackets (🎚 new parameter <b>Forum post bracket budget</b>, Plan Offensive), cut only between objectives and evened out in size. You get one copy button per post, plus one that copies the whole list in one piece for the Attack Planner import. Post them in order: the first one carries the arrival date and the legend, and the numbering runs on across posts. A list that fits in one post opens exactly as before.`,

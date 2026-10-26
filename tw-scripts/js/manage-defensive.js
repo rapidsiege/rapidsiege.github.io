@@ -17,7 +17,9 @@
 //
 // The table is village-keyed (works with or without a plan): every village that
 // holds support, has inferred/ordered inbound support, or is a Defense-Plan
-// target gets a group. When a plan exists, a red "Remaining Incoming Support"
+// target gets a group — and (v6.6.3) every village the tribe .txt shows holding at
+// least 🎚 mdStationedMinPop def pop of ally support (0 = off), also set from the
+// tab header's field. When a plan exists, a red "Remaining Incoming Support"
 // row shows plan − (stationed + incoming FROM THE TARGET'S PLAN SENDERS), floored
 // at 0 — other allied support and the origin-less .txt estimates are shown but
 // cover nothing (see mdBuildRows).
@@ -257,11 +259,12 @@ function mdInferIncoming(coord) {
 // ── Estimated STATIONED ally support from tribe_everything.txt ────────────────
 // Symmetric to mdInferIncoming, but for support already sitting in the village: the
 // per-type EXCESS of the "defense" row (troops stationed in the village) over the
-// owner's own troops is (heuristically) allied support. In practice the tribe export
-// only sees the EXPORTING account's own troops, so for foreign-owned allied villages
-// this reads ~0 (a stale/own-only snapshot) — it's a placeholder that gets REPLACED by
-// the exact per-origin sum the moment an "Import Support" (villageSupports.js) file is
-// loaded. Defensive types only. No station row for the village (plain tribe-info file) → all zeros.
+// owner's own troops is (heuristically) allied support. It reads ~0 when the export only
+// sees the exporting account's own troops, but a leader's tribe export carries the real
+// stacks (es103 2026-10-25: ~5.9M def pop over 259 villages). It is REPLACED by the exact
+// per-origin sum the moment an "Import Support" (villageSupports.js) file covers the village,
+// and since v6.6.3 it also decides whether a village is listed at all (🎚 mdStationedMinPop,
+// mdBuildRows). Defensive types only. No station row for the village (plain tribe-info file) → all zeros.
 function mdEstimateStationed(coord) {
   const z = mdZero();
   if (!mdHasStation(coord)) return z;
@@ -277,6 +280,15 @@ function mdEstimateStationed(coord) {
 function mdHasStation(coord) {
   return (typeof defenseByCoord !== 'undefined' && coord in defenseByCoord)
       || (typeof incomingByCoord !== 'undefined' && coord in incomingByCoord);
+}
+
+// Owner of a village per the loaded tribe .txt (its owned-troop row, else a station row), DECODED
+// for display: the troop export leaves %XX escapes in names ("vakeri%C3%B1o"). '' = not in the file.
+function mdTxtOwner(coord) {
+  const row = (typeof troopByCoord !== 'undefined' && troopByCoord[coord])
+    || (typeof defenseByCoord !== 'undefined' && defenseByCoord[coord])
+    || (typeof incomingByCoord !== 'undefined' && incomingByCoord[coord]) || null;
+  return row && row.player ? decode(row.player) : '';
 }
 
 // ── "Who has already sent?" (pure) ────────────────────────────────────────────
@@ -408,11 +420,14 @@ function mdClassifyOrders(orders, planRows) {
 
 // ── Pure aggregator (harness-tested): fold the three sources into per-village rows ─
 // Returns [{coord, owner, village, hasPlan, hasOrders, planNeed, stationed, incoming, remaining,
-//           supportRows:[…], orderRows:[…], missingRows:[…], inferredIncoming, deadlineMs}] village-keyed.
+//           supportRows:[…], orderRows:[…], missingRows:[…], inferredIncoming, deadlineMs,
+//           byStationed}] village-keyed (byStationed = listed only by the stationed floor, v6.6.3).
 // PER-VILLAGE order awareness: a village whose coord is in opts.ordCoords (covered by the
 // incomingOrders import — even if 0 support was en route) shows real per-order incoming +
 // per-sender "not sent"; every OTHER village falls back to inferred incoming (mdInferIncoming)
 // and the aggregate Remaining. So importing orders for one village never expands the rest.
+// opts.stationCoords + opts.stationedMinPop (v6.6.3) also list villages holding that much estimated
+// ally support (see below); without them (direct callers, tests) the rule is off.
 function mdBuildRows(supTargets, orders, planRows, opts) {
   opts = opts || {};
   // Villages with real inbound-order data. Fallback (tests/back-compat): the orders' own targets.
@@ -425,7 +440,7 @@ function mdBuildRows(supTargets, orders, planRows, opts) {
         planNeed: mdZero(), stationed: mdZero(), incoming: mdZero(), remaining: mdZero(),
         ownUnits: mdZero(), support: mdZero(), supportEst: mdZero(),
         supportRows: [], orderRows: [], inferredIncoming: mdZero(), deadlineMs: null,
-        planList: [], missingRows: [],
+        planList: [], missingRows: [], byStationed: false,
       };
       order.push(coord);
     }
@@ -477,6 +492,20 @@ function mdBuildRows(supTargets, orders, planRows, opts) {
     const est = mdInferIncoming(coord);
     if (mdPop(est) > 0) { const g = get(coord); g.inferredIncoming = est; mdAddUnits(g.incoming, est); }
   }
+  // v6.6.3: a village the tribe .txt shows holding at least opts.stationedMinPop def pop of ALLY
+  // support (mdEstimateStationed, its "Support (est.)" line) gets a group too — no plan, no import,
+  // nothing inbound needed. Runs last, so it only adds villages nothing above listed: one an Import
+  // Support file has seen keeps its exact figure and is never re-added from the estimate. 0 = off.
+  // Only a village with an OWNED-troop row too: without one (a lone tribe_defense.txt, a rejected
+  // row) "defense − own" is the owner's whole garrison, not ally support.
+  const minSt = opts.stationedMinPop > 0 ? opts.stationedMinPop : 0;
+  if (minSt && opts.stationCoords) for (const coord of opts.stationCoords) {
+    if (byCoord[coord] || !(typeof troopByCoord !== 'undefined' && troopByCoord[coord])) continue;
+    if (mdPop(mdEstimateStationed(coord)) < minSt) continue;
+    const g = get(coord);
+    g.byStationed = true;
+    if (!ordCoords.has(coord)) { g.inferredIncoming = mdInferIncoming(coord); mdAddUnits(g.incoming, g.inferredIncoming); }
+  }
 
   // Remaining = plan − what the target's PLANNED senders already have there or on the way,
   // floored at 0. The engine plans each objective as NEW sends and never subtracts support
@@ -495,6 +524,9 @@ function mdBuildRows(supTargets, orders, planRows, opts) {
   for (const coord of order) {
     const g = byCoord[coord];
     g.hasOrders = ordCoords.has(coord);
+    // Villages listed from the tribe .txt alone (inferred incoming, stationed support) carry no owner
+    // from an import or plan row — take it from the troop file (v6.6.3; the Defender cell was blank).
+    if (!g.owner) g.owner = mdTxtOwner(coord);
     g.support = g.hasSupImport ? g.stationed : mdZero();
     g.supportEst = g.hasSupImport ? mdZero() : mdEstimateStationed(coord);
     const planned = new Set(g.planList.map(r => r.srcCoord));
@@ -505,11 +537,12 @@ function mdBuildRows(supTargets, orders, planRows, opts) {
     g.missingRows = mdMissingFrom(g.planList, sentPop);
   }
   // Only surface villages actually relevant to defense coordination: a Defense-Plan
-  // target, OR a village holding ally support, OR one with inbound support (ordered or
-  // inferred). A village showing only its OWNER'S troops (self-defense — no plan, no ally
-  // support stationed or inbound) is dropped; its lone Totals row is just noise here.
+  // target, OR a village holding ally support (imported, or estimated ≥ the stationed floor),
+  // OR one with inbound support (ordered or inferred). A village showing only its OWNER'S
+  // troops (self-defense — no plan, no ally support stationed or inbound) is dropped; its
+  // lone Totals row is just noise here.
   return order.map(c => byCoord[c])
-    .filter(g => g.hasPlan || g.supportRows.length > 0 || mdPop(g.incoming) > 0);
+    .filter(g => g.hasPlan || g.supportRows.length > 0 || mdPop(g.incoming) > 0 || g.byStationed);
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -585,6 +618,11 @@ function renderManageDefTable() {
   const tbody = document.getElementById('md-tbody');
   if (!tbody) return;
   const impEl = document.getElementById('md-import-status');
+  // The header's stationed-floor field is a second view of 🎚 mdStationedMinPop (setParam writes it,
+  // paramsChanged re-renders here) — refreshed on every render so ↺ / Reset all / boot show the value.
+  // Not while the user is typing in it (the async world-DB load re-renders this table at boot).
+  const minEl = document.getElementById('md-stationed-min');
+  if (minEl && document.activeElement !== minEl) minEl.value = PARAMS.mdStationedMinPop;
 
   renderMdPlanView();
   const planRows = mdViewRows();
@@ -593,7 +631,10 @@ function renderManageDefTable() {
   // "incoming" row, so iterate exactly those coords instead of every village in the troop file
   // (this render runs on each import/generate/lang-switch; the world scan was thousands of calls).
   const allCoords = (typeof incomingByCoord !== 'undefined') ? Object.keys(incomingByCoord) : null;
-  mdGroups = mdBuildRows(mdSupTargets, mdOrders, planRows, { allCoords, ordCoords: mdOrdCoords });
+  // Likewise the stationed-support estimate is nonzero only where there is a "defense" row.
+  const stationCoords = (typeof defenseByCoord !== 'undefined') ? Object.keys(defenseByCoord) : null;
+  mdGroups = mdBuildRows(mdSupTargets, mdOrders, planRows,
+    { allCoords, ordCoords: mdOrdCoords, stationCoords, stationedMinPop: PARAMS.mdStationedMinPop });
 
   // Import status line
   if (impEl) {
@@ -611,10 +652,11 @@ function renderManageDefTable() {
 
   // Summary tallies. Missing (not-sent) counts only order-covered villages; def-pop-owed sums
   // the rest of the plan targets (which show the aggregate Remaining instead of per-sender rows).
-  let nSupport = 0, nIncoming = 0, nMissing = 0, anyInferred = false;
+  let nSupport = 0, nIncoming = 0, nMissing = 0, nByStationed = 0, anyInferred = false;
   const totStationed = mdZero(), totRemaining = mdZero();
   for (const g of mdGroups) {
     if (g.supportRows.length) nSupport++;
+    if (g.byStationed) nByStationed++;
     if (mdPop(g.incoming) > 0) { nIncoming++; if (!g.hasOrders) anyInferred = true; }
     mdAddUnits(totStationed, g.stationed);
     if (g.hasPlan && g.hasOrders) nMissing += g.missingRows.length;
@@ -629,6 +671,7 @@ function renderManageDefTable() {
       t('md_sum_incoming')(nIncoming, anyInferred ? t('md_sum_est') : ''),
       t('md_sum_stationed')(Math.round(mdPop(totStationed)).toLocaleString()),
     ];
+    if (nByStationed) chips.push(t('md_sum_by_stationed')(nByStationed, PARAMS.mdStationedMinPop.toLocaleString()));
     if (anyPlan && nMissing > 0)
       chips.push(`<span style="color:#e06040;font-weight:600;">${esc(t('md_sum_missing')(nMissing))}</span>`);
     if (anyPlan && mdPop(totRemaining) > 0)
