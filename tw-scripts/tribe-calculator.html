@@ -644,11 +644,11 @@
     <div id="ot-ignore-players-host"></div>
   </div>
   <div id="ot-force-players-wrap" style="display:none;margin-top:10px;">
-    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="force_players_hint">Pick the ONLY players who take part in this offensive — everyone else in the loaded troop file is left out completely: no offs, no snob trains, no escorts, no fakes, no catapults. Use it to build a small player-specific operation. Empty = everyone participates. The ignore lists still apply on top. Requires the tribe troop file.</div>
+    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="force_players_hint">Pick players, then how they take part. Only these players: everyone else in the loaded troop file is left out completely — no offs, no snob trains, no escorts, no fakes, no catapults (a small player-specific operation). Prioritize these players: everyone takes part, but ALL of their offs are placed first, each on the open off slot where it is most efficient (same tier first, then morale, then power ÷ distance; a stronger off fills a weaker request when needed), up to their ⚖ Player Share — then the rest of the tribe fills what is left. Empty = nobody forced. The ignore lists still apply on top. Requires the tribe troop file.</div>
     <div id="ot-force-players-host"></div>
   </div>
   <div id="ot-force-wrap" style="display:none;margin-top:10px;">
-    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="force_coords_hint">Paste the coordinates of the ONLY villages allowed to send in this offensive — every off, snob train, escort, fake and catapult attack must launch from one of them; villages not listed are left out completely. Any separator works. Empty = every village may send. Combines with Force Players (a village must pass both) and the ignore lists still apply on top.</div>
+    <div style="font-size:12px;color:#806030;margin-bottom:6px;" data-i18n="force_coords_hint">Paste the coordinates of the ONLY villages allowed to send in this offensive — every off, snob train, escort, fake and catapult attack must launch from one of them; villages not listed are left out completely. Any separator works. Empty = every village may send. Combines with Force Players: in Only mode a village must pass both lists, in Prioritize mode only this one; the ignore lists still apply on top.</div>
     <textarea id="ot-force-input" style="width:100%;height:80px;background:#120d03;border:1px solid #3a2808;color:#d4b483;font-family:'Consolas','Courier New',monospace;font-size:12px;padding:8px 10px;border-radius:4px;resize:vertical;" placeholder="500|500 501|499&#10;502|498" oninput="updOffForce()"></textarea>
   </div>
   <div id="ot-mv-players-wrap" style="display:none;margin-top:10px;">
@@ -1324,7 +1324,7 @@
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.6.4 &nbsp;·&nbsp; 2026-11-02</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.7.0 &nbsp;·&nbsp; 2026-11-02</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

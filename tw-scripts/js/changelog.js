@@ -18,6 +18,14 @@
 // v6 entries into the archive and start this array fresh.
 // ══════════════════════════════════════════════════════════════
 const CHANGELOG_CURRENT = [
+  { ver: 'v6.7.0', date: '2026-11-02',
+    en: [
+      `<b>✅ Force Players: Only or ⭐ Prioritize.</b> The Force Players panel gets a <b>Mode</b> selector. <b>Only these players</b> is the behavior you know: everyone else is left out. <b>Prioritize these players</b> keeps the whole tribe in the plan but places ALL of the listed players' offs first, each on the open off slot where it is most efficient across the whole plan (not on the first objectives in the list): same tier first, then morale, then power ÷ distance. When needed, a stronger off covers a weaker request (Complete → 3/4 → 1/2), and offs are moved around so that a village that reaches only one target is not left at home. Their ⚖ Player Share still caps them. The rest of the tribe then fills what is left. A plan warning sums it up: how many of their offs are sent, and why any stay home. Only the clearing offs are prioritized (noble trains, escorts, fakes and catapult attacks work as before), and 📍 Force Coords stays a whitelist in both modes.`,
+    ],
+    es: [
+      `<b>✅ Forzar Jugadores: Solo o ⭐ Priorizar.</b> El panel de Forzar Jugadores tiene un selector de <b>Modo</b>. <b>Solo estos jugadores</b> es el comportamiento de siempre: todos los demás quedan fuera. <b>Priorizar estos jugadores</b> mantiene a toda la tribu en el plan, pero coloca primero TODOS los offs de los jugadores de la lista, cada uno en el hueco de off libre donde rinde más en todo el plan (no en los primeros objetivos de la lista): primero el mismo tipo, luego la moral, luego poder ÷ distancia. Si hace falta, un off más fuerte cubre una petición más débil (Completa → 3/4 → 1/2), y los offs se recolocan para que una aldea que solo llega a un objetivo no se quede en casa. Su ⚖ Cuota Jugadores sigue limitándolos. Después, el resto de la tribu llena lo que queda. Un aviso del plan lo resume: cuántos de sus offs salen y por qué se queda alguno en casa. Solo se priorizan los offs de limpieza (los trenes de nobles, escoltas, fakes y ataques de catapultas funcionan como antes), y 📍 Forzar Coordenadas sigue siendo una lista blanca en los dos modos.`,
+    ],
+  },
   { ver: 'v6.6.4', date: '2026-11-02',
     en: [
       `<b>✉ Manage Defense → Export Missing PMs gets the 📝 Template of Export PMs.</b> The reminder PMs are now wrapped in a message template you can edit, with the same placeholders as Plan Defense's ✉ Export PMs: <b>{orders}</b> (the orders not sent yet, with their SEND links), <b>{bb_summary_table}</b> (a summary table of only what is still owed: one row per target, plus a Total row) and <b>{part}</b>. It is a template of its own, separate from the Plan Defense one, and starts from a reminder text. An empty template copies the orders alone, as before.`,

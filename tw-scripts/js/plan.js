@@ -314,7 +314,13 @@ function generatePlan() {
   // outside it from the pool entirely (like ignored coords) — no pass (offs, snobs, escorts,
   // fakes) ever sees it, and a pinned sender outside a list simply finds no candidates
   // (warned as usual). A village must pass BOTH lists (owner forced AND coord forced).
-  const forcePlayers  = new Set(offForcePlayers);
+  // ⭐ v6.7.0: the player list has a mode (offForceMode). 'only' = the whitelist above (default);
+  // 'prio' = Prioritize: nobody is dropped, the listed players' offs are placed FIRST over every
+  // open off slot at once (the ⭐ pass after the conqueror reservation), then the rest of the
+  // tribe fills what is left. Force Coords stays a whitelist in both modes.
+  const forcePrio     = typeof offForceMode !== 'undefined' && offForceMode === 'prio';
+  const forcePlayers  = new Set(forcePrio ? [] : offForcePlayers);
+  const prioPlayers   = new Set(forcePrio ? offForcePlayers : []); // raw troop-file names, like the pool
   const forceCoords   = parseOffForceSet();
   const inForce = v => (!forcePlayers.size || forcePlayers.has(v.player))
     && (!forceCoords.size || forceCoords.has(v.coord));
@@ -1239,6 +1245,23 @@ function generatePlan() {
     if (PARAMS.destroyerFallback === 'unassigned') return { cands: [], cmp };
     return { cands, cmp };
   };
+  // ⭐ Prioritized players (v6.7.0): inside ONE pick (conqueror replacement off, POWER, auto),
+  // keep only the prioritized players' candidates when there are any — soft, never empties the
+  // set, and it leads the morale gate (their offs are used first, morale only ranks among them).
+  // A destroyer slot only takes a prioritized off that qualifies as a cat-off (≥ catClearMin), so
+  // priority never trades the target's catapults away. Identity while nobody is prioritized.
+  // The destroyer rule mirrors destroyerPick (review fix): a cat-off is required only while one is
+  // available (`catOff`); otherwise the 🎚 destroyerFallback applies ('power' = any off, 'mostCats'
+  // = at least destroyerFallbackMinCats, 'unassigned' = none).
+  const prioDestroyerOk = (T, p, catOff) => !isDestroyer(T) || (catOff ? catsOf(p) >= CAT_CLEAR_MIN
+    : PARAMS.destroyerFallback === 'mostCats' ? catsOf(p) >= PARAMS.destroyerFallbackMinCats
+    : PARAMS.destroyerFallback !== 'unassigned');
+  const prioFirst = (T, cands) => {
+    if (!prioPlayers.size) return cands;
+    const catOff = isDestroyer(T) && cands.some(p => catsOf(p) >= CAT_CLEAR_MIN);
+    const mine = cands.filter(p => prioPlayers.has(p.v.player) && prioDestroyerOk(T, p, catOff));
+    return mine.length ? mine : cands;
+  };
 
   // ── Conqueror off reservation (the force, placed up front) ────────────────
   // A conquered target coordinates best when one of its CLEARING offs comes from the SAME
@@ -1324,7 +1347,7 @@ function generatePlan() {
       const repGate = offGateFor(T);
       const repCands = bump(p => playerMorale(decode(p.v.player)) >= repGate);
       if (repCands.length) {
-        reserve(schedFirst(T, cg, repCands, 'off').sort(byOptimize(T))[0], tier); // ⏰ schedules (v6.1.2): the one free pick in this reservation
+        reserve(schedFirst(T, cg, prioFirst(T, repCands), 'off').sort(byOptimize(T))[0], tier); // ⭐ prioritized first (v6.7.0), ⏰ schedules (v6.1.2): the one free pick in this reservation
         break;
       }
       // 3) No high-morale alternative reachable → fall back to the conqueror's own off.
@@ -1333,6 +1356,155 @@ function generatePlan() {
       reserve(fallback.sort(schedThen(T, cg, 'off', byDist(T)))[0], tier); // ⏰ schedules lead (identity without any), then closest
       break;
     }
+    }
+  }
+
+  // ── ⭐ Prioritized players (v6.7.0, Force Players → Prioritize) ──────────────────────────
+  // "Use 100% of their offs, in the most efficient order — not the first objectives first, then
+  // the rest of the tribe" (user, 2026-11-02). So this is ONE global pass over every open off slot
+  // (per target × window group × tier, after the named pins and the conqueror reservation; a POWER
+  // target's open slots form one any-tier slot per group; fakes excluded), not a per-target filter:
+  //  1. Every (prioritized off, open slot) pair that can happen: same tier, a STRONGER off
+  //     draining into a weaker request (upward only, the 🎚 tierBump map — tierBump off = no
+  //     drain), or any tier on a POWER target; in range (okOffDist: max distance + the
+  //     min-distance / Enemy Tribes holdbacks), in time, no Block Pair, no attack ratio, and on a
+  //     destroyer only a cat-off (≥ catClearMin).
+  //  2. Ranked: exact tier first (a Complete serves a Complete request before covering a 3/4 or a
+  //     POWER slot), then morale clearing the Min. Morale (off) gate, then ⏰ schedule grade, then
+  //     the optimize score (effective power ÷ distance, closeness alone without morale), then
+  //     distance. Taken greedily, best pair first, re-checking the ⚖ share cap and the MV claims.
+  //  3. Repair (augmenting paths, Kuhn): an off the greedy left home is placed by MOVING an
+  //     already-placed prioritized off to another open slot it can also take, so a front village
+  //     that reaches only one target is not stranded by a stronger one that reaches two. A placed
+  //     off with an MV partner is never moved (its claim would go stale). Every slot a normal plan
+  //     could give them is in the graph, so the priority never sends FEWER of their offs.
+  // The ⭐ rows are reserved like the conqueror's (namedOffReserved), so the POWER and auto passes
+  // fill only what is left — and they still put any leftover prioritized off first (prioFirst).
+  // The POWER balance starts from the ⭐ offs already on each POWER target (prioPow). Clustering
+  // does not apply inside this pass. Rows are sent as the off's own tier (no bump warning — the
+  // drain is the mode's point); the summary warning after the auto pass counts them.
+  // Base = their offs this plan could send at all (for the summary): not spent in another offensive,
+  // not away, not held for a noble launch / split-off, not riding as an escort, not ignored, not
+  // inside the min-distance / Enemy Tribes holdbacks.
+  const prioBase = prioPlayers.size
+    ? pool.filter(p => prioPlayers.has(p.v.player) && p.tier !== 'none' && !p.prior && !p.isEscort && !offBlocked(p) && !tooClose.has(p) && !nearEnemy.has(p))
+    : [];
+  let prioDrained = 0;
+  const prioPow = {};       // T.i → raw off power the ⭐ pass put on a POWER target (seeds the POWER balance)
+  const prioReach = new Set(); // their offs with at least one slot they could take (the summary's ⚖ count)
+  if (prioPlayers.size) {
+    const slots = [];
+    for (const tier of ['complete', 'tq', 'half']) {
+      for (const T of orderedTargets) {
+        if (!T.c || T.tg.power || isFake(T)) continue;
+        for (const g of otActiveGroups(T.tg)) {
+          const left = otTierCount(T.tg, g.id, tier) - (namedOffReserved[resKey(T, tier, g)] || 0);
+          if (left > 0) slots.push({ T, g, tier, left, placed: [] });
+        }
+      }
+    }
+    for (const T of orderedTargets) { // POWER: one any-tier slot per group (the POWER pass's own count)
+      if (!T.c || !T.tg.power || isFake(T)) continue;
+      for (const g of otActiveGroups(T.tg)) {
+        const left = ['complete', 'tq', 'half'].reduce((n, tr) => n + otTierCount(T.tg, g.id, tr) - (namedOffReserved[resKey(T, tr, g)] || 0), 0);
+        if (left > 0) slots.push({ T, g, tier: 'power', left, placed: [] });
+      }
+    }
+    // A destroyer slot asks for a cat-off while any off that could go there carries the catapults
+    // (any player — the destroyer strategy's own "some candidate qualifies" test); else its fallback.
+    for (const s of slots) {
+      s.catOff = isDestroyer(s.T) && pool.some(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && catsOf(p) >= CAT_CLEAR_MIN
+        && okOffDist(p, s.T.c) && okOffTime(p, s.T, s.g));
+    }
+    const fits = (p, s) => (p.tier === s.tier || s.tier === 'power' || TIER_UP[s.tier].includes(p.tier))
+      && okOffDist(p, s.T.c) && okOffTime(p, s.T, s.g) && !pairBlocked(p.v.player, s.T)
+      && prioDestroyerOk(s.T, p, s.catOff) && !ratioBlk(p, s.T, s.g, 'off');
+    // ONE scale for every pair (review fix): effective power ÷ distance everywhere — the morale is 1
+    // on a barbarian / unknown target, so a player target's score never outranks a barbarian one's
+    // by scale alone (inside one pick the auto pass's optScore never compares two targets).
+    const keyOf = (p, s) => {
+      const d = Math.max(0.1, distXY(p.c, s.T.c));
+      const gate = offGateFor(s.T), m = planAttackMorale(p.v.coord, s.T.tg.coord);
+      return {
+        exact: p.tier === s.tier ? 1 : 0,
+        gate: gate && (m == null ? 1 : m) < gate ? 0 : 1,
+        sched: schedActive ? schedTierOf(p, s.T, schedWin(s.g, 'off'), 'off', s.g.dateISO) : 1,
+        score: effPow(p, s.T) / d,
+        d,
+      };
+    };
+    const byKey = (a, b) => (b.k.exact - a.k.exact) || (b.k.gate - a.k.gate) || (b.k.sched - a.k.sched)
+      || (b.k.score - a.k.score) || (a.k.d - b.k.d);
+    const cands = prioBase.filter(p => !p.usedOff);
+    const pairs = [], slotsOf = new Map(); // p → its pairs, best first (the repair walks them)
+    for (const p of cands) {
+      const mine = [];
+      for (const s of slots) if (fits(p, s)) mine.push({ p, s, k: keyOf(p, s) });
+      mine.sort(byKey);
+      slotsOf.set(p, mine);
+      if (mine.length) prioReach.add(p);
+      pairs.push(...mine);
+    }
+    pairs.sort(byKey); // stable: ties keep the off / slot list order
+    const place = (p, s) => { p.usedOff = true; s.left--; s.placed.push(p); noteOffUsed(p.v.player); noteMvClaim(p, s.T); };
+    for (const x of pairs) {
+      if (x.p.usedOff || x.s.left <= 0 || shareCapped(x.p) || mvBlocked(x.p, x.s.T)) continue;
+      place(x.p, x.s);
+    }
+    // Repair. vacate(v, from) frees v's place in `from` either by moving v to another slot it can
+    // take (relocate) or — when v's player is held by the ⚖ share — by swapping the share over to
+    // another of their offs that can go elsewhere (swapOut: v goes home, the sibling is placed, the
+    // player's share count is unchanged). Only offs of players without MV partners ever move.
+    const movable = p => !mvPartners.has(p.v.player);
+    const move = (v, from, to) => { from.placed.splice(from.placed.indexOf(v), 1); from.left++; to.placed.push(v); to.left--; };
+    const takeSlot = (s, seen) => s.left > 0 || s.placed.slice().some(w => vacate(w, s, seen));
+    const relocate = (v, from, seen) => {
+      for (const { s } of slotsOf.get(v) || []) {
+        if (s === from || seen.has(s)) continue;
+        seen.add(s);
+        if (takeSlot(s, seen)) { move(v, from, s); return true; }
+      }
+      return false;
+    };
+    const swapOut = (v, from, seen) => {
+      const k = shareKey.get(v.v.player);
+      if (k === undefined || !shareCapped(v)) return false;
+      for (const w of cands) {
+        if (w === v || w.usedOff || !movable(w) || shareKey.get(w.v.player) !== k) continue;
+        for (const { s } of slotsOf.get(w) || []) {
+          if (s === from || seen.has(s)) continue;
+          seen.add(s);
+          if (takeSlot(s, seen)) {
+            from.placed.splice(from.placed.indexOf(v), 1); from.left++; v.usedOff = false; // v home, its share…
+            w.usedOff = true; s.left--; s.placed.push(w);                                     // …goes to w
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+    const vacate = (v, from, seen) => movable(v) && (relocate(v, from, seen) || swapOut(v, from, seen));
+    for (const u of cands) {
+      if (u.usedOff || shareCapped(u)) continue;
+      const seen = new Set();
+      for (const { s } of slotsOf.get(u) || []) {
+        if (seen.has(s)) continue;
+        seen.add(s);
+        if (mvBlocked(u, s.T)) continue;
+        if (takeSlot(s, seen)) { place(u, s); break; }
+      }
+    }
+    for (const s of slots) {
+      for (const p of s.placed) {
+        const rk = resKey(s.T, s.tier === 'power' ? p.tier : s.tier, s.g); // POWER counts every tier together
+        namedOffReserved[rk] = (namedOffReserved[rk] || 0) + 1;
+        const d = distXY(p.c, s.T.c);
+        noteClusterDist(decode(p.v.player), d);
+        if (s.tier === 'power') prioPow[s.T.i] = (prioPow[s.T.i] || 0) + p.v.offPow;
+        else if (p.tier !== s.tier) prioDrained++;
+        s.T.offRows.push({ type: p.tier, group: s.g.id, srcCoord: p.v.coord, srcPlayer: decode(p.v.player),
+          dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us) });
+      }
     }
   }
 
@@ -1352,7 +1524,7 @@ function generatePlan() {
     const slots = []; // {T, g} — one entry per (POWER target, group) with open slots
     let totalSlots = 0;
     for (const T of powerTargets) {
-      powSum[T.i] = 0;
+      powSum[T.i] = prioPow[T.i] || 0; // ⭐ offs already placed here count toward the balance (0 without priority)
       for (const g of otActiveGroups(T.tg)) {
         const total = ['complete', 'tq', 'half'].reduce((s, tr) => s + otTierCount(T.tg, g.id, tr), 0);
         const named = ['complete', 'tq', 'half'].reduce((s, tr) => s + (namedOffReserved[resKey(T, tr, g)] || 0), 0);
@@ -1372,7 +1544,9 @@ function generatePlan() {
       const powCands = (share, ratio = true) => pool.filter(p => !p.usedOff && !offBlocked(p) && p.tier !== 'none' && okOffDist(p, T.c) && okOffTime(p, T, g) && !mvBlocked(p, T) && (!share || !shareCapped(p))
         && (!ratio || !ratioBlk(p, T, g, 'off'))); // ⚔ attack ratio (v6.5.0), last
       const rawCands = powCands(true); // ⚖ Player Share caps apply (v6.3.0)
-      const cands = moraleFirst(T, rawCands);
+      // ⭐ a prioritized player's leftover off first (v6.7.0) — a safety net: the ⭐ pass already placed
+      // every prioritized off a POWER slot can take, unless an MV-paired off could not be moved there.
+      const cands = moraleFirst(T, prioFirst(T, rawCands));
       remaining[T.i + '|' + g.id]--;
       if (!cands.length) {
         if (!warned.has(T.i)) {
@@ -1470,7 +1644,7 @@ function generatePlan() {
         // Morale gate first (usual requirement), then the destroyer 🎚 strategy (cat-carriers first;
         // the fallback may leave the slot open); clustering (if on) breaks near-ties among the
         // survivors without overriding morale/power.
-        const dp0 = destroyerPick(T, moraleFirst(T, cands), byOptimize(T));
+        const dp0 = destroyerPick(T, moraleFirst(T, prioFirst(T, cands)), byOptimize(T)); // ⭐ leftover prioritized offs first (v6.7.0)
         const dp = { cands: schedFirst(T, g, dp0.cands, 'off'), cmp: dp0.cmp }; // ⏰ schedules (v6.1.2) INSIDE the destroyer's chosen set — a preferred launch never costs the cat-off
         if (!dp.cands.length) {
           if (!destroyerOpenWarned.has(T.i)) { planWarnings.push(t('warn_destroyer_open')(T.tg.coord)); destroyerOpenWarned.add(T.i); }
@@ -1492,6 +1666,20 @@ function generatePlan() {
           dist: d, travel: travelTimeMin(d, PLAN_BASE_MIN.off, ws, us),
         });
       }
+    }
+  }
+
+  // ⭐ Prioritized players (v6.7.0): one summary line once every off pass ran — how many of their
+  // offs this plan sends (pins, conqueror, ⭐ pass, POWER, auto) and why the rest stay home.
+  // ⚖ = held by the share although a slot was there for it (prioReach); the rest of the unsent had
+  // no slot they could take (range, time, tier, the destroyer / attack-ratio / pair rules, or simply
+  // no open slot left). No off at all → its own line (no "0 of 0").
+  if (prioPlayers.size) {
+    if (!prioBase.length) planWarnings.push(t('warn_prio_none'));
+    else {
+      const sent = prioBase.filter(p => p.usedOff).length;
+      const capped = prioBase.filter(p => !p.usedOff && shareCapped(p) && prioReach.has(p)).length;
+      planWarnings.push(t('warn_prio_summary')(sent, prioBase.length, prioDrained, capped, prioBase.length - sent - capped, !!PARAMS.tierBump));
     }
   }
 
@@ -2722,7 +2910,7 @@ function unusedOffs() {
   }
   // With Force Players / Force Coords on, non-forced villages aren't part of the operation,
   // so they're not "unused offs" to offer as a second wave.
-  const force = new Set(offForcePlayers);
+  const force = offForceOnlySet(); // ⭐ Prioritize mode: everyone takes part, so nobody is skipped here
   const forceCo = parseOffForceSet();
   return villages
     .filter(v => getOffTier(v.offPow) !== 'none' && !used.has(v.coord) && !reserved.has(v.coord)

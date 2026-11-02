@@ -30,6 +30,7 @@ let offTargets   = [];
 let offIgnore        = ''; // raw "Ignore Coordinates" textarea (Offensive Targets) — these villages never send anything
 let offIgnorePlayers = []; // raw player names excluded from the whole plan (no off, no snob, no escort)
 let offForcePlayers = [];  // v5.12.2: non-empty → ONLY these players participate in the offensive plan (whitelist)
+let offForceMode = 'only'; // ⭐ v6.7.0: 'only' (the whitelist) | 'prio' (everyone takes part, their offs placed first)
 let offForceCoords = '';   // v5.12.3: raw coord list — non-empty → ONLY these villages may send (origin whitelist)
 // "Enemy Tribes" (v5.10.0, offensive side): ally IDs whose villages bar nearby SENDERS from
 // launching offs — the front line keeps its offs at home. Deliberately INDEPENDENT of the
@@ -481,7 +482,7 @@ let otSaveWarned = false;
 function saveOffensive() {
   offPlanSync(); // the active slot's record mirrors the plan globals
   const ok = lsSaveC(OT_STORE_KEY, {
-    cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, forcePlayers: offForcePlayers, forceCoords: offForceCoords, mvPairs, blockPairs,
+    cfg: otCfg, targets: offTargets, ignore: offIgnore, ignorePlayers: offIgnorePlayers, forcePlayers: offForcePlayers, forceMode: offForceMode, forceCoords: offForceCoords, mvPairs, blockPairs,
     buildings: otBuildings,
     enemyIds: offEnemyIds, enemyDist: offEnemyDist,
     coordFilters: planCoordFilters, coordPolygon: planCoordPolygon, coordPolygonInv: planCoordPolygonInv,
@@ -562,6 +563,7 @@ function loadOffensive() {
       offIgnore        = typeof d.ignore === 'string' ? d.ignore : '';
       offIgnorePlayers = Array.isArray(d.ignorePlayers) ? d.ignorePlayers : [];
       offForcePlayers  = Array.isArray(d.forcePlayers) ? d.forcePlayers : [];
+      offForceMode     = d.forceMode === 'prio' ? 'prio' : 'only'; // a pre-6.7.0 save = the whitelist
       offForceCoords   = typeof d.forceCoords === 'string' ? d.forceCoords : '';
       offEnemyIds      = Array.isArray(d.enemyIds) ? d.enemyIds.map(String) : [];
       offEnemyDist     = Math.max(0, parseInt(d.enemyDist, 10) || 0);
@@ -943,7 +945,18 @@ function renderOffIgnorePlayers() {
 // ignoring everyone else one by one. The ignore lists still apply ON TOP of the whitelist
 // (a forced player's ignored coords stay out), and unlike Ignore Players this bar is
 // absolute: a non-forced player can't even be hand-picked as a noble sender.
+// ⭐ v6.7.0 — the selector picks how the listed players take part: 'only' (the whitelist above) or
+// 'prio' (Prioritize: everyone takes part, but the listed players' offs are placed first over every
+// open slot — the ⭐ pass in generatePlan — then the rest of the tribe fills what is left). Only the
+// PLAYER list has a mode: Force Coords stays a whitelist in both.
 function offForceSet() { return new Set(offForcePlayers); }
+// The players the list RESTRICTS to — empty in Prioritize mode (nobody is left out). Every
+// consumer that bars non-listed players (pickers, footer, Export Unused Offs, the pool) reads this.
+function offForceOnlySet() { return offForceMode === 'prio' ? new Set() : offForceSet(); }
+function setOffForceMode(v) {
+  offForceMode = v === 'prio' ? 'prio' : 'only';
+  saveOffensive(); renderOffForcePlayers(); renderOffTargets(); renderOtOffsSummary(); // pickers + footer follow the mode
+}
 function toggleOffForcePlayers() {
   const el = document.getElementById('ot-force-players-wrap');
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
@@ -980,7 +993,14 @@ function renderOffForcePlayers() {
        <option value="">${t('opt_pick_force_player')}</option>
        ${opts.map(s => `<option value="${esc(s.name)}">${esc(decode(s.name))} (${s.villages})</option>`).join('')}
      </select>`;
-  host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}${picker}</div>`;
+  const prio = offForceMode === 'prio';
+  const mode = `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#a08050;">${esc(t('force_mode_lbl'))}
+     <select class="cell-input" id="ot-force-mode" style="width:auto;" onchange="setOffForceMode(this.value)">
+       <option value="only"${prio ? '' : ' selected'}>${esc(t('force_mode_only'))}</option>
+       <option value="prio"${prio ? ' selected' : ''}>${esc(t('force_mode_prio'))}</option>
+     </select></label>`;
+  host.innerHTML = `<div style="display:flex;flex-direction:column;gap:6px;">${mode}`
+    + `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${chips}${picker}</div></div>`;
 }
 
 // ── MV (vacation-mode) pairs: two players who can't both attack the same enemy player ──
@@ -1752,8 +1772,9 @@ function snobSenderOptions() {
   // Ignored players ARE listed here (unlike the off-sender picker): an ignored player can still
   // be hand-picked to send a noble train; they're only barred from regular off assignment.
   // Force Players is absolute though: with a non-empty whitelist, non-forced players don't
-  // participate at all, so they aren't offered as noble senders either.
-  const force = offForceSet();
+  // participate at all, so they aren't offered as noble senders either. (⭐ Prioritize mode
+  // leaves nobody out — offForceOnlySet is empty there.)
+  const force = offForceOnlySet();
   return Object.entries(players)
     .filter(([name]) => !force.size || force.has(name))
     .map(([name, p]) => ({ name, snob: p.totals.snob }))
@@ -1774,7 +1795,7 @@ function snobSenderOptionsForTarget(tg) {
   const tc = tg && parseCoordStr(tg.coord);
   if (!tc) return null;
   const snobMax = (typeof getSnobMax === 'function') ? getSnobMax() : 70;
-  const force = offForceSet(); // Force Players whitelist bars non-forced players here too
+  const force = offForceOnlySet(); // Force Players whitelist bars non-forced players here too (not in ⭐ Prioritize mode)
   const out = [];
   for (const [name, p] of Object.entries(players)) {
     if (force.size && !force.has(name)) continue;
@@ -1839,7 +1860,7 @@ function playerOffTierCounts(name) {
 // Loaded troop-file players that own ≥1 off of `tier`, richest first (label shows the count)
 function offSenderOptions(tier) {
   const ig = new Set(offIgnorePlayers);
-  const force = offForceSet(); // non-empty → only forced players are offered
+  const force = offForceOnlySet(); // non-empty → only forced players are offered (empty in ⭐ Prioritize mode)
   return Object.keys(players)
     .filter(name => !ig.has(name) && (!force.size || force.has(name)))
     .map(name => ({ name, count: playerOffTierCounts(name)[tier] }))
@@ -2169,7 +2190,7 @@ function renderOtOffsSummary() {
   // Force Players (v5.12.2) / Force Coords (v5.12.3): with a non-empty whitelist, every
   // village outside it is unavailable exactly like ignored ones — counted in their own
   // bucket so the note can say so. A village must pass BOTH whitelists.
-  const forcePl = offForceSet();
+  const forcePl = offForceOnlySet(); // ⭐ Prioritize mode leaves no player out; Force Coords still does
   const forceCo = parseOffForceSet();
   // 💾 Other offensive plan slots: an off they send (or hold for a noble launch) is gone for this
   // one — Generate starts from the same offPlanPriorUsage(), so the footer must not promise it.
