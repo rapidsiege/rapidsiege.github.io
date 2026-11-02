@@ -729,6 +729,9 @@ const T = {
     pm_tpl_var_date:'the player\'s arrival date(s), uppercase — e.g. SATURDAY 25, or THURSDAY 13 & FRIDAY 14 on a multi-day plan',
     pm_tpl_var_part:'" 1/2" when a player\'s orders span several PMs; empty when they fit in one',
     pm_tpl_var_summary:'the player\'s summary table from ⬇ Export Summary Tables — one row per target, plus a Total row',
+    pm_tpl_var_orders_missing:'the orders the player has NOT sent yet — numbered, each with its SEND link',
+    pm_tpl_var_summary_missing:'the summary table of what the player has NOT sent yet — one row per target, plus a Total row',
+    pm_tpl_hint_content:'Put {orders}, {bb_summary_table} or both in the template. Table only (no {orders}): one PM per player with just the table — no per-order SEND links.',
     pm_tpl_reset:'↺ Reset to default',
     pm_tpl_default:`Hello,
 
@@ -759,6 +762,15 @@ I know it's a lot of orders, but it's already far fewer than last time.
 Thanks a lot for the work you're about to do — it really needs to be done this way, we're going to optimize as much as we can. We've already seen how quickly lost units are replaced when we get attacked if we build the stacks this way.
 
 [spoiler=Support Orders{part}]{orders}[/spoiler]`,
+    pm_tpl_mdmiss_default:`Hello!
+
+Part of the support you were asked to send has not left yet. The tribe is counting on that defense, so please send it as soon as you can.
+
+The spoiler holds only the orders still missing: go through them one by one, clicking [b][color=#2e2eff]SEND[/color][/b] and sending the support. If your troops are out scavenging or on their way home, send them as soon as they are back.
+
+[spoiler=Missing Support Orders{part}]{orders}[/spoiler]
+
+Thanks a lot!`,
     btn_export_script:'📜 Export supportSender',
     script_export_hint:'Each button copies that player’s plan in the compact SUPPORTPLAN format for the supportSender in-game script: on the Rally point → Mass support screen, they paste it once and the script fills every planned order target by target. It uses no BB brackets, so it can ride inside the same PM as the readable orders.',
     def_bb_depart:(s)=>`send by ${s}`, def_bb_arrive:(s)=>`arrives ${s}`,
@@ -909,6 +921,9 @@ Thanks a lot for the work you're about to do — it really needs to be done this
     btn_export_plan_coords:'🎯 Export Coordinates',
     coord_modal_title:'Coord List — paste into the Incoming Orders Export script',
     export_plan_coords_title:"The plan's target coordinates, one per line — paste into the Target Village Orders Exporter userscript (incomingOrders.js), then import its export in Manage Offensive.",
+    mo_export_coords_title:'The target coordinates of the plan shown (the Offensive selector: one offensive, or all), one per line — paste them into the Target Village Orders Exporter userscript (incomingOrders.js), then import its export here.',
+    md_export_coords_title:'The target coordinates of the plan shown (the Defense selector: one defense plan, or all), one per line — paste them into the Village Supports Exporter (villageSupports.js) or the Target Village Orders Exporter (incomingOrders.js), then import their export here.',
+    coord_modal_title_def:'Coord List — paste into the Village Supports / Incoming Orders Export script',
     footer_dev_by: 'Developed by', footer_version: 'Version',
   },
   es: {
@@ -1635,6 +1650,9 @@ Thanks a lot for the work you're about to do — it really needs to be done this
     pm_tpl_var_date:'la(s) fecha(s) de llegada del jugador, en mayúsculas — p. ej. SÁBADO 25, o JUEVES 13 & VIERNES 14 en un plan de varios días',
     pm_tpl_var_part:'" 1/2" cuando las órdenes de un jugador ocupan varios MPs; vacío si caben en uno',
     pm_tpl_var_summary:'la tabla resumen del jugador de ⬇ Exportar Tablas Resumen — una fila por objetivo, más una fila de Total',
+    pm_tpl_var_orders_missing:'las órdenes que el jugador aún NO ha enviado — numeradas, cada una con su enlace ENVIAR',
+    pm_tpl_var_summary_missing:'la tabla resumen de lo que el jugador aún NO ha enviado — una fila por objetivo, más una fila de Total',
+    pm_tpl_hint_content:'Pon {orders}, {bb_summary_table} o los dos en la plantilla. Solo la tabla (sin {orders}): un único MP por jugador con la tabla — sin los enlaces ENVIAR de cada orden.',
     pm_tpl_reset:'↺ Restaurar por defecto',
     pm_tpl_default:`Buenas,
 
@@ -1665,6 +1683,15 @@ Sé que son muchas órdenes, pero ya son muchas menos que la vez anterior.
 Muchas gracias por el trabajo que vas a hacer, pero es muy necesario hacerlo así, vamos a optimizar al máximo. Ya vimos lo rápido que es reponer unidades perdidas cuando nos atacan si hacemos los blindajes así.
 
 [spoiler=Órdenes Apoyo{part}]{orders}[/spoiler]`,
+    pm_tpl_mdmiss_default:`¡Buenas!
+
+Todavía falta por salir parte del apoyo que te tocaba enviar. La tribu cuenta con esa defensa, así que mándalo en cuanto puedas.
+
+En el spoiler tienes solo las órdenes que faltan: ve una por una dándole a [b][color=#2e2eff]ENVIAR[/color][/b] y mandando el apoyo. Si tus tropas están recolectando o volviendo a casa, mándalas en cuanto lleguen.
+
+[spoiler=Órdenes Apoyo Pendientes{part}]{orders}[/spoiler]
+
+¡Muchas gracias!`,
     btn_export_script:'📜 Exportar supportSender',
     script_export_hint:'Cada botón copia el plan de ese jugador en el formato compacto SUPPORTPLAN para el script del juego supportSender: en la pantalla Plaza → Apoyo masivo, lo pega una vez y el script rellena cada orden planificada objetivo por objetivo. No usa corchetes BB, así que puede ir dentro del mismo MP que las órdenes legibles.',
     def_bb_depart:(s)=>`salir antes de ${s}`, def_bb_arrive:(s)=>`llega ${s}`,
@@ -1816,6 +1843,9 @@ Muchas gracias por el trabajo que vas a hacer, pero es muy necesario hacerlo as�
     btn_export_plan_coords:'🎯 Exportar Coordenadas',
     coord_modal_title:'Lista de Coordenadas — pégala en el script Incoming Orders Export',
     export_plan_coords_title:'Las coordenadas de los objetivos del plan, una por línea — pégalas en el userscript Target Village Orders Exporter (incomingOrders.js) e importa luego su exportación en Gestionar Ofensiva.',
+    mo_export_coords_title:'Las coordenadas de los objetivos del plan mostrado (el selector de Ofensiva: una ofensiva, o todas), una por línea — pégalas en el userscript Target Village Orders Exporter (incomingOrders.js) e importa luego aquí su exportación.',
+    md_export_coords_title:'Las coordenadas de los objetivos del plan mostrado (el selector de Defensa: una defensa, o todas), una por línea — pégalas en el Village Supports Exporter (villageSupports.js) o en el Target Village Orders Exporter (incomingOrders.js) e importa luego aquí su exportación.',
+    coord_modal_title_def:'Lista de Coordenadas — pégala en el script Village Supports / Incoming Orders Export',
     footer_dev_by: 'Desarrollado por', footer_version: 'Versión',
   }
 };

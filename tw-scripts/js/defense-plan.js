@@ -1950,25 +1950,43 @@ function renderPmModal(messages, hint, topHtml, titleKey) {
   ).join('');
   document.getElementById('pm-modal').classList.add('open');
 }
-// Messages wrapped in the defensive PM template (📝 shared editor in plan.js, ctx 'def').
-// Each PART is its own in-game PM, so EVERY part gets the full wrapper and {part} numbers
-// the spoiler label ("Órdenes Apoyo 1/2") when a player splits across messages. No date
-// source on this side — a {date} in a custom defense template stays literal. The template's
-// own brackets (~10) ride in the 500-bracket headroom PARAMS.pmMaxBrackets already leaves.
-function defPmWrappedMessages(maxBrackets) {
-  const tpl = pmTemplateCurrent('def');
+// Messages wrapped in a defensive PM template (📝 shared editor in plan.js). Shared by Plan
+// Defense's ✉ Export PMs (ctx 'def', the whole plan — defPmWrappedMessages) and, since v6.6.4,
+// Manage Defense's ✉ Export Missing PMs (ctx 'mdmiss', only the orders not sent yet). Both the
+// orders and the {bb_summary_table} tables come from `rows`, so a reminder's table holds only
+// what is still owed. Each PART is its own in-game PM, so EVERY part gets the full wrapper and
+// {part} numbers the spoiler label ("Órdenes Apoyo 1/2") when a player splits across messages.
+// No date source on this side — a {date} in a custom defense template stays literal. The
+// template's own brackets (~10) ride in the 500-bracket headroom PARAMS.pmMaxBrackets leaves.
+// The template picks the content (v6.6.4): {orders}, {bb_summary_table}, or both. Table only
+// (no {orders}) → ONE message per player: nothing to split, so {part} is '' and the table is
+// never repeated across parts; its meta count is the player's whole order count. Pure.
+function defPmTemplatedMessages(rows, tpl, maxBrackets) {
+  rows = rows || [];
+  tpl = String(tpl == null ? '' : tpl);
+  const sums = defSummaryMessagesFrom(rows); // A→Z, the same order as defPmMessagesFrom
+  const hasTable = tpl.includes('{bb_summary_table}');
+  if (hasTable && !tpl.includes('{orders}')) {
+    const owed = {};
+    for (const r of rows) owed[r.srcPlayer] = (owed[r.srcPlayer] || 0) + 1;
+    return sums.map(m => ({ player: m.player, orderCount: owed[m.player] || 0,
+      parts: [pmApplyTemplate(tpl, '', '', '', m.parts[0])] }));
+  }
   // {bb_summary_table} (v4.25.0): each player's own Export Summary Tables block, keyed by player.
   const tables = {};
-  defSummaryMessagesFrom(defPlanRows).forEach(m => { tables[m.player] = m.parts[0]; });
+  sums.forEach(m => { tables[m.player] = m.parts[0]; });
   // A table is bracket-heavy (~17 per target row) and EVERY split part carries the full wrapper,
   // so when the template actually inserts one, pack the orders under a budget reduced by the
   // biggest table — otherwise a many-target player's finished PM could clear the real ~5,000
   // limit that PARAMS.pmMaxBrackets' headroom is meant to absorb. No placeholder ⇒ budget unchanged.
   const base = maxBrackets || PARAMS.pmMaxBrackets;
-  const costs = tpl.includes('{bb_summary_table}') ? Object.keys(tables).map(p => pmBracketCount(tables[p])) : [];
+  const costs = hasTable ? Object.keys(tables).map(p => pmBracketCount(tables[p])) : [];
   const budget = costs.length ? Math.max(500, base - Math.max(...costs)) : base;
-  return defPmMessages(budget).map(m => ({ ...m,
+  return defPmMessagesFrom(rows, budget).map(m => ({ ...m,
     parts: m.parts.map((p, k) => pmApplyTemplate(tpl, p, '', pmPartLabel(k, m.parts.length), tables[m.player])) }));
+}
+function defPmWrappedMessages(maxBrackets) {
+  return defPmTemplatedMessages(defPlanRows, pmTemplateCurrent('def'), maxBrackets);
 }
 function showDefPmExport() {
   if (!defPlanRows.length) { alert(t('empty_no_def_plan')); return; }

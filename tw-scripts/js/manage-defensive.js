@@ -91,6 +91,15 @@ function mdViewRows() {
   return defPlanAllRows();
 }
 function mdMergedView() { return mdPlanView === 'all' && typeof defPlans !== 'undefined' && defPlans.length > 1; }
+// 🎯 Export Coordinates (v6.6.4): the target villages of the plan this tab shows — the Defense
+// selector's slot, or every plan under "All" — one per line, for incomingOrders.js (Import Support
+// Orders) and villageSupports.js (Import Support). Plan targets only: villages listed from the
+// tribe export alone (inbound / stationed support) are not plan targets.
+function mdExportCoords() {
+  const rows = mdViewRows();
+  if (!rows.length) { alert(t('empty_no_def_plan')); return; }
+  showCoordListModal(planTargetCoords(rows), 'coord_modal_title_def');
+}
 // Header <select>: only while there are 2+ defense plan slots (one slot = nothing to pick).
 function renderMdPlanView() {
   const host = document.getElementById('md-plan-view-host');
@@ -942,7 +951,10 @@ function clearManageDef() {
 // The Defense-Plan rows whose sender has NOT sent yet — the same "Still not sent" set as
 // the table's red rows. Grouped/split into per-player messages exactly like Plan Defense's
 // ✉ Export PMs (shared defPmMessagesFrom + renderPmModal), so a laggard gets a ready-to-paste
-// nudge with only the orders they still owe.
+// nudge with only the orders they still owe. v6.6.4: the same 📝 Template editor as ✉ Export
+// PMs (defPmTemplatedMessages, ctx 'mdmiss' — its own template, a reminder text), so the PM can
+// carry the orders, the summary table of what is still owed, or both. Without plan.js /
+// defense-plan.js (a vendored copy) it falls back to the raw orders.
 function mdMissingPlanRows() {
   const planRows = mdViewRows();
   if (!planRows.length) return [];
@@ -959,6 +971,10 @@ function showMdMissingPmExport() {
   if (!mdOrdCoords.length) { alert(t('md_missing_need_orders')); return; }
   const rows = mdMissingPlanRows();
   if (!rows.length) { alert(t('md_no_missing')); return; }
-  if (typeof renderPmModal === 'function' && typeof defPmMessagesFrom === 'function')
+  if (typeof renderPmModal !== 'function') return;
+  if (typeof defPmTemplatedMessages === 'function' && typeof pmTemplateBarHtml === 'function') {
+    pmTplCtx = 'mdmiss';
+    renderPmModal(defPmTemplatedMessages(rows, pmTemplateCurrent('mdmiss')), t('md_missing_pm_hint'), pmTemplateBarHtml());
+  } else if (typeof defPmMessagesFrom === 'function')
     renderPmModal(defPmMessagesFrom(rows), t('md_missing_pm_hint'));
 }

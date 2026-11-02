@@ -1997,19 +1997,12 @@ function planRowIconBB(r) {
 // Exactly the paste format the "Target Village Orders Exporter" userscript
 // (incomingOrders.js) expects; its .txt/.json export then feeds the Manage
 // Offensive tab. Unique coords, plan order — across EVERY offensive slot (v6.1.0), since Manage
-// Offensive checks all of them together.
+// Offensive checks all of them together. (Manage Offensive's own button, v6.6.4, follows its
+// Offensive selector instead — moExportCoords.)
 function exportPlanCoords() {
   const all = offPlanAllRows();
   if (!all.length) { alert(t('empty_no_plan')); return; }
-  const coords = [...new Set(all.map(r => r.tCoord))];
-  // Not a BB table — retitle the shared modal (closeBBModal restores the default)
-  const h = document.getElementById('bb-modal-title');
-  if (h) {
-    if (h.dataset) h.dataset.i18n = 'coord_modal_title';
-    h.textContent = t('coord_modal_title');
-  }
-  document.getElementById('bb-output').value = coords.join('\n');
-  document.getElementById('bb-modal').classList.add('open');
+  showCoordListModal(planTargetCoords(all)); // util.js — not a BB table, so the modal is retitled
 }
 
 // ── Build objective groups from the plan (one per target, in plan order) ──
@@ -2405,13 +2398,16 @@ function showPlayerPlanPm() {
 // default. Saving an EMPTY template disables wrapping without losing the default (Reset
 // brings it back). The editor UI (pmTemplateBarHtml + handlers) is shared — pmTplCtx says
 // which side's template it edits, set by the show*Pm opener that built the modal.
+// v6.6.4: a third template, 'mdmiss', for Manage Defense's ✉ Export Missing PMs — same
+// placeholders as 'def' (the defensive wrapper, defPmTemplatedMessages), its own text: a
+// reminder about what is still owed, not the first orders PM.
 // v5.14.1: keys carry the tw_tribe prefix so the templates ride along in the Backup & Debug
 // export, its import AND the hosted cloud snapshot (all three collect tw_tribe* wholesale).
 // Pre-v5.14.1 saves used tw_pm_template / tw_pm_template_def — pmTplMigrateKeys() moves them
 // once at startup (init block), so a customized template is never lost by the rename.
-const PM_TPL_KEYS     = { off: 'tw_tribe_pm_template', def: 'tw_tribe_pm_template_def' };
+const PM_TPL_KEYS     = { off: 'tw_tribe_pm_template', def: 'tw_tribe_pm_template_def', mdmiss: 'tw_tribe_pm_template_mdmiss' };
 const PM_TPL_KEYS_OLD = { off: 'tw_pm_template', def: 'tw_pm_template_def' };
-const PM_TPL_DEFAULTS = { off: 'pm_tpl_default', def: 'pm_tpl_def_default' };
+const PM_TPL_DEFAULTS = { off: 'pm_tpl_default', def: 'pm_tpl_def_default', mdmiss: 'pm_tpl_mdmiss_default' };
 let pmTplCtx = 'off';
 // One-time move of each old-key template to its new key. A template already under the new key
 // wins (the old copy is just dropped) — an imported backup must not be overwritten by a stale
@@ -2441,7 +2437,9 @@ function pmPartLabel(k, n) { return n > 1 ? ` ${k + 1}/${n}` : ''; }
 // "========== NAME (n) ==========" header at line START, so the block must never share a line
 // with template text. {date} only substitutes when a label exists (no arrival date set → the
 // literal {date} stays visible as a fill-me-in flag). A template without {orders} appends the
-// block at the end — orders must never be lost; a blank template returns them unwrapped. Pure.
+// block at the end — orders must never be lost — UNLESS a summary table was actually spliced in
+// (v6.6.4: a {bb_summary_table}-only template is a deliberate table-only PM; the caller,
+// defPmTemplatedMessages, then passes no orders). A blank template returns them unwrapped. Pure.
 // Splice `block` in at every occurrence of `token`, forcing it onto its own line(s) even when
 // the template glues it inline. Returns null when the token isn't present, so callers can pick
 // their own fallback (append vs skip). Pure.
@@ -2467,30 +2465,41 @@ function pmApplyTemplate(tpl, orders, dateLabel, partLabel, summaryTable) {
   // at line start to render in-game. Optional — unlike {orders} it is never appended when
   // absent, and with no table to insert (offensive PMs) the literal token stays visible as a
   // fill-me-in flag, exactly like {date} on the defensive side.
-  if (summaryTable) tpl = pmSpliceBlock(tpl, '{bb_summary_table}', summaryTable) || tpl;
-  return pmSpliceBlock(tpl, '{orders}', orders) || (tpl.trimEnd() + '\n\n' + orders);
+  let tableIn = false;
+  if (summaryTable) {
+    const s = pmSpliceBlock(tpl, '{bb_summary_table}', summaryTable);
+    if (s != null) { tpl = s; tableIn = true; }
+  }
+  const out = pmSpliceBlock(tpl, '{orders}', orders);
+  if (out != null) return out;
+  // No {orders} token: table-only when a table went in (v6.6.4), else append the orders.
+  return tableIn ? tpl : (tpl.trimEnd() + '\n\n' + orders);
 }
 // The 📝 Template button + collapsed editor injected at the top of the PM modal body
 // (offensive export only — renderPmModal's topHtml hook). Handlers are globals below.
 // The placeholders that actually DO something on a given plan side, as [token, explanation]
 // pairs — {date} is offensive-only (the defensive plan has no arrival-date input) and
 // {bb_summary_table} is defensive-only, so each side lists only its own: a token that silently
-// stays literal is worse than not being offered. Built fresh per call so a language switch is
-// picked up, and the t() calls are literal so find_orphan_i18n.js can see the keys. Pure.
+// stays literal is worse than not being offered. Every non-'off' context ('def', and since
+// v6.6.4 'mdmiss') is a defensive one; 'mdmiss' names what its blocks hold (only the orders
+// still owed). Built fresh per call so a language switch is picked up, and the t() calls are
+// literal so find_orphan_i18n.js can see the keys. Pure.
 function pmTplVars(ctx) {
-  const orders = ['{orders}', t('pm_tpl_var_orders')];
-  const part   = ['{part}',   t('pm_tpl_var_part')];
-  return ctx === 'def'
-    ? [orders, ['{bb_summary_table}', t('pm_tpl_var_summary')], part]
-    : [orders, ['{date}', t('pm_tpl_var_date')], part];
+  const part = ['{part}', t('pm_tpl_var_part')];
+  if (ctx === 'off') return [['{orders}', t('pm_tpl_var_orders')], ['{date}', t('pm_tpl_var_date')], part];
+  const miss = ctx === 'mdmiss';
+  return [['{orders}', miss ? t('pm_tpl_var_orders_missing') : t('pm_tpl_var_orders')],
+          ['{bb_summary_table}', miss ? t('pm_tpl_var_summary_missing') : t('pm_tpl_var_summary')], part];
 }
 function pmTemplateBarHtml() {
   const vars = pmTplVars(pmTplCtx).map(([token, desc]) =>
     `<li><code>${esc(token)}</code><span>${esc(desc)}</span></li>`).join('');
+  // Defensive contexts: the template picks the content — orders, table, or both (v6.6.4).
+  const content = pmTplCtx === 'off' ? '' : `\n  <div class="pm-hint">${esc(t('pm_tpl_hint_content'))}</div>`;
   return `<div class="pm-tpl-bar"><button class="btn btn-ghost btn-sm" onclick="pmTplToggle()">${esc(t('btn_pm_template'))}</button></div>
 <div class="pm-tpl-editor" id="pm-tpl-editor" style="display:none">
   <div class="pm-hint">${esc(t('pm_tpl_hint'))}</div>
-  <div class="pm-tpl-vars">${esc(t('pm_tpl_vars_title'))}<ul>${vars}</ul></div>
+  <div class="pm-tpl-vars">${esc(t('pm_tpl_vars_title'))}<ul>${vars}</ul></div>${content}
   <textarea id="pm-tpl-text" class="pm-tpl-text" spellcheck="false"></textarea>
   <div class="pm-tpl-actions">
     <button class="btn btn-sm" onclick="pmTplSave()">${esc(t('btn_save'))}</button>
@@ -2510,12 +2519,16 @@ function pmTplSave() {
   if (!ta) return;
   try {
     // Saving the untouched default stores nothing — the template keeps following the UI
-    // language (and future default tweaks) until the user actually customizes it.
-    if (ta.value === t(PM_TPL_DEFAULTS[pmTplCtx])) localStorage.removeItem(PM_TPL_KEYS[pmTplCtx]);
+    // language (and future default tweaks) until the user actually customizes it. ANY language's
+    // default counts (v6.6.4): the editor may have been opened before a language switch.
+    const key = PM_TPL_DEFAULTS[pmTplCtx];
+    if (Object.keys(T).some(l => T[l][key] === ta.value)) localStorage.removeItem(PM_TPL_KEYS[pmTplCtx]);
     else localStorage.setItem(PM_TPL_KEYS[pmTplCtx], ta.value);
   } catch (e) {}
   // Re-render with the new wrapper (meta counts update; copy-done marks reset).
-  if (pmTplCtx === 'def') showDefPmExport(); else showPlayerPlanPm();
+  if (pmTplCtx === 'def') showDefPmExport();
+  else if (pmTplCtx === 'mdmiss') showMdMissingPmExport();
+  else showPlayerPlanPm();
 }
 function pmTplReset() {
   const ta = document.getElementById('pm-tpl-text');

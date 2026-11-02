@@ -860,6 +860,7 @@
         <span data-i18n="mo_tip_toggle">Show units in command when hovering</span>
       </label>
       <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="moExportCoords()" data-i18n="btn_export_plan_coords" data-i18n-title="mo_export_coords_title" title="The target coordinates of the plan shown (the Offensive selector: one offensive, or all), one per line — paste them into the Target Village Orders Exporter userscript (incomingOrders.js), then import its export here.">🎯 Export Coordinates</button>
       <button class="btn btn-primary btn-sm" onclick="toggleMoImport()" data-i18n="btn_mo_import">📥 Import Incoming Orders</button>
       <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="moShowReminders()" data-i18n="btn_mo_reminders" data-i18n-title="mo_rem_title" title="One message per player with the orders they have not sent yet.">✉ Export Reminder PMs</button>
@@ -1177,6 +1178,7 @@
       <!-- v6.6.3: stationed-support floor = 🎚 mdStationedMinPop (setParam; renderManageDefTable refreshes the value) -->
       <label class="md-stmin" data-i18n-title="md_stmin_t" title="Also list villages whose tribe export shows at least this much def farm pop of ally support stationed (their Support (est.) line), with no plan, import or incoming. 0 = off. Same value as 🎚 Parameters → Manage Defense."><span data-i18n="md_stmin_lbl">Min. stationed (est.)</span><input type="number" id="md-stationed-min" min="0" step="1000" value="5000" onchange="setParam('mdStationedMinPop', this.value); this.value = PARAMS.mdStationedMinPop"><span data-i18n="pu_pop">farm pop</span></label>
       <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="mdExportCoords()" data-i18n="btn_export_plan_coords" data-i18n-title="md_export_coords_title" title="The target coordinates of the plan shown (the Defense selector: one defense plan, or all), one per line — paste them into the Village Supports Exporter (villageSupports.js) or the Target Village Orders Exporter (incomingOrders.js), then import their export here.">🎯 Export Coordinates</button>
       <button class="btn btn-primary btn-sm" onclick="toggleMdSupImport()" data-i18n="btn_md_import_sup">📥 Import Support</button>
       <button class="btn btn-primary btn-sm" onclick="toggleMdOrdImport()" data-i18n="btn_md_import_ord">📥 Import Support Orders</button>
       <span class="map-tb-sep"></span>
@@ -1322,7 +1324,7 @@
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.6.3 &nbsp;·&nbsp; 2026-10-26</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.6.4 &nbsp;·&nbsp; 2026-11-02</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

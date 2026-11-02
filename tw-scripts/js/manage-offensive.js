@@ -93,6 +93,13 @@ function moViewRows() {
   return moMergeSlotRows(offPlans);
 }
 function moMergedView() { return moPlanView === 'all' && typeof offPlans !== 'undefined' && offPlans.length > 1; }
+// 🎯 Export Coordinates (v6.6.4): the target villages of the plan this tab shows — the Offensive
+// selector's slot, or every slot under "All" — one per line, for incomingOrders.js.
+function moExportCoords() {
+  const rows = moViewRows();
+  if (!rows.length) { alert(t('mo_need_plan')); return; }
+  showCoordListModal(planTargetCoords(rows));
+}
 // Header <select>: only while there are 2+ offensive slots (one slot = nothing to pick).
 function renderMoPlanView() {
   const host = document.getElementById('mo-plan-view-host');

@@ -422,6 +422,24 @@ function closeBBModal() {
   }
 }
 
+// ── 🎯 Export Coordinates (Plan Offensive; v6.6.4 also Manage Offensive + Manage Defense) ──
+// The plan rows' target coords, each once, in row order. Pure.
+function planTargetCoords(rows) {
+  return [...new Set((rows || []).map(r => r.tCoord).filter(Boolean))];
+}
+// The shared BB modal as a plain coord list, one per line — the paste format of the
+// incomingOrders.js / villageSupports.js exporters. Retitled; closeBBModal restores the default.
+function showCoordListModal(coords, titleKey) {
+  titleKey = titleKey || 'coord_modal_title';
+  const h = document.getElementById('bb-modal-title');
+  if (h) {
+    if (h.dataset) h.dataset.i18n = titleKey;
+    h.textContent = t(titleKey);
+  }
+  document.getElementById('bb-output').value = coords.join('\n');
+  document.getElementById('bb-modal').classList.add('open');
+}
+
 function copyBBTable() {
   const ta = document.getElementById('bb-output');
   ta.select();
