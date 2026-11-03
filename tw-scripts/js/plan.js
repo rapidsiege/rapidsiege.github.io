@@ -1377,7 +1377,8 @@ function generatePlan() {
   //     already-placed prioritized off to another open slot it can also take, so a front village
   //     that reaches only one target is not stranded by a stronger one that reaches two. A placed
   //     off with an MV partner is never moved (its claim would go stale). Every slot a normal plan
-  //     could give them is in the graph, so the priority never sends FEWER of their offs.
+  //     could give them is in the graph, so the priority doesn't send FEWER of their offs, except
+  //     where Account Sitting pairs block a placement (in testing, only plans with a pair sent fewer).
   // The ⭐ rows are reserved like the conqueror's (namedOffReserved), so the POWER and auto passes
   // fill only what is left — and they still put any leftover prioritized off first (prioFirst).
   // The POWER balance starts from the ⭐ offs already on each POWER target (prioPow). Clustering
@@ -1455,44 +1456,77 @@ function generatePlan() {
     // take (relocate) or — when v's player is held by the ⚖ share — by swapping the share over to
     // another of their offs that can go elsewhere (swapOut: v goes home, the sibling is placed, the
     // player's share count is unchanged). Only offs of players without MV partners ever move.
+    // v6.7.1: a walk can go one level per slot, which overflowed the call stack on big plans, so the
+    // four steps below are generators: each `yield` is a sub-call, walkRun keeps the frames in an
+    // array. Same visit order and same moves (deepest first, on the way back) as plain recursion.
     const movable = p => !mvPartners.has(p.v.player);
     const move = (v, from, to) => { from.placed.splice(from.placed.indexOf(v), 1); from.left++; to.placed.push(v); to.left--; };
-    const takeSlot = (s, seen) => s.left > 0 || s.placed.slice().some(w => vacate(w, s, seen));
-    const relocate = (v, from, seen) => {
+    const walkRun = first => {
+      const frames = [first];
+      let ret;
+      while (frames.length) {
+        const r = frames[frames.length - 1].next(ret);
+        if (r.done) { frames.pop(); ret = r.value; }
+        else { frames.push(r.value); ret = undefined; }
+      }
+      return ret;
+    };
+    // dead (v6.7.1) = slots no walk can free until the next placement, kept across leftovers so each
+    // one doesn't redo the same failed search. A failed walk changes nothing, and what a slot leads to
+    // doesn't depend on who walks (only the root's own slots ask mvBlocked; a capped player's sibling
+    // can never be the root, who isn't capped). So a failed walk's slots are dead for every root,
+    // unless it passed over a slot for mvBlocked: it may have failed only because of that block.
+    // Skipping a dead slot changes no result: everything it leads to is dead too, and all of it fails.
+    // (A sibling that deeper swapOuts skip because an unfinished swapOut is trying it doesn't break this:
+    // that swapOut still walks all of its slots before the walk can fail, so they end up in `seen` too.)
+    const dead = new Set();
+    const takeSlot = function* (s, seen) {
+      if (s.left > 0) return true;
+      for (const w of s.placed.slice()) if (yield vacate(w, s, seen)) return true;
+      return false;
+    };
+    const relocate = function* (v, from, seen) {
       for (const { s } of slotsOf.get(v) || []) {
-        if (s === from || seen.has(s)) continue;
+        if (s === from || seen.has(s) || dead.has(s)) continue;
         seen.add(s);
-        if (takeSlot(s, seen)) { move(v, from, s); return true; }
+        if (yield takeSlot(s, seen)) { move(v, from, s); return true; }
       }
       return false;
     };
-    const swapOut = (v, from, seen) => {
+    const swapOut = function* (v, from, seen) {
       const k = shareKey.get(v.v.player);
       if (k === undefined || !shareCapped(v)) return false;
       for (const w of cands) {
         if (w === v || w.usedOff || !movable(w) || shareKey.get(w.v.player) !== k) continue;
+        w.usedOff = true; // v6.7.1: taken while this frame tries it, or a deeper swapOut could book w on a second slot
         for (const { s } of slotsOf.get(w) || []) {
-          if (s === from || seen.has(s)) continue;
+          if (s === from || seen.has(s) || dead.has(s)) continue;
           seen.add(s);
-          if (takeSlot(s, seen)) {
+          if (yield takeSlot(s, seen)) {
             from.placed.splice(from.placed.indexOf(v), 1); from.left++; v.usedOff = false; // v home, its share…
-            w.usedOff = true; s.left--; s.placed.push(w);                                     // …goes to w
+            s.left--; s.placed.push(w);                                                       // …goes to w
             return true;
           }
         }
+        w.usedOff = false;
       }
       return false;
     };
-    const vacate = (v, from, seen) => movable(v) && (relocate(v, from, seen) || swapOut(v, from, seen));
+    const vacate = function* (v, from, seen) {
+      return movable(v) && ((yield relocate(v, from, seen)) || (yield swapOut(v, from, seen)));
+    };
     for (const u of cands) {
       if (u.usedOff || shareCapped(u)) continue;
       const seen = new Set();
+      let placed = false, passedBlocked = false;
       for (const { s } of slotsOf.get(u) || []) {
-        if (seen.has(s)) continue;
+        if (seen.has(s) || dead.has(s)) continue;
         seen.add(s);
-        if (mvBlocked(u, s.T)) continue;
-        if (takeSlot(s, seen)) { place(u, s); break; }
+        if (mvBlocked(u, s.T)) { passedBlocked = true; continue; }
+        if (walkRun(takeSlot(s, seen))) { place(u, s); placed = true; break; }
       }
+      if (placed) dead.clear();
+      else if (!passedBlocked) for (const s of seen) dead.add(s);
     }
     for (const s of slots) {
       for (const p of s.placed) {
