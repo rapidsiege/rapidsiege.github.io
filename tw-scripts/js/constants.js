@@ -168,6 +168,8 @@ const PARAM_DEFS = [
   // Which incoming order claims a plan slot first when several could: 'earliest' = earliest
   // arrival (today); 'closestAmount' = the order whose units are closest to a slot of that target.
   { key: 'mdSlotOrder',        sec: 'managedef', def: 'earliest', type: 'select', opts: ['earliest', 'closestAmount'] },
+  // v6.7.2: a player short by at most this share of their planned def pop at a target has sent their totals.
+  { key: 'mdTotalTolPct',      sec: 'managedef', def: 5,    min: 0, max: 100, unit: 'pct' },
   // v6.6.3: a village with no plan, no import and nothing inbound still gets a row when the tribe
   // export shows at least this much def pop (spear / sword / spy / heavy, farm-weighted) of ALLY
   // support stationed in it (its "Support (est.)" line). 0 = off. Also edited from the tab header.

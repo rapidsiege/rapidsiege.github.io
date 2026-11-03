@@ -1173,12 +1173,13 @@
   <div id="managedef-params" class="param-panel-host"></div>
   <div class="section-header">
     <h2><img class="tw-ic" src="icons/map/support.webp" alt=""> <span data-i18n="sec_managedef">Manage Defense</span></h2>
-    <div style="display:flex;gap:8px;align-items:center;">
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
       <span id="md-plan-view-host" style="display:contents;"></span><!-- 💾 v6.4.0 Defense plan selector (renderMdPlanView, 2+ slots only) -->
       <!-- v6.6.3: stationed-support floor = 🎚 mdStationedMinPop (setParam; renderManageDefTable refreshes the value) -->
       <label class="md-stmin" data-i18n-title="md_stmin_t" title="Also list villages whose tribe export shows at least this much def farm pop of ally support stationed (their Support (est.) line), with no plan, import or incoming. 0 = off. Same value as 🎚 Parameters → Manage Defense."><span data-i18n="md_stmin_lbl">Min. stationed (est.)</span><input type="number" id="md-stationed-min" min="0" step="1000" value="5000" onchange="setParam('mdStationedMinPop', this.value); this.value = PARAMS.mdStationedMinPop"><span data-i18n="pu_pop">farm pop</span></label>
       <span class="map-tb-sep"></span>
       <button class="btn btn-ghost btn-sm" onclick="mdExportCoords()" data-i18n="btn_export_plan_coords" data-i18n-title="md_export_coords_title" title="The target coordinates of the plan shown (the Defense selector: one defense plan, or all), one per line — paste them into the Village Supports Exporter (villageSupports.js) or the Target Village Orders Exporter (incomingOrders.js), then import their export here.">🎯 Export Coordinates</button>
+      <button class="btn btn-primary btn-sm" onclick="toggleMdStartImport()" data-i18n="btn_md_upload_start" data-i18n-title="md_start_title" title="Right after generating a plan, before anyone sends: what is already at its targets stays out of the plan's totals.">🏁 Upload starting support</button>
       <button class="btn btn-primary btn-sm" onclick="toggleMdSupImport()" data-i18n="btn_md_import_sup">📥 Import Support</button>
       <button class="btn btn-primary btn-sm" onclick="toggleMdOrdImport()" data-i18n="btn_md_import_ord">📥 Import Support Orders</button>
       <span class="map-tb-sep"></span>
@@ -1186,6 +1187,18 @@
       <button class="btn btn-ghost btn-sm" onclick="mdCollapseAll()" data-i18n="md_collapse_all">⊖ Collapse All</button>
       <button class="btn btn-ghost btn-sm" onclick="showMdMissingPmExport()" data-i18n="btn_md_export_missing_pms">✉ Export Missing PMs</button>
       <button class="btn btn-ghost btn-sm" onclick="clearManageDef()" data-i18n="btn_md_clear">✕ Clear Import</button>
+    </div>
+  </div>
+  <div id="md-start-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
+    <div style="font-size:12px;color:#806030;margin-bottom:8px;" data-i18n="md_start_hint">Do this right after generating the plan, before anyone sends. Run the Village Supports Exporter userscript (villageSupports.js) on the plan's targets (🎯 Export Coordinates gives you the list), then paste its export here or load the file(s). What each village already had at a target stays out of the plan's totals, so only what arrives on top of it counts. Each target keeps its own, so you can upload one plan after another. A target with no starting support counts everything stationed there.</div>
+    <textarea id="md-start-text" rows="6" style="width:100%;box-sizing:border-box;" spellcheck="false" data-i18n-placeholder="md_sup_ph" placeholder="Paste the village_supports export (CSV or JSON)…"></textarea>
+    <div style="margin-top:6px;display:flex;gap:8px;">
+      <input type="file" id="md-start-file" accept=".txt,.json,.csv" multiple style="display:none;" onchange="mdLoadFile(this,'start')">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('md-start-file').click()" data-i18n="btn_load_file">📂 Load File</button>
+      <button class="btn btn-primary btn-sm" onclick="mdLoadStartPaste()" data-i18n="btn_load_pasted">Load Pasted Data</button>
+      <span class="map-tb-sep"></span>
+      <button class="btn btn-ghost btn-sm" onclick="mdCopySup()" data-i18n="btn_md_copy_sup" data-i18n-title="md_copy_sup_title" title="Copies the quickbar loader for the Village Supports Exporter userscript (villageSupports.js) to the clipboard.">📋 Copy Script</button>
+      <button class="btn btn-ghost btn-sm" onclick="mdClearStart()" data-i18n="btn_md_clear_start">✕ Clear starting support</button>
     </div>
   </div>
   <div id="md-sup-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:#160f04;border:1px solid #3a2808;border-radius:5px;">
@@ -1324,7 +1337,7 @@
      TOP of the CHANGELOG_CURRENT array in js/changelog.js (en + es). -->
 <div style="background:#0e0a03;border-top:1px solid #2a1c08;padding:10px 20px;font-size:11px;color:#4a3010;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
   <span><span data-i18n="footer_dev_by">Developed by</span> <span style="color:#806030;">Vanquished</span></span>
-  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.7.1 &nbsp;·&nbsp; 2026-11-03</span></span>
+  <span><span data-i18n="footer_version">Version</span> <span id="app-version">6.7.2 &nbsp;·&nbsp; 2026-11-04</span></span>
 </div>
 
 <!-- ═══════════════════════════ BB MODAL ═══════════════════════════ -->

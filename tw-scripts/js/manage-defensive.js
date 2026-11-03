@@ -9,6 +9,8 @@
 //      + a per-origin breakdown of the support currently STATIONED in the village.
 //   2. "Import Support Orders" — incomingOrders.js export, SUPPORT rows only: the
 //      support movements currently EN ROUTE (origin, arrival time, units).
+//   🏁 "Upload starting support" (v6.7.2) — a villageSupports.js export taken before anyone
+//      sends: what was already at a target, kept out of the plan's totals (mdSentStacks).
 //
 // A third, always-available source is the loaded tribe_everything.txt itself
 // (defenseByCoord/incomingByCoord/troopByCoord): when no Support Orders are
@@ -20,9 +22,9 @@
 // target gets a group — and (v6.6.3) every village the tribe .txt shows holding at
 // least 🎚 mdStationedMinPop def pop of ally support (0 = off), also set from the
 // tab header's field. When a plan exists, a red "Remaining Incoming Support"
-// row shows plan − (stationed + incoming FROM THE TARGET'S PLAN SENDERS), floored
-// at 0 — other allied support and the origin-less .txt estimates are shown but
-// cover nothing (see mdBuildRows).
+// row shows what the target's PLANNED PLAYERS still owe: plan − (stationed + incoming
+// from any of their villages), per player and unit type (v6.7.2, see mdMissingFrom) —
+// other players' support and the origin-less .txt estimates are shown but cover nothing.
 // ══════════════════════════════════════════════════════════════
 const MD_STORE_KEY = 'tw_tribe_managedef';
 let mdSupTargets = []; // villageSupports: [{coord, village, owner, status, ownUnits, supports:[{originCoord,originVillage,originPlayer,units}]}]
@@ -32,6 +34,7 @@ let mdOrdAt      = 0;   // unix seconds of the incomingOrders import (0 = none)
 let mdOrdCoords  = []; // target coords COVERED by the incomingOrders import (incl. scanned-but-empty
                        // villages) — the per-village gate for "Still not sent" rows. A village here has
                        // real inbound-order data; one absent falls back to inferred incoming + aggregate.
+let mdStart      = {}; // 🏁 starting support, per target: coord → { at (unix s), o: { originCoord → def units } }
 
 // Collapse/expand state for the table. Villages are collapsed by default (one summary row
 // each) — detail rows are built ONLY for expanded coords, so a big plan doesn't render
@@ -46,7 +49,7 @@ let mdPlanView = 'all'; // 💾 v6.4.0: 'all' = every defense plan slot merged, 
 // so the import callers can show a clear "storage full" message instead of a bogus parse error.
 function saveManageDef() {
   return lsSaveC(MD_STORE_KEY, {
-    supTargets: mdSupTargets, orders: mdOrders, supAt: mdSupAt, ordAt: mdOrdAt, ordCoords: mdOrdCoords, planView: mdPlanView,
+    supTargets: mdSupTargets, orders: mdOrders, supAt: mdSupAt, ordAt: mdOrdAt, ordCoords: mdOrdCoords, planView: mdPlanView, start: mdStart,
   });
 }
 function loadManageDef() {
@@ -62,6 +65,7 @@ function loadManageDef() {
       mdOrdCoords  = Array.isArray(d.ordCoords) ? d.ordCoords
         : Array.from(new Set(mdOrders.map(o => o.target).filter(Boolean)));
       mdPlanView   = Number.isInteger(d.planView) ? d.planView : 'all';
+      mdStart      = okObj(d.start) ? d.start : {};
     }
   } catch {}
 }
@@ -91,6 +95,10 @@ function mdViewRows() {
   return defPlanAllRows();
 }
 function mdMergedView() { return mdPlanView === 'all' && typeof defPlans !== 'undefined' && defPlans.length > 1; }
+// What is owed is worked out over every plan, whichever one the tab shows (mdBuildRows): these are
+// those rows, and the one slot to keep from the result (null = keep them all).
+function mdDebtRows() { return typeof defPlans === 'undefined' ? mdViewRows() : defPlanAllRows(); }
+function mdDebtSlot() { return mdPlanView !== 'all' && typeof defPlans !== 'undefined' && defPlans.length > 1 ? mdPlanView : null; }
 // 🎯 Export Coordinates (v6.6.4): the target villages of the plan this tab shows — the Defense
 // selector's slot, or every plan under "All" — one per line, for incomingOrders.js (Import Support
 // Orders) and villageSupports.js (Import Support). Plan targets only: villages listed from the
@@ -300,60 +308,180 @@ function mdTxtOwner(coord) {
   return row && row.player ? decode(row.player) : '';
 }
 
-// ── "Who has already sent?" (pure) ────────────────────────────────────────────
-// A plan row (src→tgt) counts as SENT once any support carrying defensive units has
-// left that origin for that target — whether it has arrived (stationed, villageSupports)
-// or is still en route (incoming order). Returns tCoord → Set(originCoord). Amount/timing
-// are deliberately ignored: a partial or wrong-amount sender is "sent" (and still surfaces
-// on its own incoming row via the classifier); only true non-senders become "Still not sent".
-function mdSentOrigins(supTargets, orders) {
-  const map = {};
-  const add = (tgt, origin) => { (map[tgt] || (map[tgt] = new Set())).add(origin); };
-  for (const tg of (supTargets || [])) {
-    if (!tg.coord) continue;
-    for (const sp of (tg.supports || [])) if (mdPop(sp.units) > 0) add(tg.coord, sp.originCoord);
-  }
-  for (const o of (orders || [])) if (o.target && mdPop(o.units) > 0) add(o.target, o.originCoord);
-  return map;
-}
-
-// v6.4.0: def pop already at / heading to each target, per origin (stationed + inbound orders) — pure.
-function mdSentPop(supTargets, orders) {
-  const map = {};
-  const add = (tgt, origin, units) => {
-    const p = mdPop(units);
-    if (!tgt || p <= 0) return;
-    const m = map[tgt] || (map[tgt] = {});
-    m[origin] = (m[origin] || 0) + p;
+// ── "Who has already sent what?" (pure) ───────────────────────────────────────
+// A stack's key at a target: its origin village, or with none its player, so stacks with no origin
+// never merge across players (mdSentStacks, mdStartEntries and mdLiveOrders must agree on it).
+function mdStackKey(origin, player) { return origin || '@' + (player || ''); }
+// Take a village's starting support out of its stack, per unit type, floored at 0 (mutates units).
+function mdMinusStart(units, was) { for (const u of DEF_OBJ_UNITS) units[u] = Math.max(0, units[u] - ((was && was[u]) || 0)); return units; }
+// v6.7.2: def units already at / heading to each target, per origin village (stationed + inbound
+// orders) — pure. tCoord → originCoord → { units, player }; player = the name the import gave, ''
+// when it gave none (villageSupports.js leaves some blank). `start` (🏁 mdStart) takes what each
+// origin already had there out of its stationed stack, per unit type, so only what came on top
+// counts; orders are never reduced, they weren't in that snapshot. An origin left with nothing is
+// dropped, so an old stack doesn't make its village read as having sent.
+function mdSentStacks(supTargets, orders, start) {
+  const map = Object.create(null);
+  const add = (tgt, origin, player, units) => {
+    if (!tgt || mdPop(units) <= 0) return;
+    const m = map[tgt] || (map[tgt] = Object.create(null));
+    const key = mdStackKey(origin, player);
+    const s = m[key] || (m[key] = { units: mdZero(), player: '' });
+    mdAddUnits(s.units, units);
+    if (player) s.player = player;
   };
-  for (const tg of (supTargets || [])) for (const sp of (tg.supports || [])) add(tg.coord, sp.originCoord, sp.units);
-  for (const o of (orders || [])) add(o.target, o.originCoord, o.units);
+  for (const tg of (supTargets || [])) for (const sp of (tg.supports || [])) add(tg.coord, sp.originCoord, sp.originPlayer, sp.units);
+  for (const tgt of Object.keys(map)) {
+    const was = start && start[tgt] && start[tgt].o;
+    if (!was) continue;
+    for (const origin of Object.keys(map[tgt])) {
+      if (!was[origin]) continue;
+      const s = map[tgt][origin];
+      mdMinusStart(s.units, was[origin]);
+      if (mdPop(s.units) <= 0) delete map[tgt][origin];
+    }
+  }
+  for (const o of (orders || [])) add(o.target, o.originCoord, o.originPlayer, o.units);
   return map;
 }
-// The plan rows whose sender has NOT sent yet (pure). One plan holds at most one row per
-// sender→target, and it counts as sent as soon as ANY def units from that sender reached or head to
-// the target (amount ignored, like mdSentOrigins). Several 💾 defense plans (v6.4.0) can each hold a
-// row for the same pair: the pair's sent pop is handed to its rows in plan order — a row counts as
-// sent while some is left, and takes its own pop out of it — so one arrived order no longer clears a
-// second plan's row as well (review HIGH).
-function mdMissingFrom(rows, sentPop) {
-  const left = {};
-  return (rows || []).filter(r => {
-    const k = r.tCoord + '>' + r.srcCoord;
-    if (!(k in left)) left[k] = (sentPop[r.tCoord] && sentPop[r.tCoord][r.srcCoord]) || 0;
-    if (left[k] > 0) { left[k] -= mdPop(r.units); return false; }
+// 🏁 A starting-support snapshot from parsed villageSupports targets (pure). A village the export
+// could not read (status other than ok) gets no entry: "nothing seen" must not mean "nothing there".
+function mdStartEntries(targets, nowSec) {
+  const out = {};
+  for (const tg of (targets || [])) {
+    if (tg.status !== 'ok') continue;
+    const o = Object.create(null);
+    for (const sp of (tg.supports || [])) {
+      if (mdPop(sp.units) <= 0) continue;
+      const key = mdStackKey(sp.originCoord, sp.originPlayer);
+      mdAddUnits(o[key] || (o[key] = mdZero()), sp.units);
+    }
+    out[tg.coord] = { at: tg.at || nowSec || 0, o };
+  }
+  return out;
+}
+// v6.7.2: the orders still inbound (pure). An order that landed before a Support export looked at its
+// target is already inside that origin's stationed stack, so counting it too would credit the same
+// troops twice — which matters now that amounts count. It takes both: arrival up to the snapshot, and
+// a stack from that origin still holding its units (taken out as they are matched, so one stack can't
+// absorb two orders). Time alone isn't enough: exported_at is stamped when the scan ENDS, so an order
+// landing mid-scan is in neither file and must keep counting. The time is per village (tg.at, a merged
+// import can hold files of different ages), else the import's; only villages the export could read
+// (status ok). The 🏁 starting support (`start`) is a snapshot too: what it holds was there from the
+// start. A Support stack only counts above that share, so an old stack can't pass for a landed order.
+function mdLiveOrders(orders, supTargets, supAt, start) {
+  const snaps = Object.create(null);
+  const addSnap = (coord, at, stacks) => { if (coord && at) (snaps[coord] || (snaps[coord] = [])).push({ at: at * 1000, stacks }); };
+  for (const tg of (supTargets || [])) {
+    if (tg.status !== 'ok') continue;
+    const stacks = Object.create(null);
+    for (const sp of (tg.supports || [])) {
+      const key = mdStackKey(sp.originCoord, sp.originPlayer);
+      mdAddUnits(stacks[key] || (stacks[key] = mdZero()), sp.units);
+    }
+    const was = start && start[tg.coord] && start[tg.coord].o;
+    if (was) for (const key of Object.keys(stacks)) mdMinusStart(stacks[key], was[key]);
+    addSnap(tg.coord, tg.at || supAt, stacks);
+  }
+  for (const coord of Object.keys(start || {})) {
+    const s = start[coord];
+    if (!s || !s.o) continue;
+    const stacks = Object.create(null);
+    for (const origin of Object.keys(s.o)) stacks[origin] = mdAddUnits(mdZero(), s.o[origin]);
+    addSnap(coord, s.at, stacks);
+  }
+  return (orders || []).filter(o => {
+    if (o.arrivalMs == null) return true;
+    for (const snap of (snaps[o.target] || [])) {
+      const have = snap.stacks[mdStackKey(o.originCoord, o.originPlayer)];
+      if (o.arrivalMs > snap.at || !have || DEF_OBJ_UNITS.some(u => ((o.units && o.units[u]) || 0) > have[u])) continue;
+      for (const u of DEF_OBJ_UNITS) have[u] -= (o.units && o.units[u]) || 0;
+      return false;
+    }
     return true;
   });
+}
+// Same player? Plan names come from the troop file, import names from game pages (see moNorm).
+function mdPlayerKey(name) { return name ? moNorm(decode(name)) : ''; }
+// A village's owner when an import left the name blank: the troop file, else the world DB.
+function mdCoordOwner(coord) {
+  return mdTxtOwner(coord) || (typeof dbOwnerName === 'function' ? dbOwnerName(coord) : '');
+}
+// What the plan's players still owe (pure, v6.7.2) — the "Still not sent" rows, the ✉ Missing PMs
+// and the Remaining line all read this. Like Manage Offensive's "↷ Sent (other village)", a player
+// may send from other villages than the plan named: what counts is what reaches the target, per
+// target and unit type. `sent` = mdSentStacks(...). Per target:
+//   1. what an origin sent goes to that origin's own rows (whoever owns the village now);
+//   2. what is left goes to its owner's other rows, the rows whose village already sent first, so
+//      what stays owed sits on a village that has not sent and probably still has the troops.
+// With several 💾 defense plans at a target the earliest deadline fills first (rows with no time
+// last), so a reminder chases the wave still to come; pass every plan's rows, then filter (mdBuildRows).
+// Surplus never covers another player or another unit type. A player short by no more than
+// 🎚 mdTotalTolPct of their planned def pop at the target owes nothing (rounding, a mass-send total
+// typed by hand, troops that changed since the plan). Returns the rows still owed, in input order: an
+// untouched row as it is, a partly covered one as a copy holding only what is left (partial: true),
+// so its table cells, rally link and PM line ask for exactly that.
+function mdMissingFrom(rows, sent) {
+  const list = rows || [];
+  const byTarget = Object.create(null);
+  list.forEach((r, i) => { (byTarget[r.tCoord] || (byTarget[r.tCoord] = [])).push(i); });
+  const owed = new Array(list.length).fill(null), keep = new Array(list.length).fill(true);
+  const take = (need, from) => {
+    for (const u of DEF_OBJ_UNITS) { const n = Math.min(need[u], from[u]); need[u] -= n; from[u] -= n; }
+  };
+  const due = i => (list[i].arriveMs == null ? Number.MAX_SAFE_INTEGER : list[i].arriveMs);
+  for (const tCoord of Object.keys(byTarget)) {
+    const idx = byTarget[tCoord].slice().sort((a, b) => due(a) - due(b)); // stable: plan order within a deadline
+    const stacks = (sent && sent[tCoord]) || {};
+    const left = Object.create(null);
+    for (const o of Object.keys(stacks)) left[o] = mdAddUnits(mdZero(), stacks[o].units);
+    const ownSent = new Set(), planOwner = Object.create(null);
+    for (const i of idx) {
+      const r = list[i];
+      owed[i] = mdAddUnits(mdZero(), r.units);
+      planOwner[r.srcCoord] = r.srcPlayer;
+      if (left[r.srcCoord]) { take(owed[i], left[r.srcCoord]); ownSent.add(i); }
+    }
+    const pool = Object.create(null); // keyed by player names: "constructor" is a possible name
+    for (const o of Object.keys(left)) {
+      const k = mdPlayerKey(stacks[o].player || planOwner[o] || mdCoordOwner(o));
+      if (k) mdAddUnits(pool[k] || (pool[k] = mdZero()), left[o]);
+    }
+    for (const i of idx.slice().sort((a, b) => (due(a) - due(b)) || (ownSent.has(b) - ownSent.has(a)))) {
+      const from = pool[mdPlayerKey(list[i].srcPlayer)];
+      if (from) take(owed[i], from);
+    }
+    const planPop = Object.create(null), owedPop = Object.create(null);
+    const whoOf = i => mdPlayerKey(list[i].srcPlayer) || '@' + list[i].srcCoord;
+    for (const i of idx) {
+      const k = whoOf(i);
+      planPop[k] = (planPop[k] || 0) + mdPop(list[i].units);
+      owedPop[k] = (owedPop[k] || 0) + mdPop(owed[i]);
+    }
+    for (const i of idx) {
+      const k = whoOf(i);
+      keep[i] = mdPop(owed[i]) > 0 && owedPop[k] > planPop[k] * PARAMS.mdTotalTolPct / 100;
+    }
+  }
+  const out = [];
+  list.forEach((r, i) => {
+    if (!keep[i]) return;
+    const whole = DEF_OBJ_UNITS.every(u => owed[i][u] === ((r.units && r.units[u]) || 0));
+    out.push(whole ? r : Object.assign({}, r, { units: Object.assign({}, r.units, owed[i]), partial: true }));
+  });
+  return out;
 }
 // The deadline an inbound order is timed against. One plan: every row of a target shares one arrival,
 // so this is the target's deadline as before. Several defense plans can reinforce one target in waves
 // (Defense 1 at 10:00, Defense 2 at 18:00): the order is timed against the LATEST arrival among its own
-// sender's rows there (else among all the target's rows), so a second wave never reads late against
+// sender's rows there (else its player's, else all the target's rows), so a second wave never reads late against
 // the first wave's deadline.
 function mdOrderDeadline(g, o) {
   const timed = (g.planList || []).filter(r => r.arriveMs != null);
   const own = timed.filter(r => r.srcCoord === o.originCoord);
-  const pool = own.length ? own : timed;
+  const who = mdPlayerKey(o.originPlayer); // v6.7.2: from another of their villages → the player's own deadline
+  const mine = own.length || !who ? own : timed.filter(r => mdPlayerKey(r.srcPlayer) === who);
+  const pool = mine.length ? mine : timed;
   return pool.length ? Math.max(...pool.map(r => r.arriveMs)) : g.deadlineMs;
 }
 
@@ -362,7 +490,8 @@ function mdOrderDeadline(g, o) {
 // and classifies every order against it. Returns a verdict[] aligned to `orders`:
 //   matches      — src + target + units all match an unclaimed plan row
 //   duplicate    — identical to an already-matched row (plan wanted it once)
-//   diff_origin  — target + units match, but from a different origin village
+//   diff_origin  — target + units match, but from a different origin village; or (v6.7.2) from
+//                  another village of a player the plan has at this target (their totals decide)
 //   diff_target  — origin + units match a plan row headed to ANOTHER target (misrouted)
 //   wrong_amount — origin + target match a plan row, but the unit counts differ
 //   not_in_plan  — the destination village isn't a plan target at all
@@ -378,7 +507,7 @@ function mdClassifyOrders(orders, planRows) {
   const verdicts = (orders || []).map(() => 'inbound');
   if (!orders || !orders.length || !planRows || !planRows.length) return verdicts;
   const eq = (a, b) => DEF_OBJ_UNITS.every(u => Math.abs(((a && a[u]) || 0) - ((b && b[u]) || 0)) <= PARAMS.mdUnitTol);
-  const slots = planRows.map(r => ({ src: r.srcCoord, tgt: r.tCoord, units: r.units, filled: false }));
+  const slots = planRows.map(r => ({ src: r.srcCoord, tgt: r.tCoord, who: mdPlayerKey(r.srcPlayer), units: r.units, filled: false }));
   const plannedTgt = new Set(planRows.map(r => r.tCoord));
   // 🎚 mdSlotOrder (v6.1.1): 'earliest' = earliest arrival claims a slot (today); 'closestAmount' =
   // the order whose units are closest (sum of per-type differences) to any slot of its target goes
@@ -419,7 +548,9 @@ function mdClassifyOrders(orders, planRows) {
       const s2 = claim(o, x => !x.filled && x.tgt === o.target && x.src !== o.originCoord && eq(x.units, o.units));
       if (s2) { s2.filled = true; verdicts[i] = 'diff_origin'; continue; }
       if (slots.some(x => x.tgt !== o.target && x.src === o.originCoord && eq(x.units, o.units))) { verdicts[i] = 'diff_target'; continue; }
-      verdicts[i] = slots.some(x => x.tgt === o.target && x.src === o.originCoord) ? 'wrong_amount' : 'extra';
+      if (slots.some(x => x.tgt === o.target && x.src === o.originCoord)) { verdicts[i] = 'wrong_amount'; continue; }
+      const who = mdPlayerKey(o.originPlayer);
+      verdicts[i] = who && slots.some(x => x.tgt === o.target && x.who === who) ? 'diff_origin' : 'extra';
     } else {
       verdicts[i] = slots.some(x => x.src === o.originCoord && eq(x.units, o.units)) ? 'diff_target' : 'not_in_plan';
     }
@@ -516,20 +647,26 @@ function mdBuildRows(supTargets, orders, planRows, opts) {
     if (!ordCoords.has(coord)) { g.inferredIncoming = mdInferIncoming(coord); mdAddUnits(g.incoming, g.inferredIncoming); }
   }
 
-  // Remaining = plan − what the target's PLANNED senders already have there or on the way,
-  // floored at 0. The engine plans each objective as NEW sends and never subtracts support
-  // already sitting in (or heading to) the target, so only support that can be traced to one
-  // of this target's plan senders covers the plan: imported stationed support (Import
-  // Support) and imported orders (Import Support Orders) whose origin is a plan sender here.
-  // Other allied support — and the origin-less estimates from the tribe .txt (support est.,
-  // inferred incoming) — is still SHOWN on its own rows but covers nothing.
+  // Remaining = what the target's PLANNED PLAYERS still owe (mdMissingFrom, v6.7.2). The engine
+  // plans each objective as NEW sends and never subtracts support already sitting in (or heading
+  // to) the target, so only support that can be traced to a planned player covers the plan:
+  // imported stationed support (Import Support) and imported orders (Import Support Orders) from
+  // any of that player's villages, up to what the plan asks of them. Other players' support — and
+  // the origin-less estimates from the tribe .txt (support est., inferred incoming) — is still
+  // SHOWN on its own rows but covers nothing.
   // Support = ally support stationed in the village (NOT the owner's own troops). When an
   // Import Support file has been loaded for the village, g.stationed is the exact per-origin
   // sum; otherwise we show a placeholder ESTIMATE inferred from the tribe .txt (defense − own,
   // ~0 in practice — the .txt can't see foreign support), replaced the moment support is imported.
-  // Missing rows = the individual plan senders that have NOT sent yet (neither stationed nor incoming);
-  // only meaningful/rendered for order-covered villages (g.hasOrders).
-  const sentPop = mdSentPop(supTargets, orders);
+  // Missing rows = the same debt row by row; only rendered for order-covered villages (g.hasOrders).
+  // opts.debtRows = every plan's rows (tagged with their slot): plans at one target settle together
+  // even when the tab shows one of them (opts.debtSlot), so Defense 1's troops can't also clear
+  // Defense 2's rows in Defense 2's view. Without it (direct callers, tests): the rows passed.
+  const sent = mdSentStacks(supTargets, orders, opts.start);
+  const owedBy = Object.create(null);
+  if (opts.debtRows) for (const r of mdMissingFrom(opts.debtRows, sent)) {
+    if (opts.debtSlot == null || r.slot === opts.debtSlot) (owedBy[r.tCoord] || (owedBy[r.tCoord] = [])).push(r);
+  }
   for (const coord of order) {
     const g = byCoord[coord];
     g.hasOrders = ordCoords.has(coord);
@@ -538,12 +675,8 @@ function mdBuildRows(supTargets, orders, planRows, opts) {
     if (!g.owner) g.owner = mdTxtOwner(coord);
     g.support = g.hasSupImport ? g.stationed : mdZero();
     g.supportEst = g.hasSupImport ? mdZero() : mdEstimateStationed(coord);
-    const planned = new Set(g.planList.map(r => r.srcCoord));
-    const covering = mdZero();
-    for (const sp of g.supportRows) if (planned.has(sp.originCoord)) mdAddUnits(covering, sp.units);
-    for (const o of g.orderRows)    if (planned.has(o.originCoord))  mdAddUnits(covering, o.units);
-    for (const u of DEF_OBJ_UNITS) g.remaining[u] = Math.max(0, g.planNeed[u] - covering[u]);
-    g.missingRows = mdMissingFrom(g.planList, sentPop);
+    g.missingRows = opts.debtRows ? (owedBy[coord] || []) : mdMissingFrom(g.planList, sent);
+    for (const r of g.missingRows) mdAddUnits(g.remaining, r.units);
   }
   // Only surface villages actually relevant to defense coordination: a Defense-Plan
   // target, OR a village holding ally support (imported, or estimated ≥ the stationed floor),
@@ -608,7 +741,7 @@ function mdPlanArrivalCell(ms) {
 // A dated order whose departure (minus 🎚 departMargin) has passed by now can no longer arrive on
 // time: said in red under the label, so a laggard isn't chased with a link that is already too late.
 function mdNotSentStatus(r) {
-  let label = `<span style="color:#e69090;font-weight:600;">${esc(t('md_st_not_sent'))}</span>`;
+  let label = `<span style="color:#e69090;font-weight:600;">${esc(t(r.partial ? 'md_st_part_sent' : 'md_st_not_sent'))}</span>`;
   if (r.departMs != null && typeof serverNowMs === 'function') {
     const now = serverNowMs();
     if (r.departMs < now + PARAMS.departMargin * 60000) {
@@ -642,14 +775,17 @@ function renderManageDefTable() {
   const allCoords = (typeof incomingByCoord !== 'undefined') ? Object.keys(incomingByCoord) : null;
   // Likewise the stationed-support estimate is nonzero only where there is a "defense" row.
   const stationCoords = (typeof defenseByCoord !== 'undefined') ? Object.keys(defenseByCoord) : null;
-  mdGroups = mdBuildRows(mdSupTargets, mdOrders, planRows,
-    { allCoords, ordCoords: mdOrdCoords, stationCoords, stationedMinPop: PARAMS.mdStationedMinPop });
+  const liveOrders = mdLiveOrders(mdOrders, mdSupTargets, mdSupAt, mdStart);
+  mdGroups = mdBuildRows(mdSupTargets, liveOrders, planRows,
+    { allCoords, ordCoords: mdOrdCoords, stationCoords, stationedMinPop: PARAMS.mdStationedMinPop, start: mdStart, debtRows: mdDebtRows(), debtSlot: mdDebtSlot() });
 
   // Import status line
   if (impEl) {
     const parts = [];
     if (mdSupAt) parts.push(t('md_imp_sup')(mdSupTargets.length, new Date(mdSupAt * 1000).toLocaleString()));
     if (mdOrdAt) parts.push(t('md_imp_ord')(mdOrders.length, new Date(mdOrdAt * 1000).toLocaleString()));
+    const startVals = Object.values(mdStart).filter(Boolean);
+    if (startVals.length) parts.push(t('md_imp_start')(startVals.length, new Date(Math.max(...startVals.map(s => s.at || 0)) * 1000).toLocaleString()));
     impEl.textContent = parts.join('  ·  ');
   }
 
@@ -681,6 +817,7 @@ function renderManageDefTable() {
       t('md_sum_stationed')(Math.round(mdPop(totStationed)).toLocaleString()),
     ];
     if (nByStationed) chips.push(t('md_sum_by_stationed')(nByStationed, PARAMS.mdStationedMinPop.toLocaleString()));
+    if (mdOrders.length > liveOrders.length) chips.push(t('md_sum_landed')(mdOrders.length - liveOrders.length));
     if (anyPlan && nMissing > 0)
       chips.push(`<span style="color:#e06040;font-weight:600;">${esc(t('md_sum_missing')(nMissing))}</span>`);
     if (anyPlan && mdPop(totRemaining) > 0)
@@ -690,9 +827,11 @@ function renderManageDefTable() {
 
   // Classify every inbound order against the plan once (consumes slots across all targets),
   // then look each order's verdict up by reference (g.orderRows hold the same objects).
-  const verdicts = mdClassifyOrders(mdOrders, planRows);
+  // An order already there at the 🏁 start isn't a send for the plan, so it claims no slot.
+  const planOrders = mdLiveOrders(mdOrders, [], 0, mdStart);
+  const verdicts = mdClassifyOrders(planOrders, planRows);
   mdVmap = new Map();
-  mdOrders.forEach((o, i) => mdVmap.set(o, verdicts[i]));
+  planOrders.forEach((o, i) => mdVmap.set(o, verdicts[i]));
 
   // Fresh data render → expand the villages the user actually imported orders for (that's what
   // they want to inspect); everything else collapses to a summary row. A lone group auto-expands.
@@ -757,13 +896,15 @@ function renderMdTableBody() {
     // ── Detail rows (blank #/Target/Owner) ──
     // Stationed support (one per origin)
     for (const sp of g.supportRows) {
+      const wasHere = mdStart[g.coord] && mdStart[g.coord].o && mdStart[g.coord].o[sp.originCoord];
+      const startNote = wasHere ? `<br><span style="color:#806030;font-size:11px;">${esc(t('md_st_from_start')(Math.round(mdPop(wasHere)).toLocaleString()))}</span>` : '';
       cells.push(`<tr>${blankMeta}`
         + `<td><span class="badge" style="background:#1d3a24;color:#7fdca0;">🛡 ${esc(t('md_ty_stationed'))}</span></td>`
         + `<td class="left" style="font-family:monospace;">${esc(sp.originCoord || '—')}`
           + (sp.originVillage ? `<div style="color:#806030;font-size:11px;">${esc(sp.originVillage)}</div>` : '') + `</td>`
         + `<td class="left">${sp.originPlayer ? `<span class="player-tag">${esc(sp.originPlayer)}</span>` : '—'}</td>`
         + mdUnitCells(sp.units)
-        + `<td>—</td><td><span style="color:#7fdca0;">${esc(t('md_st_here'))}</span></td></tr>`);
+        + `<td>—</td><td><span style="color:#7fdca0;">${esc(t('md_st_here'))}</span>${startNote}</td></tr>`);
     }
 
     // Inbound support (per-order when this village's orders were imported, else one inferred estimate)
@@ -834,18 +975,21 @@ function mdFallbackCopy(txt, done) {
 }
 function toggleMdSupImport() { const el = document.getElementById('md-sup-wrap'); if (el) el.style.display = el.style.display === 'none' ? '' : 'none'; }
 function toggleMdOrdImport() { const el = document.getElementById('md-ord-wrap'); if (el) el.style.display = el.style.display === 'none' ? '' : 'none'; }
+function toggleMdStartImport() { const el = document.getElementById('md-start-wrap'); if (el) el.style.display = el.style.display === 'none' ? '' : 'none'; }
 
 // ── Multi-file merge (pure — harness-tested) ──────────────────────────────────
 // Several batch exports selected at once are merged AFTER parsing (text concatenation would
 // break JSON files and repeated CSV headers; formats can even be mixed in one selection).
 // Per-village the LAST file wins — a later batch re-scanning a village is the fresher snapshot.
-// Village order = first-seen across files; exportedAt = the newest file's stamp.
+// Village order = first-seen across files; exportedAt = the newest file's stamp; each village keeps
+// its own file's stamp as `at` (mdLiveOrders; 0 = none, a CSV: the import's time stands in).
 function mdMergeSupImports(parsedList) {
   const byCoord = {}; const order = [];
   let newest = 0;
   for (const p of parsedList) {
     for (const tg of p.targets) {
       if (!byCoord[tg.coord]) order.push(tg.coord);
+      tg.at = p.exportedAt || 0;
       byCoord[tg.coord] = tg;
     }
     newest = Math.max(newest, p.exportedAt || 0);
@@ -870,8 +1014,8 @@ function mdMergeOrdImports(parsedList) {
 
 // Re-importable JSON of the current state, in the exporters' own field names — what the cloud
 // backup receives for a multi-file import (the N raw source files no longer exist as one text).
-function mdSupToJson() {
-  return JSON.stringify({ exported_at: mdSupAt, targets: mdSupTargets.map(tg => ({
+function mdSupToJson(targets = mdSupTargets, at = mdSupAt) {
+  return JSON.stringify({ exported_at: at, targets: targets.map(tg => ({
     coords: tg.coord, village: tg.village, player: tg.owner, status: tg.status,
     own_units: tg.ownUnits || undefined,
     supports: (tg.supports || []).map(sp => ({ origin_coords: sp.originCoord,
@@ -925,10 +1069,47 @@ function mdImportOrdFiles(files) {
   const el = document.getElementById('md-ord-wrap'); if (el) el.style.display = 'none';
   if (!saved) alert(t('md_storage_full')); // data shown this session (+ cloud-backed in prod) but not persisted locally
 }
+// 🏁 Upload starting support: same file as Import Support, read as what was already there. Per
+// village: a later upload (the next plan's targets) leaves the other villages' snapshots alone. A
+// snapshot can't be taken again once support is on its way, so replacing one asks first; Cancel
+// keeps those and still adds the file's new villages (a second plan can share a target with the first).
+function mdImportStartFiles(files) {
+  const parsedList = [];
+  for (const f of files) {
+    const parsed = mdParseSupports(f.text);
+    if (!parsed || !parsed.targets.length) { alert(f.name ? t('md_sup_fail_file')(f.name) : t('md_sup_fail')); return; }
+    parsedList.push(parsed);
+  }
+  if (!parsedList.length) return;
+  const merged = mdMergeSupImports(parsedList);
+  const entries = mdStartEntries(merged.targets, Math.floor(Date.now() / 1000));
+  const coords = Object.keys(entries);
+  if (!coords.length) { alert(t('md_start_none')); return; }
+  const replacing = coords.filter(c => mdStart[c]).length;
+  const keepOld = replacing > 0 && !confirm(t('md_start_confirm_replace')(replacing));
+  const fresh = keepOld ? coords.filter(c => !mdStart[c]) : coords;
+  if (!fresh.length) return;
+  for (const c of fresh) mdStart[c] = entries[c];
+  const saved = saveManageDef(); renderManageDefTable();
+  if (typeof cloudSyncManageDef === 'function')
+    cloudSyncManageDef(files.length === 1 ? files[0].text : mdSupToJson(merged.targets, merged.exportedAt), 'start');
+  const el = document.getElementById('md-start-wrap'); if (el) el.style.display = 'none';
+  if (!saved) alert(t('md_storage_full'));
+}
+// Its own clear: ✕ Clear Import leaves the snapshot alone, because fresh imports are routine and
+// the snapshot is the one thing that can't be exported again later.
+function mdClearStart() {
+  if (!Object.keys(mdStart).length) return;
+  if (!confirm(t('md_start_confirm_clear'))) return;
+  mdStart = {};
+  saveManageDef(); renderManageDefTable();
+}
 function mdImportSup(text) { mdImportSupFiles([{ name: '', text }]); }
 function mdImportOrd(text) { mdImportOrdFiles([{ name: '', text }]); }
 function mdLoadSupPaste() { const el = document.getElementById('md-sup-text'); mdImportSup(el ? el.value : ''); }
 function mdLoadOrdPaste() { const el = document.getElementById('md-ord-text'); mdImportOrd(el ? el.value : ''); }
+function mdLoadStartPaste() { const el = document.getElementById('md-start-text'); mdImportStartFiles([{ name: '', text: el ? el.value : '' }]); }
+function mdFileImporter(which) { return which === 'ord' ? mdImportOrdFiles : which === 'start' ? mdImportStartFiles : mdImportSupFiles; }
 function mdLoadFile(input, which) {
   const files = Array.from(input.files || []);
   if (!files.length) return;
@@ -937,7 +1118,7 @@ function mdLoadFile(input, which) {
     reader.onload = e => resolve({ name: f.name, text: e.target.result });
     reader.onerror = () => reject(f.name);
     reader.readAsText(f);
-  }))).then(list => (which === 'ord' ? mdImportOrdFiles : mdImportSupFiles)(list))
+  }))).then(list => mdFileImporter(which)(list))
     .catch(name => alert(t(which === 'ord' ? 'md_ord_fail_file' : 'md_sup_fail_file')(name)));
   input.value = '';
 }
@@ -948,7 +1129,7 @@ function clearManageDef() {
 }
 
 // ── ✉ Export Missing PMs ──────────────────────────────────────────────────────
-// The Defense-Plan rows whose sender has NOT sent yet — the same "Still not sent" set as
+// What the Defense-Plan's players still owe (mdMissingFrom) — the same "Still not sent" set as
 // the table's red rows. Grouped/split into per-player messages exactly like Plan Defense's
 // ✉ Export PMs (shared defPmMessagesFrom + renderPmModal), so a laggard gets a ready-to-paste
 // nudge with only the orders they still owe. v6.6.4: the same 📝 Template editor as ✉ Export
@@ -960,8 +1141,9 @@ function mdMissingPlanRows() {
   if (!planRows.length) return [];
   // Only villages whose orders were imported can be judged "not sent" (per-village, matching the
   // table). A plan target with no order data is skipped — we can't tell who is en route there.
-  const covered = new Set(mdOrdCoords);
-  return mdMissingFrom(planRows.filter(r => covered.has(r.tCoord)), mdSentPop(mdSupTargets, mdOrders));
+  const covered = new Set(mdOrdCoords), slot = mdDebtSlot();
+  const owed = mdMissingFrom(mdDebtRows().filter(r => covered.has(r.tCoord)), mdSentStacks(mdSupTargets, mdLiveOrders(mdOrders, mdSupTargets, mdSupAt, mdStart), mdStart));
+  return slot == null ? owed : owed.filter(r => r.slot === slot);
 }
 function showMdMissingPmExport() {
   const hasPlan = mdViewRows().length > 0;

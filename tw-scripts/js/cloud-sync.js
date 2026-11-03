@@ -305,8 +305,8 @@ async function cloudSyncReturning(text) {
   return _cloudPush(text, 'manage_offensive', { ext: 'json', nameSuffix: 'returning' });
 }
 
-// Cloud-save a Manage Defense tab import. `sub` ('support' | 'orders') keeps the
-// two imports in the one bucket from overwriting each other's latest file.
+// Cloud-save a Manage Defense tab import. `sub` ('support' | 'orders' | 'start') keeps the
+// imports in the one bucket from overwriting each other's latest file.
 async function cloudSyncManageDef(text, sub) {
   return _cloudPush(text, 'manage_defense', { ext: _cloudExt(text), nameSuffix: sub });
 }
